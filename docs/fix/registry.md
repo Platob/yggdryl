@@ -12,7 +12,7 @@
 
 | Aspect | Rule |
 | --- | --- |
-| Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is dated `deprecated`, and an older spelling of a surviving code is one of its aliases |
+| Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it as a `fix:aliases` entry, and a field FIX retired is still in the dictionary under its own tag |
 | Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
@@ -592,7 +592,7 @@ Python registries are mutable and unhashable; `stable_hash()` explicitly compute
 
 ## A field carries its code set
 
-A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` and `name`, plus optional aliases, documentation, and pedigree. Typed borrowed code lookups and `FixCode` construction are Rust-only; both bindings preserve the same metadata through native validation and snapshots.
+A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` and `name`, plus optional aliases, documentation, and grouping. The list is the vocabulary in the rank the specification gives it, so where a code sits *is* its presentation rank. Typed borrowed code lookups and `FixCode` construction are Rust-only; both bindings preserve the same metadata through native validation and snapshots.
 
 === "Rust"
 
@@ -643,33 +643,41 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
 | --- | --- |
 | `value`, `name` | Required wire value and symbolic name; `value` leads the canonical record |
 | `aliases`, `doc` | Additional spellings and documentation |
-| `since`, `ep`, `deprecated` | Numeric dotted version and extension-pack pedigree |
-| `sort`, `group` | Source presentation rank and grouping |
+| `group` | The label the specification files the code under |
 
-`code`, `code_by_name`, `code_name`, and `code_value` borrow the selected code's data; their `_at` variants filter by version. An unknown spelling returns no match so the codec can retain the wire text. Duplicate names, empty names/values, and malformed documents are refused by the writer. Description abbreviations ignore numeric tag cross-references and later parenthesizations; two distinct wire values sharing one folded spelling remain ambiguous.
+The rank the specification gives a code is its position in the list, so there
+is no key beside the order that states one.
+
+`code`, `code_by_name`, `code_name`, and `code_value` borrow the selected code's data. An unknown spelling returns no match so the codec can retain the wire text. Duplicate names, empty names/values, and malformed documents are refused by the writer. Description abbreviations ignore numeric tag cross-references and later parenthesizations; two distinct wire values sharing one folded spelling remain ambiguous.
 
 ### Every version's values are in the set
 
-The committed dictionary folds the FIX 4.0 to 5.0 SP2 listings into each set. A value an older version declared and the newest dropped is a code of its own, dated `since` the first version listing it and `deprecated` at the version after the last: `ExecType(150)` `1` and `2`, the partial fill and the fill FIX 4.3 folded into `Trade`, are `PartiallyFilled` and `Filled` - the names the crate's `state` column reads - since 4.1 and deprecated 4.4. A legacy name that folds onto a current one takes the suffix `Legacy`, and so does a deprecated name the newest version spells beside the current one that replaced it - `BenchmarkCurveName(221)` `Euribor` is `EuriborLegacy` beside `EURIBOR`, because one spelling cannot reach two codes; an older spelling of a value the newest version keeps becomes one of its aliases, so a name a 4.2 dictionary used still reaches the value. A message's [restatement](message.md#restated-at-the-dictionarys-newest-version) reads these dates: a target holding a code its set no longer declares at the newest version takes the rule's value, one holding a current code stands.
+The committed dictionary folds the FIX 4.0 to 5.0 SP2 listings into each set,
+so a value an older version declared and the newest dropped is a code of the
+set like any other: `ExecType(150)` `1` and `2`, the partial fill and the fill
+FIX 4.3 folded into `Trade`, are `PartiallyFilled` and `Filled`, the names the
+crate's `state` column reads. The set states one reading of each and dates
+none of them.
 
-Reading a code's pedigree is Rust only:
+A legacy name that folds onto a current one takes the suffix `Legacy`, and so
+does a retired name the newest version spells beside the one that replaced it -
+`BenchmarkCurveName(221)` `Euribor` is `EuriborLegacy` beside `EURIBOR`,
+because one spelling cannot reach two codes; an older spelling of a value the
+newest version keeps becomes one of its aliases, so a name a 4.2 dictionary
+used still reaches the value.
 
 === "Rust"
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixRegistry, Version};
+    use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
 
-    // FIX 4.1 declared ExecType 1; 4.3 folded it into Trade and 4.4 stopped listing it.
+    // FIX 4.1 declared ExecType 1; 4.3 folded it into Trade. Both are codes.
     let partial = registry.field_by_tag(150)?.as_fix().code("1").expect("a legacy code");
     assert_eq!(partial.name(), "PartiallyFilled");
-    assert_eq!(partial.since(), Some("4.1".parse::<Version>()?));
-    assert_eq!(partial.deprecated(), Some("4.4".parse::<Version>()?));
-    assert!(partial.defined_at("4.2".parse()?));
-    assert!(!partial.defined_at("4.4".parse()?));
     // A spelling an older version gave a surviving value is an alias of it.
     assert_eq!(registry.field_by_tag(35)?.as_fix().code_value("ExecutionAcknowledgement"), Some("BN"));
     // A legacy name that folds onto a current one takes the suffix.
@@ -689,13 +697,11 @@ some FIX 4.0 to 5.0 SP2 dictionary declares and the newest lacks -
 thirty-four more - so `field_by_tag` answers for it, because a capture holds
 what was sent.
 
-What a *value* was does travel, because that is what a reader has to translate:
-a [code](#a-field-carries-its-own-code-set) carries the version it was declared
-at and the one that deprecated it, and
-[`fix:replacements`](#a-field-carries-what-replaced-it) says how a retired field
-or value is restated.
+How a retired field or value is restated travels on the field it is about:
+[`fix:replacements`](#a-field-carries-what-replaced-it) says which field takes
+what, and a [code set](#a-field-carries-its-own-code-set) states one reading of
+every value it declares.
 
-A `Version` has numeric major, minor, and patch parts, such as `5.0.2`.
 `fix:nulls` holds the field's explicit wire spellings for absence. These
 metadata documents remain on the field and round-trip through both bindings.
 

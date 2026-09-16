@@ -10,67 +10,44 @@
       "display": "LegCashSettlDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42300"
@@ -113,33 +90,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -157,51 +122,34 @@
       "display": "LegCashSettlDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42304"
@@ -267,19 +215,14 @@
       "display": "LegCashSettlPriceDefault",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Close",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Close"
-        },
-        {
           "value": "1",
           "name": "Hedge",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Hedge"
+        },
+        {
+          "value": "0",
+          "name": "Close",
+          "doc": "Close"
         }
       ],
       "fix:tag": "42309"
@@ -346,33 +289,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -414,19 +345,14 @@
       "display": "LegDividendFloatingRateSpreadPositionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Short",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Short"
-        },
-        {
           "value": "1",
           "name": "Long",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Long"
+        },
+        {
+          "value": "0",
+          "name": "Short",
+          "doc": "Short"
         }
       ],
       "fix:tag": "42317"
@@ -443,19 +369,14 @@
       "display": "LegDividendFloatingRateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bond equivalent yield"
-        },
-        {
           "value": "1",
           "name": "MoneyMarketYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Money market yield"
+        },
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "doc": "Bond equivalent yield"
         }
       ],
       "fix:tag": "42318"
@@ -486,17 +407,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -516,17 +431,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -558,17 +467,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -588,17 +491,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -630,22 +527,16 @@
         {
           "value": "0",
           "name": "RoundToNearest",
-          "since": "4.3",
-          "sort": 1,
           "doc": "Round to nearest"
         },
         {
           "value": "1",
           "name": "RoundDown",
-          "since": "4.3",
-          "sort": 2,
           "doc": "Round down"
         },
         {
           "value": "2",
           "name": "RoundUp",
-          "since": "4.3",
-          "sort": 3,
           "doc": "Round up"
         }
       ],
@@ -675,19 +566,14 @@
       "display": "LegDividendAveragingMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unweighted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unweighted"
-        },
-        {
           "value": "1",
           "name": "Weighted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Weighted"
+        },
+        {
+          "value": "0",
+          "name": "Unweighted",
+          "doc": "Unweighted"
         }
       ],
       "fix:tag": "42328"
@@ -704,19 +590,14 @@
       "display": "LegDividendNegativeRateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ZeroInterestRateMethod",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Zero interest rate method"
-        },
-        {
           "value": "1",
           "name": "NegativeInterestRateMethod",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Negative interest rate method"
+        },
+        {
+          "value": "0",
+          "name": "ZeroInterestRateMethod",
+          "doc": "Zero interest rate method"
         }
       ],
       "fix:tag": "42329"
@@ -759,33 +640,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -803,51 +672,34 @@
       "display": "LegDividendAccrualPaymentDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42333"
@@ -877,67 +729,44 @@
       "display": "LegDividendAccrualPaymentDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42335"
@@ -979,19 +808,14 @@
       "display": "LegDividendEntitlementEvent",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ExDate",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Ex-date"
-        },
-        {
           "value": "1",
           "name": "RecordDate",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Record date"
+        },
+        {
+          "value": "0",
+          "name": "ExDate",
+          "doc": "Ex-date"
         }
       ],
       "fix:tag": "42338"
@@ -1008,35 +832,24 @@
       "display": "LegDividendAmountType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "RecordAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Record amount"
-        },
-        {
           "value": "1",
           "name": "ExAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Ex amount"
         },
         {
           "value": "2",
           "name": "PaidAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Paid amount"
         },
         {
           "value": "3",
           "name": "PerMasterConfirm",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 3,
           "doc": "As specified in master confirmation"
+        },
+        {
+          "value": "0",
+          "name": "RecordAmount",
+          "doc": "Record amount"
         }
       ],
       "fix:tag": "42339"
@@ -1067,17 +880,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -1095,35 +902,24 @@
       "display": "LegExtraordinaryDividendAmountType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "RecordAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Record amount"
-        },
-        {
           "value": "1",
           "name": "ExAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Ex amount"
         },
         {
           "value": "2",
           "name": "PaidAmount",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Paid amount"
         },
         {
           "value": "3",
           "name": "PerMasterConfirm",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 3,
           "doc": "As specified in master confirmation"
+        },
+        {
+          "value": "0",
+          "name": "RecordAmount",
+          "doc": "Record amount"
         }
       ],
       "fix:tag": "42342"
@@ -1176,35 +972,24 @@
       "display": "LegDividendCompoundingMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "None"
-        },
-        {
           "value": "1",
           "name": "Flat",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Flat"
         },
         {
           "value": "2",
           "name": "Straight",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Straight"
         },
         {
           "value": "3",
           "name": "SpreadExclusive",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Spread exclusive"
+        },
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None"
         }
       ],
       "fix:tag": "42346"
@@ -1257,19 +1042,14 @@
       "display": "LegNonCashDividendTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "PotentialAdjustment",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Potential adjustment event"
-        },
-        {
           "value": "1",
           "name": "CashEquivalent",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Cash equivalent"
+        },
+        {
+          "value": "0",
+          "name": "PotentialAdjustment",
+          "doc": "Potential adjustment event"
         }
       ],
       "fix:tag": "42350"
@@ -1286,19 +1066,14 @@
       "display": "LegDividendComposition",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "EquityAmountReceiver",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Equity amount receiver election"
-        },
-        {
           "value": "1",
           "name": "CalculationAgent",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Calculation agent election"
+        },
+        {
+          "value": "0",
+          "name": "EquityAmountReceiver",
+          "doc": "Equity amount receiver election"
         }
       ],
       "fix:tag": "42351"
@@ -1401,33 +1176,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1445,51 +1208,34 @@
       "display": "LegDividendFXTriggerDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42360"
@@ -1519,67 +1265,44 @@
       "display": "LegDividendFXTriggerDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42362"
@@ -1707,67 +1430,44 @@
       "display": "LegDividendPeriodBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42372"
@@ -1823,33 +1523,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1867,51 +1555,34 @@
       "display": "LegDividendPeriodValuationDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42377"
@@ -1980,33 +1651,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -2024,51 +1683,34 @@
       "display": "LegDividendPeriodPaymentDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42383"
@@ -2172,17 +1814,11 @@
         {
           "value": "1",
           "name": "Buy",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buy"
         },
         {
           "value": "2",
           "name": "Sell",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Sell"
         }
       ],
@@ -2261,27 +1897,19 @@
       "display": "LegMakeWholeBenchmarkQuote",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bid",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Bid"
-        },
-        {
           "value": "1",
           "name": "Mid",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Mid"
         },
         {
           "value": "2",
           "name": "Offer",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Offer"
+        },
+        {
+          "value": "0",
+          "name": "Bid",
+          "doc": "Bid"
         }
       ],
       "fix:tag": "42397"
@@ -2298,19 +1926,14 @@
       "display": "LegMakeWholeInterpolationMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "None"
-        },
-        {
           "value": "1",
           "name": "LinearZeroYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Linear zero yield"
+        },
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None"
         }
       ],
       "fix:tag": "42398"

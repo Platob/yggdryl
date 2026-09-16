@@ -36,33 +36,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -80,51 +68,34 @@
       "display": "LegPaymentScheduleFixingDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "40403"
@@ -191,67 +162,44 @@
       "display": "LegPaymentScheduleInterimExchangeDatesBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "40408"
@@ -294,33 +242,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -338,51 +274,34 @@
       "display": "LegPaymentScheduleInterimExchangeDatesOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "40412"
@@ -424,43 +343,29 @@
       "display": "LegPaymentScheduleRateSource",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bloomberg",
-          "since": "5.0.1",
-          "ep": 82,
-          "doc": "Bloomberg"
-        },
-        {
           "value": "1",
           "name": "Reuters",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 1,
           "doc": "Reuters"
         },
         {
           "value": "2",
           "name": "Telerate",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 2,
           "doc": "Telerate"
         },
         {
           "value": "3",
           "name": "ISDARateOption",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "ISDA Settlement Rate Option"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
         }
       ],
       "fix:tag": "40415"
@@ -477,19 +382,14 @@
       "display": "LegPaymentScheduleRateSourceType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Primary",
-          "since": "5.0.1",
-          "ep": 82,
-          "doc": "Primary"
-        },
-        {
           "value": "1",
           "name": "Secondary",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 1,
           "doc": "Secondary"
+        },
+        {
+          "value": "0",
+          "name": "Primary",
+          "doc": "Primary"
         }
       ],
       "fix:tag": "40416"
@@ -530,35 +430,24 @@
       "display": "LegPaymentStubType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Initial",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Initial"
-        },
-        {
           "value": "1",
           "name": "Final",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Final"
         },
         {
           "value": "2",
           "name": "CompoundingInitial",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Compounding initial"
         },
         {
           "value": "3",
           "name": "CompoundingFinal",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 3,
           "doc": "Compounding final"
+        },
+        {
+          "value": "0",
+          "name": "Initial",
+          "doc": "Initial"
         }
       ],
       "fix:tag": "40419"
@@ -575,19 +464,14 @@
       "display": "LegPaymentStubLength",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Short",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Short"
-        },
-        {
           "value": "1",
           "name": "Long",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Long"
+        },
+        {
+          "value": "0",
+          "name": "Short",
+          "doc": "Short"
         }
       ],
       "fix:tag": "40420"
@@ -652,35 +536,24 @@
       "display": "LegPaymentStubIndexSource",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bloomberg",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bloomberg"
-        },
-        {
           "value": "1",
           "name": "Reuters",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Reuters"
         },
         {
           "value": "2",
           "name": "Telerate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Telerate"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
         }
       ],
       "fix:tag": "40425"
@@ -711,33 +584,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -779,19 +640,14 @@
       "display": "LegPaymentStubIndexRateSpreadPositionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Short",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Short"
-        },
-        {
           "value": "1",
           "name": "Long",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Long"
+        },
+        {
+          "value": "0",
+          "name": "Short",
+          "doc": "Short"
         }
       ],
       "fix:tag": "40430"
@@ -808,19 +664,14 @@
       "display": "LegPaymentStubIndexRateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bond equivalent yield"
-        },
-        {
           "value": "1",
           "name": "MoneyMarketYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Money market yield"
+        },
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "doc": "Bond equivalent yield"
         }
       ],
       "fix:tag": "40431"
@@ -851,17 +702,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -881,17 +726,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -923,17 +762,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -953,17 +786,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -993,35 +820,24 @@
       "display": "LegPaymentStubIndex2Source",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bloomberg",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bloomberg"
-        },
-        {
           "value": "1",
           "name": "Reuters",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Reuters"
         },
         {
           "value": "2",
           "name": "Telerate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Telerate"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
         }
       ],
       "fix:tag": "40439"
@@ -1052,33 +868,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1120,19 +924,14 @@
       "display": "LegPaymentStubIndex2RateSpreadPositionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Short",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Short"
-        },
-        {
           "value": "1",
           "name": "Long",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Long"
+        },
+        {
+          "value": "0",
+          "name": "Short",
+          "doc": "Short"
         }
       ],
       "fix:tag": "40444"
@@ -1149,19 +948,14 @@
       "display": "LegPaymentStubIndex2RateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bond equivalent yield"
-        },
-        {
           "value": "1",
           "name": "MoneyMarketYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Money market yield"
+        },
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "doc": "Bond equivalent yield"
         }
       ],
       "fix:tag": "40445"
@@ -1214,67 +1008,44 @@
       "display": "LegProvisionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "MandatoryEarlyTermination",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Mandatory early termination"
-        },
-        {
           "value": "1",
           "name": "OptionalEarlyTermination",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Optional early termination"
         },
         {
           "value": "2",
           "name": "Cancelable",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Cancelable"
         },
         {
           "value": "3",
           "name": "Extendable",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Extendable"
         },
         {
           "value": "4",
           "name": "MutualEarlyTermination",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 4,
           "doc": "Mutual early termination"
         },
         {
           "value": "5",
           "name": "Evergreen",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 5,
           "doc": "Evergreen"
         },
         {
           "value": "6",
           "name": "Callable",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 6,
           "doc": "Callable"
         },
         {
           "value": "7",
           "name": "Puttable",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 7,
           "doc": "Puttable"
+        },
+        {
+          "value": "0",
+          "name": "MandatoryEarlyTermination",
+          "doc": "Mandatory early termination"
         }
       ],
       "fix:tag": "40449"
@@ -1304,67 +1075,44 @@
       "display": "LegProvisionDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "40451"
@@ -1420,33 +1168,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1464,35 +1200,24 @@
       "display": "LegProvisionCalculationAgent",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ExercisingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Exercising party"
-        },
-        {
           "value": "1",
           "name": "NonExercisingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Non-exercising party"
         },
         {
           "value": "2",
           "name": "MasterAgreeent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "As specified in the master agreement"
         },
         {
           "value": "3",
           "name": "Supplement",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "As specified in the standard terms supplement"
+        },
+        {
+          "value": "0",
+          "name": "ExercisingParty",
+          "doc": "Exercising party"
         }
       ],
       "fix:tag": "40456"
@@ -1511,17 +1236,11 @@
         {
           "value": "1",
           "name": "Buy",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buy"
         },
         {
           "value": "2",
           "name": "Sell",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Sell"
         }
       ],
@@ -1541,17 +1260,11 @@
         {
           "value": "1",
           "name": "Buy",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buy"
         },
         {
           "value": "2",
           "name": "Sell",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Sell"
         }
       ],
@@ -1571,33 +1284,21 @@
         {
           "value": "0",
           "name": "European",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 1,
           "doc": "European"
         },
         {
           "value": "1",
           "name": "American",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 2,
           "doc": "American"
         },
         {
           "value": "2",
           "name": "Bermuda",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 3,
           "doc": "Bermuda"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -1687,59 +1388,39 @@
       "display": "LegProvisionCashSettlMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "CashPrice",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Cash price"
-        },
-        {
           "value": "1",
           "name": "CashPriceAlternate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Cash price alternate"
         },
         {
           "value": "2",
           "name": "ParYieldCurveAdjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Par yield curve adjusted"
         },
         {
           "value": "3",
           "name": "ZeroCouponYieldCurveAdjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Zero coupon yield curve adjusted"
         },
         {
           "value": "4",
           "name": "ParYieldCurveUnadjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Par yield curve unadjusted"
         },
         {
           "value": "5",
           "name": "CrossCurrency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Cross currency"
         },
         {
           "value": "6",
           "name": "CollateralizedPrice",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Collateralized price"
+        },
+        {
+          "value": "0",
+          "name": "CashPrice",
+          "doc": "Cash price"
         }
       ],
       "fix:tag": "40466"
@@ -1780,35 +1461,24 @@
       "display": "LegProvisionCashSettlQuoteType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bid",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bid"
-        },
-        {
           "value": "1",
           "name": "Mid",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Mid"
         },
         {
           "value": "2",
           "name": "Offer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Offer"
         },
         {
           "value": "3",
           "name": "ExercisingPartyPays",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Exercising party pays"
+        },
+        {
+          "value": "0",
+          "name": "Bid",
+          "doc": "Bid"
         }
       ],
       "fix:tag": "40469"
@@ -1825,35 +1495,24 @@
       "display": "LegProvisionCashSettlQuoteSource",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bloomberg",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bloomberg"
-        },
-        {
           "value": "1",
           "name": "Reuters",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Reuters"
         },
         {
           "value": "2",
           "name": "Telerate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Telerate"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
         }
       ],
       "fix:tag": "40470"
@@ -1919,19 +1578,14 @@
       "display": "LegProvisionCashSettlPaymentDateType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unadjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unadjusted"
-        },
-        {
           "value": "1",
           "name": "Adjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Adjusted"
+        },
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
         }
       ],
       "fix:tag": "40475"
@@ -1948,67 +1602,44 @@
       "display": "LegProvisionOptionExerciseBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "40476"
@@ -2051,33 +1682,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -2109,66 +1728,42 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
         },
         {
           "value": "H",
           "name": "Hour",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 5,
           "doc": "Hour"
         },
         {
           "value": "Min",
           "name": "Minute",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 6,
           "doc": "Minute"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "S",
           "name": "Second",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 7,
           "doc": "Second"
         },
         {
           "value": "T",
           "name": "Term",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 8,
           "doc": "Term"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
-          "doc": "Week"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
-          "doc": "Year"
         }
       ],
       "fix:tag": "40481"
@@ -2224,33 +1819,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -2268,51 +1851,34 @@
       "display": "LegProvisionOptionExerciseStartDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "40486"
@@ -2455,19 +2021,14 @@
       "display": "LegProvisionOptionExerciseFixedDateType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unadjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unadjusted"
-        },
-        {
           "value": "1",
           "name": "Adjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Adjusted"
+        },
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
         }
       ],
       "fix:tag": "40497"
@@ -2497,67 +2058,44 @@
       "display": "LegProvisionOptionExpirationDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "40499"

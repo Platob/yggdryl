@@ -68,18 +68,15 @@ struct Composed {
     source: SmolStr,
     target: Field,
     tag: i32,
-    version: Option<Version>,
     invalid_utf8: bool,
 }
 
-/// Raw consensus for one target. Additional versions allocate only when
-/// agreeing sources actually cross versions, bounded by their source count.
+/// Raw consensus for one target.
 struct Composition<'source> {
     source: &'source Composed,
     write: super::msg::Write,
     disagreed: bool,
     invalid_utf8: bool,
-    versions: Vec<Option<Version>>,
 }
 
 impl Known<'_> {
@@ -944,7 +941,7 @@ impl<'registry> Builder<'registry> {
         }
         let critical = super::identity::required_dtype(fill.tag).is_some();
         let typed = if critical {
-            typed_fill(fill.field, fill.tag, fill.value, self.version)
+            typed_fill(fill.field, fill.tag, fill.value)
         } else {
             fill.field.scalar(fill.value.clone())
         };
@@ -1102,7 +1099,6 @@ impl<'registry> Builder<'registry> {
             source: SmolStr::new(field.name()),
             target: stated(target),
             tag,
-            version: self.version,
             invalid_utf8,
         });
         critical
@@ -1174,10 +1170,10 @@ impl<'registry> Builder<'registry> {
         // document, and the one whose answer repeats across a run.
         match (&facts, source) {
             (Some(facts), Some(source)) => {
-                let translated = self.memo.translation(source, facts, text, self.version);
-                typed_translation(field, text, translated.as_deref(), self.version)
+                let translated = self.memo.translation(source, facts, text);
+                typed_translation(field, text, translated.as_deref())
             }
-            _ => typed_spelling_checked(field, text, self.version),
+            _ => typed_spelling_checked(field, text),
         }
     }
 
@@ -1808,7 +1804,6 @@ impl<'registry> Builder<'registry> {
             entries,
             tags,
             composed,
-            version,
         })
     }
 }
@@ -1820,7 +1815,6 @@ pub(super) struct Built {
     pub(super) value: Scalar,
     pub(super) entries: Vec<FixEntry>,
     pub(super) tags: Vec<(i32, usize)>,
-    pub(super) version: Option<Version>,
     composed: Vec<Composed>,
 }
 
@@ -1869,13 +1863,6 @@ impl Built {
                 Some(held) => {
                     held.disagreed |= held.write.value != *value;
                     held.invalid_utf8 |= source.invalid_utf8;
-                    if !held.disagreed
-                        && super::identity::required_dtype(tag).is_some()
-                        && held.source.version != source.version
-                        && !held.versions.contains(&source.version)
-                    {
-                        held.versions.push(source.version);
-                    }
                 }
                 None => named.push(Composition {
                     source,
@@ -1886,7 +1873,6 @@ impl Built {
                     },
                     disagreed: false,
                     invalid_utf8: source.invalid_utf8,
-                    versions: Vec::new(),
                 }),
             }
         }
@@ -1896,7 +1882,6 @@ impl Built {
             mut write,
             disagreed,
             invalid_utf8,
-            versions,
         } in named
         {
             if disagreed {
@@ -1909,16 +1894,7 @@ impl Built {
                         "expected valid UTF-8 in the composed value",
                     ));
                 }
-                let value = typed_fill(&write.field, source.tag, &write.value, source.version)?;
-                let mut disagreed = false;
-                for version in versions {
-                    let next = typed_fill(&write.field, source.tag, &write.value, version)?;
-                    disagreed |= next != value;
-                }
-                if disagreed {
-                    continue;
-                }
-                value
+                typed_fill(&write.field, source.tag, &write.value)?
             } else {
                 let Ok(value) = write.field.scalar(write.value) else {
                     continue;
@@ -2227,33 +2203,20 @@ fn zoned(text: &str) -> (&str, Option<&str>) {
 /// at every version, where `at` is `None`, which is how a value is re-typed
 /// for a field it did not arrive under. A spelling that will not type is
 /// null rather than a failure, for the reason the builder's read is.
-pub(super) fn typed_spelling(field: &Field, text: &str, at: Option<Version>) -> Scalar {
-    typed_spelling_checked(field, text, at).unwrap_or(Scalar::Null)
+pub(super) fn typed_spelling(field: &Field, text: &str) -> Scalar {
+    typed_spelling_checked(field, text).unwrap_or(Scalar::Null)
 }
 
 /// The same conversion with its typed refusal preserved for root invariants.
-pub(super) fn typed_spelling_checked(
-    field: &Field,
-    text: &str,
-    at: Option<Version>,
-) -> Result<Scalar> {
-    let view = field.as_fix();
-    let translated = match at {
-        Some(at) => view.code_value_at(at, text),
-        None => view.code_value(text),
-    };
-    typed_translation(field, text, translated, at)
+pub(super) fn typed_spelling_checked(field: &Field, text: &str) -> Result<Scalar> {
+    let translated = field.as_fix().code_value(text);
+    typed_translation(field, text, translated)
 }
 
 /// [`typed_spelling`], the translation already made: `translated` is the wire
 /// value the field's code set gives `text` at `at`, or nothing where the set
 /// gives none, exactly as the builder's own table answers it.
-fn typed_translation(
-    field: &Field,
-    text: &str,
-    translated: Option<&str>,
-    at: Option<Version>,
-) -> Result<Scalar> {
+fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Result<Scalar> {
     let view = field.as_fix();
     let spelling = translated.unwrap_or(text);
     // A state is read through the name the field gives its code before
@@ -2261,11 +2224,7 @@ fn typed_translation(
     // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
     // an `OrdStatus`. The code answers where the dictionary names none.
     if matches!(field.dtype(), DataType::State) {
-        let named = match at {
-            Some(at) => view.code_name_at(at, spelling),
-            None => view.code_name(spelling),
-        };
-        if let Some(state) = named.and_then(State::from_spelling) {
+        if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
             return Ok(Scalar::Code(Code::State(state)));
         }
     }
@@ -2300,12 +2259,7 @@ fn invalid_value(field: &Field, error: impl std::fmt::Display) -> Error {
 
 /// Carrier/composed text shares the wire converter; native values must
 /// already have the declared critical layout rather than coerce into it.
-pub(super) fn typed_fill(
-    field: &Field,
-    tag: i32,
-    value: &Scalar,
-    at: Option<Version>,
-) -> Result<Scalar> {
+pub(super) fn typed_fill(field: &Field, tag: i32, value: &Scalar) -> Result<Scalar> {
     super::identity::validate_field(field, tag)?;
     if value.is_null() {
         return Ok(Scalar::Null);
@@ -2314,8 +2268,7 @@ pub(super) fn typed_fill(
         if field.as_fix().is_null_value(text) {
             return Ok(Scalar::Null);
         }
-        return typed_spelling_checked(field, text, at)
-            .map_err(|error| invalid_value(field, error));
+        return typed_spelling_checked(field, text).map_err(|error| invalid_value(field, error));
     }
     super::identity::validate_value(field.name(), field.dtype(), value)?;
     Ok(value.clone())

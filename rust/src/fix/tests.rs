@@ -3639,11 +3639,11 @@ fn side() -> Field {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixCode::new("Buy", "1").with_since(version("2.7"), Some(254)),
-            FixCode::new("Sell", "2").with_since(version("2.7"), Some(254)),
-            FixCode::new("Undisclosed", "7").with_since(version("4.1"), None),
-            FixCode::new("CrossShort", "9").with_since(version("4.2"), None),
-            FixCode::new("CrossShortExempt", "A").with_since(version("4.3"), None),
+            FixCode::new("Buy", "1"),
+            FixCode::new("Sell", "2"),
+            FixCode::new("Undisclosed", "7"),
+            FixCode::new("CrossShort", "9"),
+            FixCode::new("CrossShortExempt", "A"),
         ])
         .unwrap();
     field
@@ -3663,7 +3663,7 @@ fn comm_type() -> Field {
             FixCode::new("PercentageWaivedEnhancedUnits", "5"),
             FixCode::new("PointsPerBondOrContract", "6")
                 .with_description("Good Till Date (GTD) points per bond"),
-            FixCode::new("BasisPoints", "7").with_since(version("5.0.2"), Some(208)),
+            FixCode::new("BasisPoints", "7"),
             FixCode::new("AmountPerContract", "8"),
         ])
         .unwrap();
@@ -3807,53 +3807,6 @@ fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
 }
 
 #[test]
-fn a_version_prefers_the_codes_it_knows_and_still_reads_the_rest() {
-    let field = side();
-    let view = field.as_fix();
-
-    assert_eq!(view.code_value_at(version("4.2"), "CrossShort"), Some("9"));
-    // A capture whose frame says 4.1 routinely carries values added in 4.2 -
-    // a venue upgrades one side, a bridge relabels a session - and refusing
-    // them drops exactly the traffic someone is trying to explain. The
-    // version prefers, it does not gate.
-    assert_eq!(view.code_value_at(version("4.1"), "CrossShort"), Some("9"));
-    assert_eq!(view.code_name_at(version("4.1"), "9"), Some("CrossShort"));
-    assert_eq!(view.code_name_at(version("4.2"), "9"), Some("CrossShort"));
-
-    // A code dated by extension pack alone reads the same way, and its
-    // pedigree stays readable beside the value it resolved to.
-    let comm = comm_type();
-    let comm = comm.as_fix();
-    assert_eq!(comm.code_value_at(version("4.4"), "BasisPoints"), Some("7"));
-    assert_eq!(
-        comm.code_value_at(version("5.0.2"), "BasisPoints"),
-        Some("7")
-    );
-    assert_eq!(comm.code("7").unwrap().ep(), Some(208));
-
-    let mut retired = DataType::utf8().nullable_field("OldFlag");
-    retired.as_fix_mut().set_tag(9996).unwrap();
-    retired
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Retired", "R")
-            .with_since(version("4.0"), None)
-            .with_deprecated(version("4.4"))])
-        .unwrap();
-    let retired = retired.as_fix();
-    // Deprecation reads the same way: a venue that never stopped sending a
-    // retired code is a venue whose traffic still has to be read, and the
-    // code's own `deprecated` pedigree is what says it should not be sent.
-    assert_eq!(retired.code_value_at(version("4.3"), "Retired"), Some("R"));
-    assert_eq!(retired.code_value_at(version("4.4"), "Retired"), Some("R"));
-    assert_eq!(retired.code_value("Retired"), Some("R"));
-    assert_eq!(
-        retired.code("R").and_then(super::FixCodeValue::deprecated),
-        Some(version("4.4")),
-        "what the version knows is still readable beside the value",
-    );
-}
-
-#[test]
 fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
     let field = side();
     let stored = field
@@ -3961,19 +3914,12 @@ fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
         .set_codes(&[FixCode::new("Buy", "1")
             .with_description(r#"Buy; the "long" side"#)
             .with_aliases(["Bought"])
-            .with_since(version("2.7"), Some(254))
-            .with_deprecated(version("5.0.2"))
-            .with_sort(10)
             .with_group("Directional")])
         .unwrap();
 
     let view = field.as_fix();
     let code = view.code("1").unwrap();
     assert_eq!(code.name(), "Buy");
-    assert_eq!(code.since(), Some(version("2.7")));
-    assert_eq!(code.ep(), Some(254));
-    assert_eq!(code.deprecated(), Some(version("5.0.2")));
-    assert_eq!(code.sort(), Some(10));
     assert_eq!(code.group(), Some("Directional"));
     // A description holding a quote survives the round trip through the one
     // codec that escaped it.

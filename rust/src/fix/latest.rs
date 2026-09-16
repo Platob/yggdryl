@@ -29,16 +29,15 @@
 //! applies the first rule whose conditions its held value meets. A rule
 //! applies all-or-nothing: every field it would fill is computed and
 //! checked, and one target that cannot take its value blocks the whole
-//! rule. A target takes a value when it is absent, null, already equal, or
-//! holds a code its set declares deprecated; anything else is a stated
-//! current value and stands.
+//! rule. A target takes a value when it is absent, null, or already equal;
+//! anything else is a value the message stated, and what the message stated
+//! stands.
 
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use super::build::{stated as stated_field, typed_spelling};
-use super::codes::FixCodeValue;
 use super::msg::FixMsg;
 use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEntry};
 use super::schema::item_fields;
@@ -435,7 +434,7 @@ fn converted(target: &Field, value: &Scalar) -> Scalar {
         }
     }
     match wire_text(value) {
-        Some(text) => typed_spelling(target, &text, None),
+        Some(text) => typed_spelling(target, &text),
         None => Scalar::Null,
     }
 }
@@ -718,19 +717,17 @@ impl<'msg> Restater<'msg> {
                 let own = tag == source.tag && std::ptr::eq(reads, writes);
                 let value = match value {
                     FixFillValue::Source => converted(&target, source.value),
-                    FixFillValue::Constant(text) if own => typed_spelling(
-                        &target,
-                        &restated_tokens(source.value, source.when, text),
-                        None,
-                    ),
-                    FixFillValue::Constant(text) => typed_spelling(&target, text, None),
+                    FixFillValue::Constant(text) if own => {
+                        typed_spelling(&target, &restated_tokens(source.value, source.when, text))
+                    }
+                    FixFillValue::Constant(text) => typed_spelling(&target, text),
                     FixFillValue::From(from) => converted(&target, self.stated_at(reads, from)?),
                     FixFillValue::Join(tags) => {
                         let mut joined = String::new();
                         for tag in tags {
                             joined.push_str(&joined_part(self.stated_at(reads, tag)?)?);
                         }
-                        typed_spelling(&target, &joined, None)
+                        typed_spelling(&target, &joined)
                     }
                 };
                 if value.is_null() {
@@ -741,7 +738,7 @@ impl<'msg> Restater<'msg> {
                     return None;
                 }
                 let writable =
-                    own || self.writable(&target, at.and_then(|at| writes.value_at(at)), &value);
+                    own || Self::writable(&target, at.and_then(|at| writes.value_at(at)), &value);
                 writable.then_some(Write::Field(FieldWrite {
                     at,
                     field: target,
@@ -803,7 +800,7 @@ impl<'msg> Restater<'msg> {
             } = member
             {
                 let target = stated_field(self.msg.known_by_tag(tag)?);
-                constants.push((tag, typed_spelling(&target, text, None)));
+                constants.push((tag, typed_spelling(&target, text)));
             }
         }
         let matched = occurrences.iter().position(|occurrence| {
@@ -841,53 +838,15 @@ impl<'msg> Restater<'msg> {
         })
     }
 
-    /// Whether a target takes `value`: absent, null, already equal, or
-    /// holding a code its set declares deprecated.
-    fn writable(&self, target: &Field, held: Option<&Scalar>, value: &Scalar) -> bool {
-        let Some(held) = held else {
-            return true;
-        };
-        if held.is_null() || held == value {
-            return true;
-        }
-        !self.stands(target, held)
-    }
-
-    /// Whether a stated value stands: a field with no code set states what it
-    /// states, and one with a set stands when every code held is current -
-    /// for a `state`, when some current code of the set names that state.
-    fn stands(&self, target: &Field, held: &Scalar) -> bool {
-        let view = target.as_fix();
-        let mut codes = view.codes();
-        let Some(first) = codes.next_ok() else {
-            return true;
-        };
-        if let Scalar::Code(Code::State(state)) = held {
-            let mut code = Some(first);
-            while let Some(held) = code {
-                if self.current(held) && State::from_spelling(held.name()).as_ref() == Some(state) {
-                    return true;
-                }
-                code = codes.next_ok();
-            }
-            return false;
-        }
-        let Some(text) = wire_text(held) else {
-            return true;
-        };
-        text.split(' ')
-            .all(|token| view.code(token).is_some_and(|code| self.current(code)))
-    }
-
-    /// Whether the set still declares a code.
+    /// Whether a target takes `value`: absent, null, or already equal.
     ///
-    /// The dictionary is the whole of what is current: it holds one reading
-    /// of every code, so a code it dates as deprecated is retired and one it
-    /// does not is stated. There is no version to compare that date against,
-    /// because a registry holds every tag ever defined and filters by none.
-    #[expect(clippy::unused_self, reason = "read as a method beside `stands`")]
-    fn current(&self, code: FixCodeValue<'_>) -> bool {
-        code.deprecated().is_none()
+    /// A code set states one reading of every value it declares and retires
+    /// none of them, so a stated value is a stated value: there is nothing a
+    /// rule may overwrite it with. What a rule fills is what the message did
+    /// not say.
+    fn writable(target: &Field, held: Option<&Scalar>, value: &Scalar) -> bool {
+        let _ = target;
+        held.is_none_or(|held| held.is_null() || held == value)
     }
 }
 

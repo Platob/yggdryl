@@ -37,7 +37,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
 use crate::types::folds_equal;
-use crate::{Error, Result, Version};
+use crate::{Error, Result};
 
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
@@ -46,14 +46,6 @@ const TARGET: &str = "fix codes";
 const VALUE: &str = "value";
 /// The symbolic name.
 const NAME: &str = "name";
-/// The version the specification added this code at.
-const SINCE: &str = "since";
-/// The extension pack that dated the addition.
-const EP: &str = "ep";
-/// The version the specification deprecated this code at.
-const DEPRECATED: &str = "deprecated";
-/// The presentation rank the specification gives this code.
-const SORT: &str = "sort";
 /// The group the specification files this code under.
 const GROUP: &str = "group";
 /// Venue and per-version spellings of the same code.
@@ -70,11 +62,9 @@ const NEEDLE_CAPACITY: usize = 64;
 
 /// The keys one code may state, in the order it states them.
 ///
-/// `value` leads because it is the key every lookup keys on and the one a
-/// code set is ordered by, so tier 1 reads one key per record and stops.
-pub(super) const KEYS: [&str; 9] = [
-    VALUE, NAME, SINCE, EP, DEPRECATED, SORT, GROUP, ALIASES, DOC,
-];
+/// `value` leads because it is the key every lookup keys on, so tier 1 reads
+/// one key per record and stops.
+pub(super) const KEYS: [&str; 5] = [VALUE, NAME, GROUP, ALIASES, DOC];
 
 /// One member of a FIX code set, as a caller states it.
 ///
@@ -86,10 +76,6 @@ pub struct FixCode {
     value: SmolStr,
     description: Option<SmolStr>,
     aliases: Vec<SmolStr>,
-    since: Option<Version>,
-    deprecated: Option<Version>,
-    ep: Option<u32>,
-    sort: Option<u32>,
     group: Option<SmolStr>,
 }
 
@@ -101,10 +87,6 @@ impl FixCode {
             value: value.into(),
             description: None,
             aliases: Vec::new(),
-            since: None,
-            deprecated: None,
-            ep: None,
-            sort: None,
             group: None,
         }
     }
@@ -162,32 +144,6 @@ impl FixCode {
         self.aliases.push(alias.into());
     }
 
-    /// Sets when the specification added this code.
-    ///
-    /// Many codes are dated by extension pack alone - `BasisPoints` is "Added
-    /// EP208" rather than added in a version - so the pair is stored as real
-    /// numbers and a moving label never becomes one.
-    #[must_use]
-    pub const fn with_since(mut self, since: Version, ep: Option<u32>) -> Self {
-        self.since = Some(since);
-        self.ep = ep;
-        self
-    }
-
-    /// Sets when the specification deprecated this code.
-    #[must_use]
-    pub const fn with_deprecated(mut self, deprecated: Version) -> Self {
-        self.deprecated = Some(deprecated);
-        self
-    }
-
-    /// Sets the presentation rank the specification gives this code.
-    #[must_use]
-    pub const fn with_sort(mut self, sort: u32) -> Self {
-        self.sort = Some(sort);
-        self
-    }
-
     /// Sets the group the specification files this code under.
     #[must_use]
     pub fn with_group(mut self, group: impl Into<SmolStr>) -> Self {
@@ -233,30 +189,6 @@ impl FixCode {
         folds_equal(&self.name, text) || self.aliases.iter().any(|alias| folds_equal(alias, text))
     }
 
-    /// Returns the version the specification added this code at.
-    #[must_use]
-    pub const fn since(&self) -> Option<Version> {
-        self.since
-    }
-
-    /// Returns the extension pack that dated the addition.
-    #[must_use]
-    pub const fn ep(&self) -> Option<u32> {
-        self.ep
-    }
-
-    /// Returns the version the specification deprecated this code at.
-    #[must_use]
-    pub const fn deprecated(&self) -> Option<Version> {
-        self.deprecated
-    }
-
-    /// Returns the presentation rank the specification gives this code.
-    #[must_use]
-    pub const fn sort(&self) -> Option<u32> {
-        self.sort
-    }
-
     /// Returns the group the specification files this code under.
     #[must_use]
     pub fn group(&self) -> Option<&str> {
@@ -268,18 +200,6 @@ impl FixCode {
         writer.open_element();
         writer.text(true, VALUE, self.value())?;
         writer.text(false, NAME, self.name())?;
-        if let Some(since) = self.since {
-            writer.text(false, SINCE, &since.to_string())?;
-        }
-        if let Some(ep) = self.ep {
-            writer.number(false, EP, ep);
-        }
-        if let Some(deprecated) = self.deprecated {
-            writer.text(false, DEPRECATED, &deprecated.to_string())?;
-        }
-        if let Some(sort) = self.sort {
-            writer.number(false, SORT, sort);
-        }
         if let Some(group) = self.group() {
             writer.text(false, GROUP, group)?;
         }
@@ -302,10 +222,6 @@ pub struct FixCodeValue<'field> {
     aliases: &'field str,
     doc: &'field str,
     group: Option<&'field str>,
-    since: Option<Version>,
-    deprecated: Option<Version>,
-    ep: Option<u32>,
-    sort: Option<u32>,
 }
 
 impl<'field> FixCodeValue<'field> {
@@ -325,30 +241,6 @@ impl<'field> FixCodeValue<'field> {
     #[must_use]
     pub const fn aliases(self) -> Words<'field> {
         Words::over(self.aliases)
-    }
-
-    /// Returns the version the specification added this code at.
-    #[must_use]
-    pub const fn since(self) -> Option<Version> {
-        self.since
-    }
-
-    /// Returns the extension pack that dated the addition.
-    #[must_use]
-    pub const fn ep(self) -> Option<u32> {
-        self.ep
-    }
-
-    /// Returns the version the specification deprecated this code at.
-    #[must_use]
-    pub const fn deprecated(self) -> Option<Version> {
-        self.deprecated
-    }
-
-    /// Returns the presentation rank the specification gives this code.
-    #[must_use]
-    pub const fn sort(self) -> Option<u32> {
-        self.sort
     }
 
     /// Returns the group the specification files this code under.
@@ -388,18 +280,6 @@ impl<'field> FixCodeValue<'field> {
     /// string body, which the writer never produces.
     pub fn parse_group(self) -> Result<Option<String>> {
         decode_text(TARGET, GROUP, self.group())
-    }
-
-    /// Whether this code exists at `at`.
-    ///
-    /// A code added later, and one deprecated at or before, are both outside
-    /// the version asked for: a 4.2 message cannot resolve a name added in
-    /// 4.4, and a deprecated code stops answering where the specification
-    /// stopped declaring it.
-    #[must_use]
-    pub fn defined_at(self, at: Version) -> bool {
-        self.since.is_none_or(|since| since <= at)
-            && self.deprecated.is_none_or(|deprecated| at < deprecated)
     }
 
     /// Whether `text` is this code's name or one of its aliases, folded.
@@ -452,21 +332,18 @@ impl<'field> FixCodes<'field> {
 
     /// Renders codes into the one canonical document they have.
     ///
-    /// Ordering is by wire value, so one code set is one text however it was
-    /// built. Two names may share a value - that is an alias, the rule
-    /// `StringEnum` already states - but two codes may not share a name.
+    /// The order is the caller's, kept: a code set is a list, and where one
+    /// sits in it is the presentation rank the specification gives it. There
+    /// is no rank key beside the order, because a list already has one.
+    /// Two names may share a value - that is an alias, the rule `StringEnum`
+    /// already states - but two codes may not share a name.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when two codes share a name, or when one
     /// states an empty value or an empty name.
     pub(super) fn render(codes: &[FixCode]) -> Result<String> {
-        let mut ordered: Vec<&FixCode> = codes.iter().collect();
-        ordered.sort_by(|left, right| {
-            left.value
-                .cmp(&right.value)
-                .then(left.name.cmp(&right.name))
-        });
+        let ordered: Vec<&FixCode> = codes.iter().collect();
         for (index, code) in ordered.iter().enumerate() {
             if code.value.is_empty() || code.name.is_empty() {
                 return Err(Error::Parse {
@@ -513,19 +390,11 @@ impl<'field> FixCodes<'field> {
         let mut aliases = "";
         let mut doc = "";
         let mut group = None;
-        let mut since = None;
-        let mut deprecated = None;
-        let mut ep = None;
-        let mut sort = None;
         let mut next = 0;
         loop {
             match KEYS[self.cursor.read_key(&KEYS, &mut next)?] {
                 VALUE => value = Some(self.cursor.read_word(VALUE)?),
                 NAME => name = Some(self.cursor.read_word(NAME)?),
-                SINCE => since = Some(self.cursor.read_version(SINCE)?),
-                EP => ep = Some(self.cursor.read_number(EP)?),
-                DEPRECATED => deprecated = Some(self.cursor.read_version(DEPRECATED)?),
-                SORT => sort = Some(self.cursor.read_number(SORT)?),
                 // Read as prose, not as a word: the specification files
                 // codes under labels like `For PartyRole = "InvestorID"`, so
                 // a group carries escapes exactly as a description does.
@@ -550,10 +419,6 @@ impl<'field> FixCodes<'field> {
             aliases,
             doc,
             group,
-            since,
-            deprecated,
-            ep,
-            sort,
         })
     }
 
@@ -667,10 +532,6 @@ impl From<FixCodeValue<'_>> for FixCode {
                 .flatten()
                 .map_or_else(|| SmolStr::new(group), SmolStr::new)
         });
-        owned.since = code.since();
-        owned.deprecated = code.deprecated();
-        owned.ep = code.ep();
-        owned.sort = code.sort();
         owned
     }
 }

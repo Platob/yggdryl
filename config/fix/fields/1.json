@@ -11,15 +11,11 @@
       "fix:codes": [
         {
           "value": "0",
-          "name": "None",
-          "since": "4.0",
-          "deprecated": "4.1"
+          "name": "None"
         },
         {
           "value": "4",
-          "name": "Posit",
-          "since": "4.0",
-          "deprecated": "4.1"
+          "name": "Posit"
         }
       ],
       "fix:tag": "100"
@@ -38,80 +34,56 @@
         {
           "value": "0",
           "name": "TooLateToCancel",
-          "since": "2.7",
-          "sort": 1,
           "doc": "Too late to cancel"
         },
         {
           "value": "1",
           "name": "UnknownOrder",
-          "since": "2.7",
-          "sort": 2,
           "doc": "Unknown order"
-        },
-        {
-          "value": "18",
-          "name": "InvalidPriceIncrement",
-          "since": "4.4",
-          "ep": 6,
-          "sort": 18,
-          "doc": "Invalid price increment"
         },
         {
           "value": "2",
           "name": "BrokerCredit",
-          "since": "4.2",
-          "sort": 3,
           "doc": "Broker / Exchange Option"
         },
         {
           "value": "3",
           "name": "OrderAlreadyInPendingStatus",
-          "since": "4.2",
-          "sort": 4,
           "doc": "Order already in Pending Cancel or Pending Replace status"
         },
         {
           "value": "4",
           "name": "UnableToProcessOrderMassCancelRequest",
-          "since": "4.3",
-          "sort": 5,
           "doc": "Unable to process Order Mass Cancel Request"
         },
         {
           "value": "5",
           "name": "OrigOrdModTime",
-          "since": "4.3",
-          "sort": 6,
           "doc": "OrigOrdModTime (586) did not match last TransactTime (60) of order"
         },
         {
           "value": "6",
           "name": "DuplicateClOrdID",
-          "since": "4.3",
-          "sort": 7,
           "doc": "Duplicate ClOrdID (11) received"
         },
         {
           "value": "7",
           "name": "PriceExceedsCurrentPrice",
-          "since": "5.0",
-          "sort": 8,
           "doc": "Price exceeds current price"
         },
         {
           "value": "8",
           "name": "PriceExceedsCurrentPriceBand",
-          "since": "5.0",
-          "ep": 43,
-          "sort": 9,
           "doc": "Price exceeds current price band"
+        },
+        {
+          "value": "18",
+          "name": "InvalidPriceIncrement",
+          "doc": "Invalid price increment"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -129,37 +101,63 @@
       "display": "OrdRejReason",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BrokerCredit",
-          "since": "2.7",
-          "doc": "Broker / Exchange option"
-        },
-        {
           "value": "1",
           "name": "UnknownSymbol",
-          "since": "2.7",
-          "sort": 1,
           "doc": "Unknown symbol"
+        },
+        {
+          "value": "2",
+          "name": "ExchangeClosed",
+          "doc": "Exchange closed"
+        },
+        {
+          "value": "3",
+          "name": "OrderExceedsLimit",
+          "doc": "Order exceeds limit"
+        },
+        {
+          "value": "4",
+          "name": "TooLateToEnter",
+          "doc": "Too late to enter"
+        },
+        {
+          "value": "5",
+          "name": "UnknownOrder",
+          "doc": "Unknown order"
+        },
+        {
+          "value": "6",
+          "name": "DuplicateOrder",
+          "doc": "Duplicate Order (e.g. dupe ClOrdID)"
+        },
+        {
+          "value": "7",
+          "name": "DuplicateOfAVerballyCommunicatedOrder",
+          "doc": "Duplicate of a verbally communicated order"
+        },
+        {
+          "value": "8",
+          "name": "StaleOrder",
+          "doc": "Stale order"
+        },
+        {
+          "value": "9",
+          "name": "TradeAlongRequired",
+          "doc": "Trade along required"
         },
         {
           "value": "10",
           "name": "InvalidInvestorID",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Invalid Investor ID"
         },
         {
           "value": "11",
           "name": "UnsupportedOrderCharacteristic",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Unsupported order characteristic"
         },
         {
           "value": "12",
           "name": "SurveillanceOption",
-          "since": "4.3",
-          "sort": 12,
           "aliases": [
             "SurveillenceOption"
           ],
@@ -168,217 +166,112 @@
         {
           "value": "13",
           "name": "IncorrectQuantity",
-          "since": "4.4",
-          "sort": 13,
           "doc": "Incorrect quantity"
         },
         {
           "value": "14",
           "name": "IncorrectAllocatedQuantity",
-          "since": "4.4",
-          "sort": 14,
           "doc": "Incorrect allocated quantity"
         },
         {
           "value": "15",
           "name": "UnknownAccount",
-          "since": "4.4",
-          "sort": 15,
           "doc": "Unknown account(s)"
         },
         {
           "value": "16",
           "name": "PriceExceedsCurrentPriceBand",
-          "since": "5.0",
-          "sort": 16,
           "doc": "Price exceeds current price band"
         },
         {
           "value": "18",
           "name": "InvalidPriceIncrement",
-          "since": "4.4",
-          "ep": 6,
-          "sort": 18,
           "doc": "Invalid price increment"
         },
         {
           "value": "19",
           "name": "ReferencePriceNotAvailable",
-          "since": "5.0.2",
-          "ep": 134,
-          "sort": 19,
           "doc": "Reference price not available"
-        },
-        {
-          "value": "2",
-          "name": "ExchangeClosed",
-          "since": "2.7",
-          "sort": 2,
-          "doc": "Exchange closed"
         },
         {
           "value": "20",
           "name": "NotionalValueExceedsThreshold",
-          "since": "5.0.2",
-          "ep": 134,
-          "sort": 20,
           "doc": "Notional value exceeds threshold"
         },
         {
           "value": "21",
           "name": "AlgorithmRiskThresholdBreached",
-          "since": "5.0.2",
-          "ep": 149,
-          "sort": 21,
           "doc": "Algorithm risk threshold breached"
         },
         {
           "value": "22",
           "name": "ShortSellNotPermitted",
-          "since": "5.0.2",
-          "ep": 164,
-          "sort": 22,
           "doc": "Short sell not permitted"
         },
         {
           "value": "23",
           "name": "ShortSellSecurityPreBorrowRestriction",
-          "since": "5.0.2",
-          "ep": 164,
-          "sort": 23,
           "doc": "Short sell rejected due to security pre-borrow restriction"
         },
         {
           "value": "24",
           "name": "ShortSellAccountPreBorrowRestriction",
-          "since": "5.0.2",
-          "ep": 164,
-          "sort": 24,
           "doc": "Short sell rejected due to account pre-borrow restriction"
         },
         {
           "value": "25",
           "name": "InsufficientCreditLimit",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 25,
           "doc": "Insufficient credit limit"
         },
         {
           "value": "26",
           "name": "ExceededClipSizeLimit",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 26,
           "doc": "Exceeded clip size limit"
         },
         {
           "value": "27",
           "name": "ExceededMaxNotionalOrderAmt",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 27,
           "doc": "Exceeded maximum notional order amount"
         },
         {
           "value": "28",
           "name": "ExceededDV01PV01Limit",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 28,
           "doc": "Exceeded DV01/PV01 limit"
         },
         {
           "value": "29",
           "name": "ExceededCS01Limit",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 29,
           "doc": "Exceeded CS01 limit"
-        },
-        {
-          "value": "3",
-          "name": "OrderExceedsLimit",
-          "since": "2.7",
-          "sort": 3,
-          "doc": "Order exceeds limit"
         },
         {
           "value": "30",
           "name": "LastLook",
-          "ep": 290,
-          "sort": 30,
           "doc": "Last look"
         },
         {
           "value": "31",
           "name": "LastLookLatency",
-          "ep": 290,
-          "sort": 31,
           "doc": "Last look latency"
         },
         {
           "value": "32",
           "name": "UnavailablePriceLiquidity",
-          "ep": 290,
-          "sort": 32,
           "doc": "Unavailable price or liquidity"
         },
         {
           "value": "33",
           "name": "InvalidMissingEntitlements",
-          "ep": 290,
-          "sort": 33,
           "doc": "Invalid or missing entitlements"
-        },
-        {
-          "value": "4",
-          "name": "TooLateToEnter",
-          "since": "4.0",
-          "sort": 4,
-          "doc": "Too late to enter"
-        },
-        {
-          "value": "5",
-          "name": "UnknownOrder",
-          "since": "4.1",
-          "sort": 5,
-          "doc": "Unknown order"
-        },
-        {
-          "value": "6",
-          "name": "DuplicateOrder",
-          "since": "4.1",
-          "sort": 6,
-          "doc": "Duplicate Order (e.g. dupe ClOrdID)"
-        },
-        {
-          "value": "7",
-          "name": "DuplicateOfAVerballyCommunicatedOrder",
-          "since": "4.2",
-          "sort": 7,
-          "doc": "Duplicate of a verbally communicated order"
-        },
-        {
-          "value": "8",
-          "name": "StaleOrder",
-          "since": "4.2",
-          "sort": 8,
-          "doc": "Stale order"
-        },
-        {
-          "value": "9",
-          "name": "TradeAlongRequired",
-          "since": "4.3",
-          "sort": 9,
-          "doc": "Trade along required"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "BrokerCredit",
+          "doc": "Broker / Exchange option"
         }
       ],
       "fix:tag": "103"
@@ -395,265 +288,178 @@
       "display": "IOIQualifier",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "QuantityNegotiable",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 28,
-          "doc": "Quantity is negotiable"
-        },
-        {
-          "value": "2",
-          "name": "AllowLateBids",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 29,
-          "doc": "Allow late bids"
-        },
-        {
-          "value": "3",
-          "name": "ImmediateOrCounter",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 30,
-          "doc": "Immediate or counter"
-        },
-        {
-          "value": "4",
-          "name": "AutoTrade",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 31,
-          "doc": "Auto trade"
-        },
-        {
           "value": "A",
           "name": "AllOrNone",
-          "since": "3.0",
-          "sort": 1,
           "doc": "All or None (AON)"
         },
         {
           "value": "B",
           "name": "MarketOnClose",
-          "since": "4.3",
-          "sort": 2,
           "doc": "Market On Close (MOC) (held to close)"
         },
         {
           "value": "C",
           "name": "AtTheClose",
-          "since": "3.0",
-          "sort": 3,
           "doc": "At the close (around/not held to close)"
         },
         {
           "value": "D",
           "name": "VWAP",
-          "since": "4.3",
-          "sort": 4,
           "doc": "VWAP (Volume Weighted Average Price)"
         },
         {
           "value": "E",
           "name": "Axe",
-          "since": "5.0.2",
-          "ep": 184,
-          "sort": 5,
           "doc": "Axe"
         },
         {
           "value": "F",
           "name": "AxeOnBid",
-          "since": "5.0.2",
-          "ep": 184,
-          "sort": 6,
           "doc": "Axe on bid"
         },
         {
           "value": "G",
           "name": "AxeOnOffer",
-          "since": "5.0.2",
-          "ep": 184,
-          "sort": 7,
           "doc": "Axe on offer"
         },
         {
           "value": "H",
           "name": "ClientNaturalWorking",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 8,
           "doc": "Client natural working"
         },
         {
           "value": "I",
           "name": "InTouchWith",
-          "since": "3.0",
-          "sort": 9,
           "doc": "In touch with"
         },
         {
           "value": "J",
           "name": "PositionWanted",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 10,
           "doc": "Position wanted"
         },
         {
           "value": "K",
           "name": "MarketMaking",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 11,
           "doc": "Market making"
         },
         {
           "value": "L",
           "name": "Limit",
-          "since": "3.0",
-          "sort": 12,
           "doc": "Limit"
         },
         {
           "value": "M",
           "name": "MoreBehind",
-          "since": "3.0",
-          "sort": 13,
           "doc": "More Behind"
         },
         {
           "value": "N",
           "name": "ClientNaturalBlock",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 14,
           "doc": "Client natural block"
         },
         {
           "value": "O",
           "name": "AtTheOpen",
-          "since": "3.0",
-          "sort": 15,
           "doc": "At the Open"
         },
         {
           "value": "P",
           "name": "TakingAPosition",
-          "since": "3.0",
-          "sort": 16,
           "doc": "Taking a Position"
         },
         {
           "value": "Q",
           "name": "AtTheMarket",
-          "since": "3.0",
-          "sort": 17,
           "doc": "At the Market (previously called Current Quote)"
         },
         {
           "value": "R",
           "name": "ReadyToTrade",
-          "since": "4.2",
-          "sort": 18,
           "doc": "Ready to Trade"
         },
         {
           "value": "S",
           "name": "PortfolioShown",
-          "since": "3.0",
-          "sort": 19,
           "doc": "Inventory or Portfolio Shown"
         },
         {
           "value": "T",
           "name": "ThroughTheDay",
-          "since": "3.0",
-          "sort": 20,
           "doc": "Through the Day"
         },
         {
           "value": "U",
           "name": "Unwind",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 21,
           "doc": "Unwind"
         },
         {
           "value": "V",
           "name": "Versus",
-          "since": "3.0",
-          "sort": 22,
           "doc": "Versus"
         },
         {
           "value": "W",
           "name": "Indication",
-          "since": "3.0",
-          "sort": 23,
           "doc": "Indication - Working Away"
         },
         {
           "value": "X",
           "name": "CrossingOpportunity",
-          "since": "3.0",
-          "sort": 24,
           "doc": "Crossing Opportunity"
         },
         {
           "value": "Y",
           "name": "AtTheMidpoint",
-          "since": "4.1",
-          "sort": 25,
           "doc": "At the Midpoint"
         },
         {
           "value": "Z",
           "name": "PreOpen",
-          "since": "4.1",
-          "sort": 26,
           "doc": "Pre-open"
+        },
+        {
+          "value": "1",
+          "name": "QuantityNegotiable",
+          "doc": "Quantity is negotiable"
+        },
+        {
+          "value": "2",
+          "name": "AllowLateBids",
+          "doc": "Allow late bids"
+        },
+        {
+          "value": "3",
+          "name": "ImmediateOrCounter",
+          "doc": "Immediate or counter"
+        },
+        {
+          "value": "4",
+          "name": "AutoTrade",
+          "doc": "Auto trade"
         },
         {
           "value": "a",
           "name": "AutomaticSpot",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 37,
           "doc": "Automatic spot"
         },
         {
           "value": "b",
           "name": "PlatformCalculatedSpot",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 38,
           "doc": "Platform calculated spot"
         },
         {
           "value": "c",
           "name": "OutsideSpread",
-          "since": "5.0.2",
-          "ep": 225,
-          "sort": 39,
           "doc": "Outside spread"
         },
         {
           "value": "d",
           "name": "DeferredSpot",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 40,
           "doc": "Deferred spot"
         },
         {
           "value": "n",
           "name": "NegotiatedSpot",
-          "since": "5.0.2",
-          "ep": 226,
-          "sort": 50,
           "doc": "Negotiated spot"
         }
       ],
@@ -797,8 +603,6 @@
         {
           "value": "N",
           "name": "SenderReports",
-          "since": "3.0",
-          "sort": 1,
           "aliases": [
             "No"
           ],
@@ -807,8 +611,6 @@
         {
           "value": "Y",
           "name": "ReceiverReports",
-          "since": "3.0",
-          "sort": 2,
           "aliases": [
             "Yes"
           ],
@@ -831,15 +633,11 @@
         {
           "value": "N",
           "name": "No",
-          "since": "4.0",
-          "sort": 1,
           "doc": "Indicates the broker is not required to locate"
         },
         {
           "value": "Y",
           "name": "Yes",
-          "since": "4.0",
-          "sort": 2,
           "doc": "Indicates the broker is responsible for locating the stock"
         }
       ],
@@ -959,8 +757,6 @@
         {
           "value": "N",
           "name": "DoNotExecuteForexAfterSecurityTrade",
-          "since": "4.0",
-          "sort": 1,
           "aliases": [
             "No"
           ],
@@ -969,8 +765,6 @@
         {
           "value": "Y",
           "name": "ExecuteForexAfterSecurityTrade",
-          "since": "4.0",
-          "sort": 2,
           "aliases": [
             "Yes"
           ],
@@ -1008,8 +802,6 @@
         {
           "value": "N",
           "name": "SequenceReset",
-          "since": "4.0",
-          "sort": 1,
           "aliases": [
             "No"
           ],
@@ -1018,8 +810,6 @@
         {
           "value": "Y",
           "name": "GapFillMessage",
-          "since": "4.0",
-          "sort": 2,
           "aliases": [
             "Yes"
           ],
@@ -1052,15 +842,11 @@
       "fix:codes": [
         {
           "value": "F",
-          "name": "FullRemainingQuantity",
-          "since": "4.0",
-          "deprecated": "4.1"
+          "name": "FullRemainingQuantity"
         },
         {
           "value": "P",
-          "name": "PartialCancel",
-          "since": "4.0",
-          "deprecated": "4.1"
+          "name": "PartialCancel"
         }
       ],
       "fix:tag": "125"
@@ -1093,58 +879,41 @@
         {
           "value": "A",
           "name": "UnknownSymbol",
-          "since": "4.0",
-          "sort": 1,
           "doc": "Unknown security"
         },
         {
           "value": "B",
           "name": "WrongSide",
-          "since": "4.0",
-          "sort": 2,
           "doc": "Wrong side"
         },
         {
           "value": "C",
           "name": "QuantityExceedsOrder",
-          "since": "4.0",
-          "sort": 3,
           "doc": "Quantity exceeds order"
         },
         {
           "value": "D",
           "name": "NoMatchingOrder",
-          "since": "4.0",
-          "sort": 4,
           "doc": "No matching order"
         },
         {
           "value": "E",
           "name": "PriceExceedsLimit",
-          "since": "4.0",
-          "sort": 5,
           "doc": "Price exceeds limit"
         },
         {
           "value": "F",
           "name": "CalculationDifference",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Calculation difference"
         },
         {
           "value": "G",
           "name": "NoMatchingExecutionReport",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 7,
           "doc": "No matching ExecutionReport(35=8)"
         },
         {
           "value": "Z",
           "name": "Other",
-          "since": "4.0",
-          "sort": 100,
           "doc": "Other"
         }
       ],
@@ -1188,8 +957,6 @@
         {
           "value": "N",
           "name": "NotNatural",
-          "since": "4.0",
-          "sort": 1,
           "aliases": [
             "No"
           ],
@@ -1198,8 +965,6 @@
         {
           "value": "Y",
           "name": "Natural",
-          "since": "4.0",
-          "sort": 2,
           "aliases": [
             "Yes"
           ],
@@ -1318,280 +1083,184 @@
       "display": "MiscFeeType",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "Regulatory",
-          "since": "4.0",
-          "doc": "Regulatory (e.g. SEC)"
-        },
-        {
-          "value": "10",
-          "name": "PerTransaction",
-          "since": "4.4",
-          "sort": 9,
-          "doc": "Per transaction"
-        },
-        {
-          "value": "11",
-          "name": "Conversion",
-          "since": "4.4",
-          "sort": 10,
-          "doc": "Conversion"
-        },
-        {
-          "value": "12",
-          "name": "Agent",
-          "since": "4.4",
-          "sort": 11,
-          "doc": "Agent"
-        },
-        {
-          "value": "13",
-          "name": "TransferFee",
-          "since": "4.4",
-          "ep": 25,
-          "sort": 15,
-          "doc": "Transfer Fee"
-        },
-        {
-          "value": "14",
-          "name": "SecurityLending",
-          "since": "4.4",
-          "ep": 25,
-          "sort": 16,
-          "doc": "Security Lending"
-        },
-        {
-          "value": "15",
-          "name": "TradeReporting",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 17,
-          "doc": "Trade reporting"
-        },
-        {
-          "value": "16",
-          "name": "TaxOnPrincipalAmount",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 18,
-          "doc": "Tax on principal amount"
-        },
-        {
-          "value": "17",
-          "name": "TaxOnAccruedInterestAmount",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 19,
-          "doc": "Tax on accrued interest amount"
-        },
-        {
-          "value": "18",
-          "name": "NewIssuanceFee",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 20,
-          "doc": "New issuance fee"
-        },
-        {
-          "value": "19",
-          "name": "ServiceFee",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 21,
-          "doc": "Service fee"
-        },
-        {
           "value": "2",
           "name": "Tax",
-          "since": "4.0",
-          "sort": 1,
           "doc": "Tax"
-        },
-        {
-          "value": "20",
-          "name": "OddLotFee",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 22,
-          "doc": "Odd lot fee"
-        },
-        {
-          "value": "21",
-          "name": "AuctionFee",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 23,
-          "doc": "Auction fee"
-        },
-        {
-          "value": "22",
-          "name": "ValueAddedTax",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 24,
-          "doc": "Value Added tax - VAT"
-        },
-        {
-          "value": "23",
-          "name": "SalesTax",
-          "since": "5.0.2",
-          "ep": 204,
-          "sort": 25,
-          "doc": "Sales tax"
-        },
-        {
-          "value": "24",
-          "name": "ExecutionFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 26,
-          "doc": "Execution venue fee"
-        },
-        {
-          "value": "25",
-          "name": "OrderEntryFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 27,
-          "doc": "Order or quote entry fee"
-        },
-        {
-          "value": "26",
-          "name": "OrderModificationFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 28,
-          "doc": "Order or quote modification fee"
-        },
-        {
-          "value": "27",
-          "name": "OrdersCancellationFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 29,
-          "doc": "Orders or quote cancellation fee"
-        },
-        {
-          "value": "28",
-          "name": "MarketDataAccessFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 30,
-          "doc": "Market data access fee"
-        },
-        {
-          "value": "29",
-          "name": "MarketDataTerminalFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 31,
-          "doc": "Market data terminal fee"
         },
         {
           "value": "3",
           "name": "LocalCommission",
-          "since": "4.0",
-          "deprecated": "5.0.2",
-          "sort": 2,
           "doc": "Local Commission"
-        },
-        {
-          "value": "30",
-          "name": "MarketDataVolumeFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 32,
-          "doc": "Market data volume fee"
-        },
-        {
-          "value": "31",
-          "name": "ClearingFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 33,
-          "doc": "Clearing fee"
-        },
-        {
-          "value": "32",
-          "name": "SettlementFee",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 34,
-          "doc": "Settlement fee"
-        },
-        {
-          "value": "33",
-          "name": "Rebates",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 35,
-          "doc": "Rebates"
-        },
-        {
-          "value": "34",
-          "name": "Discounts",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 36,
-          "doc": "Discounts"
-        },
-        {
-          "value": "35",
-          "name": "Payments",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 37,
-          "doc": "Payments"
-        },
-        {
-          "value": "36",
-          "name": "NonMonetaryPayments",
-          "since": "5.0.2",
-          "ep": 231,
-          "sort": 38,
-          "doc": "Non-monetary payments"
         },
         {
           "value": "4",
           "name": "ExchangeFees",
-          "since": "4.0",
-          "sort": 3,
           "doc": "Exchange Fees"
         },
         {
           "value": "5",
           "name": "Stamp",
-          "since": "4.0",
-          "sort": 4,
           "doc": "Stamp"
         },
         {
           "value": "6",
           "name": "Levy",
-          "since": "4.0",
-          "sort": 5,
           "doc": "Levy"
         },
         {
           "value": "7",
           "name": "Other",
-          "since": "4.0",
-          "sort": 6,
           "doc": "Other"
         },
         {
           "value": "8",
           "name": "Markup",
-          "since": "4.1",
-          "sort": 7,
           "doc": "Markup"
         },
         {
           "value": "9",
           "name": "ConsumptionTax",
-          "since": "4.2",
-          "sort": 8,
           "doc": "Consumption Tax"
+        },
+        {
+          "value": "10",
+          "name": "PerTransaction",
+          "doc": "Per transaction"
+        },
+        {
+          "value": "11",
+          "name": "Conversion",
+          "doc": "Conversion"
+        },
+        {
+          "value": "12",
+          "name": "Agent",
+          "doc": "Agent"
+        },
+        {
+          "value": "13",
+          "name": "TransferFee",
+          "doc": "Transfer Fee"
+        },
+        {
+          "value": "14",
+          "name": "SecurityLending",
+          "doc": "Security Lending"
+        },
+        {
+          "value": "15",
+          "name": "TradeReporting",
+          "doc": "Trade reporting"
+        },
+        {
+          "value": "16",
+          "name": "TaxOnPrincipalAmount",
+          "doc": "Tax on principal amount"
+        },
+        {
+          "value": "17",
+          "name": "TaxOnAccruedInterestAmount",
+          "doc": "Tax on accrued interest amount"
+        },
+        {
+          "value": "18",
+          "name": "NewIssuanceFee",
+          "doc": "New issuance fee"
+        },
+        {
+          "value": "19",
+          "name": "ServiceFee",
+          "doc": "Service fee"
+        },
+        {
+          "value": "20",
+          "name": "OddLotFee",
+          "doc": "Odd lot fee"
+        },
+        {
+          "value": "21",
+          "name": "AuctionFee",
+          "doc": "Auction fee"
+        },
+        {
+          "value": "22",
+          "name": "ValueAddedTax",
+          "doc": "Value Added tax - VAT"
+        },
+        {
+          "value": "23",
+          "name": "SalesTax",
+          "doc": "Sales tax"
+        },
+        {
+          "value": "24",
+          "name": "ExecutionFee",
+          "doc": "Execution venue fee"
+        },
+        {
+          "value": "25",
+          "name": "OrderEntryFee",
+          "doc": "Order or quote entry fee"
+        },
+        {
+          "value": "26",
+          "name": "OrderModificationFee",
+          "doc": "Order or quote modification fee"
+        },
+        {
+          "value": "27",
+          "name": "OrdersCancellationFee",
+          "doc": "Orders or quote cancellation fee"
+        },
+        {
+          "value": "28",
+          "name": "MarketDataAccessFee",
+          "doc": "Market data access fee"
+        },
+        {
+          "value": "29",
+          "name": "MarketDataTerminalFee",
+          "doc": "Market data terminal fee"
+        },
+        {
+          "value": "30",
+          "name": "MarketDataVolumeFee",
+          "doc": "Market data volume fee"
+        },
+        {
+          "value": "31",
+          "name": "ClearingFee",
+          "doc": "Clearing fee"
+        },
+        {
+          "value": "32",
+          "name": "SettlementFee",
+          "doc": "Settlement fee"
+        },
+        {
+          "value": "33",
+          "name": "Rebates",
+          "doc": "Rebates"
+        },
+        {
+          "value": "34",
+          "name": "Discounts",
+          "doc": "Discounts"
+        },
+        {
+          "value": "35",
+          "name": "Payments",
+          "doc": "Payments"
+        },
+        {
+          "value": "36",
+          "name": "NonMonetaryPayments",
+          "doc": "Non-monetary payments"
+        },
+        {
+          "value": "1",
+          "name": "Regulatory",
+          "doc": "Regulatory (e.g. SEC)"
         }
       ],
       "fix:tag": "139"
@@ -1622,15 +1291,11 @@
         {
           "value": "N",
           "name": "No",
-          "since": "4.1",
-          "sort": 1,
           "doc": "No"
         },
         {
           "value": "Y",
           "name": "Yes",
-          "since": "4.1",
-          "sort": 2,
           "doc": "Yes, reset sequence numbers"
         }
       ],
@@ -1746,173 +1411,120 @@
         {
           "value": "0",
           "name": "New",
-          "since": "4.1",
-          "sort": 1,
           "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "PartiallyFilled",
-          "since": "4.1",
-          "deprecated": "4.4"
-        },
-        {
-          "value": "2",
-          "name": "Filled",
-          "since": "4.1",
-          "deprecated": "4.4"
         },
         {
           "value": "3",
           "name": "DoneForDay",
-          "since": "4.1",
-          "sort": 2,
           "doc": "Done for day"
         },
         {
           "value": "4",
           "name": "Canceled",
-          "since": "4.1",
-          "sort": 3,
           "doc": "Canceled"
         },
         {
           "value": "5",
           "name": "Replaced",
-          "since": "4.1",
-          "sort": 4,
           "doc": "Replaced"
         },
         {
           "value": "6",
           "name": "PendingCancel",
-          "since": "4.1",
-          "sort": 5,
           "doc": "Pending Cancel (e.g. result of Order Cancel Request)"
         },
         {
           "value": "7",
           "name": "Stopped",
-          "since": "4.1",
-          "sort": 6,
           "doc": "Stopped"
         },
         {
           "value": "8",
           "name": "Rejected",
-          "since": "4.1",
-          "sort": 7,
           "doc": "Rejected"
         },
         {
           "value": "9",
           "name": "Suspended",
-          "since": "4.1",
-          "sort": 8,
           "doc": "Suspended"
         },
         {
           "value": "A",
           "name": "PendingNew",
-          "since": "4.1",
-          "sort": 9,
           "doc": "Pending New"
         },
         {
           "value": "B",
           "name": "Calculated",
-          "since": "4.1",
-          "sort": 10,
           "doc": "Calculated"
         },
         {
           "value": "C",
           "name": "Expired",
-          "since": "4.1",
-          "sort": 11,
           "doc": "Expired"
         },
         {
           "value": "D",
           "name": "Restated",
-          "since": "4.2",
-          "sort": 12,
           "doc": "Restated (Execution Report sent unsolicited by sellside, with ExecRestatementReason (378) set)"
         },
         {
           "value": "E",
           "name": "PendingReplace",
-          "since": "4.2",
-          "sort": 13,
           "doc": "Pending Replace (e.g. result of Order Cancel/Replace Request)"
         },
         {
           "value": "F",
           "name": "Trade",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Trade (partial fill or fill)"
         },
         {
           "value": "G",
           "name": "TradeCorrect",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Trade Correct"
         },
         {
           "value": "H",
           "name": "TradeCancel",
-          "since": "4.3",
-          "sort": 16,
           "doc": "Trade Cancel"
         },
         {
           "value": "I",
           "name": "OrderStatus",
-          "since": "4.3",
-          "sort": 17,
           "doc": "Order Status"
         },
         {
           "value": "J",
           "name": "TradeInAClearingHold",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 18,
           "doc": "Trade in a Clearing Hold"
         },
         {
           "value": "K",
           "name": "TradeHasBeenReleasedToClearing",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 19,
           "doc": "Trade has been released to Clearing"
         },
         {
           "value": "L",
           "name": "TriggeredOrActivatedBySystem",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 20,
           "doc": "Triggered or Activated by System"
         },
         {
           "value": "M",
           "name": "Locked",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 21,
           "doc": "Locked"
         },
         {
           "value": "N",
           "name": "Released",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 22,
           "doc": "Released"
+        },
+        {
+          "value": "1",
+          "name": "PartiallyFilled"
+        },
+        {
+          "value": "2",
+          "name": "Filled"
         }
       ],
       "fix:replacements": [
@@ -2014,20 +1626,14 @@
       "display": "SettlCurrFxRateCalc",
       "fix:codes": [
         {
-          "value": "D",
-          "name": "Divide",
-          "since": "4.4",
-          "ep": 38,
-          "sort": 2,
-          "doc": "Divide"
-        },
-        {
           "value": "M",
           "name": "Multiply",
-          "since": "4.4",
-          "ep": 38,
-          "sort": 1,
           "doc": "Multiply"
+        },
+        {
+          "value": "D",
+          "name": "Divide",
+          "doc": "Divide"
         }
       ],
       "fix:tag": "156"
@@ -2082,46 +1688,31 @@
         {
           "value": "0",
           "name": "Default",
-          "since": "4.1",
-          "deprecated": "5.0.2",
-          "sort": 1,
           "doc": "Default (Replaced)"
         },
         {
           "value": "1",
           "name": "StandingInstructionsProvided",
-          "since": "4.1",
-          "sort": 2,
           "doc": "Standing Instructions Provided"
         },
         {
           "value": "2",
           "name": "SpecificAllocationAccountOverriding",
-          "since": "4.1",
-          "deprecated": "5.0.2",
-          "sort": 3,
           "doc": "Specific Allocation Account Overriding (Replaced)"
         },
         {
           "value": "3",
           "name": "SpecificAllocationAccountStanding",
-          "since": "4.1",
-          "deprecated": "5.0.2",
-          "sort": 4,
           "doc": "Specific Allocation Account Standing (Replaced)"
         },
         {
           "value": "4",
           "name": "SpecificOrderForASingleAccount",
-          "since": "4.3",
-          "sort": 5,
           "doc": "Specific Order for a single account (for CIV)"
         },
         {
           "value": "5",
           "name": "RequestReject",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Request reject"
         }
       ],
@@ -2163,31 +1754,23 @@
       "display": "SettlInstTransType",
       "fix:codes": [
         {
-          "value": "C",
-          "name": "Cancel",
-          "since": "4.1",
-          "sort": 2,
-          "doc": "Cancel"
-        },
-        {
           "value": "N",
           "name": "New",
-          "since": "4.1",
-          "sort": 1,
           "doc": "New"
+        },
+        {
+          "value": "C",
+          "name": "Cancel",
+          "doc": "Cancel"
         },
         {
           "value": "R",
           "name": "Replace",
-          "since": "4.1",
-          "sort": 3,
           "doc": "Replace"
         },
         {
           "value": "T",
           "name": "Restate",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Restate"
         }
       ],
@@ -2219,22 +1802,16 @@
         {
           "value": "1",
           "name": "BrokerCredit",
-          "since": "4.1",
-          "sort": 1,
           "doc": "Broker's Instructions"
         },
         {
           "value": "2",
           "name": "Institution",
-          "since": "4.1",
-          "sort": 2,
           "doc": "Institution's Instructions"
         },
         {
           "value": "3",
           "name": "Investor",
-          "since": "4.3",
-          "sort": 3,
           "doc": "Investor (e.g. CIV use)"
         }
       ],
@@ -2252,45 +1829,31 @@
       "fix:codes": [
         {
           "value": "CED",
-          "name": "Cedel",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "Cedel"
         },
         {
           "value": "DTC",
-          "name": "DepositoryTrustCompany",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "DepositoryTrustCompany"
         },
         {
           "value": "EUR",
-          "name": "EuroClear",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "EuroClear"
         },
         {
           "value": "FED",
-          "name": "FederalBookEntry",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "FederalBookEntry"
         },
         {
           "value": "ISO Country Code",
-          "name": "LocalMarketSettleLocation",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "LocalMarketSettleLocation"
         },
         {
           "value": "PNY",
-          "name": "Physical",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "Physical"
         },
         {
           "value": "PTC",
-          "name": "ParticipantTrustCompany",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "ParticipantTrustCompany"
         }
       ],
       "fix:replacements": [
@@ -2469,1016 +2032,594 @@
       "display": "SecurityType",
       "fix:codes": [
         {
-          "value": "?",
-          "name": "Wildcard",
-          "since": "4.2",
-          "sort": 5,
-          "group": "Other",
-          "doc": "Wildcard entry for use on Security Definition Request"
-        },
-        {
-          "value": "ABS",
-          "name": "AssetBackedSecurities",
-          "since": "4.3",
-          "group": "Mortgage",
-          "doc": "Asset-backed Securities"
-        },
-        {
-          "value": "AMENDED",
-          "name": "Amended",
-          "since": "4.3",
-          "sort": 11,
-          "group": "Loan",
-          "doc": "Amended and restated"
-        },
-        {
-          "value": "AN",
-          "name": "OtherAnticipationNotes",
-          "since": "4.3",
-          "group": "Municipal",
-          "doc": "Other Anticipation Notes (BAN, GAN, etc.)"
-        },
-        {
-          "value": "BA",
-          "name": "BankersAcceptance",
-          "since": "4.1",
-          "group": "Money Market",
-          "doc": "Bankers Acceptance"
-        },
-        {
-          "value": "BAB",
-          "name": "BankAcceptedBill",
-          "ep": 272,
-          "sort": 22,
-          "group": "Money Market",
-          "doc": "Bank Accepted Bill"
-        },
-        {
-          "value": "BDBSKT",
-          "name": "BondBasket",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 20,
-          "group": "Derivatives",
-          "doc": "Bond basket"
-        },
-        {
           "value": "BDN",
           "name": "BankDepositoryNote",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 1,
           "group": "Money Market",
           "doc": "Bank Depository Note"
         },
         {
-          "value": "BN",
-          "name": "BankNotes",
-          "since": "4.3",
-          "sort": 2,
-          "group": "Money Market",
-          "doc": "Bank Notes"
-        },
-        {
-          "value": "BNST",
-          "name": "ShortTermBankNote",
-          "ep": 272,
-          "sort": 23,
-          "group": "Money Market",
-          "doc": "Short Term Bank Note"
-        },
-        {
-          "value": "BOX",
-          "name": "BillOfExchanges",
-          "since": "4.3",
-          "sort": 3,
-          "group": "Money Market",
-          "doc": "Bill Of Exchanges"
-        },
-        {
-          "value": "BRADY",
-          "name": "BradyBond",
-          "since": "4.3",
-          "group": "Government",
-          "doc": "Brady Bond"
-        },
-        {
-          "value": "BRIDGE",
-          "name": "BridgeLoan",
-          "since": "4.3",
-          "sort": 3,
-          "group": "Loan",
-          "doc": "Bridge Loan"
-        },
-        {
-          "value": "BUYSELL",
-          "name": "BuySellback",
-          "since": "4.4",
-          "sort": 2,
-          "group": "Financing",
-          "doc": "Buy Sellback"
-        },
-        {
-          "value": "CAMM",
-          "name": "CanadianMoneyMarkets",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 4,
-          "group": "Money Market",
-          "doc": "Canadian Money Markets"
-        },
-        {
           "value": "CAN",
           "name": "CanadianTreasuryNotes",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 1,
           "group": "Government",
           "doc": "Canadian Treasury Notes"
         },
         {
           "value": "CAP",
           "name": "Cap",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 1,
           "group": "Derivatives",
           "doc": "Cap"
         },
         {
-          "value": "CASH",
-          "name": "Cash",
-          "since": "4.4",
-          "ep": 28,
-          "sort": 6,
-          "group": "Other",
-          "doc": "Cash"
-        },
-        {
-          "value": "CB",
-          "name": "ConvertibleBond",
-          "since": "4.2",
-          "sort": 2,
-          "group": "Corporate",
-          "doc": "Convertible Bond"
-        },
-        {
-          "value": "CD",
-          "name": "CertificateOfDeposit",
-          "since": "4.1",
-          "sort": 5,
-          "group": "Money Market",
-          "doc": "Certificate Of Deposit"
-        },
-        {
-          "value": "CDS",
-          "name": "CreditDefaultSwap",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 2,
-          "group": "Derivatives",
-          "doc": "Credit Default Swap"
-        },
-        {
-          "value": "CFD",
-          "name": "ContractForDifference",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 21,
-          "group": "Derivatives",
-          "doc": "Contract for difference"
-        },
-        {
-          "value": "CL",
-          "name": "CallLoans",
-          "since": "4.3",
-          "sort": 6,
-          "group": "Money Market",
-          "doc": "Call Loans"
-        },
-        {
-          "value": "CLCP",
-          "name": "CallableCommercialPaper",
-          "ep": 272,
-          "sort": 24,
-          "group": "Money Market",
-          "doc": "Callable Commercial Paper"
-        },
-        {
-          "value": "CLLR",
-          "name": "Collar",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 3,
-          "group": "Derivatives",
-          "doc": "Collar"
-        },
-        {
           "value": "CMB",
           "name": "CanadianMortgageBonds",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 1,
           "group": "Mortgage",
           "doc": "Canadian Mortgage Bonds"
         },
         {
-          "value": "CMBS",
-          "name": "Corp",
-          "since": "4.3",
-          "sort": 2,
-          "group": "Mortgage",
-          "doc": "Corp. Mortgage-backed Securities"
-        },
-        {
-          "value": "CMDTYSWAP",
-          "name": "CommoditySwap",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 4,
-          "group": "Derivatives",
-          "doc": "Commodity swap"
-        },
-        {
-          "value": "CMO",
-          "name": "CollateralizedMortgageObligation",
-          "since": "4.1",
-          "sort": 3,
-          "group": "Mortgage",
-          "doc": "Collateralized Mortgage Obligation"
-        },
-        {
-          "value": "CN",
-          "name": "CommercialNote",
-          "ep": 272,
-          "sort": 25,
-          "group": "Money Market",
-          "doc": "Commercial Note"
-        },
-        {
           "value": "COFO",
           "name": "CertificateOfObligation",
-          "since": "4.3",
-          "sort": 1,
           "group": "Municipal",
           "doc": "Certificate Of Obligation"
         },
         {
-          "value": "COFP",
-          "name": "CertificateOfParticipation",
-          "since": "4.3",
-          "sort": 2,
-          "group": "Municipal",
-          "doc": "Certificate Of Participation"
-        },
-        {
-          "value": "COLLBSKT",
-          "name": "CollateralBasket",
-          "since": "5.0.2",
-          "ep": 197,
-          "sort": 6,
-          "group": "Financing",
-          "doc": "Collateral basket"
-        },
-        {
-          "value": "CORP",
-          "name": "CorporateBond",
-          "since": "4.1",
-          "group": "Corporate",
-          "doc": "Corporate Bond"
-        },
-        {
-          "value": "CP",
-          "name": "CommercialPaper",
-          "since": "4.1",
-          "sort": 7,
-          "group": "Money Market",
-          "doc": "Commercial Paper"
-        },
-        {
-          "value": "CPIB",
-          "name": "InterestBearingCommercialPaper",
-          "ep": 272,
-          "sort": 26,
-          "group": "Money Market",
-          "doc": "Interest Bearing Commercial Paper"
-        },
-        {
           "value": "CPP",
           "name": "CorporatePrivatePlacement",
-          "since": "4.1",
-          "sort": 1,
           "group": "Corporate",
           "doc": "Corporate Private Placement"
         },
         {
-          "value": "CRLTNSWAP",
-          "name": "CorrelationSwap",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 22,
-          "group": "Derivatives",
-          "doc": "Correlation swap"
-        },
-        {
-          "value": "CS",
-          "name": "CommonStock",
-          "since": "4.1",
-          "group": "Equity",
-          "doc": "Common Stock"
-        },
-        {
-          "value": "CTB",
-          "name": "CanadianTreasuryBills",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 2,
-          "group": "Government",
-          "doc": "Canadian Treasury Bills"
-        },
-        {
-          "value": "DEFLTED",
-          "name": "Defaulted",
-          "since": "4.3",
-          "sort": 7,
-          "group": "Loan",
-          "doc": "Defaulted"
-        },
-        {
-          "value": "DIGITAL",
-          "name": "DigitalAsset",
-          "ep": 273,
-          "sort": 12,
-          "group": "Other",
-          "doc": "Digital Asset"
-        },
-        {
-          "value": "DIMSUMCORP",
-          "name": "OffshoreIssuedChineseYuanCorporateBond",
-          "ep": 272,
-          "sort": 10,
-          "group": "Corporate",
-          "doc": "Offshore issued Chinese Yuan (CNY) denominated corporate bond"
-        },
-        {
-          "value": "DIMSUMSOV",
-          "name": "OffshoreIssuedChineseYuanSovereignBond",
-          "ep": 272,
-          "sort": 12,
-          "group": "Government",
-          "doc": "Offshore issued Chinese Yuan (CNY) denominated sovereign bond"
-        },
-        {
-          "value": "DINP",
-          "name": "DebtorInPossession",
-          "since": "4.3",
-          "sort": 6,
-          "group": "Loan",
-          "doc": "Debtor In Possession"
-        },
-        {
-          "value": "DN",
-          "name": "DepositNotes",
-          "since": "4.3",
-          "sort": 8,
-          "group": "Money Market",
-          "doc": "Deposit Notes"
-        },
-        {
-          "value": "DR",
-          "name": "DepositoryReceipts",
-          "since": "5.0.2",
-          "ep": 236,
-          "sort": 2,
-          "group": "Equity",
-          "doc": "Depository Receipts"
-        },
-        {
-          "value": "DUAL",
-          "name": "DualCurrency",
-          "since": "4.3",
-          "sort": 3,
-          "group": "Corporate",
-          "doc": "Dual Currency"
-        },
-        {
-          "value": "DVDNDSWAP",
-          "name": "DiviendSwap",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 23,
-          "group": "Derivatives",
-          "doc": "Dividend swap"
-        },
-        {
-          "value": "DVPLDG",
-          "name": "DeliveryVersusPledge",
-          "since": "5.0.2",
-          "ep": 132,
-          "sort": 5,
-          "group": "Financing",
-          "doc": "Delivery versus pledge"
-        },
-        {
-          "value": "EQBSKT",
-          "name": "EquityBasket",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 24,
-          "group": "Derivatives",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "EQFWD",
-          "name": "EquityForward",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 25,
-          "group": "Derivatives",
-          "doc": "Equity forward"
-        },
-        {
-          "value": "ETC",
-          "name": "ExchangeTradedCommodity",
-          "since": "5.0.2",
-          "ep": 238,
-          "sort": 33,
-          "group": "Derivatives",
-          "doc": "Exchange traded commodity"
-        },
-        {
-          "value": "ETF",
-          "name": "ExchangeTradedFund",
-          "ep": 272,
-          "sort": 11,
-          "group": "Other",
-          "doc": "Exchange Traded Fund"
-        },
-        {
-          "value": "ETN",
-          "name": "ExchangeTradedNote",
-          "since": "5.0.2",
-          "ep": 238,
-          "sort": 8,
-          "group": "Other",
-          "doc": "Exchange traded note"
-        },
-        {
-          "value": "EUCD",
-          "name": "EuroCertificateOfDeposit",
-          "since": "4.4",
-          "sort": 9,
-          "group": "Money Market",
-          "doc": "Euro Certificate Of Deposit"
-        },
-        {
-          "value": "EUCORP",
-          "name": "EuroCorporateBond",
-          "since": "4.4",
-          "sort": 4,
-          "group": "Corporate",
-          "doc": "Euro Corporate Bond"
-        },
-        {
-          "value": "EUCP",
-          "name": "EuroCommercialPaper",
-          "since": "4.4",
-          "sort": 10,
-          "group": "Money Market",
-          "doc": "Euro Commercial Paper"
-        },
-        {
-          "value": "EUFRN",
-          "name": "EuroCorporateFloatingRateNotes",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 5,
-          "group": "Corporate",
-          "doc": "Euro Corporate Floating Rate Notes"
-        },
-        {
-          "value": "EUMTN",
-          "name": "EuroMediumTermNote",
-          "ep": 272,
-          "sort": 27,
-          "group": "Money Market",
-          "doc": "Euro Medium Term Note"
-        },
-        {
-          "value": "EUNCP",
-          "name": "EuroNegotiableCommercialPaper",
-          "ep": 272,
-          "sort": 28,
-          "group": "Money Market",
-          "doc": "Euro Negotiable Commercial Paper"
-        },
-        {
-          "value": "EUSOV",
-          "name": "EuroSovereigns",
-          "since": "4.4",
-          "sort": 3,
-          "group": "Government",
-          "doc": "Euro Sovereigns"
-        },
-        {
-          "value": "EUSTLQN",
-          "name": "EuroStructuredLiquidityNote",
-          "ep": 272,
-          "sort": 29,
-          "group": "Money Market",
-          "doc": "Euro Structured Liquidity Note"
-        },
-        {
-          "value": "EUSUPRA",
-          "name": "EuroSupranationalCoupons",
-          "since": "4.4",
-          "group": "Agency",
-          "doc": "Euro Supranational Coupons"
-        },
-        {
-          "value": "EUTD",
-          "name": "EuroTimeDeposit",
-          "ep": 272,
-          "sort": 30,
-          "group": "Money Market",
-          "doc": "Euro Time Deposit"
-        },
-        {
-          "value": "EXOTIC",
-          "name": "Exotic",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 5,
-          "group": "Derivatives",
-          "doc": "Exotic"
-        },
-        {
           "value": "FAC",
           "name": "FederalAgencyCoupon",
-          "since": "4.3",
-          "sort": 1,
           "group": "Agency",
           "doc": "Federal Agency Coupon"
         },
         {
-          "value": "FADN",
-          "name": "FederalAgencyDiscountNote",
-          "since": "4.3",
-          "sort": 2,
-          "group": "Agency",
-          "doc": "Federal Agency Discount Note"
-        },
-        {
-          "value": "FHA",
-          "name": "FederalHousingAuthority",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "FHL",
-          "name": "FederalHomeLoan",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "FLR",
-          "name": "Floor",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 6,
-          "group": "Derivatives",
-          "doc": "Floor"
-        },
-        {
-          "value": "FN",
-          "name": "FederalNationalMortgageAssociation",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "FOR",
-          "name": "ForeignExchangeContract",
-          "since": "4.1",
-          "deprecated": "5.0.1",
-          "group": "Currency",
-          "doc": "Foreign Exchange Contract"
-        },
-        {
           "value": "FORWARD",
           "name": "Forward",
-          "since": "4.4",
-          "sort": 1,
           "group": "Financing",
           "doc": "Forward"
         },
         {
-          "value": "FRA",
-          "name": "FRA",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 7,
-          "group": "Derivatives",
-          "doc": "Forward Rate Agreement"
-        },
-        {
-          "value": "FRN",
-          "name": "USCorporateFloatingRateNotes",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 6,
-          "group": "Corporate",
-          "doc": "US Corporate Floating Rate Notes"
-        },
-        {
-          "value": "FUT",
-          "name": "Future",
-          "since": "4.1",
-          "sort": 8,
-          "group": "Derivatives",
-          "doc": "Future"
-        },
-        {
-          "value": "FUTSWAP",
-          "name": "FuturesOnASwap",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 29,
-          "group": "Derivatives",
-          "doc": "Futures on a Swap"
-        },
-        {
-          "value": "FWD",
-          "name": "DerivativeForward",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
-          "group": "Derivatives",
-          "doc": "Derivative forward"
-        },
-        {
-          "value": "FWDFRTAGMT",
-          "name": "ForwardFreightAgreement",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 31,
-          "group": "Derivatives",
-          "doc": "Forward Freight Agreement"
-        },
-        {
-          "value": "FWDSWAP",
-          "name": "ForwardsOnASwap",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 30,
-          "group": "Derivatives",
-          "doc": "Forwards on a Swap"
-        },
-        {
-          "value": "FXBN",
-          "name": "FXBankNote",
-          "ep": 272,
-          "sort": 6,
-          "group": "Currency",
-          "doc": "FX Bank Note"
-        },
-        {
-          "value": "FXDN",
-          "name": "ForeignCurrencyDiscountNote",
-          "ep": 272,
-          "sort": 7,
-          "group": "Currency",
-          "doc": "Foreign Currency Discount Note"
-        },
-        {
-          "value": "FXFWD",
-          "name": "FXForward",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 3,
-          "group": "Currency",
-          "doc": "FX Forward"
-        },
-        {
           "value": "FXNDF",
           "name": "NonDeliverableForward",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 1,
           "group": "Currency",
           "doc": "Non-deliverable forward"
         },
         {
-          "value": "FXNDS",
-          "name": "NonDeliverableSwap",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 5,
-          "group": "Currency",
-          "doc": "Non-deliverable Swap"
-        },
-        {
-          "value": "FXSPOT",
-          "name": "FXSpot",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 2,
-          "group": "Currency",
-          "doc": "FX Spot"
-        },
-        {
-          "value": "FXSWAP",
-          "name": "FXSwap",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 4,
-          "group": "Currency",
-          "doc": "FX Swap"
-        },
-        {
-          "value": "GN",
-          "name": "GovernmentNationalMortgageAssociation",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "GO",
-          "name": "GeneralObligationBonds",
-          "since": "4.3",
-          "sort": 3,
-          "group": "Municipal",
-          "doc": "General Obligation Bonds"
-        },
-        {
-          "value": "GOVT",
-          "name": "TreasuriesAgencyDebenture",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "IET",
-          "name": "IOETTEMortgage",
-          "since": "4.2",
-          "sort": 4,
-          "group": "Mortgage",
-          "doc": "IOETTE Mortgage"
-        },
-        {
-          "value": "INDEX",
-          "name": "Index",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 19,
-          "group": "Derivatives",
-          "doc": "General type for a contract based on an established index"
-        },
-        {
-          "value": "IRS",
-          "name": "InterestRateSwap",
-          "since": "5.0",
-          "ep": 54,
-          "sort": 10,
-          "group": "Derivatives",
-          "doc": "Interest Rate Swap"
-        },
-        {
-          "value": "JCD",
-          "name": "JumboCertificateOfDeposit",
-          "ep": 272,
-          "sort": 31,
-          "group": "Money Market",
-          "doc": "Jumbo Certificate of Deposit"
-        },
-        {
-          "value": "LOANLEASE",
-          "name": "LoanLease",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 11,
-          "group": "Derivatives",
-          "doc": "Loan/lease"
-        },
-        {
-          "value": "LOFC",
-          "name": "LetterOfCredit",
-          "since": "4.3",
-          "sort": 4,
-          "group": "Loan",
-          "doc": "Letter Of Credit"
-        },
-        {
-          "value": "LQN",
-          "name": "LiquidityNote",
-          "since": "4.3",
-          "sort": 11,
-          "group": "Money Market",
-          "doc": "Liquidity Note"
-        },
-        {
-          "value": "MATURED",
-          "name": "Matured",
-          "since": "4.3",
-          "sort": 10,
-          "group": "Loan",
-          "doc": "Matured"
-        },
-        {
-          "value": "MBS",
-          "name": "MortgageBackedSecurities",
-          "since": "4.3",
-          "sort": 5,
-          "group": "Mortgage",
-          "doc": "Mortgage-backed Securities"
-        },
-        {
-          "value": "MCPIB",
-          "name": "MunicipalInterestBearingCommercialPaper",
-          "ep": 272,
-          "sort": 17,
-          "group": "Municipal",
-          "doc": "Municipal Interest Bearing Commercial Paper"
-        },
-        {
-          "value": "MF",
-          "name": "MutualFund",
-          "since": "4.1",
-          "group": "Other",
-          "doc": "Mutual Fund"
-        },
-        {
-          "value": "MIO",
-          "name": "MortgageInterestOnly",
-          "since": "4.1",
-          "sort": 6,
-          "group": "Mortgage",
-          "doc": "Mortgage Interest Only"
-        },
-        {
           "value": "MLEG",
           "name": "MultilegInstrument",
-          "since": "4.3",
-          "sort": 1,
           "group": "Other",
           "doc": "Multileg Instrument"
         },
         {
-          "value": "MMF",
-          "name": "MoneyMarketFund",
-          "ep": 272,
-          "sort": 32,
-          "group": "Money Market",
-          "doc": "Money Market Fund"
+          "value": "PS",
+          "name": "PreferredStock",
+          "group": "Equity",
+          "doc": "Preferred Stock"
         },
         {
-          "value": "MN",
-          "name": "MasterNote",
-          "ep": 272,
-          "sort": 33,
+          "value": "RVLV",
+          "name": "RevolverLoan",
+          "group": "Loan",
+          "doc": "Revolver Loan"
+        },
+        {
+          "value": "BN",
+          "name": "BankNotes",
           "group": "Money Market",
-          "doc": "Master Note"
+          "doc": "Bank Notes"
+        },
+        {
+          "value": "BUYSELL",
+          "name": "BuySellback",
+          "group": "Financing",
+          "doc": "Buy Sellback"
+        },
+        {
+          "value": "CB",
+          "name": "ConvertibleBond",
+          "group": "Corporate",
+          "doc": "Convertible Bond"
+        },
+        {
+          "value": "CDS",
+          "name": "CreditDefaultSwap",
+          "group": "Derivatives",
+          "doc": "Credit Default Swap"
+        },
+        {
+          "value": "CMBS",
+          "name": "Corp",
+          "group": "Mortgage",
+          "doc": "Corp. Mortgage-backed Securities"
+        },
+        {
+          "value": "COFP",
+          "name": "CertificateOfParticipation",
+          "group": "Municipal",
+          "doc": "Certificate Of Participation"
+        },
+        {
+          "value": "CTB",
+          "name": "CanadianTreasuryBills",
+          "group": "Government",
+          "doc": "Canadian Treasury Bills"
+        },
+        {
+          "value": "DR",
+          "name": "DepositoryReceipts",
+          "group": "Equity",
+          "doc": "Depository Receipts"
+        },
+        {
+          "value": "FADN",
+          "name": "FederalAgencyDiscountNote",
+          "group": "Agency",
+          "doc": "Federal Agency Discount Note"
+        },
+        {
+          "value": "FXSPOT",
+          "name": "FXSpot",
+          "group": "Currency",
+          "doc": "FX Spot"
+        },
+        {
+          "value": "NONE",
+          "name": "NoSecurityType",
+          "group": "Other",
+          "doc": "No Security Type"
+        },
+        {
+          "value": "RVLVTRM",
+          "name": "Revolver",
+          "group": "Loan",
+          "doc": "Revolver/Term Loan"
+        },
+        {
+          "value": "BOX",
+          "name": "BillOfExchanges",
+          "group": "Money Market",
+          "doc": "Bill Of Exchanges"
+        },
+        {
+          "value": "BRIDGE",
+          "name": "BridgeLoan",
+          "group": "Loan",
+          "doc": "Bridge Loan"
+        },
+        {
+          "value": "CLLR",
+          "name": "Collar",
+          "group": "Derivatives",
+          "doc": "Collar"
+        },
+        {
+          "value": "CMO",
+          "name": "CollateralizedMortgageObligation",
+          "group": "Mortgage",
+          "doc": "Collateralized Mortgage Obligation"
+        },
+        {
+          "value": "DUAL",
+          "name": "DualCurrency",
+          "group": "Corporate",
+          "doc": "Dual Currency"
+        },
+        {
+          "value": "EUSOV",
+          "name": "EuroSovereigns",
+          "group": "Government",
+          "doc": "Euro Sovereigns"
+        },
+        {
+          "value": "FXFWD",
+          "name": "FXForward",
+          "group": "Currency",
+          "doc": "FX Forward"
+        },
+        {
+          "value": "GO",
+          "name": "GeneralObligationBonds",
+          "group": "Municipal",
+          "doc": "General Obligation Bonds"
+        },
+        {
+          "value": "PEF",
+          "name": "PrivateExportFunding",
+          "group": "Agency",
+          "doc": "Private Export Funding"
+        },
+        {
+          "value": "SECLOAN",
+          "name": "SecuritiesLoan",
+          "group": "Financing",
+          "doc": "Securities Loan"
+        },
+        {
+          "value": "UST",
+          "name": "USTreasuryNoteOld",
+          "doc": "US Treasury Note (Deprecated Value Use TNOTE)"
+        },
+        {
+          "value": "CAMM",
+          "name": "CanadianMoneyMarkets",
+          "group": "Money Market",
+          "doc": "Canadian Money Markets"
+        },
+        {
+          "value": "CMDTYSWAP",
+          "name": "CommoditySwap",
+          "group": "Derivatives",
+          "doc": "Commodity swap"
+        },
+        {
+          "value": "EUCORP",
+          "name": "EuroCorporateBond",
+          "group": "Corporate",
+          "doc": "Euro Corporate Bond"
+        },
+        {
+          "value": "FXSWAP",
+          "name": "FXSwap",
+          "group": "Currency",
+          "doc": "FX Swap"
+        },
+        {
+          "value": "IET",
+          "name": "IOETTEMortgage",
+          "group": "Mortgage",
+          "doc": "IOETTE Mortgage"
+        },
+        {
+          "value": "LOFC",
+          "name": "LetterOfCredit",
+          "group": "Loan",
+          "doc": "Letter Of Credit"
+        },
+        {
+          "value": "MT",
+          "name": "MandatoryTender",
+          "group": "Municipal",
+          "doc": "Mandatory Tender"
+        },
+        {
+          "value": "PROV",
+          "name": "CanadianProvincialBonds",
+          "group": "Government",
+          "doc": "Canadian Provincial Bonds"
+        },
+        {
+          "value": "SECPLEDGE",
+          "name": "SecuritiesPledge",
+          "group": "Financing",
+          "doc": "Securities Pledge"
+        },
+        {
+          "value": "SUPRA",
+          "name": "USDSupranationalCoupons",
+          "group": "Agency",
+          "doc": "USD Supranational Coupons"
+        },
+        {
+          "value": "USTB",
+          "name": "USTreasuryBillOld",
+          "doc": "US Treasury Bill (Deprecated Value Use TBILL)"
+        },
+        {
+          "value": "?",
+          "name": "Wildcard",
+          "group": "Other",
+          "doc": "Wildcard entry for use on Security Definition Request"
+        },
+        {
+          "value": "CD",
+          "name": "CertificateOfDeposit",
+          "group": "Money Market",
+          "doc": "Certificate Of Deposit"
+        },
+        {
+          "value": "DVPLDG",
+          "name": "DeliveryVersusPledge",
+          "group": "Financing",
+          "doc": "Delivery versus pledge"
+        },
+        {
+          "value": "EUFRN",
+          "name": "EuroCorporateFloatingRateNotes",
+          "group": "Corporate",
+          "doc": "Euro Corporate Floating Rate Notes"
+        },
+        {
+          "value": "EXOTIC",
+          "name": "Exotic",
+          "group": "Derivatives",
+          "doc": "Exotic"
+        },
+        {
+          "value": "FXNDS",
+          "name": "NonDeliverableSwap",
+          "group": "Currency",
+          "doc": "Non-deliverable Swap"
+        },
+        {
+          "value": "MBS",
+          "name": "MortgageBackedSecurities",
+          "group": "Mortgage",
+          "doc": "Mortgage-backed Securities"
+        },
+        {
+          "value": "RAN",
+          "name": "RevenueAnticipationNote",
+          "group": "Municipal",
+          "doc": "Revenue Anticipation Note"
+        },
+        {
+          "value": "SWING",
+          "name": "SwingLineFacility",
+          "group": "Loan",
+          "doc": "Swing Line Facility"
+        },
+        {
+          "value": "TB",
+          "name": "TreasuryBill",
+          "group": "Government",
+          "doc": "Treasury Bill - non US"
+        },
+        {
+          "value": "CASH",
+          "name": "Cash",
+          "group": "Other",
+          "doc": "Cash"
+        },
+        {
+          "value": "CL",
+          "name": "CallLoans",
+          "group": "Money Market",
+          "doc": "Call Loans"
+        },
+        {
+          "value": "COLLBSKT",
+          "name": "CollateralBasket",
+          "group": "Financing",
+          "doc": "Collateral basket"
+        },
+        {
+          "value": "DINP",
+          "name": "DebtorInPossession",
+          "group": "Loan",
+          "doc": "Debtor In Possession"
+        },
+        {
+          "value": "FLR",
+          "name": "Floor",
+          "group": "Derivatives",
+          "doc": "Floor"
+        },
+        {
+          "value": "FRN",
+          "name": "USCorporateFloatingRateNotes",
+          "group": "Corporate",
+          "doc": "US Corporate Floating Rate Notes"
+        },
+        {
+          "value": "FXBN",
+          "name": "FXBankNote",
+          "group": "Currency",
+          "doc": "FX Bank Note"
+        },
+        {
+          "value": "MIO",
+          "name": "MortgageInterestOnly",
+          "group": "Mortgage",
+          "doc": "Mortgage Interest Only"
+        },
+        {
+          "value": "OOC",
+          "name": "OptionsOnCombo",
+          "group": "Derivatives",
+          "doc": "Options on Combo"
+        },
+        {
+          "value": "REV",
+          "name": "RevenueBonds",
+          "group": "Municipal",
+          "doc": "Revenue Bonds"
+        },
+        {
+          "value": "TBOND",
+          "name": "USTreasuryBond",
+          "group": "Government",
+          "doc": "US Treasury Bond"
+        },
+        {
+          "value": "CP",
+          "name": "CommercialPaper",
+          "group": "Money Market",
+          "doc": "Commercial Paper"
+        },
+        {
+          "value": "DEFLTED",
+          "name": "Defaulted",
+          "group": "Loan",
+          "doc": "Defaulted"
+        },
+        {
+          "value": "FRA",
+          "name": "FRA",
+          "group": "Derivatives",
+          "doc": "Forward Rate Agreement"
+        },
+        {
+          "value": "FXDN",
+          "name": "ForeignCurrencyDiscountNote",
+          "group": "Currency",
+          "doc": "Foreign Currency Discount Note"
         },
         {
           "value": "MPO",
           "name": "MortgagePrincipalOnly",
-          "since": "4.1",
-          "sort": 7,
           "group": "Mortgage",
           "doc": "Mortgage Principal Only"
         },
         {
+          "value": "Other",
+          "name": "Other",
+          "group": "Other",
+          "doc": "Other"
+        },
+        {
+          "value": "SFP",
+          "name": "StructuredFinanceProduct",
+          "group": "Financing",
+          "doc": "Structured finance product"
+        },
+        {
+          "value": "SPCLA",
+          "name": "SpecialAssessment",
+          "group": "Municipal",
+          "doc": "Special Assessment"
+        },
+        {
+          "value": "TINT",
+          "name": "InterestStripFromAnyBondOrNote",
+          "group": "Government",
+          "doc": "Interest Strip From Any Bond Or Note"
+        },
+        {
+          "value": "XLINKD",
+          "name": "IndexedLinked",
+          "group": "Corporate",
+          "doc": "Indexed Linked"
+        },
+        {
+          "value": "DN",
+          "name": "DepositNotes",
+          "group": "Money Market",
+          "doc": "Deposit Notes"
+        },
+        {
+          "value": "ETN",
+          "name": "ExchangeTradedNote",
+          "group": "Other",
+          "doc": "Exchange traded note"
+        },
+        {
+          "value": "FUT",
+          "name": "Future",
+          "group": "Derivatives",
+          "doc": "Future"
+        },
+        {
           "value": "MPP",
           "name": "MortgagePrivatePlacement",
-          "since": "4.1",
-          "sort": 8,
           "group": "Mortgage",
           "doc": "Mortgage Private Placement"
         },
         {
+          "value": "SPCLO",
+          "name": "SpecialObligation",
+          "group": "Municipal",
+          "doc": "Special Obligation"
+        },
+        {
+          "value": "STRUCT",
+          "name": "StructuredNotes",
+          "group": "Corporate",
+          "doc": "Structured Notes"
+        },
+        {
+          "value": "TBILL",
+          "name": "USTreasuryBill",
+          "group": "Government",
+          "doc": "US Treasury Bill"
+        },
+        {
+          "value": "TIPS",
+          "name": "TreasuryInflationProtectedSecurities",
+          "group": "Government",
+          "doc": "Treasury Inflation Protected Securities"
+        },
+        {
+          "value": "WITHDRN",
+          "name": "Withdrawn",
+          "group": "Loan",
+          "doc": "Withdrawn"
+        },
+        {
+          "value": "EUCD",
+          "name": "EuroCertificateOfDeposit",
+          "group": "Money Market",
+          "doc": "Euro Certificate Of Deposit"
+        },
+        {
+          "value": "FWD",
+          "name": "DerivativeForward",
+          "group": "Derivatives",
+          "doc": "Derivative forward"
+        },
+        {
           "value": "MPT",
           "name": "MiscellaneousPassThrough",
-          "since": "4.1",
-          "sort": 9,
           "group": "Mortgage",
           "doc": "Miscellaneous Pass-through"
         },
         {
           "value": "MRGNLOAN",
           "name": "MarginLoan",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 9,
           "group": "Financing",
           "doc": "Margin loan"
         },
         {
-          "value": "MT",
-          "name": "MandatoryTender",
-          "since": "4.3",
-          "sort": 4,
+          "value": "REPLACD",
+          "name": "Replaced",
+          "group": "Loan",
+          "doc": "Replaced"
+        },
+        {
+          "value": "SPCLT",
+          "name": "SpecialTax",
           "group": "Municipal",
-          "doc": "Mandatory Tender"
+          "doc": "Special Tax"
         },
         {
-          "value": "MTN",
-          "name": "MediumTermNotes",
-          "since": "4.3",
-          "sort": 12,
+          "value": "TCAL",
+          "name": "PrincipalStripOfACallableBondOrNote",
+          "group": "Government",
+          "doc": "Principal Strip Of A Callable Bond Or Note"
+        },
+        {
+          "value": "YANK",
+          "name": "YankeeCorporateBond",
+          "group": "Corporate",
+          "doc": "Yankee Corporate Bond"
+        },
+        {
+          "value": "DIMSUMCORP",
+          "name": "OffshoreIssuedChineseYuanCorporateBond",
+          "group": "Corporate",
+          "doc": "Offshore issued Chinese Yuan (CNY) denominated corporate bond"
+        },
+        {
+          "value": "EUCP",
+          "name": "EuroCommercialPaper",
           "group": "Money Market",
-          "doc": "Medium Term Notes"
+          "doc": "Euro Commercial Paper"
         },
         {
-          "value": "MUNI",
-          "name": "MunicipalBond",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "NCD",
-          "name": "NegotiableCertificateOfDeposit",
-          "ep": 272,
-          "sort": 34,
-          "group": "Money Market",
-          "doc": "Negotiable Certificate of Deposit"
-        },
-        {
-          "value": "NCP",
-          "name": "NegotiableCommercialPaper",
-          "ep": 272,
-          "sort": 35,
-          "group": "Money Market",
-          "doc": "Negotiable Commercial Paper"
-        },
-        {
-          "value": "NONE",
-          "name": "NoSecurityType",
-          "since": "4.1",
-          "sort": 2,
-          "group": "Other",
-          "doc": "No Security Type"
-        },
-        {
-          "value": "ONITE",
-          "name": "Overnight",
-          "since": "4.3",
-          "sort": 13,
-          "group": "Money Market",
-          "doc": "Overnight"
-        },
-        {
-          "value": "OOC",
-          "name": "OptionsOnCombo",
-          "since": "5.0",
-          "sort": 6,
+          "value": "IRS",
+          "name": "InterestRateSwap",
           "group": "Derivatives",
-          "doc": "Options on Combo"
+          "doc": "Interest Rate Swap"
         },
         {
-          "value": "OOF",
-          "name": "OptionsOnFutures",
-          "since": "4.4",
-          "ep": 19,
-          "sort": 13,
-          "group": "Derivatives",
-          "doc": "Options on Futures"
-        },
-        {
-          "value": "OOP",
-          "name": "OptionsOnPhysical",
-          "since": "4.4",
-          "ep": 19,
-          "sort": 14,
-          "group": "Derivatives",
-          "doc": "Options on Physical - use not recommended"
-        },
-        {
-          "value": "OPT",
-          "name": "Option",
-          "since": "4.1",
-          "sort": 15,
-          "group": "Derivatives",
-          "doc": "Option"
-        },
-        {
-          "value": "Other",
-          "name": "Other",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 7,
-          "group": "Other",
-          "doc": "Other"
-        },
-        {
-          "value": "PEF",
-          "name": "PrivateExportFunding",
-          "since": "4.3",
-          "sort": 3,
-          "group": "Agency",
-          "doc": "Private Export Funding"
+          "value": "MATURED",
+          "name": "Matured",
+          "group": "Loan",
+          "doc": "Matured"
         },
         {
           "value": "PFAND",
           "name": "Pfandbrief",
-          "since": "4.4",
-          "sort": 10,
           "group": "Mortgage",
           "aliases": [
             "Pfandbriefe"
@@ -3486,565 +2627,550 @@
           "doc": "Pfandbrief"
         },
         {
-          "value": "PN",
-          "name": "PromissoryNote",
-          "since": "4.3",
-          "sort": 14,
-          "group": "Money Market",
-          "doc": "Promissory Note"
-        },
-        {
-          "value": "POOL",
-          "name": "AgencyPools",
-          "since": "4.3",
-          "deprecated": "4.4"
-        },
-        {
-          "value": "PRCORP",
-          "name": "PreferredCorporateBond",
-          "ep": 272,
-          "sort": 11,
-          "group": "Corporate",
-          "doc": "Preferred Corporate Bond"
-        },
-        {
-          "value": "PROV",
-          "name": "CanadianProvincialBonds",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 4,
-          "group": "Government",
-          "doc": "Canadian Provincial Bonds"
-        },
-        {
-          "value": "PRTFLIOSWAP",
-          "name": "PortfolioSwaps",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 28,
-          "group": "Derivatives",
-          "doc": "Portfolio swap"
-        },
-        {
-          "value": "PS",
-          "name": "PreferredStock",
-          "since": "4.1",
-          "sort": 1,
-          "group": "Equity",
-          "doc": "Preferred Stock"
-        },
-        {
-          "value": "PZFJ",
-          "name": "PlazosFijos",
-          "since": "4.3",
-          "sort": 15,
-          "group": "Money Market",
-          "doc": "Plazos Fijos"
-        },
-        {
-          "value": "RAN",
-          "name": "RevenueAnticipationNote",
-          "since": "4.3",
-          "sort": 5,
-          "group": "Municipal",
-          "doc": "Revenue Anticipation Note"
-        },
-        {
-          "value": "RCD",
-          "name": "RetailCertificateOfDeposit",
-          "ep": 272,
-          "sort": 36,
-          "group": "Money Market",
-          "doc": "Retail Certificate of Deposit"
-        },
-        {
-          "value": "REPLACD",
-          "name": "Replaced",
-          "since": "4.3",
-          "sort": 9,
-          "group": "Loan",
-          "doc": "Replaced"
-        },
-        {
-          "value": "REPO",
-          "name": "Repurchase",
-          "since": "4.4",
-          "group": "Financing",
-          "doc": "Repurchase"
-        },
-        {
-          "value": "RETIRED",
-          "name": "Retired",
-          "since": "4.3",
-          "sort": 12,
-          "group": "Loan",
-          "doc": "Retired"
-        },
-        {
-          "value": "REV",
-          "name": "RevenueBonds",
-          "since": "4.3",
-          "sort": 6,
-          "group": "Municipal",
-          "doc": "Revenue Bonds"
-        },
-        {
-          "value": "RP",
-          "name": "RepurchaseAgreement",
-          "since": "4.1",
-          "deprecated": "4.4"
-        },
-        {
-          "value": "RTRNSWAP",
-          "name": "ReturnSwap",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 26,
-          "group": "Derivatives",
-          "doc": "Return swap"
-        },
-        {
-          "value": "RVLV",
-          "name": "RevolverLoan",
-          "since": "4.3",
-          "sort": 1,
-          "group": "Loan",
-          "doc": "Revolver Loan"
-        },
-        {
-          "value": "RVLVTRM",
-          "name": "Revolver",
-          "since": "4.3",
-          "sort": 2,
-          "group": "Loan",
-          "doc": "Revolver/Term Loan"
-        },
-        {
-          "value": "RVRP",
-          "name": "ReverseRepurchaseAgreement",
-          "since": "4.1",
-          "deprecated": "4.4"
-        },
-        {
           "value": "SECDERIV",
           "name": "SecuritizedDerivative",
-          "since": "5.0.2",
-          "ep": 238,
-          "sort": 10,
           "group": "Other",
           "doc": "Securitized derivative"
         },
         {
-          "value": "SECLOAN",
-          "name": "SecuritiesLoan",
-          "since": "4.4",
-          "sort": 3,
-          "group": "Financing",
-          "doc": "Securities Loan"
-        },
-        {
-          "value": "SECPLEDGE",
-          "name": "SecuritiesPledge",
-          "since": "4.4",
-          "sort": 4,
-          "group": "Financing",
-          "doc": "Securities Pledge"
-        },
-        {
-          "value": "SFP",
-          "name": "StructuredFinanceProduct",
-          "since": "5.0.2",
-          "ep": 238,
-          "sort": 7,
-          "group": "Financing",
-          "doc": "Structured finance product"
-        },
-        {
-          "value": "SL",
-          "name": "StudentLoanMarketingAssociation",
-          "since": "4.1",
-          "deprecated": "4.3"
-        },
-        {
-          "value": "SLQN",
-          "name": "SecuredLiquidityNote",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 16,
-          "group": "Money Market",
-          "doc": "Secured Liquidity Note"
-        },
-        {
-          "value": "SOV",
-          "name": "SovereignBond",
-          "ep": 272,
-          "sort": 13,
-          "group": "Government",
-          "doc": "Sovereign Bond"
-        },
-        {
-          "value": "SPCLA",
-          "name": "SpecialAssessment",
-          "since": "4.3",
-          "sort": 7,
-          "group": "Municipal",
-          "doc": "Special Assessment"
-        },
-        {
-          "value": "SPCLO",
-          "name": "SpecialObligation",
-          "since": "4.3",
-          "sort": 8,
-          "group": "Municipal",
-          "doc": "Special Obligation"
-        },
-        {
-          "value": "SPCLT",
-          "name": "SpecialTax",
-          "since": "4.3",
-          "sort": 9,
-          "group": "Municipal",
-          "doc": "Special Tax"
-        },
-        {
-          "value": "SPOTFWD",
-          "name": "SpotForward",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 16,
-          "group": "Derivatives",
-          "doc": "Spot forward"
-        },
-        {
-          "value": "SPREADBET",
-          "name": "SpreadBetting",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 32,
-          "group": "Derivatives",
-          "doc": "Spread Betting"
-        },
-        {
-          "value": "STN",
-          "name": "ShortTermLoanNote",
-          "since": "4.3",
-          "sort": 14,
-          "group": "Money Market",
-          "doc": "Short Term Loan Note"
-        },
-        {
-          "value": "STRUCT",
-          "name": "StructuredNotes",
-          "since": "4.3",
-          "sort": 8,
-          "group": "Corporate",
-          "doc": "Structured Notes"
-        },
-        {
-          "value": "SUPRA",
-          "name": "USDSupranationalCoupons",
-          "since": "4.4",
-          "sort": 4,
-          "group": "Agency",
-          "doc": "USD Supranational Coupons"
-        },
-        {
-          "value": "SWAPTION",
-          "name": "SwapOption",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 17,
-          "group": "Derivatives",
-          "doc": "Swap option"
-        },
-        {
-          "value": "SWING",
-          "name": "SwingLineFacility",
-          "since": "4.3",
-          "sort": 5,
-          "group": "Loan",
-          "doc": "Swing Line Facility"
-        },
-        {
           "value": "TAN",
           "name": "TaxAnticipationNote",
-          "since": "4.3",
-          "sort": 10,
           "group": "Municipal",
           "doc": "Tax Anticipation Note"
         },
         {
-          "value": "TAXA",
-          "name": "TaxAllocation",
-          "since": "4.3",
-          "sort": 11,
-          "group": "Municipal",
-          "doc": "Tax Allocation"
-        },
-        {
-          "value": "TB",
-          "name": "TreasuryBill",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 5,
-          "group": "Government",
-          "doc": "Treasury Bill - non US"
-        },
-        {
-          "value": "TBA",
-          "name": "ToBeAnnounced",
-          "since": "4.3",
-          "sort": 11,
-          "group": "Mortgage",
-          "doc": "To Be Announced"
-        },
-        {
-          "value": "TBILL",
-          "name": "USTreasuryBill",
-          "since": "4.4",
-          "sort": 8,
-          "group": "Government",
-          "doc": "US Treasury Bill"
-        },
-        {
-          "value": "TBOND",
-          "name": "USTreasuryBond",
-          "since": "4.3",
-          "sort": 6,
-          "group": "Government",
-          "doc": "US Treasury Bond"
-        },
-        {
-          "value": "TCAL",
-          "name": "PrincipalStripOfACallableBondOrNote",
-          "since": "4.3",
-          "sort": 9,
-          "group": "Government",
-          "doc": "Principal Strip Of A Callable Bond Or Note"
-        },
-        {
-          "value": "TD",
-          "name": "TimeDeposit",
-          "since": "4.1",
-          "sort": 17,
-          "group": "Money Market",
-          "doc": "Time Deposit"
-        },
-        {
-          "value": "TDR",
-          "name": "TermDepositReceipt",
-          "ep": 272,
-          "sort": 37,
-          "group": "Money Market",
-          "doc": "Term Deposit Receipt"
-        },
-        {
-          "value": "TECP",
-          "name": "TaxExemptCommercialPaper",
-          "since": "4.3",
-          "sort": 12,
-          "group": "Municipal",
-          "doc": "Tax Exempt Commercial Paper"
-        },
-        {
-          "value": "TERM",
-          "name": "TermLoan",
-          "since": "4.3",
-          "group": "Loan",
-          "doc": "Term Loan"
-        },
-        {
-          "value": "TFRN",
-          "name": "USTreasuryFloatingRateNote",
-          "ep": 272,
-          "sort": 14,
-          "group": "Government",
-          "doc": "US Treasury Floating Rate Note"
-        },
-        {
-          "value": "TINT",
-          "name": "InterestStripFromAnyBondOrNote",
-          "since": "4.3",
-          "sort": 7,
-          "group": "Government",
-          "doc": "Interest Strip From Any Bond Or Note"
-        },
-        {
-          "value": "TIPS",
-          "name": "TreasuryInflationProtectedSecurities",
-          "since": "4.3",
-          "sort": 8,
-          "group": "Government",
-          "doc": "Treasury Inflation Protected Securities"
-        },
-        {
-          "value": "TLQN",
-          "name": "TermLiquidityNote",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 19,
-          "group": "Money Market",
-          "doc": "Term Liquidity Note"
-        },
-        {
-          "value": "TMB",
-          "name": "TaxableMunicipalBond",
-          "ep": 272,
-          "sort": 18,
-          "group": "Municipal",
-          "doc": "Taxable Municipal Bond"
-        },
-        {
-          "value": "TMCP",
-          "name": "TaxableMunicipalCP",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 13,
-          "group": "Municipal",
-          "doc": "Taxable Municipal CP"
-        },
-        {
-          "value": "TNOTE",
-          "name": "USTreasuryNote",
-          "since": "4.4",
-          "sort": 11,
-          "group": "Government",
-          "doc": "US Treasury Note"
-        },
-        {
           "value": "TPRN",
           "name": "PrincipalStripFromANonCallableBondOrNote",
-          "since": "4.3",
-          "sort": 10,
           "group": "Government",
           "doc": "Principal Strip From A Non-Callable Bond Or Note"
         },
         {
-          "value": "TRAN",
-          "name": "TaxRevenueAnticipationNote",
-          "since": "4.3",
-          "sort": 14,
-          "group": "Municipal",
-          "doc": "Tax Revenue Anticipation Note"
-        },
-        {
           "value": "TRS",
           "name": "TotalReturnSwap",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
           "group": "Derivatives",
           "doc": "Total return swap"
         },
         {
-          "value": "UST",
-          "name": "USTreasuryNoteOld",
-          "since": "4.3",
-          "deprecated": "4.4",
-          "sort": 3,
-          "doc": "US Treasury Note (Deprecated Value Use TNOTE)"
+          "value": "AMENDED",
+          "name": "Amended",
+          "group": "Loan",
+          "doc": "Amended and restated"
         },
         {
-          "value": "USTB",
-          "name": "USTreasuryBillOld",
-          "since": "4.1",
-          "deprecated": "4.4",
-          "sort": 4,
-          "doc": "US Treasury Bill (Deprecated Value Use TBILL)"
+          "value": "ETF",
+          "name": "ExchangeTradedFund",
+          "group": "Other",
+          "doc": "Exchange Traded Fund"
         },
         {
-          "value": "VARSWAP",
-          "name": "VarianceSwap",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 27,
+          "value": "LOANLEASE",
+          "name": "LoanLease",
           "group": "Derivatives",
-          "doc": "Variance swap"
+          "doc": "Loan/lease"
+        },
+        {
+          "value": "LQN",
+          "name": "LiquidityNote",
+          "group": "Money Market",
+          "doc": "Liquidity Note"
+        },
+        {
+          "value": "PRCORP",
+          "name": "PreferredCorporateBond",
+          "group": "Corporate",
+          "doc": "Preferred Corporate Bond"
+        },
+        {
+          "value": "TAXA",
+          "name": "TaxAllocation",
+          "group": "Municipal",
+          "doc": "Tax Allocation"
+        },
+        {
+          "value": "TBA",
+          "name": "ToBeAnnounced",
+          "group": "Mortgage",
+          "doc": "To Be Announced"
+        },
+        {
+          "value": "TNOTE",
+          "name": "USTreasuryNote",
+          "group": "Government",
+          "doc": "US Treasury Note"
+        },
+        {
+          "value": "DIGITAL",
+          "name": "DigitalAsset",
+          "group": "Other",
+          "doc": "Digital Asset"
+        },
+        {
+          "value": "DIMSUMSOV",
+          "name": "OffshoreIssuedChineseYuanSovereignBond",
+          "group": "Government",
+          "doc": "Offshore issued Chinese Yuan (CNY) denominated sovereign bond"
+        },
+        {
+          "value": "MTN",
+          "name": "MediumTermNotes",
+          "group": "Money Market",
+          "doc": "Medium Term Notes"
+        },
+        {
+          "value": "RETIRED",
+          "name": "Retired",
+          "group": "Loan",
+          "doc": "Retired"
+        },
+        {
+          "value": "TECP",
+          "name": "TaxExemptCommercialPaper",
+          "group": "Municipal",
+          "doc": "Tax Exempt Commercial Paper"
+        },
+        {
+          "value": "ONITE",
+          "name": "Overnight",
+          "group": "Money Market",
+          "doc": "Overnight"
+        },
+        {
+          "value": "OOF",
+          "name": "OptionsOnFutures",
+          "group": "Derivatives",
+          "doc": "Options on Futures"
+        },
+        {
+          "value": "SOV",
+          "name": "SovereignBond",
+          "group": "Government",
+          "doc": "Sovereign Bond"
+        },
+        {
+          "value": "TMCP",
+          "name": "TaxableMunicipalCP",
+          "group": "Municipal",
+          "doc": "Taxable Municipal CP"
+        },
+        {
+          "value": "OOP",
+          "name": "OptionsOnPhysical",
+          "group": "Derivatives",
+          "doc": "Options on Physical - use not recommended"
+        },
+        {
+          "value": "PN",
+          "name": "PromissoryNote",
+          "group": "Money Market",
+          "doc": "Promissory Note"
+        },
+        {
+          "value": "STN",
+          "name": "ShortTermLoanNote",
+          "group": "Money Market",
+          "doc": "Short Term Loan Note"
+        },
+        {
+          "value": "TFRN",
+          "name": "USTreasuryFloatingRateNote",
+          "group": "Government",
+          "doc": "US Treasury Floating Rate Note"
+        },
+        {
+          "value": "TRAN",
+          "name": "TaxRevenueAnticipationNote",
+          "group": "Municipal",
+          "doc": "Tax Revenue Anticipation Note"
+        },
+        {
+          "value": "OPT",
+          "name": "Option",
+          "group": "Derivatives",
+          "doc": "Option"
+        },
+        {
+          "value": "PZFJ",
+          "name": "PlazosFijos",
+          "group": "Money Market",
+          "doc": "Plazos Fijos"
         },
         {
           "value": "VRDN",
           "name": "VariableRateDemandNote",
-          "since": "4.3",
-          "sort": 15,
           "group": "Municipal",
           "doc": "Variable Rate Demand Note"
         },
         {
-          "value": "VRDO",
-          "name": "VariableRateDemandObligation",
-          "ep": 272,
-          "sort": 19,
-          "group": "Municipal",
-          "doc": "Variable Rate Demand Obligation"
+          "value": "SLQN",
+          "name": "SecuredLiquidityNote",
+          "group": "Money Market",
+          "doc": "Secured Liquidity Note"
+        },
+        {
+          "value": "SPOTFWD",
+          "name": "SpotForward",
+          "group": "Derivatives",
+          "doc": "Spot forward"
         },
         {
           "value": "WAR",
           "name": "Warrant",
-          "since": "4.1",
-          "sort": 16,
           "group": "Municipal",
           "doc": "Warrant"
         },
         {
-          "value": "WITHDRN",
-          "name": "Withdrawn",
-          "since": "4.3",
-          "sort": 8,
-          "group": "Loan",
-          "doc": "Withdrawn"
+          "value": "MCPIB",
+          "name": "MunicipalInterestBearingCommercialPaper",
+          "group": "Municipal",
+          "doc": "Municipal Interest Bearing Commercial Paper"
         },
         {
-          "value": "WLD",
-          "name": "WildcardEntry",
-          "since": "5.0",
-          "deprecated": "5.0.1"
+          "value": "SWAPTION",
+          "name": "SwapOption",
+          "group": "Derivatives",
+          "doc": "Swap option"
         },
         {
-          "value": "XCN",
-          "name": "ExtendedCommNote",
-          "since": "4.3",
-          "sort": 20,
+          "value": "TD",
+          "name": "TimeDeposit",
           "group": "Money Market",
-          "doc": "Extended Comm Note"
+          "doc": "Time Deposit"
         },
         {
-          "value": "XLINKD",
-          "name": "IndexedLinked",
-          "since": "4.3",
-          "sort": 7,
-          "group": "Corporate",
-          "doc": "Indexed Linked"
+          "value": "TMB",
+          "name": "TaxableMunicipalBond",
+          "group": "Municipal",
+          "doc": "Taxable Municipal Bond"
         },
         {
           "value": "XMISSION",
           "name": "Transmission",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 18,
           "group": "Derivatives",
           "doc": "Transmission"
         },
         {
-          "value": "YANK",
-          "name": "YankeeCorporateBond",
-          "since": "4.3",
-          "sort": 9,
-          "group": "Corporate",
-          "doc": "Yankee Corporate Bond"
+          "value": "INDEX",
+          "name": "Index",
+          "group": "Derivatives",
+          "doc": "General type for a contract based on an established index"
+        },
+        {
+          "value": "TLQN",
+          "name": "TermLiquidityNote",
+          "group": "Money Market",
+          "doc": "Term Liquidity Note"
+        },
+        {
+          "value": "VRDO",
+          "name": "VariableRateDemandObligation",
+          "group": "Municipal",
+          "doc": "Variable Rate Demand Obligation"
+        },
+        {
+          "value": "BDBSKT",
+          "name": "BondBasket",
+          "group": "Derivatives",
+          "doc": "Bond basket"
+        },
+        {
+          "value": "XCN",
+          "name": "ExtendedCommNote",
+          "group": "Money Market",
+          "doc": "Extended Comm Note"
+        },
+        {
+          "value": "CFD",
+          "name": "ContractForDifference",
+          "group": "Derivatives",
+          "doc": "Contract for difference"
         },
         {
           "value": "YCD",
           "name": "YankeeCertificateOfDeposit",
-          "since": "4.4",
-          "sort": 21,
           "group": "Money Market",
           "doc": "Yankee Certificate Of Deposit"
         },
         {
+          "value": "BAB",
+          "name": "BankAcceptedBill",
+          "group": "Money Market",
+          "doc": "Bank Accepted Bill"
+        },
+        {
+          "value": "CRLTNSWAP",
+          "name": "CorrelationSwap",
+          "group": "Derivatives",
+          "doc": "Correlation swap"
+        },
+        {
+          "value": "BNST",
+          "name": "ShortTermBankNote",
+          "group": "Money Market",
+          "doc": "Short Term Bank Note"
+        },
+        {
+          "value": "DVDNDSWAP",
+          "name": "DiviendSwap",
+          "group": "Derivatives",
+          "doc": "Dividend swap"
+        },
+        {
+          "value": "CLCP",
+          "name": "CallableCommercialPaper",
+          "group": "Money Market",
+          "doc": "Callable Commercial Paper"
+        },
+        {
+          "value": "EQBSKT",
+          "name": "EquityBasket",
+          "group": "Derivatives",
+          "doc": "Equity basket"
+        },
+        {
+          "value": "CN",
+          "name": "CommercialNote",
+          "group": "Money Market",
+          "doc": "Commercial Note"
+        },
+        {
+          "value": "EQFWD",
+          "name": "EquityForward",
+          "group": "Derivatives",
+          "doc": "Equity forward"
+        },
+        {
+          "value": "CPIB",
+          "name": "InterestBearingCommercialPaper",
+          "group": "Money Market",
+          "doc": "Interest Bearing Commercial Paper"
+        },
+        {
+          "value": "RTRNSWAP",
+          "name": "ReturnSwap",
+          "group": "Derivatives",
+          "doc": "Return swap"
+        },
+        {
+          "value": "EUMTN",
+          "name": "EuroMediumTermNote",
+          "group": "Money Market",
+          "doc": "Euro Medium Term Note"
+        },
+        {
+          "value": "VARSWAP",
+          "name": "VarianceSwap",
+          "group": "Derivatives",
+          "doc": "Variance swap"
+        },
+        {
+          "value": "EUNCP",
+          "name": "EuroNegotiableCommercialPaper",
+          "group": "Money Market",
+          "doc": "Euro Negotiable Commercial Paper"
+        },
+        {
+          "value": "PRTFLIOSWAP",
+          "name": "PortfolioSwaps",
+          "group": "Derivatives",
+          "doc": "Portfolio swap"
+        },
+        {
+          "value": "EUSTLQN",
+          "name": "EuroStructuredLiquidityNote",
+          "group": "Money Market",
+          "doc": "Euro Structured Liquidity Note"
+        },
+        {
+          "value": "FUTSWAP",
+          "name": "FuturesOnASwap",
+          "group": "Derivatives",
+          "doc": "Futures on a Swap"
+        },
+        {
+          "value": "EUTD",
+          "name": "EuroTimeDeposit",
+          "group": "Money Market",
+          "doc": "Euro Time Deposit"
+        },
+        {
+          "value": "FWDSWAP",
+          "name": "ForwardsOnASwap",
+          "group": "Derivatives",
+          "doc": "Forwards on a Swap"
+        },
+        {
+          "value": "FWDFRTAGMT",
+          "name": "ForwardFreightAgreement",
+          "group": "Derivatives",
+          "doc": "Forward Freight Agreement"
+        },
+        {
+          "value": "JCD",
+          "name": "JumboCertificateOfDeposit",
+          "group": "Money Market",
+          "doc": "Jumbo Certificate of Deposit"
+        },
+        {
+          "value": "MMF",
+          "name": "MoneyMarketFund",
+          "group": "Money Market",
+          "doc": "Money Market Fund"
+        },
+        {
+          "value": "SPREADBET",
+          "name": "SpreadBetting",
+          "group": "Derivatives",
+          "doc": "Spread Betting"
+        },
+        {
+          "value": "ETC",
+          "name": "ExchangeTradedCommodity",
+          "group": "Derivatives",
+          "doc": "Exchange traded commodity"
+        },
+        {
+          "value": "MN",
+          "name": "MasterNote",
+          "group": "Money Market",
+          "doc": "Master Note"
+        },
+        {
+          "value": "NCD",
+          "name": "NegotiableCertificateOfDeposit",
+          "group": "Money Market",
+          "doc": "Negotiable Certificate of Deposit"
+        },
+        {
+          "value": "NCP",
+          "name": "NegotiableCommercialPaper",
+          "group": "Money Market",
+          "doc": "Negotiable Commercial Paper"
+        },
+        {
+          "value": "RCD",
+          "name": "RetailCertificateOfDeposit",
+          "group": "Money Market",
+          "doc": "Retail Certificate of Deposit"
+        },
+        {
+          "value": "TDR",
+          "name": "TermDepositReceipt",
+          "group": "Money Market",
+          "doc": "Term Deposit Receipt"
+        },
+        {
+          "value": "ABS",
+          "name": "AssetBackedSecurities",
+          "group": "Mortgage",
+          "doc": "Asset-backed Securities"
+        },
+        {
+          "value": "AN",
+          "name": "OtherAnticipationNotes",
+          "group": "Municipal",
+          "doc": "Other Anticipation Notes (BAN, GAN, etc.)"
+        },
+        {
+          "value": "BA",
+          "name": "BankersAcceptance",
+          "group": "Money Market",
+          "doc": "Bankers Acceptance"
+        },
+        {
+          "value": "BRADY",
+          "name": "BradyBond",
+          "group": "Government",
+          "doc": "Brady Bond"
+        },
+        {
+          "value": "CORP",
+          "name": "CorporateBond",
+          "group": "Corporate",
+          "doc": "Corporate Bond"
+        },
+        {
+          "value": "CS",
+          "name": "CommonStock",
+          "group": "Equity",
+          "doc": "Common Stock"
+        },
+        {
+          "value": "EUSUPRA",
+          "name": "EuroSupranationalCoupons",
+          "group": "Agency",
+          "doc": "Euro Supranational Coupons"
+        },
+        {
+          "value": "FHA",
+          "name": "FederalHousingAuthority"
+        },
+        {
+          "value": "FHL",
+          "name": "FederalHomeLoan"
+        },
+        {
+          "value": "FN",
+          "name": "FederalNationalMortgageAssociation"
+        },
+        {
+          "value": "FOR",
+          "name": "ForeignExchangeContract",
+          "group": "Currency",
+          "doc": "Foreign Exchange Contract"
+        },
+        {
+          "value": "GN",
+          "name": "GovernmentNationalMortgageAssociation"
+        },
+        {
+          "value": "GOVT",
+          "name": "TreasuriesAgencyDebenture"
+        },
+        {
+          "value": "MF",
+          "name": "MutualFund",
+          "group": "Other",
+          "doc": "Mutual Fund"
+        },
+        {
+          "value": "MUNI",
+          "name": "MunicipalBond"
+        },
+        {
+          "value": "POOL",
+          "name": "AgencyPools"
+        },
+        {
+          "value": "REPO",
+          "name": "Repurchase",
+          "group": "Financing",
+          "doc": "Repurchase"
+        },
+        {
+          "value": "RP",
+          "name": "RepurchaseAgreement"
+        },
+        {
+          "value": "RVRP",
+          "name": "ReverseRepurchaseAgreement"
+        },
+        {
+          "value": "SL",
+          "name": "StudentLoanMarketingAssociation"
+        },
+        {
+          "value": "TERM",
+          "name": "TermLoan",
+          "group": "Loan",
+          "doc": "Term Loan"
+        },
+        {
+          "value": "WLD",
+          "name": "WildcardEntry"
+        },
+        {
           "value": "ZOO",
-          "name": "CatsTigersAndLions",
-          "since": "4.1",
-          "deprecated": "4.3"
+          "name": "CatsTigersAndLions"
         }
       ],
       "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
@@ -4102,36 +3228,26 @@
         {
           "value": "0",
           "name": "Other",
-          "since": "4.1",
-          "sort": 1,
           "doc": "Other"
         },
         {
           "value": "1",
           "name": "DTCSID",
-          "since": "4.1",
-          "sort": 2,
           "doc": "DTC SID"
         },
         {
           "value": "2",
           "name": "ThomsonALERT",
-          "since": "4.1",
-          "sort": 3,
           "doc": "Thomson ALERT"
         },
         {
           "value": "3",
           "name": "AGlobalCustodian",
-          "since": "4.1",
-          "sort": 4,
           "doc": "A Global Custodian (StandInstDBName (70) must be provided)"
         },
         {
           "value": "4",
           "name": "AccountNet",
-          "since": "4.4",
-          "sort": 5,
           "doc": "AccountNet"
         }
       ],
@@ -4175,33 +3291,21 @@
         {
           "value": "0",
           "name": "Versus",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 1,
           "doc": "\"Versus. Payment\": Deliver (if Sell) or Receive (if Buy) vs. (Against) Payment"
         },
         {
           "value": "1",
           "name": "Free",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 2,
           "doc": "\"Free\": Deliver (if Sell) or Receive (if Buy) Free"
         },
         {
           "value": "2",
           "name": "TriParty",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 3,
           "doc": "Tri-Party"
         },
         {
           "value": "3",
           "name": "HoldInCustody",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 4,
           "doc": "Hold In Custody"
         }
       ],
@@ -4496,15 +3600,11 @@
         {
           "value": "0",
           "name": "FXNetting",
-          "since": "4.1",
-          "sort": 1,
           "doc": "FX Netting"
         },
         {
           "value": "1",
           "name": "FXSwap",
-          "since": "4.1",
-          "sort": 2,
           "doc": "FX Swap"
         }
       ],

@@ -212,9 +212,6 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
             Ok(vec![
                 code.value().to_owned(),
                 code.name().to_owned(),
-                code.since().map_or_else(String::new, |v| v.to_string()),
-                code.deprecated()
-                    .map_or_else(String::new, |v| v.to_string()),
                 code.aliases().collect::<Vec<_>>().join(", "),
                 code.doc().unwrap_or_default().to_owned(),
             ])
@@ -222,10 +219,7 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         .collect::<Result<Vec<_>>>()?;
     if !codes.is_empty() {
         style::heading("codes");
-        style::table(
-            &["value", "name", "since", "deprecated", "aliases", "doc"],
-            &codes,
-        );
+        style::table(&["value", "name", "aliases", "doc"], &codes);
     }
     Ok(())
 }

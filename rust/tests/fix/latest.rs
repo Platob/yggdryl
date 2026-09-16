@@ -273,14 +273,14 @@ fn ruled_registry() -> Arc<FixRegistry> {
         .set_codes(&[
             FixCode::new("Agency", "A"),
             FixCode::new("Principal", "P"),
-            FixCode::new("Retired", "Z").with_deprecated(version("4.4")),
+            FixCode::new("Retired", "Z"),
         ])
         .expect("codes");
     Arc::new(FixRegistry::from_fields([rule80a, capacity]).expect("a registry"))
 }
 
 #[test]
-fn a_target_takes_a_value_unless_it_states_a_current_code() {
+fn a_target_takes_a_value_unless_the_message_stated_one() {
     let rule80a = || DataType::utf8().required_field("rule80a");
     let capacity = || DataType::utf8().nullable_field("ordercapacity");
     // Absent: appended.
@@ -311,7 +311,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
         with_bundle(&["ordercapacity", "rule80a"], &["version"])
     );
     assert_eq!(text(&latest, 528), Some("A"));
-    // A stated current code stands, and blocks the rule.
+    // A stated value stands, and blocks the rule.
     let message = built(
         ruled_registry(),
         vec![capacity(), rule80a()],
@@ -322,7 +322,8 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
     );
     let latest = enriched(message);
     assert_eq!(text(&latest, 528), Some("P"));
-    // A code the set no longer declares at the newest version is written over.
+    // Every value a set declares is a value the message stated, so a rule
+    // never writes over one: the set retires none of them.
     let message = built(
         ruled_registry(),
         vec![capacity(), rule80a()],
@@ -332,7 +333,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(text(&latest, 528), Some("A"));
+    assert_eq!(text(&latest, 528), Some("Z"));
     // A value the rule does not speak for fills nothing.
     let message = built(
         ruled_registry(),
@@ -341,7 +342,6 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
     );
     let latest = enriched(message);
     assert_eq!(latest.get_by_tag(528), None);
-    assert_eq!(latest.version(), Some(version("4.4")));
 }
 
 // --- The committed dictionary ---
@@ -408,16 +408,12 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     let read = reader.sole_line(REPORT, false).expect("a readable line");
     assert_eq!(read.version(), Some(version("4.2")));
     assert_eq!(text(&read, 150), Some(state("1").as_str()), "read at 4.2");
-    // The registry holds tag 47 whatever a version made of it - it filters
-    // by none - and the code sets are what still date a value.
+    // The registry holds tag 47 whatever a version made of it - it filters by
+    // none - and a code set states one reading of every value it declares.
     let registry = reader.registry();
     assert_eq!(registry.get_field(47).map(Field::name), Some("rule80a"));
     assert_eq!(
-        registry
-            .field_by_tag(150)
-            .unwrap()
-            .as_fix()
-            .code_value_at(version("4.2"), "1"),
+        registry.field_by_tag(150).unwrap().as_fix().code_value("1"),
         Some("1")
     );
 

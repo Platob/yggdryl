@@ -18,7 +18,7 @@ use super::directions::{FixDirection, FixDirections};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::expression::Term;
 use crate::types::folds_equal;
-use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
+use crate::{DataType, Error, FixField, FixFieldMut, Result};
 
 /// The dictionaries that contributed this field, folded and sorted; absent
 /// for a field the specification alone defines.
@@ -469,59 +469,18 @@ impl<'field> FixField<'field> {
         self.one_matching(|code| code.is_spelled(name))
     }
 
-    /// Returns the code one wire value stands for at `at`.
-    ///
-    /// The version is a preference here too: a value the message actually
-    /// carries is named whether or not the version it claims had heard of it,
-    /// because a value in the data is a fact and a version in the frame is an
-    /// assertion.
-    pub fn code_at(&self, at: Version, value: &str) -> Option<FixCodeValue<'field>> {
-        let _ = at;
-        self.code(value)
-    }
-
     /// Resolves any spelling of a code to its wire value.
     ///
     /// Composes the three tiers this module documents. An unresolved spelling
     /// answers `None` and the caller keeps its own text: a venue sends codes
     /// no dictionary lists, and refusing one would drop data.
     pub fn code_value(&self, text: &str) -> Option<&'field str> {
-        self.resolve_value(text, None)
+        translate(self.codes_document()?, text)
     }
 
     /// Returns the symbolic name one wire value stands for.
     pub fn code_name(&self, value: &str) -> Option<&'field str> {
         self.code(value).map(FixCodeValue::name)
-    }
-
-    /// Resolves any spelling of a code to its wire value, at one version.
-    ///
-    /// A code added after `at`, and one deprecated at or before it, are both
-    /// invisible: a 4.2 message cannot resolve a name added in 4.4.
-    pub fn code_value_at(&self, at: Version, text: &str) -> Option<&'field str> {
-        self.resolve_value(text, Some(at))
-    }
-
-    /// Returns the symbolic name one wire value stands for, at one version.
-    pub fn code_name_at(&self, at: Version, value: &str) -> Option<&'field str> {
-        self.code_at(at, value).map(FixCodeValue::name)
-    }
-
-    /// The three tiers, preferring what the version knows.
-    ///
-    /// The version is a *preference*, not a gate. A capture whose frame says
-    /// 4.2 routinely carries values the specification added in 4.4 - a venue
-    /// upgrades one side, a bridge relabels a session, a configuration is
-    /// copied from another desk - and a reader that refused them would drop
-    /// exactly the traffic someone is trying to explain. So a code the
-    /// version knows wins, and a code it does not is still read rather than
-    /// discarded.
-    ///
-    /// The preference is what keeps it honest: where two spellings differ
-    /// only by version, the one the message's own version declares answers,
-    /// so a dated read is still a dated read.
-    fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
-        translate(self.codes_document()?, text, at)
     }
 
     /// The stored code-set document, when this field carries one.
@@ -1573,42 +1532,25 @@ fn one_matching<'field>(
     found
 }
 
-/// The three tiers over one already-read document, at one visibility.
-/// [`FixField::code_value_at`] over a stored document: the three tiers as the
-/// version knows them, then as every version does.
-pub(super) fn translate<'field>(
-    stored: &'field str,
-    text: &str,
-    at: Option<Version>,
-) -> Option<&'field str> {
-    if at.is_some() {
-        if let Some(held) = resolve_in(stored, text, at) {
-            return Some(held);
-        }
-    }
-    resolve_in(stored, text, None)
-}
-
-fn resolve_in<'field>(stored: &'field str, text: &str, at: Option<Version>) -> Option<&'field str> {
-    let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
+/// [`FixField::code_value`] over a stored document: the three tiers, in order.
+///
+/// A set states one reading of every code it declares and dates none of them,
+/// so every code it holds is a candidate and there is no version to prefer by.
+pub(super) fn translate<'field>(stored: &'field str, text: &str) -> Option<&'field str> {
     // Tier 1: the text as a wire value, exactly. A spelling that is already a
     // legal code is never reinterpreted as somebody's name, and the record a
     // value opens is addressed rather than searched for.
     if let Some(code) = FixCodes::seek_value(stored, text) {
-        if visible(&code) {
-            return Some(code.value());
-        }
+        return Some(code.value());
     }
     // Tier 2: the folded symbolic name, then any alias.
-    if let Some(code) = one_matching(stored, |code| visible(code) && code.is_spelled(text)) {
+    if let Some(code) = one_matching(stored, |code| code.is_spelled(text)) {
         return Some(code.value());
     }
     // Tier 3: the leading parenthesized abbreviation of the description.
     one_matching(stored, |code| {
-        visible(code)
-            && code
-                .abbreviation()
-                .is_some_and(|short| folds_equal(short, text))
+        code.abbreviation()
+            .is_some_and(|short| folds_equal(short, text))
     })
     .map(FixCodeValue::value)
 }

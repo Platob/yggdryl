@@ -474,11 +474,29 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
 def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`fix:codes`, ordered by wire value with `value` leading each record."""
-    order = ["value", "name", "since", "ep", "deprecated", "sort", "group", "aliases", "doc"]
-    ordered = sorted(codes, key=lambda code: (code["value"], code["name"]))
+    """`fix:codes`, in the rank the specification gives, `value` leading each record.
+
+    Where a code sits in the list *is* its presentation rank, so the rank is
+    the order rather than a key beside it. A code the source ranks keeps that
+    rank; one it does not follows every ranked code, in wire-value order, so
+    the document is still one text for one set however it was assembled.
+
+    A code's dates are the source's own bookkeeping and are not written: the
+    set states one reading of every value it declares and retires none of
+    them, so `since`, `ep` and `deprecated` reach this function and stop here.
+    """
+    order = ["value", "name", "group", "aliases", "doc"]
+    unranked = 1 << 30
+    by_value = sorted(codes, key=lambda code: (code["value"], code["name"]))
+    ranked = sorted(
+        enumerate(by_value),
+        key=lambda pair: (
+            pair[1]["sort"] if pair[1].get("sort") is not None else unranked,
+            pair[0],
+        ),
+    )
     rendered = []
-    for code in ordered:
+    for _, code in ranked:
         rendered.append({key: code[key] for key in order if code.get(key) not in (None, [], False)})
     return rendered
 

@@ -300,57 +300,36 @@
         {
           "value": "1",
           "name": "OrderReceivedFromCustomer",
-          "since": "5.0.2",
-          "ep": 135,
-          "sort": 1,
           "doc": "Order received from a customer"
         },
         {
           "value": "2",
           "name": "OrderReceivedFromWithinFirm",
-          "since": "5.0.2",
-          "ep": 135,
-          "sort": 2,
           "doc": "Order received from within the firm"
         },
         {
           "value": "3",
           "name": "OrderReceivedFromAnotherBrokerDealer",
-          "since": "5.0.2",
-          "ep": 135,
-          "sort": 3,
           "doc": "Order received from another broker-dealer"
         },
         {
           "value": "4",
           "name": "OrderReceivedFromCustomerOrWithFirm",
-          "since": "5.0.2",
-          "ep": 135,
-          "sort": 4,
           "doc": "Order received from a customer or originated from within the firm"
         },
         {
           "value": "5",
           "name": "OrderReceivedFromDirectAccessCustomer",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 5,
           "doc": "Order received from a direct access or sponsored access customer"
         },
         {
           "value": "6",
           "name": "OrderReceivedFromForeignDealerEquivalent",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 6,
           "doc": "Order received from a foreign dealer equivalent"
         },
         {
           "value": "7",
           "name": "OrderReceivedFromExecutionOnlyService",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 7,
           "doc": "Order received from an execution-only service"
         }
       ],
@@ -490,15 +469,11 @@
         {
           "value": "0",
           "name": "Rollup",
-          "since": "5.0.2",
-          "ep": 118,
           "doc": "Roll up"
         },
         {
           "value": "1",
           "name": "DoNotRollUp",
-          "since": "5.0.2",
-          "ep": 118,
           "doc": "Do not roll up"
         }
       ],
@@ -540,27 +515,19 @@
       "display": "AllocReversalStatus",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Completed",
-          "since": "5.0.2",
-          "ep": 118,
-          "doc": "Completed"
-        },
-        {
           "value": "1",
           "name": "Refused",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 1,
           "doc": "Refused"
         },
         {
           "value": "2",
           "name": "Cancelled",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 2,
           "doc": "Cancelled"
+        },
+        {
+          "value": "0",
+          "name": "Completed",
+          "doc": "Completed"
         }
       ],
       "fix:tag": "1738"
@@ -577,35 +544,24 @@
       "display": "ObligationType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bond",
-          "since": "5.0.2",
-          "ep": 119,
-          "doc": "Bond"
-        },
-        {
           "value": "1",
           "name": "ConvertBond",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 1,
           "doc": "Convertible bond"
         },
         {
           "value": "2",
           "name": "Mortgage",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 2,
           "doc": "Mortgage"
         },
         {
           "value": "3",
           "name": "Loan",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 3,
           "doc": "Loan"
+        },
+        {
+          "value": "0",
+          "name": "Bond",
+          "doc": "Bond"
         }
       ],
       "fix:tag": "1739"
@@ -622,59 +578,39 @@
       "display": "TradePriceNegotiationMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "PercentPar",
-          "since": "5.0.2",
-          "ep": 119,
-          "doc": "Percent of par"
-        },
-        {
           "value": "1",
           "name": "DealSpread",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 1,
           "doc": "Deal spread"
         },
         {
           "value": "2",
           "name": "UpfrontPnts",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 2,
           "doc": "Upfront points"
         },
         {
           "value": "3",
           "name": "UpfrontAmt",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 3,
           "doc": "Upfront amount"
         },
         {
           "value": "4",
           "name": "ParUpfrontAmt",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 4,
           "doc": "Percent of par and upfront amount"
         },
         {
           "value": "5",
           "name": "SpreadUpfrontAmt",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 5,
           "doc": "Deal spread and upfront amount"
         },
         {
           "value": "6",
           "name": "UpfrontPntsAmt",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 6,
           "doc": "Upfront points and upfront amount"
+        },
+        {
+          "value": "0",
+          "name": "PercentPar",
+          "doc": "Percent of par"
         }
       ],
       "fix:tag": "1740"
@@ -693,17 +629,11 @@
         {
           "value": "1",
           "name": "Percentage",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 1,
           "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
         },
         {
           "value": "3",
           "name": "FixedAmount",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 3,
           "doc": "Fixed amount (absolute value)"
         }
       ],
@@ -745,19 +675,14 @@
       "display": "ApplLevelRecoveryIndicator",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NoApplRecoveryNeeded",
-          "since": "5.0.2",
-          "ep": 124,
-          "doc": "Application level recovery is not needed (default)"
-        },
-        {
           "value": "1",
           "name": "ApplRecoveryNeeded",
-          "since": "5.0.2",
-          "ep": 124,
-          "sort": 1,
           "doc": "Application level recovery is needed"
+        },
+        {
+          "value": "0",
+          "name": "NoApplRecoveryNeeded",
+          "doc": "Application level recovery is not needed (default)"
         }
       ],
       "fix:tag": "1744"
@@ -958,25 +883,16 @@
         {
           "value": "1",
           "name": "Definitions",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 1,
           "doc": "Definitions(Default)"
         },
         {
           "value": "2",
           "name": "Utilization",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 2,
           "doc": "Utilization"
         },
         {
           "value": "3",
           "name": "DefinitionsAndUtilizations",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 3,
           "doc": "Definitions and utilization"
         }
       ],
@@ -994,139 +910,89 @@
       "display": "RiskLimitRequestResult",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Successful",
-          "since": "5.0.2",
-          "ep": 128,
-          "doc": "Successful (default)"
-        },
-        {
           "value": "1",
           "name": "InvalidParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 1,
           "doc": "Invalid party(-ies)"
-        },
-        {
-          "value": "10",
-          "name": "WarningLevelActionsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 10,
-          "doc": "Warning level actions not supported"
-        },
-        {
-          "value": "11",
-          "name": "RiskInstrumentScopeNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 11,
-          "doc": "Risk instrument scope not supported"
-        },
-        {
-          "value": "12",
-          "name": "RiskLimitNotApprovedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 12,
-          "doc": "Risk limit not approved for party(-ies)"
-        },
-        {
-          "value": "13",
-          "name": "RiskLimitAlreadyDefinedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 13,
-          "doc": "Risk limit already defined for party(-ies)"
-        },
-        {
-          "value": "14",
-          "name": "InstrumentNotApprovedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 14,
-          "doc": "Instrument not approved for party(-ies)"
         },
         {
           "value": "2",
           "name": "InvalidRelatedParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 2,
           "doc": "Invalid related party(-ies)"
         },
         {
           "value": "3",
           "name": "InvalidRiskLimitType",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 3,
           "doc": "Invalid risk limit type(s)"
         },
         {
           "value": "4",
           "name": "InvalidRiskLimitID",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 4,
           "doc": "Invalid risk limit ID(s)"
         },
         {
           "value": "5",
           "name": "InvalidRiskLimitAmount",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 5,
           "doc": "Invalid risk limit amount(s)"
         },
         {
           "value": "6",
           "name": "InvalidRiskWarningLevelAction",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 6,
           "doc": "Invalid risk/warning level action(s)"
         },
         {
           "value": "7",
           "name": "InvalidRiskInstrumentScope",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 7,
           "doc": "Invalid risk instrument scope(s)"
         },
         {
           "value": "8",
           "name": "RiskLimitActionsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 8,
           "doc": "Risk limit actions not supported"
         },
         {
           "value": "9",
           "name": "WarningLevelsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 9,
           "doc": "Warning levels not supported"
+        },
+        {
+          "value": "10",
+          "name": "WarningLevelActionsNotSupported",
+          "doc": "Warning level actions not supported"
+        },
+        {
+          "value": "11",
+          "name": "RiskInstrumentScopeNotSupported",
+          "doc": "Risk instrument scope not supported"
+        },
+        {
+          "value": "12",
+          "name": "RiskLimitNotApprovedForParty",
+          "doc": "Risk limit not approved for party(-ies)"
+        },
+        {
+          "value": "13",
+          "name": "RiskLimitAlreadyDefinedForParty",
+          "doc": "Risk limit already defined for party(-ies)"
+        },
+        {
+          "value": "14",
+          "name": "InstrumentNotApprovedForParty",
+          "doc": "Instrument not approved for party(-ies)"
         },
         {
           "value": "98",
           "name": "NotAuthorized",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 98,
           "doc": "Not authorized"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
         }
       ],
       "fix:tag": "1761"
@@ -1143,35 +1009,24 @@
       "display": "RiskLimitRequestStatus",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Accepted",
-          "since": "5.0.2",
-          "ep": 146,
-          "doc": "Accepted"
-        },
-        {
           "value": "1",
           "name": "AcceptedWithChanges",
-          "since": "5.0.2",
-          "ep": 146,
-          "sort": 1,
           "doc": "Accepted with changes"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "5.0.2",
-          "ep": 146,
-          "sort": 2,
           "doc": "Rejected"
         },
         {
           "value": "3",
           "name": "AcceptancePending",
-          "since": "5.0.2",
-          "ep": 146,
-          "sort": 3,
           "doc": "Acceptance pending"
+        },
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
         }
       ],
       "fix:tag": "1762"
@@ -1188,27 +1043,19 @@
       "display": "RiskLimitStatus",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Accepted",
-          "since": "5.0.2",
-          "ep": 146,
-          "doc": "Accepted"
-        },
-        {
           "value": "1",
           "name": "AcceptedWithChanges",
-          "since": "5.0.2",
-          "ep": 146,
-          "sort": 1,
           "doc": "Accepted with changes"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "5.0.2",
-          "ep": 146,
-          "sort": 2,
           "doc": "Rejected"
+        },
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
         }
       ],
       "fix:tag": "1763"
@@ -1225,139 +1072,89 @@
       "display": "RiskLimitResult",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Successful",
-          "since": "5.0.2",
-          "ep": 128,
-          "doc": "Successful (default)"
-        },
-        {
           "value": "1",
           "name": "InvalidParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 1,
           "doc": "Invalid party(-ies)"
-        },
-        {
-          "value": "10",
-          "name": "WarningLevelActionsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 10,
-          "doc": "Warning level actions not supported"
-        },
-        {
-          "value": "11",
-          "name": "RiskInstrumentScopeNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 11,
-          "doc": "Risk instrument scope not supported"
-        },
-        {
-          "value": "12",
-          "name": "RiskLimitNotApprovedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 12,
-          "doc": "Risk limit not approved for party(-ies)"
-        },
-        {
-          "value": "13",
-          "name": "RiskLimitAlreadyDefinedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 13,
-          "doc": "Risk limit already defined for party(-ies)"
-        },
-        {
-          "value": "14",
-          "name": "InstrumentNotApprovedForParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 14,
-          "doc": "Instrument not approved for party(-ies)"
         },
         {
           "value": "2",
           "name": "InvalidRelatedParty",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 2,
           "doc": "Invalid related party(-ies)"
         },
         {
           "value": "3",
           "name": "InvalidRiskLimitType",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 3,
           "doc": "Invalid risk limit type(s)"
         },
         {
           "value": "4",
           "name": "InvalidRiskLimitID",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 4,
           "doc": "Invalid risk limit ID(s)"
         },
         {
           "value": "5",
           "name": "InvalidRiskLimitAmount",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 5,
           "doc": "Invalid risk limit amount(s)"
         },
         {
           "value": "6",
           "name": "InvalidRiskWarningLevelAction",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 6,
           "doc": "Invalid risk/warning level action(s)"
         },
         {
           "value": "7",
           "name": "InvalidRiskInstrumentScope",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 7,
           "doc": "Invalid risk instrument scope(s)"
         },
         {
           "value": "8",
           "name": "RiskLimitActionsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 8,
           "doc": "Risk limit actions not supported"
         },
         {
           "value": "9",
           "name": "WarningLevelsNotSupported",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 9,
           "doc": "Warning levels not supported"
+        },
+        {
+          "value": "10",
+          "name": "WarningLevelActionsNotSupported",
+          "doc": "Warning level actions not supported"
+        },
+        {
+          "value": "11",
+          "name": "RiskInstrumentScopeNotSupported",
+          "doc": "Risk instrument scope not supported"
+        },
+        {
+          "value": "12",
+          "name": "RiskLimitNotApprovedForParty",
+          "doc": "Risk limit not approved for party(-ies)"
+        },
+        {
+          "value": "13",
+          "name": "RiskLimitAlreadyDefinedForParty",
+          "doc": "Risk limit already defined for party(-ies)"
+        },
+        {
+          "value": "14",
+          "name": "InstrumentNotApprovedForParty",
+          "doc": "Instrument not approved for party(-ies)"
         },
         {
           "value": "98",
           "name": "NotAuthorized",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 98,
           "doc": "Not authorized"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 128,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
         }
       ],
       "fix:tag": "1764"
@@ -1398,91 +1195,59 @@
       "display": "RiskLimitAction",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "QueueInbound",
-          "since": "5.0.2",
-          "ep": 171,
-          "doc": "Queue inbound"
-        },
-        {
           "value": "1",
           "name": "QueueOutbound",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 1,
           "doc": "Queue outbound"
-        },
-        {
-          "value": "10",
-          "name": "HaltTrading",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 10,
-          "doc": "Halt trading"
         },
         {
           "value": "2",
           "name": "Reject",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 2,
           "doc": "Reject"
         },
         {
           "value": "3",
           "name": "Disconnect",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 3,
           "doc": "Disconnect"
         },
         {
           "value": "4",
           "name": "Warning",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 4,
           "doc": "Warning"
         },
         {
           "value": "5",
           "name": "PingCreditCheckWithRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 5,
           "doc": "Ping credit check model with revalidation"
         },
         {
           "value": "6",
           "name": "PingCreditCheckNoRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 6,
           "doc": "Ping credit check model without revalidation"
         },
         {
           "value": "7",
           "name": "PushCreditCheckWithRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 7,
           "doc": "Push credit check model with revalidation"
         },
         {
           "value": "8",
           "name": "PushCreditCheckNoRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 8,
           "doc": "Push credit check model without revalidation"
         },
         {
           "value": "9",
           "name": "Suspend",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 9,
           "doc": "Suspend"
+        },
+        {
+          "value": "10",
+          "name": "HaltTrading",
+          "doc": "Halt trading"
+        },
+        {
+          "value": "0",
+          "name": "QueueInbound",
+          "doc": "Queue inbound"
         }
       ],
       "fix:tag": "1767"
@@ -1511,91 +1276,59 @@
       "display": "RiskWarningLevelAction",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "QueueInbound",
-          "since": "5.0.2",
-          "ep": 171,
-          "doc": "Queue inbound"
-        },
-        {
           "value": "1",
           "name": "QueueOutbound",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 1,
           "doc": "Queue outbound"
-        },
-        {
-          "value": "10",
-          "name": "HaltTrading",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 10,
-          "doc": "Halt trading"
         },
         {
           "value": "2",
           "name": "Reject",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 2,
           "doc": "Reject"
         },
         {
           "value": "3",
           "name": "Disconnect",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 3,
           "doc": "Disconnect"
         },
         {
           "value": "4",
           "name": "Warning",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 4,
           "doc": "Warning"
         },
         {
           "value": "5",
           "name": "PingCreditCheckWithRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 5,
           "doc": "Ping credit check model with revalidation"
         },
         {
           "value": "6",
           "name": "PingCreditCheckNoRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 6,
           "doc": "Ping credit check model without revalidation"
         },
         {
           "value": "7",
           "name": "PushCreditCheckWithRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 7,
           "doc": "Push credit check model with revalidation"
         },
         {
           "value": "8",
           "name": "PushCreditCheckNoRevalidation",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 8,
           "doc": "Push credit check model without revalidation"
         },
         {
           "value": "9",
           "name": "Suspend",
-          "since": "5.0.2",
-          "ep": 171,
-          "sort": 9,
           "doc": "Suspend"
+        },
+        {
+          "value": "10",
+          "name": "HaltTrading",
+          "doc": "Halt trading"
+        },
+        {
+          "value": "0",
+          "name": "QueueInbound",
+          "doc": "Queue inbound"
         }
       ],
       "fix:tag": "1769"
@@ -1672,75 +1405,49 @@
       "display": "EntitlementType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Trade",
-          "since": "5.0.2",
-          "ep": 129,
-          "doc": "Trade"
-        },
-        {
           "value": "1",
           "name": "MakeMarkets",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 1,
           "doc": "Make markets"
         },
         {
           "value": "2",
           "name": "HoldPositions",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 2,
           "doc": "Hold positions"
         },
         {
           "value": "3",
           "name": "PerformGiveUps",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 3,
           "doc": "Perform give-ups"
         },
         {
           "value": "4",
           "name": "SubmitIOIs",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 4,
           "doc": "Submit Indications of Interest (IOIs)"
         },
         {
           "value": "5",
           "name": "SubscribeMarketData",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 5,
           "doc": "Subscribe to market data"
         },
         {
           "value": "6",
           "name": "ShortWithPreBorrow",
-          "since": "5.0.2",
-          "ep": 164,
-          "sort": 6,
           "doc": "Short with pre-borrow"
         },
         {
           "value": "7",
           "name": "SubmitQuoteRequests",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 8,
           "doc": "Submit quote requests"
         },
         {
           "value": "8",
           "name": "RespondToQuoteRequests",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 8,
           "doc": "Respond to quote requests"
+        },
+        {
+          "value": "0",
+          "name": "Trade",
+          "doc": "Trade"
         }
       ],
       "fix:tag": "1775"
@@ -1795,317 +1502,212 @@
         {
           "value": "1",
           "name": "Int",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 1,
           "group": "int",
           "doc": "int"
         },
         {
-          "value": "10",
-          "name": "Amt",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 10,
-          "group": "float",
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 11,
-          "group": "float",
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 12,
-          "group": "char",
-          "doc": "char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 13,
-          "group": "char",
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 14,
-          "group": "String",
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 15,
-          "group": "String",
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 16,
-          "group": "String",
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 17,
-          "group": "String",
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 18,
-          "group": "String",
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 19,
-          "group": "String",
-          "doc": "UTCTimestamp"
-        },
-        {
           "value": "2",
           "name": "Length",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 2,
           "group": "int",
           "doc": "Length"
         },
         {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 20,
-          "group": "String",
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 21,
-          "group": "String",
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 22,
-          "group": "String",
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 23,
-          "group": "String",
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 24,
-          "group": "String",
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 25,
-          "group": "String",
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 26,
-          "group": "String",
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 27,
-          "group": "String",
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 28,
-          "group": "String",
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 29,
-          "group": "Pattern",
-          "doc": "Tenor"
-        },
-        {
           "value": "3",
           "name": "NumInGroup",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 3,
           "group": "int",
           "doc": "NumInGroup"
         },
         {
-          "value": "30",
-          "name": "DayOfMonth",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 30,
-          "group": "int",
-          "doc": "DayOfMonth"
-        },
-        {
-          "value": "31",
-          "name": "XMLData",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 31,
-          "group": "String",
-          "doc": "XMLData"
-        },
-        {
-          "value": "32",
-          "name": "Pattern",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 32,
-          "group": "Pattern",
-          "doc": "Pattern"
-        },
-        {
-          "value": "33",
-          "name": "Reserved100Plus",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 33,
-          "group": "Pattern",
-          "doc": "Reserved100Plus"
-        },
-        {
-          "value": "34",
-          "name": "Reserved1000Plus",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 34,
-          "group": "Pattern",
-          "doc": "Reserved1000Plus"
-        },
-        {
-          "value": "35",
-          "name": "Reserved4000Plus",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 35,
-          "group": "Pattern",
-          "doc": "Reserved4000Plus"
-        },
-        {
           "value": "4",
           "name": "SeqNum",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 4,
           "group": "int",
           "doc": "SeqNum"
         },
         {
           "value": "5",
           "name": "TagNum",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 5,
           "group": "int",
           "doc": "TagNum"
         },
         {
           "value": "6",
           "name": "Float",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 6,
           "group": "float",
           "doc": "float"
         },
         {
           "value": "7",
           "name": "Qty",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 7,
           "group": "float",
           "doc": "Qty"
         },
         {
           "value": "8",
           "name": "Price",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 8,
           "group": "float",
           "doc": "Price"
         },
         {
           "value": "9",
           "name": "PriceOffset",
-          "since": "5.0.2",
-          "ep": 129,
-          "sort": 9,
           "group": "float",
           "doc": "PriceOffset"
+        },
+        {
+          "value": "10",
+          "name": "Amt",
+          "group": "float",
+          "doc": "Amt"
+        },
+        {
+          "value": "11",
+          "name": "Percentage",
+          "group": "float",
+          "doc": "Percentage"
+        },
+        {
+          "value": "12",
+          "name": "Char",
+          "group": "char",
+          "doc": "char"
+        },
+        {
+          "value": "13",
+          "name": "Boolean",
+          "group": "char",
+          "doc": "Boolean"
+        },
+        {
+          "value": "14",
+          "name": "String",
+          "group": "String",
+          "doc": "String"
+        },
+        {
+          "value": "15",
+          "name": "MultipleCharValue",
+          "group": "String",
+          "doc": "MultipleCharValue"
+        },
+        {
+          "value": "16",
+          "name": "Currency",
+          "group": "String",
+          "doc": "Currency"
+        },
+        {
+          "value": "17",
+          "name": "Exchange",
+          "group": "String",
+          "doc": "Exchange"
+        },
+        {
+          "value": "18",
+          "name": "MonthYear",
+          "group": "String",
+          "doc": "MonthYear"
+        },
+        {
+          "value": "19",
+          "name": "UTCTimestamp",
+          "group": "String",
+          "doc": "UTCTimestamp"
+        },
+        {
+          "value": "20",
+          "name": "UTCTimeOnly",
+          "group": "String",
+          "doc": "UTCTimeOnly"
+        },
+        {
+          "value": "21",
+          "name": "LocalMktDate",
+          "group": "String",
+          "doc": "LocalMktDate"
+        },
+        {
+          "value": "22",
+          "name": "UTCDateOnly",
+          "group": "String",
+          "doc": "UTCDateOnly"
+        },
+        {
+          "value": "23",
+          "name": "Data",
+          "group": "String",
+          "doc": "data"
+        },
+        {
+          "value": "24",
+          "name": "MultipleStringValue",
+          "group": "String",
+          "doc": "MultipleStringValue"
+        },
+        {
+          "value": "25",
+          "name": "Country",
+          "group": "String",
+          "doc": "Country"
+        },
+        {
+          "value": "26",
+          "name": "Language",
+          "group": "String",
+          "doc": "Language"
+        },
+        {
+          "value": "27",
+          "name": "TZTimeOnly",
+          "group": "String",
+          "doc": "TZTimeOnly"
+        },
+        {
+          "value": "28",
+          "name": "TZTimestamp",
+          "group": "String",
+          "doc": "TZTimestamp"
+        },
+        {
+          "value": "29",
+          "name": "Tenor",
+          "group": "Pattern",
+          "doc": "Tenor"
+        },
+        {
+          "value": "30",
+          "name": "DayOfMonth",
+          "group": "int",
+          "doc": "DayOfMonth"
+        },
+        {
+          "value": "31",
+          "name": "XMLData",
+          "group": "String",
+          "doc": "XMLData"
+        },
+        {
+          "value": "32",
+          "name": "Pattern",
+          "group": "Pattern",
+          "doc": "Pattern"
+        },
+        {
+          "value": "33",
+          "name": "Reserved100Plus",
+          "group": "Pattern",
+          "doc": "Reserved100Plus"
+        },
+        {
+          "value": "34",
+          "name": "Reserved1000Plus",
+          "group": "Pattern",
+          "doc": "Reserved1000Plus"
+        },
+        {
+          "value": "35",
+          "name": "Reserved4000Plus",
+          "group": "Pattern",
+          "doc": "Reserved4000Plus"
         }
       ],
       "fix:tag": "1779"
@@ -2186,15 +1788,11 @@
         {
           "value": "0",
           "name": "Automatic",
-          "since": "5.0.2",
-          "ep": 130,
           "doc": "Automatic (Default)"
         },
         {
           "value": "1",
           "name": "Manual",
-          "since": "5.0.2",
-          "ep": 130,
           "doc": "Manual"
         }
       ],
@@ -2214,15 +1812,11 @@
         {
           "value": "0",
           "name": "NumberOfUnits",
-          "since": "5.0.2",
-          "ep": 130,
           "doc": "Number of units (e.g. share, par, currency, contracts) (default)"
         },
         {
           "value": "1",
           "name": "NumberOfRoundLots",
-          "since": "5.0.2",
-          "ep": 130,
           "doc": "Number of round lots"
         }
       ],
@@ -2350,90 +1944,57 @@
         {
           "value": "1",
           "name": "Added",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 1,
           "doc": "Added (0=New)"
-        },
-        {
-          "value": "10",
-          "name": "Triggered",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 10,
-          "doc": "Triggered (L=Triggered or Activated by System)"
-        },
-        {
-          "value": "11",
-          "name": "Activated",
-          "since": "5.0.2",
-          "ep": 188,
-          "sort": 11,
-          "doc": "Activated (L=Triggered or Activated by System)"
         },
         {
           "value": "2",
           "name": "Modified",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 2,
           "doc": "Modified (5=Replaced)"
         },
         {
           "value": "3",
           "name": "Deleted",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 3,
           "doc": "Deleted (4=Canceled)"
         },
         {
           "value": "4",
           "name": "PartiallyFilled",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 4,
           "doc": "Partially Filled (F=Trade)"
         },
         {
           "value": "5",
           "name": "Filled",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 5,
           "doc": "Filled (F=Trade)"
         },
         {
           "value": "6",
           "name": "Suspended",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 6,
           "doc": "Suspended (9=Suspended)"
         },
         {
           "value": "7",
           "name": "Released",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 7,
           "doc": "Released (N=Released)"
         },
         {
           "value": "8",
           "name": "Restated",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 8,
           "doc": "Restated (D=Restated)"
         },
         {
           "value": "9",
           "name": "Locked",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 9,
           "doc": "Locked (M=Locked)"
+        },
+        {
+          "value": "10",
+          "name": "Triggered",
+          "doc": "Triggered (L=Triggered or Activated by System)"
+        },
+        {
+          "value": "11",
+          "name": "Activated",
+          "doc": "Activated (L=Triggered or Activated by System)"
         }
       ],
       "fix:tag": "1796"
@@ -2464,106 +2025,67 @@
         {
           "value": "1",
           "name": "AddOrderRequest",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 1,
           "doc": "Add order request"
-        },
-        {
-          "value": "10",
-          "name": "AwayMarketBetter",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 10,
-          "doc": "Away market better"
-        },
-        {
-          "value": "11",
-          "name": "CorporateAction",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 11,
-          "doc": "Corporate action"
-        },
-        {
-          "value": "12",
-          "name": "StartOfDay",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 12,
-          "doc": "Start of day"
-        },
-        {
-          "value": "13",
-          "name": "EndOfDay",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 13,
-          "doc": "End of day"
         },
         {
           "value": "2",
           "name": "ModifyOrderRequest",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 2,
           "doc": "Modify order request"
         },
         {
           "value": "3",
           "name": "DeleteOrderRequest",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 3,
           "doc": "Delete order request"
         },
         {
           "value": "4",
           "name": "OrderEnteredOOB",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 4,
           "doc": "Order entered out-of-band"
         },
         {
           "value": "5",
           "name": "OrderModifiedOOB",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 5,
           "doc": "Order modified out-of-band"
         },
         {
           "value": "6",
           "name": "OrderDeletedOOB",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 6,
           "doc": "Order deleted out-of-band"
         },
         {
           "value": "7",
           "name": "OrderActivatedOrTriggered",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 7,
           "doc": "Order activated or triggered"
         },
         {
           "value": "8",
           "name": "OrderExpired",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 8,
           "doc": "Order expired"
         },
         {
           "value": "9",
           "name": "ReserveOrderRefreshed",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 9,
           "doc": "Reserve order refreshed"
+        },
+        {
+          "value": "10",
+          "name": "AwayMarketBetter",
+          "doc": "Away market better"
+        },
+        {
+          "value": "11",
+          "name": "CorporateAction",
+          "doc": "Corporate action"
+        },
+        {
+          "value": "12",
+          "name": "StartOfDay",
+          "doc": "Start of day"
+        },
+        {
+          "value": "13",
+          "name": "EndOfDay",
+          "doc": "End of day"
         }
       ],
       "fix:tag": "1798"

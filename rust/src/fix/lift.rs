@@ -498,12 +498,7 @@ impl FixMsg {
     /// `Scalar` against `Scalar` and happens once rather than per occurrence.
     fn coded(&self, tag: i32, item: &Field, spelling: &str) -> Option<Scalar> {
         let field = self.registry().get_field_by_tag(tag)?;
-        let view = field.as_fix();
-        let wire = match self.version() {
-            Some(at) => view.code_value_at(at, spelling),
-            None => view.code_value(spelling),
-        }
-        .unwrap_or(spelling);
+        let wire = field.as_fix().code_value(spelling).unwrap_or(spelling);
         let member = item.dtype().as_fields()?.get(position_of(item, tag)?)?;
         let value = crate::text::prepare_text(Scalar::from(wire), member)
             .unwrap_or_else(|_| Scalar::from(wire));
@@ -576,12 +571,7 @@ impl FixMsg {
         let Some(field) = self.registry().get_field_by_tag(54) else {
             return false;
         };
-        let view = field.as_fix();
-        let named = match self.version() {
-            Some(at) => view.code_name_at(at, text),
-            None => view.code_name(text),
-        };
-        named.is_some_and(|name| {
+        field.as_fix().code_name(text).is_some_and(|name| {
             lane.iter()
                 .any(|held| crate::types::folds_equal(held, name))
         })

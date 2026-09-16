@@ -58,59 +58,39 @@
       "display": "RegulatoryTradeIDEvent",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "InitialBlockTrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Initial block trade"
-        },
-        {
           "value": "1",
           "name": "Allocation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Allocation"
         },
         {
           "value": "2",
           "name": "Clearing",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Clearing"
         },
         {
           "value": "3",
           "name": "Compression",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Compression"
         },
         {
           "value": "4",
           "name": "Novation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Novation"
         },
         {
           "value": "5",
           "name": "Termination",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Termination"
         },
         {
           "value": "6",
           "name": "PostTrdVal",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 6,
           "doc": "Post-trade valuation"
+        },
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
         }
       ],
       "fix:tag": "1904"
@@ -129,8 +109,6 @@
         {
           "value": "1",
           "name": "UniqueTransactionIdentifier",
-          "ep": 275,
-          "sort": 1,
           "doc": "Unique Transaction Identifier (ISO 23897)"
         }
       ],
@@ -148,58 +126,39 @@
       "display": "RegulatoryTradeIDType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Current",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Current"
-        },
-        {
           "value": "1",
           "name": "Previous",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Previous"
         },
         {
           "value": "2",
           "name": "Block",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Block"
         },
         {
           "value": "3",
           "name": "Related",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Related"
         },
         {
           "value": "4",
           "name": "ClearedBlockTrade",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 4,
           "doc": "Cleared block trade"
         },
         {
           "value": "5",
           "name": "TradingVenueTransactionIdentifier",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 5,
           "doc": "Trading venue transaction identifier"
         },
         {
           "value": "6",
           "name": "ReportTrackingNumber",
-          "ep": 284,
-          "sort": 6,
           "doc": "Report tracking number"
+        },
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
         }
       ],
       "fix:tag": "1906"
@@ -254,8 +213,6 @@
         {
           "value": "1",
           "name": "UniqueTransactionIdentifier",
-          "ep": 275,
-          "sort": 1,
           "doc": "Unique Transaction Identifier (ISO 23897)"
         }
       ],
@@ -273,59 +230,39 @@
       "display": "AllocRegulatoryTradeIDEvent",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "InitialBlockTrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Initial block trade"
-        },
-        {
           "value": "1",
           "name": "Allocation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Allocation"
         },
         {
           "value": "2",
           "name": "Clearing",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Clearing"
         },
         {
           "value": "3",
           "name": "Compression",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Compression"
         },
         {
           "value": "4",
           "name": "Novation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Novation"
         },
         {
           "value": "5",
           "name": "Termination",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Termination"
         },
         {
           "value": "6",
           "name": "PostTrdVal",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 6,
           "doc": "Post-trade valuation"
+        },
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
         }
       ],
       "fix:tag": "1911"
@@ -342,58 +279,39 @@
       "display": "AllocRegulatoryTradeIDType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Current",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Current"
-        },
-        {
           "value": "1",
           "name": "Previous",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Previous"
         },
         {
           "value": "2",
           "name": "Block",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Block"
         },
         {
           "value": "3",
           "name": "Related",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Related"
         },
         {
           "value": "4",
           "name": "ClearedBlockTrade",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 4,
           "doc": "Cleared block trade"
         },
         {
           "value": "5",
           "name": "TradingVenueTransactionIdentifier",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 5,
           "doc": "Trading venue transaction identifier"
         },
         {
           "value": "6",
           "name": "ReportTrackingNumber",
-          "ep": 284,
-          "sort": 6,
           "doc": "Report tracking number"
+        },
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
         }
       ],
       "fix:tag": "1912"
@@ -450,99 +368,64 @@
       "display": "ExposureDurationUnit",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Seconds",
-          "since": "5.0.1",
-          "ep": 77,
-          "doc": "Seconds (default if not specified)"
-        },
-        {
           "value": "1",
           "name": "TenthsOfASecond",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 1,
           "doc": "Tenths of a second"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 10,
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 11,
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 12,
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 13,
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 14,
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 15,
-          "doc": "years"
         },
         {
           "value": "2",
           "name": "HundredthsOfASecond",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 2,
           "doc": "Hundredths of a second"
         },
         {
           "value": "3",
           "name": "Milliseconds",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 3,
           "doc": "milliseconds"
         },
         {
           "value": "4",
           "name": "Microseconds",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 4,
           "doc": "microseconds"
         },
         {
           "value": "5",
           "name": "Nanoseconds",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 5,
           "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        },
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
         }
       ],
       "fix:tag": "1916"
@@ -633,15 +516,11 @@
         {
           "value": "0",
           "name": "Amount",
-          "since": "5.0.2",
-          "ep": 160,
           "doc": "Amount"
         },
         {
           "value": "1",
           "name": "Percentage",
-          "since": "5.0.2",
-          "ep": 160,
           "doc": "Percentage"
         }
       ],
@@ -659,19 +538,14 @@
       "display": "ClearingIntention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "DoNotIntendToClear",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Do not intend to clear"
-        },
-        {
           "value": "1",
           "name": "IntendToClear",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Intend to clear"
+        },
+        {
+          "value": "0",
+          "name": "DoNotIntendToClear",
+          "doc": "Do not intend to clear"
         }
       ],
       "fix:tag": "1924"
@@ -688,109 +562,79 @@
       "display": "TradeClearingInstruction",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ProcessNormally",
-          "since": "4.3",
-          "doc": "Process normally"
-        },
-        {
           "value": "1",
           "name": "ExcludeFromAllNetting",
-          "since": "4.3",
-          "sort": 1,
           "doc": "Exclude from all netting"
-        },
-        {
-          "value": "10",
-          "name": "AutomaticGiveUpMode",
-          "since": "4.3",
-          "sort": 10,
-          "doc": "Automatic give-up mode (trade give-up to the give-up destination number specified)"
-        },
-        {
-          "value": "11",
-          "name": "QualifiedServiceRepresentativeQSR",
-          "since": "4.4",
-          "sort": 11,
-          "doc": "Qualified Service Representative QSR"
-        },
-        {
-          "value": "12",
-          "name": "CustomerTrade",
-          "since": "4.4",
-          "sort": 12,
-          "doc": "Customer trade"
-        },
-        {
-          "value": "13",
-          "name": "SelfClearing",
-          "since": "4.4",
-          "sort": 13,
-          "doc": "Self clearing"
-        },
-        {
-          "value": "14",
-          "name": "BuyIn",
-          "since": "5.0.2",
-          "ep": 136,
-          "sort": 14,
-          "doc": "Buy-in"
         },
         {
           "value": "2",
           "name": "BilateralNettingOnly",
-          "since": "4.3",
-          "sort": 2,
           "doc": "Bilateral netting only"
         },
         {
           "value": "3",
           "name": "ExClearing",
-          "since": "4.3",
-          "sort": 3,
           "doc": "Ex clearing"
         },
         {
           "value": "4",
           "name": "SpecialTrade",
-          "since": "4.3",
-          "sort": 4,
           "doc": "Special trade"
         },
         {
           "value": "5",
           "name": "MultilateralNetting",
-          "since": "4.3",
-          "sort": 5,
           "doc": "Multilateral netting"
         },
         {
           "value": "6",
           "name": "ClearAgainstCentralCounterparty",
-          "since": "4.3",
-          "sort": 6,
           "doc": "Clear against central counterparty"
         },
         {
           "value": "7",
           "name": "ExcludeFromCentralCounterparty",
-          "since": "4.3",
-          "sort": 7,
           "doc": "Exclude from central counterparty"
         },
         {
           "value": "8",
           "name": "ManualMode",
-          "since": "4.3",
-          "sort": 8,
           "doc": "Manual mode (pre-posting and/or pre-giveup)"
         },
         {
           "value": "9",
           "name": "AutomaticPostingMode",
-          "since": "4.3",
-          "sort": 9,
           "doc": "Automatic posting mode (trade posting to the position account number specified)"
+        },
+        {
+          "value": "10",
+          "name": "AutomaticGiveUpMode",
+          "doc": "Automatic give-up mode (trade give-up to the give-up destination number specified)"
+        },
+        {
+          "value": "11",
+          "name": "QualifiedServiceRepresentativeQSR",
+          "doc": "Qualified Service Representative QSR"
+        },
+        {
+          "value": "12",
+          "name": "CustomerTrade",
+          "doc": "Customer trade"
+        },
+        {
+          "value": "13",
+          "name": "SelfClearing",
+          "doc": "Self clearing"
+        },
+        {
+          "value": "14",
+          "name": "BuyIn",
+          "doc": "Buy-in"
+        },
+        {
+          "value": "0",
+          "name": "ProcessNormally",
+          "doc": "Process normally"
         }
       ],
       "fix:tag": "1925"
@@ -819,27 +663,19 @@
       "display": "ConfirmationMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NonElectronic",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Non-electronic"
-        },
-        {
           "value": "1",
           "name": "Electronic",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Electronic"
         },
         {
           "value": "2",
           "name": "Unconfirmed",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 2,
           "doc": "Unconfirmed"
+        },
+        {
+          "value": "0",
+          "name": "NonElectronic",
+          "doc": "Non-electronic"
         }
       ],
       "fix:tag": "1927"
@@ -894,15 +730,11 @@
         {
           "value": "0",
           "name": "NonElectronic",
-          "since": "5.0.2",
-          "ep": 161,
           "doc": "Non-electronic"
         },
         {
           "value": "1",
           "name": "Electronic",
-          "since": "5.0.2",
-          "ep": 161,
           "doc": "Electronic"
         }
       ],
@@ -920,51 +752,34 @@
       "display": "ClearingRequirementException",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NoException",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "No exception"
-        },
-        {
           "value": "1",
           "name": "Exception",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Exception"
         },
         {
           "value": "2",
           "name": "EndUserException",
-          "since": "5.0.2",
-          "ep": 177,
-          "sort": 2,
           "doc": "End-user exception"
         },
         {
           "value": "3",
           "name": "InterAffiliateException",
-          "since": "5.0.2",
-          "ep": 177,
-          "sort": 3,
           "doc": "Inter-affiliate exception"
         },
         {
           "value": "4",
           "name": "TreasuryAffiliateException",
-          "since": "5.0.2",
-          "ep": 177,
-          "sort": 4,
           "doc": "Treasury affiliate exception"
         },
         {
           "value": "5",
           "name": "CooperativeException",
-          "since": "5.0.2",
-          "ep": 177,
-          "sort": 5,
           "doc": "Cooperative exception"
+        },
+        {
+          "value": "0",
+          "name": "NoException",
+          "doc": "No exception"
         }
       ],
       "fix:tag": "1932"
@@ -981,27 +796,19 @@
       "display": "IRSDirection",
       "fix:codes": [
         {
+          "value": "RCV",
+          "name": "Rcv",
+          "doc": "Principal is receiving fixed rate"
+        },
+        {
           "value": "NA",
           "name": "NA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Swap is float/float or fixed/fixed"
         },
         {
           "value": "PAY",
           "name": "Pay",
-          "since": "5.0.2",
-          "ep": 161,
           "doc": "Principal is paying fixed rate"
-        },
-        {
-          "value": "RCV",
-          "name": "Rcv",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
-          "doc": "Principal is receiving fixed rate"
         }
       ],
       "fix:tag": "1933"
@@ -1018,34 +825,58 @@
       "display": "RegulatoryReportType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "RT",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Real-time (RT)"
-        },
-        {
           "value": "1",
           "name": "PET",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Primary economic terms (PET)"
+        },
+        {
+          "value": "2",
+          "name": "Snapshot",
+          "doc": "Snapshot"
+        },
+        {
+          "value": "3",
+          "name": "Confirmation",
+          "doc": "Confirmation"
+        },
+        {
+          "value": "4",
+          "name": "RTPET",
+          "doc": "Combination of RT and PET"
+        },
+        {
+          "value": "5",
+          "name": "PETConfirmation",
+          "doc": "Combination of PET and confirmation"
+        },
+        {
+          "value": "6",
+          "name": "RTPETConfirmation",
+          "doc": "Combination of RT, PET and confirmation"
+        },
+        {
+          "value": "7",
+          "name": "PostTrade",
+          "doc": "Post-trade valuation"
+        },
+        {
+          "value": "8",
+          "name": "Verification",
+          "doc": "Verification"
+        },
+        {
+          "value": "9",
+          "name": "PstTrdEvnt",
+          "doc": "Post-trade event"
         },
         {
           "value": "10",
           "name": "PstTrdEvntRTReportable",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 10,
           "doc": "Post trade event RT reportable"
         },
         {
           "value": "11",
           "name": "LimitedDetailsTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 11,
           "aliases": [
             "Lmtf"
           ],
@@ -1054,9 +885,6 @@
         {
           "value": "12",
           "name": "DailyAggregatedTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 12,
           "aliases": [
             "Datf"
           ],
@@ -1065,9 +893,6 @@
         {
           "value": "13",
           "name": "VolumeOmissionTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 13,
           "aliases": [
             "Volo"
           ],
@@ -1076,9 +901,6 @@
         {
           "value": "14",
           "name": "FourWeeksAggregationTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 14,
           "aliases": [
             "Fwaf"
           ],
@@ -1087,9 +909,6 @@
         {
           "value": "15",
           "name": "IndefiniteAggregationTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 15,
           "aliases": [
             "Idaf"
           ],
@@ -1098,9 +917,6 @@
         {
           "value": "16",
           "name": "VolumeOmissionTradeEnrichment",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 16,
           "aliases": [
             "Volw"
           ],
@@ -1109,9 +925,6 @@
         {
           "value": "17",
           "name": "FullDetailsLimitedDetailsTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 17,
           "aliases": [
             "Fulf"
           ],
@@ -1120,9 +933,6 @@
         {
           "value": "18",
           "name": "FullDetailsDailyAggregatedTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 18,
           "aliases": [
             "Fula"
           ],
@@ -1131,28 +941,14 @@
         {
           "value": "19",
           "name": "FullDetailsVolumeOmissionTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 19,
           "aliases": [
             "Fulv"
           ],
           "doc": "Full Details of \"Volume Omission Trade\""
         },
         {
-          "value": "2",
-          "name": "Snapshot",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
-          "doc": "Snapshot"
-        },
-        {
           "value": "20",
           "name": "FullDetailsFourWeeksAggregationTrade",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 20,
           "aliases": [
             "Fulj"
           ],
@@ -1161,9 +957,6 @@
         {
           "value": "21",
           "name": "FullDetailsVolumeOmissionTradeEnrichment",
-          "since": "5.0.2",
-          "ep": 216,
-          "sort": 21,
           "aliases": [
             "Coaf"
           ],
@@ -1172,162 +965,72 @@
         {
           "value": "22",
           "name": "Order",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 22,
           "doc": "Order"
         },
         {
           "value": "23",
           "name": "ChildOrder",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 23,
           "doc": "Child order"
         },
         {
           "value": "24",
           "name": "OrderRoute",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 24,
           "doc": "Order route"
         },
         {
           "value": "25",
           "name": "Trade",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 25,
           "doc": "Trade"
         },
         {
           "value": "26",
           "name": "Quote",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 26,
           "doc": "Quote"
         },
         {
           "value": "27",
           "name": "Supplement",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 27,
           "doc": "Supplement"
         },
         {
           "value": "28",
           "name": "NewTransaction",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 28,
           "doc": "New transaction"
         },
         {
           "value": "29",
           "name": "TransactionCorrection",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 29,
           "doc": "Transaction correction"
-        },
-        {
-          "value": "3",
-          "name": "Confirmation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Confirmation"
         },
         {
           "value": "30",
           "name": "TransactionModification",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 30,
           "doc": "Transaction modification"
         },
         {
           "value": "31",
           "name": "CollateralUpdate",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 31,
           "doc": "Collateral update"
         },
         {
           "value": "32",
           "name": "MarginUpdate",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 32,
           "doc": "Margin update"
         },
         {
           "value": "33",
           "name": "TransactionReportedInError",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 33,
           "doc": "Transaction reported in error"
         },
         {
           "value": "34",
           "name": "TerminationEarlyTermination",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 34,
           "doc": "Termination / Early termination"
         },
         {
-          "value": "4",
-          "name": "RTPET",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
-          "doc": "Combination of RT and PET"
-        },
-        {
-          "value": "5",
-          "name": "PETConfirmation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
-          "doc": "Combination of PET and confirmation"
-        },
-        {
-          "value": "6",
-          "name": "RTPETConfirmation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
-          "doc": "Combination of RT, PET and confirmation"
-        },
-        {
-          "value": "7",
-          "name": "PostTrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
-          "doc": "Post-trade valuation"
-        },
-        {
-          "value": "8",
-          "name": "Verification",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
-          "doc": "Verification"
-        },
-        {
-          "value": "9",
-          "name": "PstTrdEvnt",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 9,
-          "doc": "Post-trade event"
+          "value": "0",
+          "name": "RT",
+          "doc": "Real-time (RT)"
         }
       ],
       "fix:tag": "1934"
@@ -1356,43 +1059,29 @@
       "display": "TradeCollateralization",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Uncollateralized",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Uncollateralized"
-        },
-        {
           "value": "1",
           "name": "PartiallyCollateralized",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Partially collateralized"
         },
         {
           "value": "2",
           "name": "OneWayCollaterallization",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "One-way collaterallization"
         },
         {
           "value": "3",
           "name": "FullyCollateralized",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Fully collateralized"
         },
         {
           "value": "4",
           "name": "NetExposure",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 4,
           "doc": "Net exposure"
+        },
+        {
+          "value": "0",
+          "name": "Uncollateralized",
+          "doc": "Uncollateralized"
         }
       ],
       "fix:tag": "1936"
@@ -1409,275 +1098,174 @@
       "display": "TradeContinuation",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Novation",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Novation"
-        },
-        {
           "value": "1",
           "name": "PartialNovation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Partial novation"
-        },
-        {
-          "value": "10",
-          "name": "CreditEvent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "doc": "Credit event"
-        },
-        {
-          "value": "11",
-          "name": "StrategicRestructuring",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "doc": "Strategic restructuring"
-        },
-        {
-          "value": "12",
-          "name": "SuccessionEventReorganization",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "doc": "Succession event reorganization"
-        },
-        {
-          "value": "13",
-          "name": "SuccessionEventRenaming",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "doc": "Succession event renaming"
-        },
-        {
-          "value": "14",
-          "name": "Porting",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "doc": "Porting"
-        },
-        {
-          "value": "15",
-          "name": "Withdrawl",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "doc": "Withdrawal"
-        },
-        {
-          "value": "16",
-          "name": "Void",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "doc": "Void"
-        },
-        {
-          "value": "17",
-          "name": "AccountTransfer",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 17,
-          "doc": "Account transfer"
-        },
-        {
-          "value": "18",
-          "name": "GiveUp",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 18,
-          "doc": "Give up"
-        },
-        {
-          "value": "19",
-          "name": "TakeUp",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 19,
-          "doc": "TakeUp"
         },
         {
           "value": "2",
           "name": "TradeUnwind",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Trade unwind"
-        },
-        {
-          "value": "20",
-          "name": "AveragePricing",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 20,
-          "doc": "Average pricing"
-        },
-        {
-          "value": "21",
-          "name": "Reversal",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 21,
-          "doc": "Reversal"
-        },
-        {
-          "value": "22",
-          "name": "AllocTrdPosting",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 22,
-          "doc": "Allocation/Trade posting"
-        },
-        {
-          "value": "23",
-          "name": "Cascade",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 23,
-          "doc": "Cascade"
-        },
-        {
-          "value": "24",
-          "name": "Delivery",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 24,
-          "doc": "Delivery"
-        },
-        {
-          "value": "25",
-          "name": "OptionAsgn",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 25,
-          "doc": "Option assignment"
-        },
-        {
-          "value": "26",
-          "name": "Expiration",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 26,
-          "doc": "Expiration"
-        },
-        {
-          "value": "27",
-          "name": "Maturity",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 27,
-          "doc": "Maturity"
-        },
-        {
-          "value": "28",
-          "name": "EqualPosAdj",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 28,
-          "doc": "Equal position adjustment"
-        },
-        {
-          "value": "29",
-          "name": "UnequalPosAdj",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 29,
-          "doc": "Unequal position adjustment"
         },
         {
           "value": "3",
           "name": "PartialTradeUnwind",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Partial trade unwind"
-        },
-        {
-          "value": "30",
-          "name": "Correction",
-          "since": "5.0.2",
-          "ep": 193,
-          "sort": 30,
-          "doc": "Correction"
-        },
-        {
-          "value": "31",
-          "name": "EarlyTermination",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 31,
-          "doc": "Early termination"
-        },
-        {
-          "value": "32",
-          "name": "Rerate",
-          "since": "5.0.2",
-          "ep": 258,
-          "sort": 32,
-          "doc": "Rerate"
         },
         {
           "value": "4",
           "name": "Exercise",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exercise"
         },
         {
           "value": "5",
           "name": "Netting",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Compression/Netting"
         },
         {
           "value": "6",
           "name": "FullNetting",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Full netting"
         },
         {
           "value": "7",
           "name": "PartialNetting",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Partial netting"
         },
         {
           "value": "8",
           "name": "Amendment",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
           "doc": "Amendment"
         },
         {
           "value": "9",
           "name": "Increase",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "doc": "Increase"
+        },
+        {
+          "value": "10",
+          "name": "CreditEvent",
+          "doc": "Credit event"
+        },
+        {
+          "value": "11",
+          "name": "StrategicRestructuring",
+          "doc": "Strategic restructuring"
+        },
+        {
+          "value": "12",
+          "name": "SuccessionEventReorganization",
+          "doc": "Succession event reorganization"
+        },
+        {
+          "value": "13",
+          "name": "SuccessionEventRenaming",
+          "doc": "Succession event renaming"
+        },
+        {
+          "value": "14",
+          "name": "Porting",
+          "doc": "Porting"
+        },
+        {
+          "value": "15",
+          "name": "Withdrawl",
+          "doc": "Withdrawal"
+        },
+        {
+          "value": "16",
+          "name": "Void",
+          "doc": "Void"
+        },
+        {
+          "value": "17",
+          "name": "AccountTransfer",
+          "doc": "Account transfer"
+        },
+        {
+          "value": "18",
+          "name": "GiveUp",
+          "doc": "Give up"
+        },
+        {
+          "value": "19",
+          "name": "TakeUp",
+          "doc": "TakeUp"
+        },
+        {
+          "value": "20",
+          "name": "AveragePricing",
+          "doc": "Average pricing"
+        },
+        {
+          "value": "21",
+          "name": "Reversal",
+          "doc": "Reversal"
+        },
+        {
+          "value": "22",
+          "name": "AllocTrdPosting",
+          "doc": "Allocation/Trade posting"
+        },
+        {
+          "value": "23",
+          "name": "Cascade",
+          "doc": "Cascade"
+        },
+        {
+          "value": "24",
+          "name": "Delivery",
+          "doc": "Delivery"
+        },
+        {
+          "value": "25",
+          "name": "OptionAsgn",
+          "doc": "Option assignment"
+        },
+        {
+          "value": "26",
+          "name": "Expiration",
+          "doc": "Expiration"
+        },
+        {
+          "value": "27",
+          "name": "Maturity",
+          "doc": "Maturity"
+        },
+        {
+          "value": "28",
+          "name": "EqualPosAdj",
+          "doc": "Equal position adjustment"
+        },
+        {
+          "value": "29",
+          "name": "UnequalPosAdj",
+          "doc": "Unequal position adjustment"
+        },
+        {
+          "value": "30",
+          "name": "Correction",
+          "doc": "Correction"
+        },
+        {
+          "value": "31",
+          "name": "EarlyTermination",
+          "doc": "Early termination"
+        },
+        {
+          "value": "32",
+          "name": "Rerate",
+          "doc": "Rerate"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 99,
           "doc": "Other price-forming continuation data"
+        },
+        {
+          "value": "0",
+          "name": "Novation",
+          "doc": "Novation"
         }
       ],
       "fix:tag": "1937"
@@ -1696,90 +1284,57 @@
         {
           "value": "1",
           "name": "InterestRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Interest rate"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 10,
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 11,
-          "doc": "Index"
         },
         {
           "value": "2",
           "name": "Currency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Currency"
         },
         {
           "value": "3",
           "name": "Credit",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Credit"
         },
         {
           "value": "4",
           "name": "Equity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Equity"
         },
         {
           "value": "5",
           "name": "Commodity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Commodity"
         },
         {
           "value": "6",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 6,
           "doc": "Other"
         },
         {
           "value": "7",
           "name": "Cash",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 7,
           "doc": "Cash"
         },
         {
           "value": "8",
           "name": "Debt",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 8,
           "doc": "Debt"
         },
         {
           "value": "9",
           "name": "Fund",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 9,
           "doc": "Fund"
+        },
+        {
+          "value": "10",
+          "name": "LoanFacility",
+          "doc": "Loan facility"
+        },
+        {
+          "value": "11",
+          "name": "Index",
+          "doc": "Index"
         }
       ],
       "fix:tag": "1938"
@@ -1798,434 +1353,290 @@
         {
           "value": "1",
           "name": "SingleCurrency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "group": "Interest Rate",
           "doc": "Single currency"
         },
         {
-          "value": "10",
-          "name": "Preferred",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 17,
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 18,
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 19,
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
           "value": "2",
           "name": "CrossCurrency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "group": "Interest Rate",
           "doc": "Cross currency"
         },
         {
-          "value": "20",
-          "name": "Government",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 20,
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 21,
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 22,
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 23,
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 24,
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 25,
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 26,
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 27,
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 28,
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 29,
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
           "value": "3",
           "name": "Basket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "group": "Currency",
           "doc": "Basket [for multi-currency]"
         },
         {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 30,
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 31,
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 32,
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 33,
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 34,
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 35,
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 36,
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 37,
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 38,
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 39,
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
           "value": "4",
           "name": "SingleName",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "group": "Credit",
           "doc": "Single name"
         },
         {
-          "value": "40",
-          "name": "FXMajors",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 40,
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 41,
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 42,
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 43,
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 44,
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 45,
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 46,
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 47,
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 48,
-          "group": "Other",
-          "doc": "Other"
-        },
-        {
           "value": "5",
           "name": "CreditIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "group": "Credit",
           "doc": "Credit index"
         },
         {
           "value": "6",
           "name": "IndexTranche",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "group": "Credit",
           "doc": "Index tranche"
         },
         {
           "value": "7",
           "name": "CreditBasket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "group": "Credit",
           "doc": "Credit basket"
         },
         {
           "value": "8",
           "name": "Exotic",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 8,
           "group": "Other",
           "doc": "Exotic"
         },
         {
           "value": "9",
           "name": "Common",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "group": "Equity",
           "doc": "Common"
+        },
+        {
+          "value": "10",
+          "name": "Preferred",
+          "group": "Equity",
+          "doc": "Preferred"
+        },
+        {
+          "value": "11",
+          "name": "EquityIndex",
+          "group": "Equity",
+          "doc": "Equity index"
+        },
+        {
+          "value": "12",
+          "name": "EquityBasket",
+          "group": "Equity",
+          "doc": "Equity basket"
+        },
+        {
+          "value": "13",
+          "name": "Metals",
+          "group": "Commodity",
+          "doc": "Metals"
+        },
+        {
+          "value": "14",
+          "name": "Bullion",
+          "group": "Commodity",
+          "doc": "Bullion"
+        },
+        {
+          "value": "15",
+          "name": "Energy",
+          "group": "Commodity",
+          "doc": "Energy"
+        },
+        {
+          "value": "16",
+          "name": "CommodityIndex",
+          "group": "Commodity",
+          "doc": "Commodity index"
+        },
+        {
+          "value": "17",
+          "name": "Agricultural",
+          "group": "Commodity",
+          "doc": "Agricultural"
+        },
+        {
+          "value": "18",
+          "name": "Environmental",
+          "group": "Commodity",
+          "doc": "Environmental"
+        },
+        {
+          "value": "19",
+          "name": "Freight",
+          "group": "Commodity",
+          "doc": "Freight"
+        },
+        {
+          "value": "20",
+          "name": "Government",
+          "group": "Debt",
+          "doc": "Government"
+        },
+        {
+          "value": "21",
+          "name": "Agency",
+          "group": "Debt",
+          "doc": "Agency"
+        },
+        {
+          "value": "22",
+          "name": "Corporate",
+          "group": "Debt",
+          "doc": "Corporate"
+        },
+        {
+          "value": "23",
+          "name": "Financing",
+          "group": "Debt",
+          "doc": "Financing"
+        },
+        {
+          "value": "24",
+          "name": "MoneyMarket",
+          "group": "Debt",
+          "doc": "Money market"
+        },
+        {
+          "value": "25",
+          "name": "Mortgage",
+          "group": "Debt",
+          "doc": "Mortgage"
+        },
+        {
+          "value": "26",
+          "name": "Municipal",
+          "group": "Debt",
+          "doc": "Municipal"
+        },
+        {
+          "value": "27",
+          "name": "MutualFund",
+          "group": "Fund",
+          "doc": "Mutual fund"
+        },
+        {
+          "value": "28",
+          "name": "CollectiveInvestmentVehicle",
+          "group": "Fund",
+          "doc": "Collective investment vehicle"
+        },
+        {
+          "value": "29",
+          "name": "InvestmentProgram",
+          "group": "Fund",
+          "doc": "Investment program"
+        },
+        {
+          "value": "30",
+          "name": "SpecializedAccountProgram",
+          "group": "Fund",
+          "doc": "Specialized account program"
+        },
+        {
+          "value": "31",
+          "name": "TermLoan",
+          "group": "Loan Facility",
+          "doc": "Term loan"
+        },
+        {
+          "value": "32",
+          "name": "BridgeLoan",
+          "group": "Loan Facility",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "33",
+          "name": "LetterOfCredit",
+          "group": "Loan Facility",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "34",
+          "name": "DividendIndex",
+          "group": "Equity",
+          "doc": "Dividend index"
+        },
+        {
+          "value": "35",
+          "name": "StockDividend",
+          "group": "Equity",
+          "doc": "Stock dividend"
+        },
+        {
+          "value": "36",
+          "name": "ExchangeTradedFund",
+          "group": "Equity",
+          "doc": "Exchange traded fund"
+        },
+        {
+          "value": "37",
+          "name": "VolatilityIndex",
+          "group": "Equity",
+          "doc": "Volatility index"
+        },
+        {
+          "value": "38",
+          "name": "FXCrossRates",
+          "group": "Currency",
+          "doc": "FX cross rates"
+        },
+        {
+          "value": "39",
+          "name": "FXEmergingMarkets",
+          "group": "Currency",
+          "doc": "FX emerging markets"
+        },
+        {
+          "value": "40",
+          "name": "FXMajors",
+          "group": "Currency",
+          "doc": "FX Majors"
+        },
+        {
+          "value": "41",
+          "name": "Fertilizer",
+          "group": "Commodity",
+          "doc": "Fertilizer"
+        },
+        {
+          "value": "42",
+          "name": "IndustrialProduct",
+          "group": "Commodity",
+          "doc": "Industrial product"
+        },
+        {
+          "value": "43",
+          "name": "Inflation",
+          "group": "Commodity",
+          "doc": "Inflation"
+        },
+        {
+          "value": "44",
+          "name": "Paper",
+          "group": "Commodity",
+          "doc": "Paper"
+        },
+        {
+          "value": "45",
+          "name": "Polypropylene",
+          "group": "Commodity",
+          "doc": "Polypropylene"
+        },
+        {
+          "value": "46",
+          "name": "OfficialEconomicStatistics",
+          "group": "Commodity",
+          "doc": "Official economic statistics"
+        },
+        {
+          "value": "47",
+          "name": "OtherC10",
+          "group": "Other",
+          "doc": "Other C10"
+        },
+        {
+          "value": "48",
+          "name": "Other",
+          "group": "Other",
+          "doc": "Other"
         }
       ],
       "fix:tag": "1939"
@@ -2254,35 +1665,23 @@
       "display": "SwapClass",
       "fix:codes": [
         {
-          "value": "BB",
-          "name": "BroadBasedSecuritySwap",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Broad-based security swap"
-        },
-        {
           "value": "BS",
           "name": "BasisSwap",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Basis swap"
         },
         {
           "value": "IX",
           "name": "IndexSwap",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Index swap"
+        },
+        {
+          "value": "BB",
+          "name": "BroadBasedSecuritySwap",
+          "doc": "Broad-based security swap"
         },
         {
           "value": "SK",
           "name": "BasketSwap",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Basket swap"
         }
       ],
@@ -2349,35 +1748,24 @@
       "display": "CouponType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Zero",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Zero"
-        },
-        {
           "value": "1",
           "name": "FixedRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Fixed rate"
         },
         {
           "value": "2",
           "name": "FloatingRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Floating rate"
         },
         {
           "value": "3",
           "name": "Structured",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Structured"
+        },
+        {
+          "value": "0",
+          "name": "Zero",
+          "doc": "Zero"
         }
       ],
       "fix:tag": "1946"
@@ -2420,66 +1808,42 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
         },
         {
           "value": "H",
           "name": "Hour",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 5,
           "doc": "Hour"
         },
         {
           "value": "Min",
           "name": "Minute",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 6,
           "doc": "Minute"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "S",
           "name": "Second",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 7,
           "doc": "Second"
         },
         {
           "value": "T",
           "name": "Term",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 8,
           "doc": "Term"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
-          "doc": "Week"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
-          "doc": "Year"
         }
       ],
       "fix:tag": "1949"
@@ -2496,195 +1860,124 @@
       "display": "CouponDayCount",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "OneOne",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "1/1"
-        },
-        {
           "value": "1",
           "name": "ThirtyThreeSixtyUS",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "30/360 (30U/360 or Bond Basis)"
-        },
-        {
-          "value": "10",
-          "name": "ActActISMAUltimo",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "doc": "Act/Act (ICMA Ultimo)"
-        },
-        {
-          "value": "11",
-          "name": "ActActISDA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "doc": "Act/Act (ISDA)"
-        },
-        {
-          "value": "12",
-          "name": "BusTwoFiftyTwo",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "doc": "BUS/252"
-        },
-        {
-          "value": "13",
-          "name": "ThirtyEPlusThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "doc": "30E+/360"
-        },
-        {
-          "value": "14",
-          "name": "ActThreeSixtyFiveL",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "doc": "Act/365L"
-        },
-        {
-          "value": "15",
-          "name": "NLThreeSixtyFive",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "doc": "NL365"
-        },
-        {
-          "value": "16",
-          "name": "NLThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "doc": "NL360"
-        },
-        {
-          "value": "17",
-          "name": "Act364",
-          "since": "5.0.2",
-          "ep": 200,
-          "sort": 17,
-          "doc": "Act/364"
-        },
-        {
-          "value": "18",
-          "name": "ThirtyThreeSixtyFive",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 18,
-          "doc": "30/365"
-        },
-        {
-          "value": "19",
-          "name": "ThirtyActual",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 19,
-          "doc": "30/Actual"
         },
         {
           "value": "2",
           "name": "ThirtyThreeSixtySIA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "30/360 (SIA)"
-        },
-        {
-          "value": "20",
-          "name": "ThirtyThreeSixtyICMA",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 20,
-          "doc": "30/360 (ICMA or basis rule)"
-        },
-        {
-          "value": "21",
-          "name": "ThirtyETwoThreeSixty",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 21,
-          "doc": "30E2/360 (Eurobond basis model two)"
-        },
-        {
-          "value": "22",
-          "name": "ThirtyEThreeThreeSixty",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 22,
-          "doc": "30E3/360 (Eurobond basis model three)"
         },
         {
           "value": "3",
           "name": "ThirtyThreeSixtyM",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "30/360M"
         },
         {
           "value": "4",
           "name": "ThirtyEThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "30E/360 (Eurobond Basis)"
         },
         {
           "value": "5",
           "name": "ThirtyEThreeSixtyISDA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "30E/360 (ISDA)"
         },
         {
           "value": "6",
           "name": "ActThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Act/360"
         },
         {
           "value": "7",
           "name": "ActThreeSixtyFiveFixed",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Act/365 (FIXED)"
         },
         {
           "value": "8",
           "name": "ActActAFB",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
           "doc": "Act/Act (AFB)"
         },
         {
           "value": "9",
           "name": "ActActICMA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "doc": "Act/Act (ICMA)"
+        },
+        {
+          "value": "10",
+          "name": "ActActISMAUltimo",
+          "doc": "Act/Act (ICMA Ultimo)"
+        },
+        {
+          "value": "11",
+          "name": "ActActISDA",
+          "doc": "Act/Act (ISDA)"
+        },
+        {
+          "value": "12",
+          "name": "BusTwoFiftyTwo",
+          "doc": "BUS/252"
+        },
+        {
+          "value": "13",
+          "name": "ThirtyEPlusThreeSixty",
+          "doc": "30E+/360"
+        },
+        {
+          "value": "14",
+          "name": "ActThreeSixtyFiveL",
+          "doc": "Act/365L"
+        },
+        {
+          "value": "15",
+          "name": "NLThreeSixtyFive",
+          "doc": "NL365"
+        },
+        {
+          "value": "16",
+          "name": "NLThreeSixty",
+          "doc": "NL360"
+        },
+        {
+          "value": "17",
+          "name": "Act364",
+          "doc": "Act/364"
+        },
+        {
+          "value": "18",
+          "name": "ThirtyThreeSixtyFive",
+          "doc": "30/365"
+        },
+        {
+          "value": "19",
+          "name": "ThirtyActual",
+          "doc": "30/Actual"
+        },
+        {
+          "value": "20",
+          "name": "ThirtyThreeSixtyICMA",
+          "doc": "30/360 (ICMA or basis rule)"
+        },
+        {
+          "value": "21",
+          "name": "ThirtyETwoThreeSixty",
+          "doc": "30E2/360 (Eurobond basis model two)"
+        },
+        {
+          "value": "22",
+          "name": "ThirtyEThreeThreeSixty",
+          "doc": "30E3/360 (Eurobond basis model three)"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "OneOne",
+          "doc": "1/1"
         }
       ],
       "fix:tag": "1950"
@@ -2715,245 +2008,166 @@
         {
           "value": "1",
           "name": "CUSIP",
-          "since": "2.7",
-          "sort": 1,
           "doc": "CUSIP"
         },
         {
           "value": "2",
           "name": "SEDOL",
-          "since": "2.7",
-          "sort": 2,
           "doc": "SEDOL"
         },
         {
           "value": "3",
           "name": "QUIK",
-          "since": "2.7",
-          "sort": 3,
           "doc": "QUIK"
         },
         {
           "value": "4",
           "name": "ISINNumber",
-          "since": "3.0",
-          "sort": 4,
           "doc": "ISIN"
         },
         {
           "value": "5",
           "name": "RICCode",
-          "since": "3.0",
-          "sort": 5,
           "doc": "RIC"
         },
         {
           "value": "6",
           "name": "ISOCurrencyCode",
-          "since": "4.1",
-          "sort": 6,
           "doc": "ISO Currency Code (ISO 4217)"
         },
         {
           "value": "7",
           "name": "ISOCountryCode",
-          "since": "4.1",
-          "sort": 7,
           "doc": "ISO Country Code"
         },
         {
           "value": "8",
           "name": "ExchangeSymbol",
-          "since": "4.2",
-          "sort": 8,
           "doc": "Exchange symbol"
         },
         {
           "value": "9",
           "name": "ConsolidatedTapeAssociation",
-          "since": "4.2",
-          "sort": 9,
           "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
         },
         {
           "value": "A",
           "name": "BloombergSymbol",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Bloomberg Symbol"
         },
         {
           "value": "B",
           "name": "Wertpapier",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Wertpapier"
         },
         {
           "value": "C",
           "name": "Dutch",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Dutch"
         },
         {
           "value": "D",
           "name": "Valoren",
-          "since": "4.3",
-          "sort": 13,
           "doc": "Valoren"
         },
         {
           "value": "E",
           "name": "Sicovam",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Sicovam"
         },
         {
           "value": "F",
           "name": "Belgian",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Belgian"
         },
         {
           "value": "G",
           "name": "Common",
-          "since": "4.3",
-          "sort": 16,
           "doc": "\"Common\" (Clearstream and Euroclear)"
         },
         {
           "value": "H",
           "name": "ClearingHouse",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Clearing house / Clearing organization"
         },
         {
           "value": "I",
           "name": "ISDAFpMLSpecification",
-          "since": "4.4",
-          "sort": 18,
           "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
         },
         {
           "value": "J",
           "name": "OptionPriceReportingAuthority",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Option Price Reporting Authority"
         },
         {
           "value": "K",
           "name": "ISDAFpMLURL",
-          "since": "4.4",
-          "ep": 15,
-          "sort": 20,
           "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
         },
         {
           "value": "L",
           "name": "LetterOfCredit",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 21,
           "doc": "Letter of credit"
         },
         {
           "value": "M",
           "name": "MarketplaceAssignedIdentifier",
-          "since": "5.0",
-          "ep": 58,
-          "sort": 22,
           "doc": "Marketplace-assigned Identifier"
         },
         {
           "value": "N",
           "name": "MarkitREDEntityCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 23,
           "doc": "Markit RED entity CLIP"
         },
         {
           "value": "P",
           "name": "MarkitREDPairCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 24,
           "doc": "Markit RED pair CLIP"
         },
         {
           "value": "Q",
           "name": "CFTCCommodityCode",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 25,
           "doc": "CFTC commodity code"
         },
         {
           "value": "R",
           "name": "ISDACommodityReferencePrice",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 26,
           "doc": "ISDA Commodity Reference Price"
         },
         {
           "value": "S",
           "name": "FinancialInstrumentGlobalIdentifier",
-          "since": "5.0.2",
-          "ep": 158,
-          "sort": 27,
           "doc": "Financial Instrument Global Identifier"
         },
         {
           "value": "T",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 28,
           "doc": "Legal entity identifier"
         },
         {
           "value": "U",
           "name": "Synthetic",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 29,
           "doc": "Synthetic"
         },
         {
           "value": "V",
           "name": "FidessaInstrumentMnemonic",
-          "since": "5.0.2",
-          "ep": 220,
-          "sort": 30,
           "doc": "Fidessa Instrument Mnemonic (FIM)"
         },
         {
           "value": "W",
           "name": "IndexName",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 31,
           "doc": "Index name"
         },
         {
           "value": "X",
           "name": "UniformSymbol",
-          "since": "5.0.2",
-          "ep": 242,
-          "sort": 32,
           "doc": "Uniform Symbol (UMTF Symbol)"
         },
         {
           "value": "Y",
           "name": "DigitalTokenIdentifier",
-          "ep": 273,
-          "sort": 33,
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
@@ -2986,35 +2200,24 @@
       "display": "LienSeniority",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unknown",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unknown"
-        },
-        {
           "value": "1",
           "name": "FirstLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "First lien"
         },
         {
           "value": "2",
           "name": "SecondLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Second lien"
         },
         {
           "value": "3",
           "name": "ThirdLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Third lien"
+        },
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
         }
       ],
       "fix:tag": "1954"
@@ -3031,51 +2234,34 @@
       "display": "LoanFacility",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BridgeLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bridge loan"
-        },
-        {
           "value": "1",
           "name": "LetterOfCredit",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Letter of credit"
         },
         {
           "value": "2",
           "name": "RevolvingLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Revolving loan"
         },
         {
           "value": "3",
           "name": "SwinglineFunding",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Swingline funding"
         },
         {
           "value": "4",
           "name": "TermLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Term loan"
         },
         {
           "value": "5",
           "name": "TradeClaim",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Trade claim"
+        },
+        {
+          "value": "0",
+          "name": "BridgeLoan",
+          "doc": "Bridge loan"
         }
       ],
       "fix:tag": "1955"
@@ -3094,82 +2280,52 @@
         {
           "value": "1",
           "name": "Asian",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Asian"
-        },
-        {
-          "value": "10",
-          "name": "WesternEuropeanInsurance",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "doc": "Western European insurance"
         },
         {
           "value": "2",
           "name": "AustralianNewZealand",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Australian and New Zealand"
         },
         {
           "value": "3",
           "name": "EuropeanEmergingMarkets",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "European emerging markets"
         },
         {
           "value": "4",
           "name": "Japanese",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Japanese"
         },
         {
           "value": "5",
           "name": "NorthAmericanHighYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "North American high yield"
         },
         {
           "value": "6",
           "name": "NorthAmericanInsurance",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "North American insurance"
         },
         {
           "value": "7",
           "name": "NorthAmericanInvestmentGrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "North American investment grade"
         },
         {
           "value": "8",
           "name": "Singaporean",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
           "doc": "Singaporean"
         },
         {
           "value": "9",
           "name": "WesternEuropean",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "doc": "Western European"
+        },
+        {
+          "value": "10",
+          "name": "WesternEuropeanInsurance",
+          "doc": "Western European insurance"
         }
       ],
       "fix:tag": "1956"
@@ -3384,8 +2540,6 @@
         {
           "value": "1",
           "name": "UniqueTransactionIdentifier",
-          "ep": 275,
-          "sort": 1,
           "doc": "Unique Transaction Identifier (ISO 23897)"
         }
       ],
@@ -3403,59 +2557,39 @@
       "display": "SideRegulatoryTradeIDEvent",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "InitialBlockTrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Initial block trade"
-        },
-        {
           "value": "1",
           "name": "Allocation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Allocation"
         },
         {
           "value": "2",
           "name": "Clearing",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Clearing"
         },
         {
           "value": "3",
           "name": "Compression",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Compression"
         },
         {
           "value": "4",
           "name": "Novation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Novation"
         },
         {
           "value": "5",
           "name": "Termination",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Termination"
         },
         {
           "value": "6",
           "name": "PostTrdVal",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 6,
           "doc": "Post-trade valuation"
+        },
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
         }
       ],
       "fix:tag": "1974"
@@ -3472,58 +2606,39 @@
       "display": "SideRegulatoryTradeIDType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Current",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Current"
-        },
-        {
           "value": "1",
           "name": "Previous",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Previous"
         },
         {
           "value": "2",
           "name": "Block",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Block"
         },
         {
           "value": "3",
           "name": "Related",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Related"
         },
         {
           "value": "4",
           "name": "ClearedBlockTrade",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 4,
           "doc": "Cleared block trade"
         },
         {
           "value": "5",
           "name": "TradingVenueTransactionIdentifier",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 5,
           "doc": "Trading venue transaction identifier"
         },
         {
           "value": "6",
           "name": "ReportTrackingNumber",
-          "ep": 284,
-          "sort": 6,
           "doc": "Report tracking number"
+        },
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
         }
       ],
       "fix:tag": "1975"
@@ -3554,90 +2669,57 @@
         {
           "value": "1",
           "name": "InterestRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Interest rate"
-        },
-        {
-          "value": "10",
-          "name": "LoanFacility",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 10,
-          "doc": "Loan facility"
-        },
-        {
-          "value": "11",
-          "name": "Index",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 11,
-          "doc": "Index"
         },
         {
           "value": "2",
           "name": "Currency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Currency"
         },
         {
           "value": "3",
           "name": "Credit",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Credit"
         },
         {
           "value": "4",
           "name": "Equity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Equity"
         },
         {
           "value": "5",
           "name": "Commodity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Commodity"
         },
         {
           "value": "6",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 6,
           "doc": "Other"
         },
         {
           "value": "7",
           "name": "Cash",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 7,
           "doc": "Cash"
         },
         {
           "value": "8",
           "name": "Debt",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 8,
           "doc": "Debt"
         },
         {
           "value": "9",
           "name": "Fund",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 9,
           "doc": "Fund"
+        },
+        {
+          "value": "10",
+          "name": "LoanFacility",
+          "doc": "Loan facility"
+        },
+        {
+          "value": "11",
+          "name": "Index",
+          "doc": "Index"
         }
       ],
       "fix:tag": "1977"
@@ -3656,434 +2738,290 @@
         {
           "value": "1",
           "name": "SingleCurrency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "group": "Interest Rate",
           "doc": "Single currency"
         },
         {
-          "value": "10",
-          "name": "Preferred",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "group": "Equity",
-          "doc": "Preferred"
-        },
-        {
-          "value": "11",
-          "name": "EquityIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "group": "Equity",
-          "doc": "Equity index"
-        },
-        {
-          "value": "12",
-          "name": "EquityBasket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "group": "Equity",
-          "doc": "Equity basket"
-        },
-        {
-          "value": "13",
-          "name": "Metals",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "group": "Commodity",
-          "doc": "Metals"
-        },
-        {
-          "value": "14",
-          "name": "Bullion",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "group": "Commodity",
-          "doc": "Bullion"
-        },
-        {
-          "value": "15",
-          "name": "Energy",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "group": "Commodity",
-          "doc": "Energy"
-        },
-        {
-          "value": "16",
-          "name": "CommodityIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "group": "Commodity",
-          "doc": "Commodity index"
-        },
-        {
-          "value": "17",
-          "name": "Agricultural",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 17,
-          "group": "Commodity",
-          "doc": "Agricultural"
-        },
-        {
-          "value": "18",
-          "name": "Environmental",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 18,
-          "group": "Commodity",
-          "doc": "Environmental"
-        },
-        {
-          "value": "19",
-          "name": "Freight",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 19,
-          "group": "Commodity",
-          "doc": "Freight"
-        },
-        {
           "value": "2",
           "name": "CrossCurrency",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "group": "Interest Rate",
           "doc": "Cross currency"
         },
         {
-          "value": "20",
-          "name": "Government",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 20,
-          "group": "Debt",
-          "doc": "Government"
-        },
-        {
-          "value": "21",
-          "name": "Agency",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 21,
-          "group": "Debt",
-          "doc": "Agency"
-        },
-        {
-          "value": "22",
-          "name": "Corporate",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 22,
-          "group": "Debt",
-          "doc": "Corporate"
-        },
-        {
-          "value": "23",
-          "name": "Financing",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 23,
-          "group": "Debt",
-          "doc": "Financing"
-        },
-        {
-          "value": "24",
-          "name": "MoneyMarket",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 24,
-          "group": "Debt",
-          "doc": "Money market"
-        },
-        {
-          "value": "25",
-          "name": "Mortgage",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 25,
-          "group": "Debt",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "26",
-          "name": "Municipal",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 26,
-          "group": "Debt",
-          "doc": "Municipal"
-        },
-        {
-          "value": "27",
-          "name": "MutualFund",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 27,
-          "group": "Fund",
-          "doc": "Mutual fund"
-        },
-        {
-          "value": "28",
-          "name": "CollectiveInvestmentVehicle",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 28,
-          "group": "Fund",
-          "doc": "Collective investment vehicle"
-        },
-        {
-          "value": "29",
-          "name": "InvestmentProgram",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 29,
-          "group": "Fund",
-          "doc": "Investment program"
-        },
-        {
           "value": "3",
           "name": "Basket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "group": "Currency",
           "doc": "Basket [for multi-currency]"
         },
         {
-          "value": "30",
-          "name": "SpecializedAccountProgram",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 30,
-          "group": "Fund",
-          "doc": "Specialized account program"
-        },
-        {
-          "value": "31",
-          "name": "TermLoan",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 31,
-          "group": "Loan Facility",
-          "doc": "Term loan"
-        },
-        {
-          "value": "32",
-          "name": "BridgeLoan",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 32,
-          "group": "Loan Facility",
-          "doc": "Bridge loan"
-        },
-        {
-          "value": "33",
-          "name": "LetterOfCredit",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 33,
-          "group": "Loan Facility",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "34",
-          "name": "DividendIndex",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 34,
-          "group": "Equity",
-          "doc": "Dividend index"
-        },
-        {
-          "value": "35",
-          "name": "StockDividend",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 35,
-          "group": "Equity",
-          "doc": "Stock dividend"
-        },
-        {
-          "value": "36",
-          "name": "ExchangeTradedFund",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 36,
-          "group": "Equity",
-          "doc": "Exchange traded fund"
-        },
-        {
-          "value": "37",
-          "name": "VolatilityIndex",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 37,
-          "group": "Equity",
-          "doc": "Volatility index"
-        },
-        {
-          "value": "38",
-          "name": "FXCrossRates",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 38,
-          "group": "Currency",
-          "doc": "FX cross rates"
-        },
-        {
-          "value": "39",
-          "name": "FXEmergingMarkets",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 39,
-          "group": "Currency",
-          "doc": "FX emerging markets"
-        },
-        {
           "value": "4",
           "name": "SingleName",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "group": "Credit",
           "doc": "Single name"
         },
         {
-          "value": "40",
-          "name": "FXMajors",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 40,
-          "group": "Currency",
-          "doc": "FX Majors"
-        },
-        {
-          "value": "41",
-          "name": "Fertilizer",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 41,
-          "group": "Commodity",
-          "doc": "Fertilizer"
-        },
-        {
-          "value": "42",
-          "name": "IndustrialProduct",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 42,
-          "group": "Commodity",
-          "doc": "Industrial product"
-        },
-        {
-          "value": "43",
-          "name": "Inflation",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 43,
-          "group": "Commodity",
-          "doc": "Inflation"
-        },
-        {
-          "value": "44",
-          "name": "Paper",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 44,
-          "group": "Commodity",
-          "doc": "Paper"
-        },
-        {
-          "value": "45",
-          "name": "Polypropylene",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 45,
-          "group": "Commodity",
-          "doc": "Polypropylene"
-        },
-        {
-          "value": "46",
-          "name": "OfficialEconomicStatistics",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 46,
-          "group": "Commodity",
-          "doc": "Official economic statistics"
-        },
-        {
-          "value": "47",
-          "name": "OtherC10",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 47,
-          "group": "Other",
-          "doc": "Other C10"
-        },
-        {
-          "value": "48",
-          "name": "Other",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 48,
-          "group": "Other",
-          "doc": "Other"
-        },
-        {
           "value": "5",
           "name": "CreditIndex",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "group": "Credit",
           "doc": "Credit index"
         },
         {
           "value": "6",
           "name": "IndexTranche",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "group": "Credit",
           "doc": "Index tranche"
         },
         {
           "value": "7",
           "name": "CreditBasket",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "group": "Credit",
           "doc": "Credit basket"
         },
         {
           "value": "8",
           "name": "Exotic",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 8,
           "group": "Other",
           "doc": "Exotic"
         },
         {
           "value": "9",
           "name": "Common",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "group": "Equity",
           "doc": "Common"
+        },
+        {
+          "value": "10",
+          "name": "Preferred",
+          "group": "Equity",
+          "doc": "Preferred"
+        },
+        {
+          "value": "11",
+          "name": "EquityIndex",
+          "group": "Equity",
+          "doc": "Equity index"
+        },
+        {
+          "value": "12",
+          "name": "EquityBasket",
+          "group": "Equity",
+          "doc": "Equity basket"
+        },
+        {
+          "value": "13",
+          "name": "Metals",
+          "group": "Commodity",
+          "doc": "Metals"
+        },
+        {
+          "value": "14",
+          "name": "Bullion",
+          "group": "Commodity",
+          "doc": "Bullion"
+        },
+        {
+          "value": "15",
+          "name": "Energy",
+          "group": "Commodity",
+          "doc": "Energy"
+        },
+        {
+          "value": "16",
+          "name": "CommodityIndex",
+          "group": "Commodity",
+          "doc": "Commodity index"
+        },
+        {
+          "value": "17",
+          "name": "Agricultural",
+          "group": "Commodity",
+          "doc": "Agricultural"
+        },
+        {
+          "value": "18",
+          "name": "Environmental",
+          "group": "Commodity",
+          "doc": "Environmental"
+        },
+        {
+          "value": "19",
+          "name": "Freight",
+          "group": "Commodity",
+          "doc": "Freight"
+        },
+        {
+          "value": "20",
+          "name": "Government",
+          "group": "Debt",
+          "doc": "Government"
+        },
+        {
+          "value": "21",
+          "name": "Agency",
+          "group": "Debt",
+          "doc": "Agency"
+        },
+        {
+          "value": "22",
+          "name": "Corporate",
+          "group": "Debt",
+          "doc": "Corporate"
+        },
+        {
+          "value": "23",
+          "name": "Financing",
+          "group": "Debt",
+          "doc": "Financing"
+        },
+        {
+          "value": "24",
+          "name": "MoneyMarket",
+          "group": "Debt",
+          "doc": "Money market"
+        },
+        {
+          "value": "25",
+          "name": "Mortgage",
+          "group": "Debt",
+          "doc": "Mortgage"
+        },
+        {
+          "value": "26",
+          "name": "Municipal",
+          "group": "Debt",
+          "doc": "Municipal"
+        },
+        {
+          "value": "27",
+          "name": "MutualFund",
+          "group": "Fund",
+          "doc": "Mutual fund"
+        },
+        {
+          "value": "28",
+          "name": "CollectiveInvestmentVehicle",
+          "group": "Fund",
+          "doc": "Collective investment vehicle"
+        },
+        {
+          "value": "29",
+          "name": "InvestmentProgram",
+          "group": "Fund",
+          "doc": "Investment program"
+        },
+        {
+          "value": "30",
+          "name": "SpecializedAccountProgram",
+          "group": "Fund",
+          "doc": "Specialized account program"
+        },
+        {
+          "value": "31",
+          "name": "TermLoan",
+          "group": "Loan Facility",
+          "doc": "Term loan"
+        },
+        {
+          "value": "32",
+          "name": "BridgeLoan",
+          "group": "Loan Facility",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "33",
+          "name": "LetterOfCredit",
+          "group": "Loan Facility",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "34",
+          "name": "DividendIndex",
+          "group": "Equity",
+          "doc": "Dividend index"
+        },
+        {
+          "value": "35",
+          "name": "StockDividend",
+          "group": "Equity",
+          "doc": "Stock dividend"
+        },
+        {
+          "value": "36",
+          "name": "ExchangeTradedFund",
+          "group": "Equity",
+          "doc": "Exchange traded fund"
+        },
+        {
+          "value": "37",
+          "name": "VolatilityIndex",
+          "group": "Equity",
+          "doc": "Volatility index"
+        },
+        {
+          "value": "38",
+          "name": "FXCrossRates",
+          "group": "Currency",
+          "doc": "FX cross rates"
+        },
+        {
+          "value": "39",
+          "name": "FXEmergingMarkets",
+          "group": "Currency",
+          "doc": "FX emerging markets"
+        },
+        {
+          "value": "40",
+          "name": "FXMajors",
+          "group": "Currency",
+          "doc": "FX Majors"
+        },
+        {
+          "value": "41",
+          "name": "Fertilizer",
+          "group": "Commodity",
+          "doc": "Fertilizer"
+        },
+        {
+          "value": "42",
+          "name": "IndustrialProduct",
+          "group": "Commodity",
+          "doc": "Industrial product"
+        },
+        {
+          "value": "43",
+          "name": "Inflation",
+          "group": "Commodity",
+          "doc": "Inflation"
+        },
+        {
+          "value": "44",
+          "name": "Paper",
+          "group": "Commodity",
+          "doc": "Paper"
+        },
+        {
+          "value": "45",
+          "name": "Polypropylene",
+          "group": "Commodity",
+          "doc": "Polypropylene"
+        },
+        {
+          "value": "46",
+          "name": "OfficialEconomicStatistics",
+          "group": "Commodity",
+          "doc": "Official economic statistics"
+        },
+        {
+          "value": "47",
+          "name": "OtherC10",
+          "group": "Other",
+          "doc": "Other C10"
+        },
+        {
+          "value": "48",
+          "name": "Other",
+          "group": "Other",
+          "doc": "Other"
         }
       ],
       "fix:tag": "1978"
@@ -4112,27 +3050,19 @@
       "display": "BlockTrdAllocIndicator",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BlockToBeAllocated",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Block to be allocated"
-        },
-        {
           "value": "1",
           "name": "BlockNotToBeAllocated",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Block not to be allocated"
         },
         {
           "value": "2",
           "name": "AllocatedTrade",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Allocated trade"
+        },
+        {
+          "value": "0",
+          "name": "BlockToBeAllocated",
+          "doc": "Block to be allocated"
         }
       ],
       "fix:tag": "1980"
@@ -4161,236 +3091,154 @@
       "display": "UnderlyingEventType",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "Put",
-          "since": "4.4",
-          "doc": "Put"
-        },
-        {
-          "value": "10",
-          "name": "SwapRollDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 9,
-          "doc": "Swap roll date"
-        },
-        {
-          "value": "11",
-          "name": "SwapNextStartDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 10,
-          "doc": "Swap next start date"
-        },
-        {
-          "value": "12",
-          "name": "SwapNextRollDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 11,
-          "doc": "Swap next roll date"
-        },
-        {
-          "value": "13",
-          "name": "FirstDeliveryDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 12,
-          "doc": "First delivery date"
-        },
-        {
-          "value": "14",
-          "name": "LastDeliveryDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 13,
-          "doc": "Last delivery date"
-        },
-        {
-          "value": "15",
-          "name": "InitialInventoryDueDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 14,
-          "doc": "Initial inventory due date"
-        },
-        {
-          "value": "16",
-          "name": "FinalInventoryDueDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 15,
-          "doc": "Final inventory due date"
-        },
-        {
-          "value": "17",
-          "name": "FirstIntentDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 16,
-          "doc": "First intent date"
-        },
-        {
-          "value": "18",
-          "name": "LastIntentDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 17,
-          "doc": "Last intent date"
-        },
-        {
-          "value": "19",
-          "name": "PositionRemovalDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 18,
-          "doc": "Position removal date"
-        },
-        {
           "value": "2",
           "name": "Call",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Call"
-        },
-        {
-          "value": "20",
-          "name": "MinimumNotice",
-          "since": "5.0.2",
-          "ep": 132,
-          "sort": 19,
-          "doc": "Minimum notice"
-        },
-        {
-          "value": "21",
-          "name": "DeliveryStartTime",
-          "since": "5.0.2",
-          "ep": 137,
-          "sort": 20,
-          "doc": "Delivery start time"
-        },
-        {
-          "value": "22",
-          "name": "DeliveryEndTime",
-          "since": "5.0.2",
-          "ep": 137,
-          "sort": 21,
-          "doc": "Delivery end time"
-        },
-        {
-          "value": "23",
-          "name": "FirstNoticeDate",
-          "since": "5.0.2",
-          "ep": 138,
-          "sort": 22,
-          "doc": "First notice date"
-        },
-        {
-          "value": "24",
-          "name": "LastNoticeDate",
-          "since": "5.0.2",
-          "ep": 138,
-          "sort": 23,
-          "doc": "Last notice date"
-        },
-        {
-          "value": "25",
-          "name": "FirstExerciseDate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 24,
-          "doc": "First exercise date"
-        },
-        {
-          "value": "26",
-          "name": "RedemptionDate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 25,
-          "doc": "Redemption date"
-        },
-        {
-          "value": "27",
-          "name": "TrdCntntnEfctvDt",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 26,
-          "doc": "Trade continuation effective date"
-        },
-        {
-          "value": "28",
-          "name": "FrontMonth",
-          "ep": 308,
-          "sort": 27,
-          "doc": "Front month"
-        },
-        {
-          "value": "29",
-          "name": "LeadMonth",
-          "ep": 308,
-          "sort": 28,
-          "doc": "Lead month"
         },
         {
           "value": "3",
           "name": "Tender",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Tender"
         },
         {
           "value": "4",
           "name": "SinkingFundCall",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Sinking fund call"
         },
         {
           "value": "5",
           "name": "Activation",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 4,
           "doc": "Activation"
         },
         {
           "value": "6",
           "name": "Inactiviation",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 5,
           "doc": "Inactivation"
         },
         {
           "value": "7",
           "name": "LastEligibleTradeDate",
-          "since": "5.0",
-          "ep": 42,
-          "sort": 6,
           "doc": "Last eligible trade date"
         },
         {
           "value": "8",
           "name": "SwapStartDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 7,
           "doc": "Swap start date"
         },
         {
           "value": "9",
           "name": "SwapEndDate",
-          "since": "5.0",
-          "ep": 52,
-          "sort": 8,
           "doc": "Swap end date"
+        },
+        {
+          "value": "10",
+          "name": "SwapRollDate",
+          "doc": "Swap roll date"
+        },
+        {
+          "value": "11",
+          "name": "SwapNextStartDate",
+          "doc": "Swap next start date"
+        },
+        {
+          "value": "12",
+          "name": "SwapNextRollDate",
+          "doc": "Swap next roll date"
+        },
+        {
+          "value": "13",
+          "name": "FirstDeliveryDate",
+          "doc": "First delivery date"
+        },
+        {
+          "value": "14",
+          "name": "LastDeliveryDate",
+          "doc": "Last delivery date"
+        },
+        {
+          "value": "15",
+          "name": "InitialInventoryDueDate",
+          "doc": "Initial inventory due date"
+        },
+        {
+          "value": "16",
+          "name": "FinalInventoryDueDate",
+          "doc": "Final inventory due date"
+        },
+        {
+          "value": "17",
+          "name": "FirstIntentDate",
+          "doc": "First intent date"
+        },
+        {
+          "value": "18",
+          "name": "LastIntentDate",
+          "doc": "Last intent date"
+        },
+        {
+          "value": "19",
+          "name": "PositionRemovalDate",
+          "doc": "Position removal date"
+        },
+        {
+          "value": "20",
+          "name": "MinimumNotice",
+          "doc": "Minimum notice"
+        },
+        {
+          "value": "21",
+          "name": "DeliveryStartTime",
+          "doc": "Delivery start time"
+        },
+        {
+          "value": "22",
+          "name": "DeliveryEndTime",
+          "doc": "Delivery end time"
+        },
+        {
+          "value": "23",
+          "name": "FirstNoticeDate",
+          "doc": "First notice date"
+        },
+        {
+          "value": "24",
+          "name": "LastNoticeDate",
+          "doc": "Last notice date"
+        },
+        {
+          "value": "25",
+          "name": "FirstExerciseDate",
+          "doc": "First exercise date"
+        },
+        {
+          "value": "26",
+          "name": "RedemptionDate",
+          "doc": "Redemption date"
+        },
+        {
+          "value": "27",
+          "name": "TrdCntntnEfctvDt",
+          "doc": "Trade continuation effective date"
+        },
+        {
+          "value": "28",
+          "name": "FrontMonth",
+          "doc": "Front month"
+        },
+        {
+          "value": "29",
+          "name": "LeadMonth",
+          "doc": "Lead month"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 29,
           "doc": "Other"
+        },
+        {
+          "value": "1",
+          "name": "Put",
+          "doc": "Put"
         }
       ],
       "fix:tag": "1982"
@@ -4482,35 +3330,24 @@
       "display": "UnderlyingCouponType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Zero",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Zero"
-        },
-        {
           "value": "1",
           "name": "FixedRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Fixed rate"
         },
         {
           "value": "2",
           "name": "FloatingRate",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Floating rate"
         },
         {
           "value": "3",
           "name": "Structured",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Structured"
+        },
+        {
+          "value": "0",
+          "name": "Zero",
+          "doc": "Zero"
         }
       ],
       "fix:tag": "1989"
@@ -4553,66 +3390,42 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
         },
         {
           "value": "H",
           "name": "Hour",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 5,
           "doc": "Hour"
         },
         {
           "value": "Min",
           "name": "Minute",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 6,
           "doc": "Minute"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "S",
           "name": "Second",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 7,
           "doc": "Second"
         },
         {
           "value": "T",
           "name": "Term",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 8,
           "doc": "Term"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
-          "doc": "Week"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
-          "doc": "Year"
         }
       ],
       "fix:tag": "1992"
@@ -4629,195 +3442,124 @@
       "display": "UnderlyingCouponDayCount",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "OneOne",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "1/1"
-        },
-        {
           "value": "1",
           "name": "ThirtyThreeSixtyUS",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "30/360 (30U/360 or Bond Basis)"
-        },
-        {
-          "value": "10",
-          "name": "ActActISMAUltimo",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "doc": "Act/Act (ICMA Ultimo)"
-        },
-        {
-          "value": "11",
-          "name": "ActActISDA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "doc": "Act/Act (ISDA)"
-        },
-        {
-          "value": "12",
-          "name": "BusTwoFiftyTwo",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "doc": "BUS/252"
-        },
-        {
-          "value": "13",
-          "name": "ThirtyEPlusThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "doc": "30E+/360"
-        },
-        {
-          "value": "14",
-          "name": "ActThreeSixtyFiveL",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "doc": "Act/365L"
-        },
-        {
-          "value": "15",
-          "name": "NLThreeSixtyFive",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "doc": "NL365"
-        },
-        {
-          "value": "16",
-          "name": "NLThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "doc": "NL360"
-        },
-        {
-          "value": "17",
-          "name": "Act364",
-          "since": "5.0.2",
-          "ep": 200,
-          "sort": 17,
-          "doc": "Act/364"
-        },
-        {
-          "value": "18",
-          "name": "ThirtyThreeSixtyFive",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 18,
-          "doc": "30/365"
-        },
-        {
-          "value": "19",
-          "name": "ThirtyActual",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 19,
-          "doc": "30/Actual"
         },
         {
           "value": "2",
           "name": "ThirtyThreeSixtySIA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "30/360 (SIA)"
-        },
-        {
-          "value": "20",
-          "name": "ThirtyThreeSixtyICMA",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 20,
-          "doc": "30/360 (ICMA or basis rule)"
-        },
-        {
-          "value": "21",
-          "name": "ThirtyETwoThreeSixty",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 21,
-          "doc": "30E2/360 (Eurobond basis model two)"
-        },
-        {
-          "value": "22",
-          "name": "ThirtyEThreeThreeSixty",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 22,
-          "doc": "30E3/360 (Eurobond basis model three)"
         },
         {
           "value": "3",
           "name": "ThirtyThreeSixtyM",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "30/360M"
         },
         {
           "value": "4",
           "name": "ThirtyEThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "30E/360 (Eurobond Basis)"
         },
         {
           "value": "5",
           "name": "ThirtyEThreeSixtyISDA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "30E/360 (ISDA)"
         },
         {
           "value": "6",
           "name": "ActThreeSixty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Act/360"
         },
         {
           "value": "7",
           "name": "ActThreeSixtyFiveFixed",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Act/365 (FIXED)"
         },
         {
           "value": "8",
           "name": "ActActAFB",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
           "doc": "Act/Act (AFB)"
         },
         {
           "value": "9",
           "name": "ActActICMA",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "doc": "Act/Act (ICMA)"
+        },
+        {
+          "value": "10",
+          "name": "ActActISMAUltimo",
+          "doc": "Act/Act (ICMA Ultimo)"
+        },
+        {
+          "value": "11",
+          "name": "ActActISDA",
+          "doc": "Act/Act (ISDA)"
+        },
+        {
+          "value": "12",
+          "name": "BusTwoFiftyTwo",
+          "doc": "BUS/252"
+        },
+        {
+          "value": "13",
+          "name": "ThirtyEPlusThreeSixty",
+          "doc": "30E+/360"
+        },
+        {
+          "value": "14",
+          "name": "ActThreeSixtyFiveL",
+          "doc": "Act/365L"
+        },
+        {
+          "value": "15",
+          "name": "NLThreeSixtyFive",
+          "doc": "NL365"
+        },
+        {
+          "value": "16",
+          "name": "NLThreeSixty",
+          "doc": "NL360"
+        },
+        {
+          "value": "17",
+          "name": "Act364",
+          "doc": "Act/364"
+        },
+        {
+          "value": "18",
+          "name": "ThirtyThreeSixtyFive",
+          "doc": "30/365"
+        },
+        {
+          "value": "19",
+          "name": "ThirtyActual",
+          "doc": "30/Actual"
+        },
+        {
+          "value": "20",
+          "name": "ThirtyThreeSixtyICMA",
+          "doc": "30/360 (ICMA or basis rule)"
+        },
+        {
+          "value": "21",
+          "name": "ThirtyETwoThreeSixty",
+          "doc": "30E2/360 (Eurobond basis model two)"
+        },
+        {
+          "value": "22",
+          "name": "ThirtyEThreeThreeSixty",
+          "doc": "30E3/360 (Eurobond basis model three)"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "OneOne",
+          "doc": "1/1"
         }
       ],
       "fix:tag": "1993"
@@ -4848,245 +3590,166 @@
         {
           "value": "1",
           "name": "CUSIP",
-          "since": "2.7",
-          "sort": 1,
           "doc": "CUSIP"
         },
         {
           "value": "2",
           "name": "SEDOL",
-          "since": "2.7",
-          "sort": 2,
           "doc": "SEDOL"
         },
         {
           "value": "3",
           "name": "QUIK",
-          "since": "2.7",
-          "sort": 3,
           "doc": "QUIK"
         },
         {
           "value": "4",
           "name": "ISINNumber",
-          "since": "3.0",
-          "sort": 4,
           "doc": "ISIN"
         },
         {
           "value": "5",
           "name": "RICCode",
-          "since": "3.0",
-          "sort": 5,
           "doc": "RIC"
         },
         {
           "value": "6",
           "name": "ISOCurrencyCode",
-          "since": "4.1",
-          "sort": 6,
           "doc": "ISO Currency Code (ISO 4217)"
         },
         {
           "value": "7",
           "name": "ISOCountryCode",
-          "since": "4.1",
-          "sort": 7,
           "doc": "ISO Country Code"
         },
         {
           "value": "8",
           "name": "ExchangeSymbol",
-          "since": "4.2",
-          "sort": 8,
           "doc": "Exchange symbol"
         },
         {
           "value": "9",
           "name": "ConsolidatedTapeAssociation",
-          "since": "4.2",
-          "sort": 9,
           "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
         },
         {
           "value": "A",
           "name": "BloombergSymbol",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Bloomberg Symbol"
         },
         {
           "value": "B",
           "name": "Wertpapier",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Wertpapier"
         },
         {
           "value": "C",
           "name": "Dutch",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Dutch"
         },
         {
           "value": "D",
           "name": "Valoren",
-          "since": "4.3",
-          "sort": 13,
           "doc": "Valoren"
         },
         {
           "value": "E",
           "name": "Sicovam",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Sicovam"
         },
         {
           "value": "F",
           "name": "Belgian",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Belgian"
         },
         {
           "value": "G",
           "name": "Common",
-          "since": "4.3",
-          "sort": 16,
           "doc": "\"Common\" (Clearstream and Euroclear)"
         },
         {
           "value": "H",
           "name": "ClearingHouse",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Clearing house / Clearing organization"
         },
         {
           "value": "I",
           "name": "ISDAFpMLSpecification",
-          "since": "4.4",
-          "sort": 18,
           "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
         },
         {
           "value": "J",
           "name": "OptionPriceReportingAuthority",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Option Price Reporting Authority"
         },
         {
           "value": "K",
           "name": "ISDAFpMLURL",
-          "since": "4.4",
-          "ep": 15,
-          "sort": 20,
           "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
         },
         {
           "value": "L",
           "name": "LetterOfCredit",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 21,
           "doc": "Letter of credit"
         },
         {
           "value": "M",
           "name": "MarketplaceAssignedIdentifier",
-          "since": "5.0",
-          "ep": 58,
-          "sort": 22,
           "doc": "Marketplace-assigned Identifier"
         },
         {
           "value": "N",
           "name": "MarkitREDEntityCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 23,
           "doc": "Markit RED entity CLIP"
         },
         {
           "value": "P",
           "name": "MarkitREDPairCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 24,
           "doc": "Markit RED pair CLIP"
         },
         {
           "value": "Q",
           "name": "CFTCCommodityCode",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 25,
           "doc": "CFTC commodity code"
         },
         {
           "value": "R",
           "name": "ISDACommodityReferencePrice",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 26,
           "doc": "ISDA Commodity Reference Price"
         },
         {
           "value": "S",
           "name": "FinancialInstrumentGlobalIdentifier",
-          "since": "5.0.2",
-          "ep": 158,
-          "sort": 27,
           "doc": "Financial Instrument Global Identifier"
         },
         {
           "value": "T",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 28,
           "doc": "Legal entity identifier"
         },
         {
           "value": "U",
           "name": "Synthetic",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 29,
           "doc": "Synthetic"
         },
         {
           "value": "V",
           "name": "FidessaInstrumentMnemonic",
-          "since": "5.0.2",
-          "ep": 220,
-          "sort": 30,
           "doc": "Fidessa Instrument Mnemonic (FIM)"
         },
         {
           "value": "W",
           "name": "IndexName",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 31,
           "doc": "Index name"
         },
         {
           "value": "X",
           "name": "UniformSymbol",
-          "since": "5.0.2",
-          "ep": 242,
-          "sort": 32,
           "doc": "Uniform Symbol (UMTF Symbol)"
         },
         {
           "value": "Y",
           "name": "DigitalTokenIdentifier",
-          "ep": 273,
-          "sort": 33,
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
@@ -5118,245 +3781,166 @@
         {
           "value": "1",
           "name": "CUSIP",
-          "since": "2.7",
-          "sort": 1,
           "doc": "CUSIP"
         },
         {
           "value": "2",
           "name": "SEDOL",
-          "since": "2.7",
-          "sort": 2,
           "doc": "SEDOL"
         },
         {
           "value": "3",
           "name": "QUIK",
-          "since": "2.7",
-          "sort": 3,
           "doc": "QUIK"
         },
         {
           "value": "4",
           "name": "ISINNumber",
-          "since": "3.0",
-          "sort": 4,
           "doc": "ISIN"
         },
         {
           "value": "5",
           "name": "RICCode",
-          "since": "3.0",
-          "sort": 5,
           "doc": "RIC"
         },
         {
           "value": "6",
           "name": "ISOCurrencyCode",
-          "since": "4.1",
-          "sort": 6,
           "doc": "ISO Currency Code (ISO 4217)"
         },
         {
           "value": "7",
           "name": "ISOCountryCode",
-          "since": "4.1",
-          "sort": 7,
           "doc": "ISO Country Code"
         },
         {
           "value": "8",
           "name": "ExchangeSymbol",
-          "since": "4.2",
-          "sort": 8,
           "doc": "Exchange symbol"
         },
         {
           "value": "9",
           "name": "ConsolidatedTapeAssociation",
-          "since": "4.2",
-          "sort": 9,
           "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
         },
         {
           "value": "A",
           "name": "BloombergSymbol",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Bloomberg Symbol"
         },
         {
           "value": "B",
           "name": "Wertpapier",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Wertpapier"
         },
         {
           "value": "C",
           "name": "Dutch",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Dutch"
         },
         {
           "value": "D",
           "name": "Valoren",
-          "since": "4.3",
-          "sort": 13,
           "doc": "Valoren"
         },
         {
           "value": "E",
           "name": "Sicovam",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Sicovam"
         },
         {
           "value": "F",
           "name": "Belgian",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Belgian"
         },
         {
           "value": "G",
           "name": "Common",
-          "since": "4.3",
-          "sort": 16,
           "doc": "\"Common\" (Clearstream and Euroclear)"
         },
         {
           "value": "H",
           "name": "ClearingHouse",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Clearing house / Clearing organization"
         },
         {
           "value": "I",
           "name": "ISDAFpMLSpecification",
-          "since": "4.4",
-          "sort": 18,
           "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
         },
         {
           "value": "J",
           "name": "OptionPriceReportingAuthority",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Option Price Reporting Authority"
         },
         {
           "value": "K",
           "name": "ISDAFpMLURL",
-          "since": "4.4",
-          "ep": 15,
-          "sort": 20,
           "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
         },
         {
           "value": "L",
           "name": "LetterOfCredit",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 21,
           "doc": "Letter of credit"
         },
         {
           "value": "M",
           "name": "MarketplaceAssignedIdentifier",
-          "since": "5.0",
-          "ep": 58,
-          "sort": 22,
           "doc": "Marketplace-assigned Identifier"
         },
         {
           "value": "N",
           "name": "MarkitREDEntityCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 23,
           "doc": "Markit RED entity CLIP"
         },
         {
           "value": "P",
           "name": "MarkitREDPairCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 24,
           "doc": "Markit RED pair CLIP"
         },
         {
           "value": "Q",
           "name": "CFTCCommodityCode",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 25,
           "doc": "CFTC commodity code"
         },
         {
           "value": "R",
           "name": "ISDACommodityReferencePrice",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 26,
           "doc": "ISDA Commodity Reference Price"
         },
         {
           "value": "S",
           "name": "FinancialInstrumentGlobalIdentifier",
-          "since": "5.0.2",
-          "ep": 158,
-          "sort": 27,
           "doc": "Financial Instrument Global Identifier"
         },
         {
           "value": "T",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 28,
           "doc": "Legal entity identifier"
         },
         {
           "value": "U",
           "name": "Synthetic",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 29,
           "doc": "Synthetic"
         },
         {
           "value": "V",
           "name": "FidessaInstrumentMnemonic",
-          "since": "5.0.2",
-          "ep": 220,
-          "sort": 30,
           "doc": "Fidessa Instrument Mnemonic (FIM)"
         },
         {
           "value": "W",
           "name": "IndexName",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 31,
           "doc": "Index name"
         },
         {
           "value": "X",
           "name": "UniformSymbol",
-          "since": "5.0.2",
-          "ep": 242,
-          "sort": 32,
           "doc": "Uniform Symbol (UMTF Symbol)"
         },
         {
           "value": "Y",
           "name": "DigitalTokenIdentifier",
-          "ep": 273,
-          "sort": 33,
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
@@ -5374,35 +3958,24 @@
       "display": "UnderlyingLienSeniority",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unknown",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unknown"
-        },
-        {
           "value": "1",
           "name": "FirstLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "First lien"
         },
         {
           "value": "2",
           "name": "SecondLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Second lien"
         },
         {
           "value": "3",
           "name": "ThirdLien",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Third lien"
+        },
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
         }
       ],
       "fix:tag": "1998"
@@ -5419,51 +3992,34 @@
       "display": "UnderlyingLoanFacility",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BridgeLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bridge loan"
-        },
-        {
           "value": "1",
           "name": "LetterOfCredit",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Letter of credit"
         },
         {
           "value": "2",
           "name": "RevolvingLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Revolving loan"
         },
         {
           "value": "3",
           "name": "SwinglineFunding",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Swingline funding"
         },
         {
           "value": "4",
           "name": "TermLoan",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Term loan"
         },
         {
           "value": "5",
           "name": "TradeClaim",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Trade claim"
+        },
+        {
+          "value": "0",
+          "name": "BridgeLoan",
+          "doc": "Bridge loan"
         }
       ],
       "fix:tag": "1999"

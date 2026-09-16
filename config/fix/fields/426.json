@@ -46,19 +46,14 @@
       "display": "PaymentStreamInterpolationMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "None"
-        },
-        {
           "value": "1",
           "name": "LinearZeroYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Linear zero yield"
+        },
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None"
         }
       ],
       "fix:tag": "42603"
@@ -75,35 +70,24 @@
       "display": "PaymentStreamInterpolationPeriod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Initial",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Initial"
-        },
-        {
           "value": "1",
           "name": "InitialAndFinal",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Initial and final"
         },
         {
           "value": "2",
           "name": "Final",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Final"
         },
         {
           "value": "3",
           "name": "AnyPeriod",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 3,
           "doc": "Any period"
+        },
+        {
+          "value": "0",
+          "name": "Initial",
+          "doc": "Initial"
         }
       ],
       "fix:tag": "42604"
@@ -157,19 +141,14 @@
       "display": "PaymentStreamCompoundingDateType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unadjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unadjusted"
-        },
-        {
           "value": "1",
           "name": "Adjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Adjusted"
+        },
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
         }
       ],
       "fix:tag": "42608"
@@ -186,67 +165,44 @@
       "display": "PaymentStreamCompoundingDatesBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42609"
@@ -289,33 +245,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -333,51 +277,34 @@
       "display": "PaymentStreamCompoundingDatesOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42613"
@@ -420,66 +347,42 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
         },
         {
           "value": "H",
           "name": "Hour",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 5,
           "doc": "Hour"
         },
         {
           "value": "Min",
           "name": "Minute",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 6,
           "doc": "Minute"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "S",
           "name": "Second",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 7,
           "doc": "Second"
         },
         {
           "value": "T",
           "name": "Term",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 8,
           "doc": "Term"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
-          "doc": "Week"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
-          "doc": "Year"
         }
       ],
       "fix:tag": "42616"
@@ -498,370 +401,232 @@
         {
           "value": "1",
           "name": "FirstDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "1st day of the month"
-        },
-        {
-          "value": "10",
-          "name": "TenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
-          "doc": "10th day of the month"
-        },
-        {
-          "value": "11",
-          "name": "EleventhDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
-          "doc": "11th day of the month"
-        },
-        {
-          "value": "12",
-          "name": "TwelvthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
-          "doc": "12th day of the month"
-        },
-        {
-          "value": "13",
-          "name": "ThirteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
-          "doc": "13th day of the month"
-        },
-        {
-          "value": "14",
-          "name": "ForteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
-          "doc": "14th day of the month"
-        },
-        {
-          "value": "15",
-          "name": "FifteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
-          "doc": "15th day of the month"
-        },
-        {
-          "value": "16",
-          "name": "SixteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
-          "doc": "16th day of the month"
-        },
-        {
-          "value": "17",
-          "name": "SeventeenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 17,
-          "doc": "17th day of the month"
-        },
-        {
-          "value": "18",
-          "name": "EighteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 18,
-          "doc": "18th day of the month"
-        },
-        {
-          "value": "19",
-          "name": "NineteenthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 19,
-          "doc": "19th day of the month"
         },
         {
           "value": "2",
           "name": "SecondDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "2nd day of the month"
-        },
-        {
-          "value": "20",
-          "name": "TwentiethDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 20,
-          "doc": "20th day of the month"
-        },
-        {
-          "value": "21",
-          "name": "TwentyFirstDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 21,
-          "doc": "21st day of the month"
-        },
-        {
-          "value": "22",
-          "name": "TwentySecondDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 22,
-          "doc": "22nd day of the month"
-        },
-        {
-          "value": "23",
-          "name": "TwentyThirdDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 23,
-          "doc": "23rd day of the month"
-        },
-        {
-          "value": "24",
-          "name": "TwentyFourthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 24,
-          "doc": "24th day of the month"
-        },
-        {
-          "value": "25",
-          "name": "TwentyFifthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 25,
-          "doc": "25th day of the month"
-        },
-        {
-          "value": "26",
-          "name": "TwentySixthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 26,
-          "doc": "26th day of the month"
-        },
-        {
-          "value": "27",
-          "name": "TwentySeventhDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 27,
-          "doc": "27th day of the month"
-        },
-        {
-          "value": "28",
-          "name": "TwentyEigthDa28y",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 28,
-          "doc": "28th day of the month"
-        },
-        {
-          "value": "29",
-          "name": "TwentyNinthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 29,
-          "doc": "29th day of the month"
         },
         {
           "value": "3",
           "name": "ThirdDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "3rd day of the month"
-        },
-        {
-          "value": "30",
-          "name": "ThirtiethDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 30,
-          "doc": "30th day of the month"
         },
         {
           "value": "4",
           "name": "FourthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "4th day of the month"
         },
         {
           "value": "5",
           "name": "FifthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "5th day of the month"
         },
         {
           "value": "6",
           "name": "SixthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "6thd day of the month"
         },
         {
           "value": "7",
           "name": "SeventhDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "7th day of the month"
         },
         {
           "value": "8",
           "name": "EighthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 8,
           "doc": "8th day of the month"
         },
         {
           "value": "9",
           "name": "NinthDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 9,
           "doc": "9th day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "doc": "30th day of the month"
         },
         {
           "value": "EOM",
           "name": "EOM",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 31,
           "doc": "The end of the month."
-        },
-        {
-          "value": "FRI",
-          "name": "FRI",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 44,
-          "doc": "Friday"
         },
         {
           "value": "FRN",
           "name": "FRN",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 32,
           "doc": "The floating rate note convention or Eurodollar convention."
         },
         {
           "value": "IMM",
           "name": "IMM",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 33,
           "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
-        },
-        {
-          "value": "IMMAUD",
-          "name": "IMMAUD",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 35,
-          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
         },
         {
           "value": "IMMCAD",
           "name": "IMMCAD",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 34,
           "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
         },
         {
           "value": "IMMNZD",
           "name": "IMMNZD",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 36,
           "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
-        },
-        {
-          "value": "MON",
-          "name": "MON",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 40,
-          "doc": "Monday"
-        },
-        {
-          "value": "NONE",
-          "name": "NONE",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 38,
-          "doc": "No adjustment"
-        },
-        {
-          "value": "SAT",
-          "name": "SAT",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 45,
-          "doc": "Saturday"
         },
         {
           "value": "SFE",
           "name": "SFE",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 37,
           "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
         },
         {
-          "value": "SUN",
-          "name": "SUN",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 46,
-          "doc": "Sunday"
+          "value": "NONE",
+          "name": "NONE",
+          "doc": "No adjustment"
         },
         {
           "value": "TBILL",
           "name": "TBILL",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 39,
           "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
         },
         {
-          "value": "THU",
-          "name": "THU",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 43,
-          "doc": "Thursday"
+          "value": "MON",
+          "name": "MON",
+          "doc": "Monday"
         },
         {
           "value": "TUE",
           "name": "TUE",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 41,
           "doc": "Tuesday"
         },
         {
           "value": "WED",
           "name": "WED",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 42,
           "doc": "Wednesday"
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "doc": "Thursday"
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "doc": "Friday"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "doc": "Sunday"
         }
       ],
       "fix:tag": "42617"
@@ -967,33 +732,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1011,51 +764,34 @@
       "display": "PaymentStreamCompoundingEndDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42626"
@@ -1111,33 +847,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1179,19 +903,14 @@
       "display": "PaymentStreamCompoundingRateSpreadPositionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Short",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Short"
-        },
-        {
           "value": "1",
           "name": "Long",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Long"
+        },
+        {
+          "value": "0",
+          "name": "Short",
+          "doc": "Short"
         }
       ],
       "fix:tag": "42633"
@@ -1208,19 +927,14 @@
       "display": "PaymentStreamCompoundingRateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Bond equivalent yield"
-        },
-        {
           "value": "1",
           "name": "MoneyMarketYield",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Money market yield"
+        },
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "doc": "Bond equivalent yield"
         }
       ],
       "fix:tag": "42634"
@@ -1251,17 +965,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -1281,17 +989,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -1323,17 +1025,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -1353,17 +1049,11 @@
         {
           "value": "1",
           "name": "Buyer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Buyer of the trade"
         },
         {
           "value": "2",
           "name": "Seller",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Seller of the trade"
         }
       ],
@@ -1395,22 +1085,16 @@
         {
           "value": "0",
           "name": "RoundToNearest",
-          "since": "4.3",
-          "sort": 1,
           "doc": "Round to nearest"
         },
         {
           "value": "1",
           "name": "RoundDown",
-          "since": "4.3",
-          "sort": 2,
           "doc": "Round down"
         },
         {
           "value": "2",
           "name": "RoundUp",
-          "since": "4.3",
-          "sort": 3,
           "doc": "Round up"
         }
       ],
@@ -1440,19 +1124,14 @@
       "display": "PaymentStreamCompoundingAveragingMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unweighted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unweighted"
-        },
-        {
           "value": "1",
           "name": "Weighted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Weighted"
+        },
+        {
+          "value": "0",
+          "name": "Unweighted",
+          "doc": "Unweighted"
         }
       ],
       "fix:tag": "42644"
@@ -1469,19 +1148,14 @@
       "display": "PaymentStreamCompoundingNegativeRateTreatment",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ZeroInterestRateMethod",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Zero interest rate method"
-        },
-        {
           "value": "1",
           "name": "NegativeInterestRateMethod",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Negative interest rate method"
+        },
+        {
+          "value": "0",
+          "name": "ZeroInterestRateMethod",
+          "doc": "Zero interest rate method"
         }
       ],
       "fix:tag": "42645"
@@ -1537,33 +1211,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1581,51 +1243,34 @@
       "display": "PaymentStreamCompoundingStartDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42650"
@@ -1718,33 +1363,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -1762,51 +1395,34 @@
       "display": "PaymentStreamFinalPricePaymentDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42658"
@@ -1861,19 +1477,14 @@
       "display": "PaymentStreamFixingDateType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unadjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Unadjusted"
-        },
-        {
           "value": "1",
           "name": "Adjusted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Adjusted"
+        },
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
         }
       ],
       "fix:tag": "42662"
@@ -1915,51 +1526,34 @@
       "display": "PaymentStreamFirstObservationDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42665"
@@ -2073,19 +1667,14 @@
       "display": "PaymentStreamLinkStrikePriceType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Volatility",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Volatility"
-        },
-        {
           "value": "1",
           "name": "Variance",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Variance"
+        },
+        {
+          "value": "0",
+          "name": "Volatility",
+          "doc": "Volatility"
         }
       ],
       "fix:tag": "42674"
@@ -2150,27 +1739,19 @@
       "display": "PaymentStreamRealizedVarianceMethod",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Previous",
-          "since": "5.0.2",
-          "ep": 208,
-          "doc": "Previous"
-        },
-        {
           "value": "1",
           "name": "Last",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 1,
           "doc": "Last"
         },
         {
           "value": "2",
           "name": "Both",
-          "since": "5.0.2",
-          "ep": 208,
-          "sort": 2,
           "doc": "Both"
+        },
+        {
+          "value": "0",
+          "name": "Previous",
+          "doc": "Previous"
         }
       ],
       "fix:tag": "42679"
@@ -2308,67 +1889,44 @@
       "display": "PaymentStubEndDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42690"
@@ -2411,33 +1969,21 @@
         {
           "value": "D",
           "name": "Day",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Day"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
-          "doc": "Month"
         },
         {
           "value": "Wk",
           "name": "Week",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
         },
         {
           "value": "Yr",
           "name": "Year",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Year"
         }
       ],
@@ -2455,51 +2001,34 @@
       "display": "PaymentStubEndDateOffsetDayType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Business",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Business"
-        },
-        {
           "value": "1",
           "name": "Calendar",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "Calendar"
         },
         {
           "value": "2",
           "name": "CommodityBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Commodity business"
         },
         {
           "value": "3",
           "name": "CurrencyBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Currency business"
         },
         {
           "value": "4",
           "name": "ExchangeBusiness",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Exchange business"
         },
         {
           "value": "5",
           "name": "ScheduledTradingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Scheduled trading day"
+        },
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
         }
       ],
       "fix:tag": "42694"
@@ -2566,67 +2095,44 @@
       "display": "PaymentStubStartDateBusinessDayConvention",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "NotApplicable",
-          "since": "5.0.2",
-          "ep": 161,
-          "doc": "Not applicable"
-        },
-        {
           "value": "1",
           "name": "None",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 1,
           "doc": "None (current day)"
         },
         {
           "value": "2",
           "name": "FollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 2,
           "doc": "Following day"
         },
         {
           "value": "3",
           "name": "FloatingRateNote",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "Floating rate note"
         },
         {
           "value": "4",
           "name": "ModifiedFollowingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 4,
           "doc": "Modified following day"
         },
         {
           "value": "5",
           "name": "PrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 5,
           "doc": "Preceding day"
         },
         {
           "value": "6",
           "name": "ModifiedPrecedingDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 6,
           "doc": "Modified preceding day"
         },
         {
           "value": "7",
           "name": "NearestDay",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 7,
           "doc": "Nearest day"
+        },
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
         }
       ],
       "fix:tag": "42699"

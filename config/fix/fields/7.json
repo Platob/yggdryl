@@ -49,279 +49,187 @@
         {
           "value": "ALC",
           "name": "AllocationTradeQty",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Allocation Trade Qty"
         },
         {
           "value": "AS",
           "name": "OptionAssignment",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Option Assignment"
         },
         {
           "value": "ASF",
           "name": "AsOfTradeQty",
-          "since": "4.4",
-          "sort": 3,
           "doc": "As-of Trade Qty"
-        },
-        {
-          "value": "CAA",
-          "name": "CorporateActionAdjustment",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 21,
-          "doc": "Corporate Action Adjustment"
-        },
-        {
-          "value": "CEA",
-          "name": "CreditEventAdjustment",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 25,
-          "doc": "Credit Event Adjustment"
-        },
-        {
-          "value": "CFE",
-          "name": "CashFuturesEquivalentQuantity",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 35,
-          "doc": "Cash futures equivalent quantity"
-        },
-        {
-          "value": "DAS",
-          "name": "LongDeltaAdjustedPairedSwaptionPosition",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 31,
-          "doc": "Delta-adjusted paired swaption position"
-        },
-        {
-          "value": "DLT",
-          "name": "NetDeltaQty",
-          "since": "5.0.1",
-          "ep": 79,
-          "sort": 25,
-          "doc": "Net Delta Qty"
         },
         {
           "value": "DLV",
           "name": "DeliveryQty",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Delivery Qty"
-        },
-        {
-          "value": "DN",
-          "name": "DeliveryNoticeQty",
-          "since": "4.4",
-          "ep": 13,
-          "sort": 22,
-          "doc": "Delivery Notice Qty"
-        },
-        {
-          "value": "EP",
-          "name": "ExchangeForPhysicalQty",
-          "since": "4.4",
-          "ep": 13,
-          "sort": 23,
-          "doc": "Exchange for Physical Qty"
         },
         {
           "value": "ETR",
           "name": "ElectronicTradeQty",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Electronic Trade Qty"
         },
         {
           "value": "EX",
           "name": "OptionExerciseQty",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Option Exercise Qty"
-        },
-        {
-          "value": "EXP",
-          "name": "ExpiringQuantity",
-          "since": "5.0.2",
-          "ep": 151,
-          "sort": 32,
-          "doc": "Expiring quantity"
         },
         {
           "value": "FIN",
           "name": "EndOfDayQty",
-          "since": "4.4",
-          "sort": 7,
           "doc": "End-of-Day Qty"
-        },
-        {
-          "value": "GRS",
-          "name": "GrossQty",
-          "since": "5.0.2",
-          "ep": 102,
-          "sort": 28,
-          "doc": "Gross Qty"
         },
         {
           "value": "IAS",
           "name": "IntraSpreadQty",
-          "since": "4.4",
-          "sort": 8,
           "doc": "Intra-spread Qty"
         },
         {
           "value": "IES",
           "name": "InterSpreadQty",
-          "since": "4.4",
-          "sort": 9,
           "doc": "Inter-spread Qty"
-        },
-        {
-          "value": "ITD",
-          "name": "IntradayQty",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 29,
-          "doc": "Intraday Qty"
-        },
-        {
-          "value": "NDAS",
-          "name": "GrossLongNonDeltaAdjustedSwaptionPosition",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 30,
-          "doc": "Gross non-delta-adjusted swaption position"
-        },
-        {
-          "value": "NET",
-          "name": "NetQty",
-          "since": "5.0.2",
-          "ep": 102,
-          "sort": 27,
-          "doc": "Net Qty"
         },
         {
           "value": "PA",
           "name": "AdjustmentQty",
-          "since": "4.4",
-          "sort": 10,
           "doc": "Adjustment Qty"
         },
         {
           "value": "PIT",
           "name": "PitTradeQty",
-          "since": "4.4",
-          "sort": 11,
           "doc": "Pit Trade Qty"
-        },
-        {
-          "value": "PNTN",
-          "name": "PrivatelyNegotiatedTradeQty",
-          "since": "5.0",
-          "ep": 55,
-          "sort": 24,
-          "doc": "Privately negotiated Trade Qty (Non-regulated)"
-        },
-        {
-          "value": "RCV",
-          "name": "ReceiveQuantity",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 20,
-          "doc": "Receive Quantity"
-        },
-        {
-          "value": "REQ",
-          "name": "RequestedExerciseQuantity",
-          "since": "5.0.2",
-          "ep": 151,
-          "sort": 34,
-          "doc": "Requested exercise quantity"
-        },
-        {
-          "value": "SEA",
-          "name": "SuccessionEventAdjustment",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 26,
-          "doc": "Succession Event Adjustment"
-        },
-        {
-          "value": "SECLN",
-          "name": "LoanOrBorrowedQuantity",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 36,
-          "doc": "Loan or borrowed quantity"
         },
         {
           "value": "SOD",
           "name": "StartOfDayQty",
-          "since": "4.4",
-          "sort": 12,
           "doc": "Start-of-Day Qty"
         },
         {
           "value": "SPL",
           "name": "IntegralSplit",
-          "since": "4.4",
-          "sort": 13,
           "doc": "Integral Split"
         },
         {
           "value": "TA",
           "name": "TransactionFromAssignment",
-          "since": "4.4",
-          "sort": 14,
           "doc": "Transaction from Assignment"
         },
         {
           "value": "TOT",
           "name": "TotalTransactionQty",
-          "since": "4.4",
-          "sort": 15,
           "doc": "Total Transaction Qty"
         },
         {
           "value": "TQ",
           "name": "TransactionQuantity",
-          "since": "4.4",
-          "sort": 16,
           "doc": "Transaction Quantity"
         },
         {
           "value": "TRF",
           "name": "TransferTradeQty",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Transfer Trade Qty"
         },
         {
           "value": "TX",
           "name": "TransactionFromExercise",
-          "since": "4.4",
-          "sort": 18,
           "doc": "Transaction from Exercise"
-        },
-        {
-          "value": "UNEX",
-          "name": "QuantityNotExercised",
-          "since": "5.0.2",
-          "ep": 151,
-          "sort": 33,
-          "doc": "Quantity not exercised"
         },
         {
           "value": "XM",
           "name": "CrossMarginQty",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Cross Margin Qty"
+        },
+        {
+          "value": "RCV",
+          "name": "ReceiveQuantity",
+          "doc": "Receive Quantity"
+        },
+        {
+          "value": "CAA",
+          "name": "CorporateActionAdjustment",
+          "doc": "Corporate Action Adjustment"
+        },
+        {
+          "value": "DN",
+          "name": "DeliveryNoticeQty",
+          "doc": "Delivery Notice Qty"
+        },
+        {
+          "value": "EP",
+          "name": "ExchangeForPhysicalQty",
+          "doc": "Exchange for Physical Qty"
+        },
+        {
+          "value": "PNTN",
+          "name": "PrivatelyNegotiatedTradeQty",
+          "doc": "Privately negotiated Trade Qty (Non-regulated)"
+        },
+        {
+          "value": "CEA",
+          "name": "CreditEventAdjustment",
+          "doc": "Credit Event Adjustment"
+        },
+        {
+          "value": "DLT",
+          "name": "NetDeltaQty",
+          "doc": "Net Delta Qty"
+        },
+        {
+          "value": "SEA",
+          "name": "SuccessionEventAdjustment",
+          "doc": "Succession Event Adjustment"
+        },
+        {
+          "value": "NET",
+          "name": "NetQty",
+          "doc": "Net Qty"
+        },
+        {
+          "value": "GRS",
+          "name": "GrossQty",
+          "doc": "Gross Qty"
+        },
+        {
+          "value": "ITD",
+          "name": "IntradayQty",
+          "doc": "Intraday Qty"
+        },
+        {
+          "value": "NDAS",
+          "name": "GrossLongNonDeltaAdjustedSwaptionPosition",
+          "doc": "Gross non-delta-adjusted swaption position"
+        },
+        {
+          "value": "DAS",
+          "name": "LongDeltaAdjustedPairedSwaptionPosition",
+          "doc": "Delta-adjusted paired swaption position"
+        },
+        {
+          "value": "EXP",
+          "name": "ExpiringQuantity",
+          "doc": "Expiring quantity"
+        },
+        {
+          "value": "UNEX",
+          "name": "QuantityNotExercised",
+          "doc": "Quantity not exercised"
+        },
+        {
+          "value": "REQ",
+          "name": "RequestedExerciseQuantity",
+          "doc": "Requested exercise quantity"
+        },
+        {
+          "value": "CFE",
+          "name": "CashFuturesEquivalentQuantity",
+          "doc": "Cash futures equivalent quantity"
+        },
+        {
+          "value": "SECLN",
+          "name": "LoanOrBorrowedQuantity",
+          "doc": "Loan or borrowed quantity"
         }
       ],
       "fix:tag": "703"
@@ -364,22 +272,16 @@
         {
           "value": "0",
           "name": "Submitted",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Submitted"
         },
         {
           "value": "1",
           "name": "Accepted",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Accepted"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Rejected"
         }
       ],
@@ -397,275 +299,179 @@
       "display": "PosAmtType",
       "fix:codes": [
         {
-          "value": "5YREN",
-          "name": "FiveYearEquivalentNotional",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 26,
-          "doc": "The five year equivalent notional amount"
-        },
-        {
-          "value": "ACPN",
-          "name": "AccruedCouponAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 10,
-          "doc": "Accrued coupon amount"
-        },
-        {
-          "value": "BANK",
-          "name": "TotalBankedAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 16,
-          "doc": "Total banked amount"
-        },
-        {
-          "value": "CASH",
-          "name": "CashAmount",
-          "since": "4.4",
-          "doc": "Cash amount (corporate event)"
-        },
-        {
-          "value": "CMTM",
-          "name": "CollateralizedMarkToMarket",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 13,
-          "doc": "Collateralized mark-to-market"
-        },
-        {
-          "value": "COLAT",
-          "name": "TotalCollateralizedAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 17,
-          "doc": "Total collateralized amount"
-        },
-        {
-          "value": "CPN",
-          "name": "CouponAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 11,
-          "doc": "Coupon amount"
-        },
-        {
           "value": "CRES",
           "name": "CashResidualAmount",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Cash residual amount"
-        },
-        {
-          "value": "DLV",
-          "name": "CompensationAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 15,
-          "doc": "Compensation amount"
-        },
-        {
-          "value": "ENDV",
-          "name": "EndVale",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 32,
-          "doc": "End value"
         },
         {
           "value": "FMTM",
           "name": "FinalMarkToMarketAmount",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Final mark-to-market amount"
-        },
-        {
-          "value": "IACPN",
-          "name": "IncrementalAccruedCoupon",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 12,
-          "doc": "Incremental accrued coupon"
-        },
-        {
-          "value": "ICMTM",
-          "name": "IncrementalCollateralizedMarkToMarket",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 14,
-          "doc": "Incremental collateralized mark-to-market"
-        },
-        {
-          "value": "ICPN",
-          "name": "InitialTradeCouponAmount",
-          "since": "5.0.1",
-          "ep": 83,
-          "sort": 9,
-          "doc": "Initial trade coupon amount"
         },
         {
           "value": "IMTM",
           "name": "IncrementalMarkToMarketAmount",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Incremental mark-to-market"
-        },
-        {
-          "value": "LNVL",
-          "name": "LoanValue",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 34,
-          "doc": "Loan value"
-        },
-        {
-          "value": "LSNV",
-          "name": "LongPairedSwapNotionalValue",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 18,
-          "doc": "Long paired swap or swaption notional value"
-        },
-        {
-          "value": "MGNLN",
-          "name": "OutstandingMarginLoan",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 33,
-          "doc": "Outstanding margin loan"
-        },
-        {
-          "value": "MTD",
-          "name": "MarkToModel",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 28,
-          "doc": "Mark-to-model"
-        },
-        {
-          "value": "NCF",
-          "name": "NetCashFlow",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 23,
-          "doc": "Net cash flow"
-        },
-        {
-          "value": "NPV",
-          "name": "NetPresentValue",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 21,
-          "doc": "Net present value"
         },
         {
           "value": "PREM",
           "name": "PremiumAmount",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Premium amount"
-        },
-        {
-          "value": "PV01",
-          "name": "PresentValueOneBasisPoints",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 25,
-          "doc": "Present value of one basis points"
-        },
-        {
-          "value": "PVFEES",
-          "name": "PresentValueOfFees",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 24,
-          "doc": "Present value of all fees"
-        },
-        {
-          "value": "SACPN",
-          "name": "StartOfDayAccruedCoupon",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 20,
-          "doc": "Start-of-day accrued coupon"
-        },
-        {
-          "value": "SETL",
-          "name": "SettlementValue",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 8,
-          "doc": "Settlement value"
         },
         {
           "value": "SMTM",
           "name": "StartOfDayMarkToMarketAmount",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Start of day mark-to-market"
-        },
-        {
-          "value": "SNPV",
-          "name": "StartOfDayNetPresentValue",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 22,
-          "doc": "Start-of-day net present value"
-        },
-        {
-          "value": "SSNV",
-          "name": "ShortPairedSwapNotionalValue",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 19,
-          "doc": "Short paired swap or swaption notional value"
         },
         {
           "value": "TVAR",
           "name": "TradeVariationAmount",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Trade variation amount"
-        },
-        {
-          "value": "UMTM",
-          "name": "UndiscountedMarkToMarket",
-          "since": "5.0.2",
-          "ep": 162,
-          "sort": 27,
-          "doc": "Undiscounted mark-to-market"
-        },
-        {
-          "value": "UPFRNT",
-          "name": "UpfrontPayment",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 31,
-          "doc": "Upfront payment"
         },
         {
           "value": "VADJ",
           "name": "ValueAdjustedAmount",
-          "since": "4.4",
-          "sort": 7,
           "doc": "Value adjusted amount"
         },
         {
-          "value": "VMTD",
-          "name": "MarkToModelVariance",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 30,
-          "doc": "Mark-to-model variance"
+          "value": "SETL",
+          "name": "SettlementValue",
+          "doc": "Settlement value"
+        },
+        {
+          "value": "ICPN",
+          "name": "InitialTradeCouponAmount",
+          "doc": "Initial trade coupon amount"
+        },
+        {
+          "value": "ACPN",
+          "name": "AccruedCouponAmount",
+          "doc": "Accrued coupon amount"
+        },
+        {
+          "value": "CPN",
+          "name": "CouponAmount",
+          "doc": "Coupon amount"
+        },
+        {
+          "value": "IACPN",
+          "name": "IncrementalAccruedCoupon",
+          "doc": "Incremental accrued coupon"
+        },
+        {
+          "value": "CMTM",
+          "name": "CollateralizedMarkToMarket",
+          "doc": "Collateralized mark-to-market"
+        },
+        {
+          "value": "ICMTM",
+          "name": "IncrementalCollateralizedMarkToMarket",
+          "doc": "Incremental collateralized mark-to-market"
+        },
+        {
+          "value": "DLV",
+          "name": "CompensationAmount",
+          "doc": "Compensation amount"
+        },
+        {
+          "value": "BANK",
+          "name": "TotalBankedAmount",
+          "doc": "Total banked amount"
+        },
+        {
+          "value": "COLAT",
+          "name": "TotalCollateralizedAmount",
+          "doc": "Total collateralized amount"
+        },
+        {
+          "value": "LSNV",
+          "name": "LongPairedSwapNotionalValue",
+          "doc": "Long paired swap or swaption notional value"
+        },
+        {
+          "value": "SSNV",
+          "name": "ShortPairedSwapNotionalValue",
+          "doc": "Short paired swap or swaption notional value"
+        },
+        {
+          "value": "SACPN",
+          "name": "StartOfDayAccruedCoupon",
+          "doc": "Start-of-day accrued coupon"
+        },
+        {
+          "value": "NPV",
+          "name": "NetPresentValue",
+          "doc": "Net present value"
+        },
+        {
+          "value": "SNPV",
+          "name": "StartOfDayNetPresentValue",
+          "doc": "Start-of-day net present value"
+        },
+        {
+          "value": "NCF",
+          "name": "NetCashFlow",
+          "doc": "Net cash flow"
+        },
+        {
+          "value": "PVFEES",
+          "name": "PresentValueOfFees",
+          "doc": "Present value of all fees"
+        },
+        {
+          "value": "PV01",
+          "name": "PresentValueOneBasisPoints",
+          "doc": "Present value of one basis points"
+        },
+        {
+          "value": "5YREN",
+          "name": "FiveYearEquivalentNotional",
+          "doc": "The five year equivalent notional amount"
+        },
+        {
+          "value": "UMTM",
+          "name": "UndiscountedMarkToMarket",
+          "doc": "Undiscounted mark-to-market"
+        },
+        {
+          "value": "MTD",
+          "name": "MarkToModel",
+          "doc": "Mark-to-model"
         },
         {
           "value": "VMTM",
           "name": "MarkToMarketVariance",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 29,
           "doc": "Mark-to-market variance"
+        },
+        {
+          "value": "VMTD",
+          "name": "MarkToModelVariance",
+          "doc": "Mark-to-model variance"
+        },
+        {
+          "value": "UPFRNT",
+          "name": "UpfrontPayment",
+          "doc": "Upfront payment"
+        },
+        {
+          "value": "ENDV",
+          "name": "EndVale",
+          "doc": "End value"
+        },
+        {
+          "value": "MGNLN",
+          "name": "OutstandingMarginLoan",
+          "doc": "Outstanding margin loan"
+        },
+        {
+          "value": "LNVL",
+          "name": "LoanValue",
+          "doc": "Loan value"
+        },
+        {
+          "value": "CASH",
+          "name": "CashAmount",
+          "doc": "Cash amount (corporate event)"
         }
       ],
       "fix:tag": "707"
@@ -696,125 +502,82 @@
         {
           "value": "1",
           "name": "Exercise",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Exercise"
-        },
-        {
-          "value": "10",
-          "name": "TransferOfFirm",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 10,
-          "doc": "Transfer of firm"
-        },
-        {
-          "value": "11",
-          "name": "ExternalTransfer",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 11,
-          "doc": "External transfer"
-        },
-        {
-          "value": "12",
-          "name": "CorporateAction",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 12,
-          "doc": "Corporate action"
-        },
-        {
-          "value": "13",
-          "name": "Notification",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 13,
-          "doc": "Notification"
-        },
-        {
-          "value": "14",
-          "name": "PositionCreation",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 14,
-          "doc": "Position creation"
-        },
-        {
-          "value": "15",
-          "name": "Closeout",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 15,
-          "doc": "Close out"
-        },
-        {
-          "value": "16",
-          "name": "Reopen",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 16,
-          "doc": "Reopen"
         },
         {
           "value": "2",
           "name": "DoNotExercise",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Do not exercise"
         },
         {
           "value": "3",
           "name": "PositionAdjustment",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Position adjustment"
         },
         {
           "value": "4",
           "name": "PositionChangeSubmission",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Position change submission / margin disposition"
         },
         {
           "value": "5",
           "name": "Pledge",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Pledge"
         },
         {
           "value": "6",
           "name": "LargeTraderSubmission",
-          "since": "4.4",
-          "ep": 13,
-          "sort": 6,
           "doc": "Large trader submission"
         },
         {
           "value": "7",
           "name": "LargePositionsReportingSubmission",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 7,
           "doc": "Large positions reporting submission"
         },
         {
           "value": "8",
           "name": "LongHoldings",
-          "since": "5.0.2",
-          "ep": 110,
-          "sort": 8,
           "doc": "Long holdings"
         },
         {
           "value": "9",
           "name": "InternalTransfer",
-          "since": "5.0.2",
-          "ep": 199,
-          "sort": 9,
           "doc": "Internal transfer"
+        },
+        {
+          "value": "10",
+          "name": "TransferOfFirm",
+          "doc": "Transfer of firm"
+        },
+        {
+          "value": "11",
+          "name": "ExternalTransfer",
+          "doc": "External transfer"
+        },
+        {
+          "value": "12",
+          "name": "CorporateAction",
+          "doc": "Corporate action"
+        },
+        {
+          "value": "13",
+          "name": "Notification",
+          "doc": "Notification"
+        },
+        {
+          "value": "14",
+          "name": "PositionCreation",
+          "doc": "Position creation"
+        },
+        {
+          "value": "15",
+          "name": "Closeout",
+          "doc": "Close out"
+        },
+        {
+          "value": "16",
+          "name": "Reopen",
+          "doc": "Reopen"
         }
       ],
       "fix:tag": "709"
@@ -857,30 +620,21 @@
         {
           "value": "1",
           "name": "New",
-          "since": "4.4",
-          "sort": 1,
           "doc": "New"
         },
         {
           "value": "2",
           "name": "Replace",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Replace"
         },
         {
           "value": "3",
           "name": "Cancel",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Cancel"
         },
         {
           "value": "4",
           "name": "Reverse",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 4,
           "doc": "Reverse"
         }
       ],
@@ -935,36 +689,24 @@
       "display": "SettlSessID",
       "fix:codes": [
         {
-          "value": "EOD",
-          "name": "EndOfDay",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 4,
-          "doc": "End Of Day"
-        },
-        {
-          "value": "ETH",
-          "name": "ElectronicTradingHours",
-          "since": "4.4",
-          "ep": 1,
-          "sort": 3,
-          "doc": "Electronic Trading Hours"
-        },
-        {
           "value": "ITD",
           "name": "Intraday",
-          "since": "4.4",
-          "ep": 1,
-          "sort": 1,
           "doc": "Intraday"
         },
         {
           "value": "RTH",
           "name": "RegularTradingHours",
-          "since": "4.4",
-          "ep": 1,
-          "sort": 2,
           "doc": "Regular Trading Hours"
+        },
+        {
+          "value": "ETH",
+          "name": "ElectronicTradingHours",
+          "doc": "Electronic Trading Hours"
+        },
+        {
+          "value": "EOD",
+          "name": "EndOfDay",
+          "doc": "End Of Day"
         }
       ],
       "fix:tag": "716"
@@ -995,37 +737,26 @@
         {
           "value": "0",
           "name": "ProcessRequestAsMarginDisposition",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Process request as margin disposition"
         },
         {
           "value": "1",
           "name": "DeltaPlus",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Delta plus"
         },
         {
           "value": "2",
           "name": "DeltaMinus",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Delta minus"
         },
         {
           "value": "3",
           "name": "Final",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Final"
         },
         {
           "value": "4",
           "name": "CustomerSpecificPosition",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 4,
           "doc": "Customer specific position"
         }
       ],
@@ -1081,36 +812,26 @@
         {
           "value": "0",
           "name": "Accepted",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Accepted"
         },
         {
           "value": "1",
           "name": "AcceptedWithWarnings",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Accepted With Warnings"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Rejected"
         },
         {
           "value": "3",
           "name": "Completed",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Completed"
         },
         {
           "value": "4",
           "name": "CompletedWithWarnings",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Completed With Warnings"
         }
       ],
@@ -1130,22 +851,16 @@
         {
           "value": "0",
           "name": "SuccessfulCompletion",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Successful Completion - no warnings or errors"
         },
         {
           "value": "1",
           "name": "Rejected",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Rejected"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -1165,86 +880,57 @@
         {
           "value": "0",
           "name": "Positions",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Positions"
         },
         {
           "value": "1",
           "name": "Trades",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Trades"
-        },
-        {
-          "value": "10",
-          "name": "PositionLimitReportingSubmissing",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 11,
-          "doc": "Position Limit Reporting Submission"
         },
         {
           "value": "2",
           "name": "Exercises",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Exercises"
         },
         {
           "value": "3",
           "name": "Assignments",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Assignments"
         },
         {
           "value": "4",
           "name": "SettlementActivity",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 5,
           "doc": "Settlement Activity"
         },
         {
           "value": "5",
           "name": "BackoutMessage",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 6,
           "doc": "Backout Message"
         },
         {
           "value": "6",
           "name": "DeltaPositions",
-          "since": "5.0.1",
-          "ep": 79,
-          "sort": 7,
           "doc": "Delta Positions"
         },
         {
           "value": "7",
           "name": "NetPosition",
-          "since": "5.0.2",
-          "ep": 102,
-          "sort": 8,
           "doc": "Net Position"
         },
         {
           "value": "8",
           "name": "LargePositionsReporting",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 9,
           "doc": "Large Positions Reporting"
         },
         {
           "value": "9",
           "name": "ExercisePositionReportingSubmission",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 10,
           "doc": "Exercise Position Reporting Submission"
+        },
+        {
+          "value": "10",
+          "name": "PositionLimitReportingSubmissing",
+          "doc": "Position Limit Reporting Submission"
         }
       ],
       "fix:tag": "724"
@@ -1263,15 +949,11 @@
         {
           "value": "0",
           "name": "Inband",
-          "since": "4.4",
-          "sort": 1,
           "doc": "In-band (default)"
         },
         {
           "value": "1",
           "name": "OutOfBand",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Out of band"
         }
       ],
@@ -1315,43 +997,31 @@
         {
           "value": "0",
           "name": "ValidRequest",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Valid request"
         },
         {
           "value": "1",
           "name": "InvalidOrUnsupportedRequest",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Invalid or unsupported request"
         },
         {
           "value": "2",
           "name": "NoPositionsFoundThatMatchCriteria",
-          "since": "4.4",
-          "sort": 3,
           "doc": "No positions found that match criteria"
         },
         {
           "value": "3",
           "name": "NotAuthorizedToRequestPositions",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Not authorized to request positions"
         },
         {
           "value": "4",
           "name": "RequestForPositionNotSupported",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Request for position not supported"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -1371,22 +1041,16 @@
         {
           "value": "0",
           "name": "Completed",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Completed"
         },
         {
           "value": "1",
           "name": "CompletedWithWarnings",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Completed With Warnings"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Rejected"
         }
       ],
@@ -1418,15 +1082,11 @@
         {
           "value": "1",
           "name": "Final",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Final"
         },
         {
           "value": "2",
           "name": "Theoretical",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Theoretical"
         }
       ],
@@ -1458,15 +1118,11 @@
         {
           "value": "1",
           "name": "Final",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Final"
         },
         {
           "value": "2",
           "name": "Theoretical",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Theoretical"
         }
       ],
@@ -1608,15 +1264,11 @@
         {
           "value": "P",
           "name": "ProRata",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Pro rata"
         },
         {
           "value": "R",
           "name": "Random",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Random"
         }
       ],
@@ -1660,15 +1312,11 @@
         {
           "value": "A",
           "name": "Automatic",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Automatic"
         },
         {
           "value": "M",
           "name": "Manual",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Manual"
         }
       ],
@@ -1700,64 +1348,46 @@
         {
           "value": "0",
           "name": "Successful",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Successful (default)"
         },
         {
           "value": "1",
           "name": "InvalidOrUnknownInstrument",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Invalid or unknown instrument"
         },
         {
           "value": "2",
           "name": "InvalidTypeOfTradeRequested",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Invalid type of trade requested"
         },
         {
           "value": "3",
           "name": "InvalidParties",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Invalid parties"
         },
         {
           "value": "4",
           "name": "InvalidTransportTypeRequested",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Invalid transport type requested"
         },
         {
           "value": "5",
           "name": "InvalidDestinationRequested",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Invalid destination requested"
         },
         {
           "value": "8",
           "name": "TradeRequestTypeNotSupported",
-          "since": "4.4",
-          "sort": 7,
           "doc": "TradeRequestType not supported"
         },
         {
           "value": "9",
           "name": "NotAuthorized",
-          "since": "4.4",
-          "sort": 8,
           "doc": "Not authorized"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -1777,22 +1407,16 @@
         {
           "value": "0",
           "name": "Accepted",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Accepted"
         },
         {
           "value": "1",
           "name": "Completed",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Completed"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Rejected"
         }
       ],
@@ -1812,15 +1436,11 @@
         {
           "value": "0",
           "name": "Successful",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Successful (default)"
         },
         {
           "value": "1",
           "name": "InvalidPartyInformation",
-          "since": "4.4",
-          "sort": 2,
           "aliases": [
             "InvalidPartyOnformation"
           ],
@@ -1829,53 +1449,36 @@
         {
           "value": "2",
           "name": "UnknownInstrument",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Unknown instrument"
         },
         {
           "value": "3",
           "name": "UnauthorizedToReportTrades",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Unauthorized to report trades"
         },
         {
           "value": "4",
           "name": "InvalidTradeType",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Invalid trade type"
         },
         {
           "value": "5",
           "name": "PriceExceedsCurrentPriceBand",
-          "since": "5.0.2",
-          "ep": 136,
-          "sort": 6,
           "doc": "Price exceeds current price band"
         },
         {
           "value": "6",
           "name": "ReferencePriceNotAvailable",
-          "since": "5.0.2",
-          "ep": 136,
-          "sort": 7,
           "doc": "Reference price not available"
         },
         {
           "value": "7",
           "name": "NotionalValueExceedsThreshold",
-          "since": "5.0.2",
-          "ep": 136,
-          "sort": 8,
           "doc": "Notional value exceeds threshold"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -1895,22 +1498,16 @@
         {
           "value": "1",
           "name": "SingleSecurity",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Single Security (default if not specified)"
         },
         {
           "value": "2",
           "name": "IndividualLegOfAMultilegSecurity",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Individual leg of a multileg security"
         },
         {
           "value": "3",
           "name": "MultilegSecurity",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Multileg Security"
         }
       ],
@@ -1990,258 +1587,186 @@
         {
           "value": "1",
           "name": "KoreanInvestorID",
-          "since": "4.3",
-          "sort": 1,
           "group": "For PartyRole = \"InvestorID\" and for Equities",
           "doc": "Korean Investor ID"
         },
         {
-          "value": "2",
-          "name": "TaiwaneseForeignInvestorID",
-          "since": "4.3",
-          "sort": 2,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
-        },
-        {
-          "value": "3",
-          "name": "TaiwaneseTradingAcct",
-          "since": "4.3",
-          "sort": 3,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Trading Acct"
-        },
-        {
-          "value": "4",
-          "name": "MalaysianCentralDepository",
-          "since": "4.3",
-          "sort": 4,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Malaysian Central Depository (MCD) number"
-        },
-        {
-          "value": "5",
-          "name": "ChineseInvestorID",
-          "since": "4.3",
-          "sort": 5,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Chinese Investor ID"
-        },
-        {
           "value": "6",
           "name": "UKNationalInsuranceOrPensionNumber",
-          "since": "4.3",
-          "sort": 1,
           "group": "For PartyRole = \"InvestorID\" and for CIV",
           "doc": "UK National Insurance or Pension Number"
         },
         {
-          "value": "7",
-          "name": "USSocialSecurityNumber",
-          "since": "4.3",
-          "sort": 2,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Social Security Number"
-        },
-        {
-          "value": "8",
-          "name": "USEmployerOrTaxIDNumber",
-          "since": "4.3",
-          "sort": 3,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Employer or Tax ID Number"
-        },
-        {
-          "value": "9",
-          "name": "AustralianBusinessNumber",
-          "since": "4.3",
-          "sort": 4,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Business Number"
-        },
-        {
-          "value": "A",
-          "name": "AustralianTaxFileNumber",
-          "since": "4.3",
-          "sort": 5,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Tax File Number"
-        },
-        {
           "value": "B",
           "name": "BIC",
-          "since": "4.3",
-          "sort": 1,
           "group": "For all PartyRoles",
           "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
         },
         {
+          "value": "I",
+          "name": "ISITCAcronym",
+          "group": "For PartyRole=\"Broker of Credit\"",
+          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
+        },
+        {
+          "value": "2",
+          "name": "TaiwaneseForeignInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
+        },
+        {
+          "value": "7",
+          "name": "USSocialSecurityNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Social Security Number"
+        },
+        {
           "value": "C",
           "name": "GeneralIdentifier",
-          "since": "4.3",
-          "sort": 2,
           "group": "For all PartyRoles",
           "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
         },
         {
+          "value": "3",
+          "name": "TaiwaneseTradingAcct",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Trading Acct"
+        },
+        {
+          "value": "8",
+          "name": "USEmployerOrTaxIDNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Employer or Tax ID Number"
+        },
+        {
           "value": "D",
           "name": "Proprietary",
-          "since": "4.3",
-          "sort": 3,
           "group": "For all PartyRoles",
           "doc": "Proprietary / Custom code"
         },
         {
+          "value": "4",
+          "name": "MalaysianCentralDepository",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Malaysian Central Depository (MCD) number"
+        },
+        {
+          "value": "9",
+          "name": "AustralianBusinessNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Business Number"
+        },
+        {
           "value": "E",
           "name": "ISOCountryCode",
-          "since": "4.3",
-          "sort": 4,
           "group": "For all PartyRoles",
           "doc": "ISO Country Code"
         },
         {
+          "value": "5",
+          "name": "ChineseInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Chinese Investor ID"
+        },
+        {
+          "value": "A",
+          "name": "AustralianTaxFileNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Tax File Number"
+        },
+        {
           "value": "F",
           "name": "SettlementEntityLocation",
-          "since": "4.3",
-          "sort": 5,
           "group": "For all PartyRoles",
           "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
         },
         {
           "value": "G",
           "name": "MIC",
-          "since": "4.4",
-          "sort": 6,
           "group": "For all PartyRoles",
           "doc": "Market Identifier Code (ISO 10383) MIC"
         },
         {
-          "value": "H",
-          "name": "CSDParticipant",
-          "since": "4.4",
-          "sort": 7,
-          "group": "For all PartyRoles",
-          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
-        },
-        {
-          "value": "I",
-          "name": "ISITCAcronym",
-          "since": "4.4",
-          "sort": 1,
-          "group": "For PartyRole=\"Broker of Credit\"",
-          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
-        },
-        {
           "value": "J",
           "name": "TaxID",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 6,
           "group": "For PartyRole = \"InvestorID\" and for CIV",
           "doc": "Tax ID"
         },
         {
+          "value": "H",
+          "name": "CSDParticipant",
+          "group": "For all PartyRoles",
+          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
+        },
+        {
           "value": "K",
           "name": "AustralianCompanyNumber",
-          "since": "5.0.2",
-          "ep": 108,
-          "sort": 8,
           "group": "For all PartyRoles",
           "doc": "Australian Company Number"
         },
         {
           "value": "L",
           "name": "AustralianRegisteredBodyNumber",
-          "since": "5.0.2",
-          "ep": 108,
-          "sort": 9,
           "group": "For all PartyRoles",
           "doc": "Australian Registered Body Number"
         },
         {
           "value": "M",
           "name": "CFTCReportingFirmIdentifier",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 10,
           "group": "For all PartyRoles",
           "doc": "CFTC reporting firm identifier"
         },
         {
           "value": "N",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 156,
-          "sort": 11,
           "group": "For all PartyRoles",
           "doc": "Legal Entity Identifier (ISO 17442) LEI"
         },
         {
           "value": "O",
           "name": "InterimIdentifier",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 12,
           "group": "For all PartyRoles",
           "doc": "Interim identifier"
         },
         {
           "value": "P",
           "name": "ShortCodeIdentifier",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 13,
           "group": "For all PartyRoles",
           "doc": "Short code identifier"
         },
         {
           "value": "Q",
           "name": "NationalIDNaturalPerson",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 14,
           "group": "For all PartyRoles",
           "doc": "National ID of natural person"
         },
         {
           "value": "R",
           "name": "IndiaPermanentAccountNumber",
-          "since": "5.0.2",
-          "ep": 244,
-          "sort": 15,
           "group": "For all PartyRoles",
           "doc": "India Permanent Account Number"
         },
         {
           "value": "S",
           "name": "FDID",
-          "since": "5.0.2",
-          "ep": 248,
-          "sort": 16,
           "group": "For all PartyRoles",
           "doc": "Firm designated identifier"
         },
         {
           "value": "T",
           "name": "SPSAID",
-          "ep": 262,
-          "sort": 17,
           "group": "For all PartyRoles",
           "doc": "Special Segregated Account ID"
         },
         {
           "value": "U",
           "name": "MasterSPSAID",
-          "ep": 262,
-          "sort": 18,
           "group": "For all PartyRoles",
           "doc": "Master Special Segregated Account ID"
         },
         {
           "value": "V",
           "name": "KoreaShortSellingRegistrationNumber",
-          "ep": 296,
-          "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
         }
@@ -2260,993 +1785,649 @@
       "display": "Nested2PartyRole",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "ExecutingFirm",
-          "since": "4.3",
-          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+          "value": "2",
+          "name": "BrokerOfCredit",
+          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+        },
+        {
+          "value": "3",
+          "name": "ClientID",
+          "doc": "Client ID (formerly FIX 4.2 ClientID)"
+        },
+        {
+          "value": "4",
+          "name": "ClearingFirm",
+          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+        },
+        {
+          "value": "5",
+          "name": "InvestorID",
+          "doc": "Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "IntroducingFirm",
+          "doc": "Introducing Firm"
+        },
+        {
+          "value": "7",
+          "name": "EnteringFirm",
+          "doc": "Entering Firm"
+        },
+        {
+          "value": "8",
+          "name": "Locate",
+          "doc": "Locate / Lending Firm (for short-sales)"
+        },
+        {
+          "value": "9",
+          "name": "FundManagerClientID",
+          "doc": "Fund Manager Client ID (for CIV)"
         },
         {
           "value": "10",
           "name": "SettlementLocation",
-          "since": "4.3",
-          "sort": 9,
           "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
-        },
-        {
-          "value": "100",
-          "name": "MarginAccount",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 98,
-          "doc": "Margin account"
-        },
-        {
-          "value": "101",
-          "name": "CollateralAssetAccount",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 99,
-          "doc": "Collateral asset account"
-        },
-        {
-          "value": "102",
-          "name": "DataRepository",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 100,
-          "doc": "Data repository"
-        },
-        {
-          "value": "103",
-          "name": "CalculationAgent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 101,
-          "doc": "Calculation agent"
-        },
-        {
-          "value": "104",
-          "name": "ExerciseNoticeSender",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 102,
-          "doc": "Sender of exercise notice"
-        },
-        {
-          "value": "105",
-          "name": "ExerciseNoticeReceiver",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 103,
-          "doc": "Receiver of exercise notice"
-        },
-        {
-          "value": "106",
-          "name": "RateReferenceBank",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 104,
-          "doc": "Rate reference bank"
-        },
-        {
-          "value": "107",
-          "name": "Correspondent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 105,
-          "doc": "Correspondent"
-        },
-        {
-          "value": "109",
-          "name": "BeneficiaryBank",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 106,
-          "doc": "Beneficiary's bank or depository institution"
         },
         {
           "value": "11",
           "name": "OrderOriginationTrader",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
-        },
-        {
-          "value": "110",
-          "name": "Borrower",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 107,
-          "doc": "Borrower"
-        },
-        {
-          "value": "111",
-          "name": "PrimaryObligator",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 108,
-          "doc": "Primary obligator"
-        },
-        {
-          "value": "112",
-          "name": "Guarantor",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 109,
-          "doc": "Guarantor"
-        },
-        {
-          "value": "113",
-          "name": "ExcludedReferenceEntity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 110,
-          "doc": "Excluded reference entity"
-        },
-        {
-          "value": "114",
-          "name": "DeterminingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 111,
-          "doc": "Determining party"
-        },
-        {
-          "value": "115",
-          "name": "HedgingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 112,
-          "doc": "Hedging party"
-        },
-        {
-          "value": "116",
-          "name": "ReportingEntity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 113,
-          "doc": "Reporting entity"
-        },
-        {
-          "value": "117",
-          "name": "SalesPerson",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 114,
-          "doc": "Sales person"
-        },
-        {
-          "value": "118",
-          "name": "Operator",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 115,
-          "doc": "Operator"
-        },
-        {
-          "value": "119",
-          "name": "CSD",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 116,
-          "doc": "Central Securities Depository (CSD)"
         },
         {
           "value": "12",
           "name": "ExecutingTrader",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Executing Trader (associated with Executing Firm - actually executes)"
-        },
-        {
-          "value": "120",
-          "name": "ICSD",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 117,
-          "doc": "International Central Securities Depository (ICSD)"
-        },
-        {
-          "value": "121",
-          "name": "TradingSubAccount",
-          "since": "5.0.2",
-          "ep": 217,
-          "sort": 118,
-          "doc": "Trading sub-account"
-        },
-        {
-          "value": "122",
-          "name": "InvestmentDecisionMaker",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 119,
-          "doc": "Investment decision maker"
-        },
-        {
-          "value": "123",
-          "name": "PublishingIntermediary",
-          "since": "5.0.2",
-          "ep": 229,
-          "sort": 120,
-          "doc": "Publishing intermediary"
-        },
-        {
-          "value": "124",
-          "name": "CSDParticipant",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 121,
-          "doc": "Central Securities Depository (CSD) Participant"
-        },
-        {
-          "value": "125",
-          "name": "Issuer",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 122,
-          "doc": "Issuer"
-        },
-        {
-          "value": "126",
-          "name": "ContraCustomerAccount",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 123,
-          "doc": "Contra Customer Account"
-        },
-        {
-          "value": "127",
-          "name": "ContraInvestmentDecisionMaker",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 124,
-          "doc": "Contra Investment Decision Maker"
-        },
-        {
-          "value": "128",
-          "name": "AuthorizingPerson",
-          "ep": 292,
-          "sort": 125,
-          "doc": "Authorizing person"
-        },
-        {
-          "value": "129",
-          "name": "PrimaryPlaceOfListing",
-          "ep": 300,
-          "sort": 126,
-          "doc": "Primary place of listing"
         },
         {
           "value": "13",
           "name": "OrderOriginationFirm",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Order Origination Firm (e.g. buy-side firm)"
-        },
-        {
-          "value": "130",
-          "name": "SecondaryPlaceOfListing",
-          "ep": 300,
-          "sort": 127,
-          "doc": "Secondary place of listing"
-        },
-        {
-          "value": "131",
-          "name": "Algorithm",
-          "ep": 303,
-          "sort": 128,
-          "doc": "Algorithm"
         },
         {
           "value": "14",
           "name": "GiveupClearingFirmDepr",
-          "since": "4.3",
-          "deprecated": "5.0.2",
-          "sort": 13,
           "doc": "Giveup Clearing Firm (firm to which trade is given up)"
         },
         {
           "value": "15",
           "name": "CorrespondantClearingFirm",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Correspondant Clearing Firm"
         },
         {
           "value": "16",
           "name": "ExecutingSystem",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Executing System"
         },
         {
           "value": "17",
           "name": "ContraFirm",
-          "since": "4.3",
-          "sort": 16,
           "doc": "Contra Firm"
         },
         {
           "value": "18",
           "name": "ContraClearingFirm",
-          "since": "4.3",
-          "sort": 17,
           "doc": "Contra Clearing Firm"
         },
         {
           "value": "19",
           "name": "SponsoringFirm",
-          "since": "4.3",
-          "sort": 18,
           "doc": "Sponsoring Firm"
-        },
-        {
-          "value": "2",
-          "name": "BrokerOfCredit",
-          "since": "4.3",
-          "sort": 1,
-          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
         },
         {
           "value": "20",
           "name": "UnderlyingContraFirm",
-          "since": "4.3",
-          "sort": 19,
           "doc": "Underlying Contra Firm"
         },
         {
           "value": "21",
           "name": "ClearingOrganization",
-          "since": "4.4",
-          "sort": 20,
           "doc": "Clearing Organization"
         },
         {
           "value": "22",
           "name": "Exchange",
-          "since": "4.4",
-          "sort": 21,
           "doc": "Exchange"
         },
         {
           "value": "24",
           "name": "CustomerAccount",
-          "since": "4.4",
-          "sort": 22,
           "doc": "Customer Account"
         },
         {
           "value": "25",
           "name": "CorrespondentClearingOrganization",
-          "since": "4.4",
-          "sort": 23,
           "doc": "Correspondent Clearing Organization"
         },
         {
           "value": "26",
           "name": "CorrespondentBroker",
-          "since": "4.4",
-          "sort": 24,
           "doc": "Correspondent Broker"
         },
         {
           "value": "27",
           "name": "Buyer",
-          "since": "4.4",
-          "sort": 25,
           "doc": "Buyer/Seller (Receiver/Deliverer)"
         },
         {
           "value": "28",
           "name": "Custodian",
-          "since": "4.4",
-          "sort": 26,
           "doc": "Custodian"
         },
         {
           "value": "29",
           "name": "Intermediary",
-          "since": "4.4",
-          "sort": 27,
           "doc": "Intermediary"
-        },
-        {
-          "value": "3",
-          "name": "ClientID",
-          "since": "4.3",
-          "sort": 2,
-          "doc": "Client ID (formerly FIX 4.2 ClientID)"
         },
         {
           "value": "30",
           "name": "Agent",
-          "since": "4.4",
-          "sort": 28,
           "doc": "Agent"
         },
         {
           "value": "31",
           "name": "SubCustodian",
-          "since": "4.4",
-          "sort": 29,
           "doc": "Sub-custodian"
         },
         {
           "value": "32",
           "name": "Beneficiary",
-          "since": "4.4",
-          "sort": 30,
           "doc": "Beneficiary"
         },
         {
           "value": "33",
           "name": "InterestedParty",
-          "since": "4.4",
-          "sort": 31,
           "doc": "Interested party"
         },
         {
           "value": "34",
           "name": "RegulatoryBody",
-          "since": "4.4",
-          "sort": 32,
           "doc": "Regulatory body"
         },
         {
           "value": "35",
           "name": "LiquidityProvider",
-          "since": "4.4",
-          "sort": 33,
           "doc": "Liquidity provider"
         },
         {
           "value": "36",
           "name": "EnteringTrader",
-          "since": "4.4",
-          "sort": 34,
           "doc": "Entering trader"
         },
         {
           "value": "37",
           "name": "ContraTrader",
-          "since": "4.4",
-          "sort": 35,
           "doc": "Contra trader"
         },
         {
           "value": "38",
           "name": "PositionAccount",
-          "since": "4.4",
-          "sort": 36,
           "doc": "Position account"
         },
         {
           "value": "39",
           "name": "ContraInvestorID",
-          "since": "4.4",
-          "sort": 37,
           "doc": "Contra Investor ID"
-        },
-        {
-          "value": "4",
-          "name": "ClearingFirm",
-          "since": "4.3",
-          "sort": 3,
-          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
         },
         {
           "value": "40",
           "name": "TransferToFirm",
-          "since": "4.4",
-          "sort": 38,
           "doc": "Transfer to Firm"
         },
         {
           "value": "41",
           "name": "ContraPositionAccount",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 39,
           "doc": "Contra Position Account"
         },
         {
           "value": "42",
           "name": "ContraExchange",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 40,
           "doc": "Contra Exchange"
         },
         {
           "value": "43",
           "name": "InternalCarryAccount",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 41,
           "doc": "Internal Carry Account"
         },
         {
           "value": "44",
           "name": "OrderEntryOperatorID",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 42,
           "doc": "Order Entry Operator ID"
         },
         {
           "value": "45",
           "name": "SecondaryAccountNumber",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 43,
           "doc": "Secondary Account Number"
         },
         {
           "value": "46",
           "name": "ForeignFirm",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 44,
           "doc": "Foreign Firm"
         },
         {
           "value": "47",
           "name": "ThirdPartyAllocationFirm",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 45,
           "doc": "Third Party Allocation Firm"
         },
         {
           "value": "48",
           "name": "ClaimingAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 46,
           "doc": "Claiming Account"
         },
         {
           "value": "49",
           "name": "AssetManager",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 47,
           "doc": "Asset Manager"
-        },
-        {
-          "value": "5",
-          "name": "InvestorID",
-          "since": "4.3",
-          "sort": 4,
-          "doc": "Investor ID"
         },
         {
           "value": "50",
           "name": "PledgorAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 48,
           "doc": "Pledgor Account"
         },
         {
           "value": "51",
           "name": "PledgeeAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 49,
           "doc": "Pledgee Account"
         },
         {
           "value": "52",
           "name": "LargeTraderReportableAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 50,
           "doc": "Large Trader Reportable Account"
         },
         {
           "value": "53",
           "name": "TraderMnemonic",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 51,
           "doc": "Trader mnemonic"
         },
         {
           "value": "54",
           "name": "SenderLocation",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 52,
           "doc": "Sender Location"
         },
         {
           "value": "55",
           "name": "SessionID",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 53,
           "doc": "Session ID"
         },
         {
           "value": "56",
           "name": "AcceptableCounterparty",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 54,
           "doc": "Acceptable Counterparty"
         },
         {
           "value": "57",
           "name": "UnacceptableCounterparty",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 55,
           "doc": "Unacceptable Counterparty"
         },
         {
           "value": "58",
           "name": "EnteringUnit",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 56,
           "doc": "Entering Unit"
         },
         {
           "value": "59",
           "name": "ExecutingUnit",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 57,
           "doc": "Executing Unit"
-        },
-        {
-          "value": "6",
-          "name": "IntroducingFirm",
-          "since": "4.3",
-          "sort": 5,
-          "doc": "Introducing Firm"
         },
         {
           "value": "60",
           "name": "IntroducingBroker",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 58,
           "doc": "Introducing Broker"
         },
         {
           "value": "61",
           "name": "QuoteOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 59,
           "doc": "Quote originator"
         },
         {
           "value": "62",
           "name": "ReportOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 60,
           "doc": "Report originator"
         },
         {
           "value": "63",
           "name": "SystematicInternaliser",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 61,
           "doc": "Systematic internaliser (SI)"
         },
         {
           "value": "64",
           "name": "MultilateralTradingFacility",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 62,
           "doc": "Multilateral Trading Facility (MTF)"
         },
         {
           "value": "65",
           "name": "RegulatedMarket",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 63,
           "doc": "Regulated Market (RM)"
         },
         {
           "value": "66",
           "name": "MarketMaker",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 64,
           "doc": "Market Maker"
         },
         {
           "value": "67",
           "name": "InvestmentFirm",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 65,
           "doc": "Investment Firm"
         },
         {
           "value": "68",
           "name": "HostCompetentAuthority",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 66,
           "doc": "Host Competent Authority (Host CA)"
         },
         {
           "value": "69",
           "name": "HomeCompetentAuthority",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 67,
           "doc": "Home Competent Authority (Home CA)"
-        },
-        {
-          "value": "7",
-          "name": "EnteringFirm",
-          "since": "4.3",
-          "sort": 6,
-          "doc": "Entering Firm"
         },
         {
           "value": "70",
           "name": "CompetentAuthorityLiquidity",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 68,
           "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
         },
         {
           "value": "71",
           "name": "CompetentAuthorityTransactionVenue",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 69,
           "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
         },
         {
           "value": "72",
           "name": "ReportingIntermediary",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 70,
           "doc": "Reporting intermediary"
         },
         {
           "value": "73",
           "name": "ExecutionVenue",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 71,
           "doc": "Execution Venue"
         },
         {
           "value": "74",
           "name": "MarketDataEntryOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 72,
           "doc": "Market data entry originator"
         },
         {
           "value": "75",
           "name": "LocationID",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 73,
           "doc": "Location ID"
         },
         {
           "value": "76",
           "name": "DeskID",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 74,
           "doc": "Desk ID"
         },
         {
           "value": "77",
           "name": "MarketDataMarket",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 75,
           "doc": "Market data market"
         },
         {
           "value": "78",
           "name": "AllocationEntity",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 76,
           "doc": "Allocation Entity"
         },
         {
           "value": "79",
           "name": "PrimeBroker",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 77,
           "doc": "Prime Broker providing General Trade Services"
-        },
-        {
-          "value": "8",
-          "name": "Locate",
-          "since": "4.3",
-          "sort": 7,
-          "doc": "Locate / Lending Firm (for short-sales)"
         },
         {
           "value": "80",
           "name": "StepOutFirm",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 78,
           "doc": "Step-Out Firm (Prime Broker)"
         },
         {
           "value": "81",
           "name": "BrokerClearingID",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 79,
           "doc": "Broker clearing identifier"
         },
         {
           "value": "82",
           "name": "CentralRegistrationDepository",
-          "since": "5.0.1",
-          "ep": 79,
-          "sort": 80,
           "doc": "Central Registration Depository (CRD)"
         },
         {
           "value": "83",
           "name": "ClearingAccount",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 81,
           "doc": "Clearing Account"
         },
         {
           "value": "84",
           "name": "AcceptableSettlingCounterparty",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 82,
           "doc": "Acceptable Settling Counterparty"
         },
         {
           "value": "85",
           "name": "UnacceptableSettlingCounterparty",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 83,
           "doc": "Unacceptable Settling Counterparty"
         },
         {
           "value": "86",
           "name": "CLSMemberBank",
-          "since": "5.0.2",
-          "ep": 100,
-          "sort": 84,
           "doc": "CLS Member Bank"
         },
         {
           "value": "87",
           "name": "InConcertGroup",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 85,
           "doc": "In Concert Group"
         },
         {
           "value": "88",
           "name": "InConcertControllingEntity",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 86,
           "doc": "In Concert Controlling Entity"
         },
         {
           "value": "89",
           "name": "LargePositionsReportingAccount",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 87,
           "doc": "Large Positions Reporting Account"
-        },
-        {
-          "value": "9",
-          "name": "FundManagerClientID",
-          "since": "4.3",
-          "sort": 8,
-          "doc": "Fund Manager Client ID (for CIV)"
         },
         {
           "value": "90",
           "name": "SettlementFirm",
-          "since": "5.0.2",
-          "ep": 105,
-          "sort": 88,
           "doc": "Settlement Firm"
         },
         {
           "value": "91",
           "name": "SettlementAccount",
-          "since": "5.0.2",
-          "ep": 105,
-          "sort": 89,
           "doc": "Settlement account"
         },
         {
           "value": "92",
           "name": "ReportingMarketCenter",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 90,
           "doc": "Reporting Market Center"
         },
         {
           "value": "93",
           "name": "RelatedReportingMarketCenter",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 91,
           "doc": "Related Reporting Market Center"
         },
         {
           "value": "94",
           "name": "AwayMarket",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 92,
           "doc": "Away Market"
         },
         {
           "value": "95",
           "name": "GiveupTradingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 93,
           "doc": "Give-up (trading) firm"
         },
         {
           "value": "96",
           "name": "TakeupTradingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 94,
           "doc": "Take-up (trading) firm"
         },
         {
           "value": "97",
           "name": "GiveupClearingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 95,
           "doc": "Give-up clearing firm"
         },
         {
           "value": "98",
           "name": "TakeupClearingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 96,
           "doc": "Take-up clearing firm"
         },
         {
           "value": "99",
           "name": "OriginatingMarket",
-          "since": "5.0.2",
-          "ep": 139,
-          "sort": 97,
           "doc": "Originating Market"
+        },
+        {
+          "value": "100",
+          "name": "MarginAccount",
+          "doc": "Margin account"
+        },
+        {
+          "value": "101",
+          "name": "CollateralAssetAccount",
+          "doc": "Collateral asset account"
+        },
+        {
+          "value": "102",
+          "name": "DataRepository",
+          "doc": "Data repository"
+        },
+        {
+          "value": "103",
+          "name": "CalculationAgent",
+          "doc": "Calculation agent"
+        },
+        {
+          "value": "104",
+          "name": "ExerciseNoticeSender",
+          "doc": "Sender of exercise notice"
+        },
+        {
+          "value": "105",
+          "name": "ExerciseNoticeReceiver",
+          "doc": "Receiver of exercise notice"
+        },
+        {
+          "value": "106",
+          "name": "RateReferenceBank",
+          "doc": "Rate reference bank"
+        },
+        {
+          "value": "107",
+          "name": "Correspondent",
+          "doc": "Correspondent"
+        },
+        {
+          "value": "109",
+          "name": "BeneficiaryBank",
+          "doc": "Beneficiary's bank or depository institution"
+        },
+        {
+          "value": "110",
+          "name": "Borrower",
+          "doc": "Borrower"
+        },
+        {
+          "value": "111",
+          "name": "PrimaryObligator",
+          "doc": "Primary obligator"
+        },
+        {
+          "value": "112",
+          "name": "Guarantor",
+          "doc": "Guarantor"
+        },
+        {
+          "value": "113",
+          "name": "ExcludedReferenceEntity",
+          "doc": "Excluded reference entity"
+        },
+        {
+          "value": "114",
+          "name": "DeterminingParty",
+          "doc": "Determining party"
+        },
+        {
+          "value": "115",
+          "name": "HedgingParty",
+          "doc": "Hedging party"
+        },
+        {
+          "value": "116",
+          "name": "ReportingEntity",
+          "doc": "Reporting entity"
+        },
+        {
+          "value": "117",
+          "name": "SalesPerson",
+          "doc": "Sales person"
+        },
+        {
+          "value": "118",
+          "name": "Operator",
+          "doc": "Operator"
+        },
+        {
+          "value": "119",
+          "name": "CSD",
+          "doc": "Central Securities Depository (CSD)"
+        },
+        {
+          "value": "120",
+          "name": "ICSD",
+          "doc": "International Central Securities Depository (ICSD)"
+        },
+        {
+          "value": "121",
+          "name": "TradingSubAccount",
+          "doc": "Trading sub-account"
+        },
+        {
+          "value": "122",
+          "name": "InvestmentDecisionMaker",
+          "doc": "Investment decision maker"
+        },
+        {
+          "value": "123",
+          "name": "PublishingIntermediary",
+          "doc": "Publishing intermediary"
+        },
+        {
+          "value": "124",
+          "name": "CSDParticipant",
+          "doc": "Central Securities Depository (CSD) Participant"
+        },
+        {
+          "value": "125",
+          "name": "Issuer",
+          "doc": "Issuer"
+        },
+        {
+          "value": "126",
+          "name": "ContraCustomerAccount",
+          "doc": "Contra Customer Account"
+        },
+        {
+          "value": "127",
+          "name": "ContraInvestmentDecisionMaker",
+          "doc": "Contra Investment Decision Maker"
+        },
+        {
+          "value": "128",
+          "name": "AuthorizingPerson",
+          "doc": "Authorizing person"
+        },
+        {
+          "value": "129",
+          "name": "PrimaryPlaceOfListing",
+          "doc": "Primary place of listing"
+        },
+        {
+          "value": "130",
+          "name": "SecondaryPlaceOfListing",
+          "doc": "Secondary place of listing"
+        },
+        {
+          "value": "131",
+          "name": "Algorithm",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "1",
+          "name": "ExecutingFirm",
+          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
         }
       ],
       "fix:tag": "759"
@@ -3277,245 +2458,166 @@
         {
           "value": "1",
           "name": "CUSIP",
-          "since": "2.7",
-          "sort": 1,
           "doc": "CUSIP"
         },
         {
           "value": "2",
           "name": "SEDOL",
-          "since": "2.7",
-          "sort": 2,
           "doc": "SEDOL"
         },
         {
           "value": "3",
           "name": "QUIK",
-          "since": "2.7",
-          "sort": 3,
           "doc": "QUIK"
         },
         {
           "value": "4",
           "name": "ISINNumber",
-          "since": "3.0",
-          "sort": 4,
           "doc": "ISIN"
         },
         {
           "value": "5",
           "name": "RICCode",
-          "since": "3.0",
-          "sort": 5,
           "doc": "RIC"
         },
         {
           "value": "6",
           "name": "ISOCurrencyCode",
-          "since": "4.1",
-          "sort": 6,
           "doc": "ISO Currency Code (ISO 4217)"
         },
         {
           "value": "7",
           "name": "ISOCountryCode",
-          "since": "4.1",
-          "sort": 7,
           "doc": "ISO Country Code"
         },
         {
           "value": "8",
           "name": "ExchangeSymbol",
-          "since": "4.2",
-          "sort": 8,
           "doc": "Exchange symbol"
         },
         {
           "value": "9",
           "name": "ConsolidatedTapeAssociation",
-          "since": "4.2",
-          "sort": 9,
           "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
         },
         {
           "value": "A",
           "name": "BloombergSymbol",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Bloomberg Symbol"
         },
         {
           "value": "B",
           "name": "Wertpapier",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Wertpapier"
         },
         {
           "value": "C",
           "name": "Dutch",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Dutch"
         },
         {
           "value": "D",
           "name": "Valoren",
-          "since": "4.3",
-          "sort": 13,
           "doc": "Valoren"
         },
         {
           "value": "E",
           "name": "Sicovam",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Sicovam"
         },
         {
           "value": "F",
           "name": "Belgian",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Belgian"
         },
         {
           "value": "G",
           "name": "Common",
-          "since": "4.3",
-          "sort": 16,
           "doc": "\"Common\" (Clearstream and Euroclear)"
         },
         {
           "value": "H",
           "name": "ClearingHouse",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Clearing house / Clearing organization"
         },
         {
           "value": "I",
           "name": "ISDAFpMLSpecification",
-          "since": "4.4",
-          "sort": 18,
           "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
         },
         {
           "value": "J",
           "name": "OptionPriceReportingAuthority",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Option Price Reporting Authority"
         },
         {
           "value": "K",
           "name": "ISDAFpMLURL",
-          "since": "4.4",
-          "ep": 15,
-          "sort": 20,
           "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
         },
         {
           "value": "L",
           "name": "LetterOfCredit",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 21,
           "doc": "Letter of credit"
         },
         {
           "value": "M",
           "name": "MarketplaceAssignedIdentifier",
-          "since": "5.0",
-          "ep": 58,
-          "sort": 22,
           "doc": "Marketplace-assigned Identifier"
         },
         {
           "value": "N",
           "name": "MarkitREDEntityCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 23,
           "doc": "Markit RED entity CLIP"
         },
         {
           "value": "P",
           "name": "MarkitREDPairCLIP",
-          "since": "5.0.2",
-          "ep": 119,
-          "sort": 24,
           "doc": "Markit RED pair CLIP"
         },
         {
           "value": "Q",
           "name": "CFTCCommodityCode",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 25,
           "doc": "CFTC commodity code"
         },
         {
           "value": "R",
           "name": "ISDACommodityReferencePrice",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 26,
           "doc": "ISDA Commodity Reference Price"
         },
         {
           "value": "S",
           "name": "FinancialInstrumentGlobalIdentifier",
-          "since": "5.0.2",
-          "ep": 158,
-          "sort": 27,
           "doc": "Financial Instrument Global Identifier"
         },
         {
           "value": "T",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 28,
           "doc": "Legal entity identifier"
         },
         {
           "value": "U",
           "name": "Synthetic",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 29,
           "doc": "Synthetic"
         },
         {
           "value": "V",
           "name": "FidessaInstrumentMnemonic",
-          "since": "5.0.2",
-          "ep": 220,
-          "sort": 30,
           "doc": "Fidessa Instrument Mnemonic (FIM)"
         },
         {
           "value": "W",
           "name": "IndexName",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 31,
           "doc": "Index name"
         },
         {
           "value": "X",
           "name": "UniformSymbol",
-          "since": "5.0.2",
-          "ep": 242,
-          "sort": 32,
           "doc": "Uniform Symbol (UMTF Symbol)"
         },
         {
           "value": "Y",
           "name": "DigitalTokenIdentifier",
-          "ep": 273,
-          "sort": 33,
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
@@ -3633,222 +2735,171 @@
         {
           "value": "1",
           "name": "ExecutionTime",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Execution time"
+        },
+        {
+          "value": "2",
+          "name": "TimeIn",
+          "doc": "Time in"
+        },
+        {
+          "value": "3",
+          "name": "TimeOut",
+          "doc": "Time out"
+        },
+        {
+          "value": "4",
+          "name": "BrokerReceipt",
+          "doc": "Broker receipt"
+        },
+        {
+          "value": "5",
+          "name": "BrokerExecution",
+          "doc": "Broker execution"
+        },
+        {
+          "value": "6",
+          "name": "DeskReceipt",
+          "doc": "Desk receipt"
+        },
+        {
+          "value": "7",
+          "name": "SubmissionToClearing",
+          "doc": "Submission to clearing"
+        },
+        {
+          "value": "8",
+          "name": "TimePriority",
+          "doc": "Time priority"
+        },
+        {
+          "value": "9",
+          "name": "OrderbookEntryTime",
+          "doc": "Orderbook entry time"
         },
         {
           "value": "10",
           "name": "OrderSubmissionTime",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 10,
           "doc": "Order submission time"
         },
         {
           "value": "11",
           "name": "PubliclyReported",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 11,
           "doc": "Publicly reported"
         },
         {
           "value": "12",
           "name": "PublicReportUpdated",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 12,
           "doc": "Public report updated"
         },
         {
           "value": "13",
           "name": "NonPubliclyReported",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 13,
           "doc": "Non-publicly reported"
         },
         {
           "value": "14",
           "name": "NonPublicReportUpdated",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 14,
           "doc": "Non-public report updated"
         },
         {
           "value": "15",
           "name": "SubmittedForConfirmation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 15,
           "doc": "Submitted for confirmation"
         },
         {
           "value": "16",
           "name": "UpdatedForConfirmation",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 16,
           "doc": "Updated for confirmation"
         },
         {
           "value": "17",
           "name": "Confirmed",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 17,
           "doc": "Confirmed"
         },
         {
           "value": "18",
           "name": "UpdatedForClearing",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 18,
           "doc": "Updated for clearing"
         },
         {
           "value": "19",
           "name": "Cleared",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 19,
           "doc": "Cleared"
-        },
-        {
-          "value": "2",
-          "name": "TimeIn",
-          "since": "4.4",
-          "sort": 2,
-          "doc": "Time in"
         },
         {
           "value": "20",
           "name": "AllocationsSubmitted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 20,
           "doc": "Allocations submitted"
         },
         {
           "value": "21",
           "name": "AllocationsUpdated",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 21,
           "doc": "Allocations updated"
         },
         {
           "value": "22",
           "name": "AllocationsCompleted",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 22,
           "doc": "Allocations completed"
         },
         {
           "value": "23",
           "name": "SubmittedToRepository",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 23,
           "doc": "Submitted to repository"
         },
         {
           "value": "24",
           "name": "PostTrdContntnEvnt",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 24,
           "doc": "Post-trade continuation event"
         },
         {
           "value": "25",
           "name": "PostTradeValuation",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 25,
           "doc": "Post-trade valuation"
         },
         {
           "value": "26",
           "name": "PreviousTimePriority",
-          "since": "5.0.2",
-          "ep": 223,
-          "sort": 26,
           "doc": "Previous time priority"
         },
         {
           "value": "27",
           "name": "IdentifierAssigned",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 27,
           "doc": "Identifier assigned"
         },
         {
           "value": "28",
           "name": "PreviousIdentifierAssigned",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 28,
           "doc": "Previous identifier assigned"
         },
         {
           "value": "29",
           "name": "OrderCancellationTime",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 29,
           "doc": "Order cancellation time"
-        },
-        {
-          "value": "3",
-          "name": "TimeOut",
-          "since": "4.4",
-          "sort": 3,
-          "doc": "Time out"
         },
         {
           "value": "30",
           "name": "OrderModificationTime",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 30,
           "doc": "Order modification time"
         },
         {
           "value": "31",
           "name": "OrderRoutingTime",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 31,
           "doc": "Order routing time"
         },
         {
           "value": "32",
           "name": "TradeCancellationTime",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 32,
           "doc": "Trade cancellation time"
         },
         {
           "value": "33",
           "name": "TradeModificationTime",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 33,
           "doc": "Trade modification time"
         },
         {
           "value": "34",
           "name": "ReferenceTimeForBBO",
-          "since": "5.0.2",
-          "ep": 253,
-          "sort": 34,
           "aliases": [
             "ReferenceTimeForNbbo"
           ],
@@ -3857,62 +2908,12 @@
         {
           "value": "35",
           "name": "Affirmed",
-          "ep": 291,
-          "sort": 35,
           "doc": "Affirmed"
         },
         {
           "value": "36",
           "name": "UpdateTime",
-          "ep": 300,
-          "sort": 36,
           "doc": "Update time"
-        },
-        {
-          "value": "4",
-          "name": "BrokerReceipt",
-          "since": "4.4",
-          "sort": 4,
-          "doc": "Broker receipt"
-        },
-        {
-          "value": "5",
-          "name": "BrokerExecution",
-          "since": "4.4",
-          "sort": 5,
-          "doc": "Broker execution"
-        },
-        {
-          "value": "6",
-          "name": "DeskReceipt",
-          "since": "4.4",
-          "ep": 9,
-          "sort": 6,
-          "doc": "Desk receipt"
-        },
-        {
-          "value": "7",
-          "name": "SubmissionToClearing",
-          "since": "5.0.1",
-          "ep": 77,
-          "sort": 7,
-          "doc": "Submission to clearing"
-        },
-        {
-          "value": "8",
-          "name": "TimePriority",
-          "since": "5.0.2",
-          "ep": 101,
-          "sort": 8,
-          "doc": "Time priority"
-        },
-        {
-          "value": "9",
-          "name": "OrderbookEntryTime",
-          "since": "5.0.2",
-          "ep": 131,
-          "sort": 9,
-          "doc": "Orderbook entry time"
         }
       ],
       "fix:tag": "770"
@@ -3955,22 +2956,16 @@
         {
           "value": "1",
           "name": "Status",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Status"
         },
         {
           "value": "2",
           "name": "Confirmation",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Confirmation"
         },
         {
           "value": "3",
           "name": "ConfirmationRequestRejected",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Confirmation Request Rejected (reason can be stated in Text (58) field)"
         }
       ],
@@ -3990,158 +2985,101 @@
         {
           "value": "1",
           "name": "MismatchedAccount",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Incorrect or missing account"
-        },
-        {
-          "value": "10",
-          "name": "IncorrectOrMissingFundIDOrFundName",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 10,
-          "doc": "Incorrect or missing fund ID or fund name"
-        },
-        {
-          "value": "11",
-          "name": "IncorrectOrMissingQuantity",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 11,
-          "doc": "Incorrect or missing quantity"
-        },
-        {
-          "value": "12",
-          "name": "IncorrectOrMissingFees",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 12,
-          "doc": "Incorrect or missing fees"
-        },
-        {
-          "value": "13",
-          "name": "IncorrectOrMissingTax",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 13,
-          "doc": "Incorrect or missing tax"
-        },
-        {
-          "value": "14",
-          "name": "IncorrectOrMissingParty",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 14,
-          "doc": "Incorrect or missing party"
-        },
-        {
-          "value": "15",
-          "name": "IncorrectOrMissingSide",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 15,
-          "doc": "Incorrect or missing side"
-        },
-        {
-          "value": "16",
-          "name": "IncorrectOrMissingNetMoney",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 16,
-          "doc": "Incorrect or missing net-money"
-        },
-        {
-          "value": "17",
-          "name": "IncorrectOrMissingTradeDate",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 17,
-          "doc": "Incorrect or missing trade date"
-        },
-        {
-          "value": "18",
-          "name": "IncorrectOrMissingSettlCcyInstructions",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 18,
-          "doc": "Incorrect or missing settlement currency instructions"
-        },
-        {
-          "value": "19",
-          "name": "IncorrectOrMissingCapacity",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 19,
-          "doc": "Incorrect or missing capacity"
         },
         {
           "value": "2",
           "name": "MissingSettlementInstructions",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Incorrect or missing settlement instructions"
         },
         {
           "value": "3",
           "name": "UnknownOrMissingIndividualAllocId",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 3,
           "doc": "Unknown or missing IndividualAllocId(467)"
         },
         {
           "value": "4",
           "name": "TransactionNotRecognized",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 4,
           "doc": "Transaction not recognized"
         },
         {
           "value": "5",
           "name": "DuplicateTransaction",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 5,
           "doc": "Duplicate transaction"
         },
         {
           "value": "6",
           "name": "IncorrectOrMissingInstrument",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 6,
           "doc": "Incorrect or missing instrument"
         },
         {
           "value": "7",
           "name": "IncorrectOrMissingPrice",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 7,
           "doc": "Incorrect or missing price"
         },
         {
           "value": "8",
           "name": "IncorrectOrMissingCommission",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 8,
           "doc": "Incorrect or missing commission"
         },
         {
           "value": "9",
           "name": "IncorrectOrMissingSettlDate",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 9,
           "doc": "Incorrect or missing settlement date"
+        },
+        {
+          "value": "10",
+          "name": "IncorrectOrMissingFundIDOrFundName",
+          "doc": "Incorrect or missing fund ID or fund name"
+        },
+        {
+          "value": "11",
+          "name": "IncorrectOrMissingQuantity",
+          "doc": "Incorrect or missing quantity"
+        },
+        {
+          "value": "12",
+          "name": "IncorrectOrMissingFees",
+          "doc": "Incorrect or missing fees"
+        },
+        {
+          "value": "13",
+          "name": "IncorrectOrMissingTax",
+          "doc": "Incorrect or missing tax"
+        },
+        {
+          "value": "14",
+          "name": "IncorrectOrMissingParty",
+          "doc": "Incorrect or missing party"
+        },
+        {
+          "value": "15",
+          "name": "IncorrectOrMissingSide",
+          "doc": "Incorrect or missing side"
+        },
+        {
+          "value": "16",
+          "name": "IncorrectOrMissingNetMoney",
+          "doc": "Incorrect or missing net-money"
+        },
+        {
+          "value": "17",
+          "name": "IncorrectOrMissingTradeDate",
+          "doc": "Incorrect or missing trade date"
+        },
+        {
+          "value": "18",
+          "name": "IncorrectOrMissingSettlCcyInstructions",
+          "doc": "Incorrect or missing settlement currency instructions"
+        },
+        {
+          "value": "19",
+          "name": "IncorrectOrMissingCapacity",
+          "doc": "Incorrect or missing capacity"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -4161,22 +3099,16 @@
         {
           "value": "0",
           "name": "RegularBooking",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Regular booking"
         },
         {
           "value": "1",
           "name": "CFD",
-          "since": "4.4",
-          "sort": 2,
           "doc": "CFD (Contract for difference)"
         },
         {
           "value": "2",
           "name": "TotalReturnSwap",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Total Return Swap"
         }
       ],
@@ -4196,228 +3128,151 @@
         {
           "value": "0",
           "name": "UnknownAccount",
-          "since": "2.7",
-          "sort": 1,
           "doc": "Unknown or missing account(s)"
         },
         {
           "value": "1",
           "name": "IncorrectQuantity",
-          "since": "2.7",
-          "sort": 2,
           "doc": "Incorrect or missing block quantity"
-        },
-        {
-          "value": "10",
-          "name": "UnknownOrStaleExecID",
-          "since": "4.4",
-          "sort": 11,
-          "doc": "Unknown or Stale ExecID(17)"
-        },
-        {
-          "value": "11",
-          "name": "MismatchedData",
-          "since": "4.4",
-          "sort": 12,
-          "doc": "Mismatched data"
-        },
-        {
-          "value": "12",
-          "name": "UnknownClOrdID",
-          "since": "4.4",
-          "sort": 13,
-          "doc": "Unknown ClOrdID(11)"
-        },
-        {
-          "value": "13",
-          "name": "WarehouseRequestRejected",
-          "since": "4.4",
-          "sort": 14,
-          "doc": "Warehouse request rejected"
-        },
-        {
-          "value": "14",
-          "name": "DuplicateOrMissingIndividualAllocID",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 15,
-          "doc": "Duplicate or missing IndividualAllocID(467)"
-        },
-        {
-          "value": "15",
-          "name": "TradeNotRecognized",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 16,
-          "doc": "Trade not recognized"
-        },
-        {
-          "value": "16",
-          "name": "DuplicateTrade",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 17,
-          "doc": "Trade previously allocated"
-        },
-        {
-          "value": "17",
-          "name": "IncorrectOrMissingInstrument",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 18,
-          "doc": "Incorrect or missing instrument"
-        },
-        {
-          "value": "18",
-          "name": "IncorrectOrMissingSettlDate",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 19,
-          "doc": "Incorrect or missing settlement date"
-        },
-        {
-          "value": "19",
-          "name": "IncorrectOrMissingFundIDOrFundName",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 20,
-          "doc": "Incorrect or missing fund ID or fund name"
         },
         {
           "value": "2",
           "name": "IncorrectAveragePrice",
-          "since": "2.7",
-          "sort": 3,
           "doc": "Incorrect or missing average price"
-        },
-        {
-          "value": "20",
-          "name": "IncorrectOrMissingSettlInstructions",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 21,
-          "doc": "Incorrect or missing settlement instructions"
-        },
-        {
-          "value": "21",
-          "name": "IncorrectOrMissingFees",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 22,
-          "doc": "Incorrect or missing fees"
-        },
-        {
-          "value": "22",
-          "name": "IncorrectOrMissingTax",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 23,
-          "doc": "Incorrect or missing tax"
-        },
-        {
-          "value": "23",
-          "name": "UnknownOrMissingParty",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 24,
-          "doc": "Unknown or missing party"
-        },
-        {
-          "value": "24",
-          "name": "IncorrectOrMissingSide",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 25,
-          "doc": "Incorrect or missing side"
-        },
-        {
-          "value": "25",
-          "name": "IncorrectOrMissingNetMoney",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 26,
-          "doc": "Incorrect or missing net-money"
-        },
-        {
-          "value": "26",
-          "name": "IncorrectOrMissingTradeDate",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 27,
-          "doc": "Incorrect or missing trade date"
-        },
-        {
-          "value": "27",
-          "name": "IncorrectOrMissingSettlCcyInstructions",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 28,
-          "doc": "Incorrect or missing settlement currency instructions"
-        },
-        {
-          "value": "28",
-          "name": "IncorrectOrMissingProcessCode",
-          "since": "5.0.2",
-          "ep": 170,
-          "sort": 29,
-          "doc": "Incorrrect or missing ProcessCode(81)"
         },
         {
           "value": "3",
           "name": "UnknownExecutingBrokerMnemonic",
-          "since": "2.7",
-          "sort": 4,
           "doc": "Unknown executing broker mnemonic"
         },
         {
           "value": "4",
           "name": "CommissionDifference",
-          "since": "2.7",
-          "sort": 5,
           "doc": "Incorrect or missing commission"
         },
         {
           "value": "5",
           "name": "UnknownOrderID",
-          "since": "2.7",
-          "sort": 6,
           "doc": "Unknown OrderID(37)"
         },
         {
           "value": "6",
           "name": "UnknownListID",
-          "since": "2.7",
-          "sort": 7,
           "doc": "Unknown ListID(66)"
         },
         {
           "value": "7",
           "name": "OtherSeeText",
-          "since": "2.7",
-          "deprecated": "5.0.2",
-          "sort": 8,
           "doc": "Other (further in Text (58))"
         },
         {
           "value": "8",
           "name": "IncorrectAllocatedQuantity",
-          "since": "4.4",
-          "sort": 9,
           "doc": "Incorrect or missing allocated quantity"
         },
         {
           "value": "9",
           "name": "CalculationDifference",
-          "since": "4.4",
-          "sort": 10,
           "doc": "Calculation difference"
+        },
+        {
+          "value": "10",
+          "name": "UnknownOrStaleExecID",
+          "doc": "Unknown or Stale ExecID(17)"
+        },
+        {
+          "value": "11",
+          "name": "MismatchedData",
+          "doc": "Mismatched data"
+        },
+        {
+          "value": "12",
+          "name": "UnknownClOrdID",
+          "doc": "Unknown ClOrdID(11)"
+        },
+        {
+          "value": "13",
+          "name": "WarehouseRequestRejected",
+          "doc": "Warehouse request rejected"
+        },
+        {
+          "value": "14",
+          "name": "DuplicateOrMissingIndividualAllocID",
+          "doc": "Duplicate or missing IndividualAllocID(467)"
+        },
+        {
+          "value": "15",
+          "name": "TradeNotRecognized",
+          "doc": "Trade not recognized"
+        },
+        {
+          "value": "16",
+          "name": "DuplicateTrade",
+          "doc": "Trade previously allocated"
+        },
+        {
+          "value": "17",
+          "name": "IncorrectOrMissingInstrument",
+          "doc": "Incorrect or missing instrument"
+        },
+        {
+          "value": "18",
+          "name": "IncorrectOrMissingSettlDate",
+          "doc": "Incorrect or missing settlement date"
+        },
+        {
+          "value": "19",
+          "name": "IncorrectOrMissingFundIDOrFundName",
+          "doc": "Incorrect or missing fund ID or fund name"
+        },
+        {
+          "value": "20",
+          "name": "IncorrectOrMissingSettlInstructions",
+          "doc": "Incorrect or missing settlement instructions"
+        },
+        {
+          "value": "21",
+          "name": "IncorrectOrMissingFees",
+          "doc": "Incorrect or missing fees"
+        },
+        {
+          "value": "22",
+          "name": "IncorrectOrMissingTax",
+          "doc": "Incorrect or missing tax"
+        },
+        {
+          "value": "23",
+          "name": "UnknownOrMissingParty",
+          "doc": "Unknown or missing party"
+        },
+        {
+          "value": "24",
+          "name": "IncorrectOrMissingSide",
+          "doc": "Incorrect or missing side"
+        },
+        {
+          "value": "25",
+          "name": "IncorrectOrMissingNetMoney",
+          "doc": "Incorrect or missing net-money"
+        },
+        {
+          "value": "26",
+          "name": "IncorrectOrMissingTradeDate",
+          "doc": "Incorrect or missing trade date"
+        },
+        {
+          "value": "27",
+          "name": "IncorrectOrMissingSettlCcyInstructions",
+          "doc": "Incorrect or missing settlement currency instructions"
+        },
+        {
+          "value": "28",
+          "name": "IncorrectOrMissingProcessCode",
+          "doc": "Incorrrect or missing ProcessCode(81)"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 100,
           "doc": "Other"
         }
       ],
@@ -4475,36 +3330,26 @@
         {
           "value": "0",
           "name": "UseDefaultInstructions",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Use default instructions"
         },
         {
           "value": "1",
           "name": "DeriveFromParametersProvided",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Derive from parameters provided"
         },
         {
           "value": "2",
           "name": "FullDetailsProvided",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Full details provided"
         },
         {
           "value": "3",
           "name": "SSIDBIDsProvided",
-          "since": "4.4",
-          "sort": 4,
           "doc": "SSI DB IDs provided"
         },
         {
           "value": "4",
           "name": "PhoneForInstructions",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Phone for instructions"
         }
       ],
@@ -4548,258 +3393,186 @@
         {
           "value": "1",
           "name": "KoreanInvestorID",
-          "since": "4.3",
-          "sort": 1,
           "group": "For PartyRole = \"InvestorID\" and for Equities",
           "doc": "Korean Investor ID"
         },
         {
-          "value": "2",
-          "name": "TaiwaneseForeignInvestorID",
-          "since": "4.3",
-          "sort": 2,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
-        },
-        {
-          "value": "3",
-          "name": "TaiwaneseTradingAcct",
-          "since": "4.3",
-          "sort": 3,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Taiwanese Trading Acct"
-        },
-        {
-          "value": "4",
-          "name": "MalaysianCentralDepository",
-          "since": "4.3",
-          "sort": 4,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Malaysian Central Depository (MCD) number"
-        },
-        {
-          "value": "5",
-          "name": "ChineseInvestorID",
-          "since": "4.3",
-          "sort": 5,
-          "group": "For PartyRole = \"InvestorID\" and for Equities",
-          "doc": "Chinese Investor ID"
-        },
-        {
           "value": "6",
           "name": "UKNationalInsuranceOrPensionNumber",
-          "since": "4.3",
-          "sort": 1,
           "group": "For PartyRole = \"InvestorID\" and for CIV",
           "doc": "UK National Insurance or Pension Number"
         },
         {
-          "value": "7",
-          "name": "USSocialSecurityNumber",
-          "since": "4.3",
-          "sort": 2,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Social Security Number"
-        },
-        {
-          "value": "8",
-          "name": "USEmployerOrTaxIDNumber",
-          "since": "4.3",
-          "sort": 3,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "US Employer or Tax ID Number"
-        },
-        {
-          "value": "9",
-          "name": "AustralianBusinessNumber",
-          "since": "4.3",
-          "sort": 4,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Business Number"
-        },
-        {
-          "value": "A",
-          "name": "AustralianTaxFileNumber",
-          "since": "4.3",
-          "sort": 5,
-          "group": "For PartyRole = \"InvestorID\" and for CIV",
-          "doc": "Australian Tax File Number"
-        },
-        {
           "value": "B",
           "name": "BIC",
-          "since": "4.3",
-          "sort": 1,
           "group": "For all PartyRoles",
           "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
         },
         {
+          "value": "I",
+          "name": "ISITCAcronym",
+          "group": "For PartyRole=\"Broker of Credit\"",
+          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
+        },
+        {
+          "value": "2",
+          "name": "TaiwaneseForeignInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
+        },
+        {
+          "value": "7",
+          "name": "USSocialSecurityNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Social Security Number"
+        },
+        {
           "value": "C",
           "name": "GeneralIdentifier",
-          "since": "4.3",
-          "sort": 2,
           "group": "For all PartyRoles",
           "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
         },
         {
+          "value": "3",
+          "name": "TaiwaneseTradingAcct",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Trading Acct"
+        },
+        {
+          "value": "8",
+          "name": "USEmployerOrTaxIDNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Employer or Tax ID Number"
+        },
+        {
           "value": "D",
           "name": "Proprietary",
-          "since": "4.3",
-          "sort": 3,
           "group": "For all PartyRoles",
           "doc": "Proprietary / Custom code"
         },
         {
+          "value": "4",
+          "name": "MalaysianCentralDepository",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Malaysian Central Depository (MCD) number"
+        },
+        {
+          "value": "9",
+          "name": "AustralianBusinessNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Business Number"
+        },
+        {
           "value": "E",
           "name": "ISOCountryCode",
-          "since": "4.3",
-          "sort": 4,
           "group": "For all PartyRoles",
           "doc": "ISO Country Code"
         },
         {
+          "value": "5",
+          "name": "ChineseInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Chinese Investor ID"
+        },
+        {
+          "value": "A",
+          "name": "AustralianTaxFileNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Tax File Number"
+        },
+        {
           "value": "F",
           "name": "SettlementEntityLocation",
-          "since": "4.3",
-          "sort": 5,
           "group": "For all PartyRoles",
           "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
         },
         {
           "value": "G",
           "name": "MIC",
-          "since": "4.4",
-          "sort": 6,
           "group": "For all PartyRoles",
           "doc": "Market Identifier Code (ISO 10383) MIC"
         },
         {
-          "value": "H",
-          "name": "CSDParticipant",
-          "since": "4.4",
-          "sort": 7,
-          "group": "For all PartyRoles",
-          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
-        },
-        {
-          "value": "I",
-          "name": "ISITCAcronym",
-          "since": "4.4",
-          "sort": 1,
-          "group": "For PartyRole=\"Broker of Credit\"",
-          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
-        },
-        {
           "value": "J",
           "name": "TaxID",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 6,
           "group": "For PartyRole = \"InvestorID\" and for CIV",
           "doc": "Tax ID"
         },
         {
+          "value": "H",
+          "name": "CSDParticipant",
+          "group": "For all PartyRoles",
+          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
+        },
+        {
           "value": "K",
           "name": "AustralianCompanyNumber",
-          "since": "5.0.2",
-          "ep": 108,
-          "sort": 8,
           "group": "For all PartyRoles",
           "doc": "Australian Company Number"
         },
         {
           "value": "L",
           "name": "AustralianRegisteredBodyNumber",
-          "since": "5.0.2",
-          "ep": 108,
-          "sort": 9,
           "group": "For all PartyRoles",
           "doc": "Australian Registered Body Number"
         },
         {
           "value": "M",
           "name": "CFTCReportingFirmIdentifier",
-          "since": "5.0.2",
-          "ep": 140,
-          "sort": 10,
           "group": "For all PartyRoles",
           "doc": "CFTC reporting firm identifier"
         },
         {
           "value": "N",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 156,
-          "sort": 11,
           "group": "For all PartyRoles",
           "doc": "Legal Entity Identifier (ISO 17442) LEI"
         },
         {
           "value": "O",
           "name": "InterimIdentifier",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 12,
           "group": "For all PartyRoles",
           "doc": "Interim identifier"
         },
         {
           "value": "P",
           "name": "ShortCodeIdentifier",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 13,
           "group": "For all PartyRoles",
           "doc": "Short code identifier"
         },
         {
           "value": "Q",
           "name": "NationalIDNaturalPerson",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 14,
           "group": "For all PartyRoles",
           "doc": "National ID of natural person"
         },
         {
           "value": "R",
           "name": "IndiaPermanentAccountNumber",
-          "since": "5.0.2",
-          "ep": 244,
-          "sort": 15,
           "group": "For all PartyRoles",
           "doc": "India Permanent Account Number"
         },
         {
           "value": "S",
           "name": "FDID",
-          "since": "5.0.2",
-          "ep": 248,
-          "sort": 16,
           "group": "For all PartyRoles",
           "doc": "Firm designated identifier"
         },
         {
           "value": "T",
           "name": "SPSAID",
-          "ep": 262,
-          "sort": 17,
           "group": "For all PartyRoles",
           "doc": "Special Segregated Account ID"
         },
         {
           "value": "U",
           "name": "MasterSPSAID",
-          "ep": 262,
-          "sort": 18,
           "group": "For all PartyRoles",
           "doc": "Master Special Segregated Account ID"
         },
         {
           "value": "V",
           "name": "KoreaShortSellingRegistrationNumber",
-          "ep": 296,
-          "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
         }
@@ -4818,993 +3591,649 @@
       "display": "SettlPartyRole",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "ExecutingFirm",
-          "since": "4.3",
-          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+          "value": "2",
+          "name": "BrokerOfCredit",
+          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+        },
+        {
+          "value": "3",
+          "name": "ClientID",
+          "doc": "Client ID (formerly FIX 4.2 ClientID)"
+        },
+        {
+          "value": "4",
+          "name": "ClearingFirm",
+          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+        },
+        {
+          "value": "5",
+          "name": "InvestorID",
+          "doc": "Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "IntroducingFirm",
+          "doc": "Introducing Firm"
+        },
+        {
+          "value": "7",
+          "name": "EnteringFirm",
+          "doc": "Entering Firm"
+        },
+        {
+          "value": "8",
+          "name": "Locate",
+          "doc": "Locate / Lending Firm (for short-sales)"
+        },
+        {
+          "value": "9",
+          "name": "FundManagerClientID",
+          "doc": "Fund Manager Client ID (for CIV)"
         },
         {
           "value": "10",
           "name": "SettlementLocation",
-          "since": "4.3",
-          "sort": 9,
           "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
-        },
-        {
-          "value": "100",
-          "name": "MarginAccount",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 98,
-          "doc": "Margin account"
-        },
-        {
-          "value": "101",
-          "name": "CollateralAssetAccount",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 99,
-          "doc": "Collateral asset account"
-        },
-        {
-          "value": "102",
-          "name": "DataRepository",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 100,
-          "doc": "Data repository"
-        },
-        {
-          "value": "103",
-          "name": "CalculationAgent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 101,
-          "doc": "Calculation agent"
-        },
-        {
-          "value": "104",
-          "name": "ExerciseNoticeSender",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 102,
-          "doc": "Sender of exercise notice"
-        },
-        {
-          "value": "105",
-          "name": "ExerciseNoticeReceiver",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 103,
-          "doc": "Receiver of exercise notice"
-        },
-        {
-          "value": "106",
-          "name": "RateReferenceBank",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 104,
-          "doc": "Rate reference bank"
-        },
-        {
-          "value": "107",
-          "name": "Correspondent",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 105,
-          "doc": "Correspondent"
-        },
-        {
-          "value": "109",
-          "name": "BeneficiaryBank",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 106,
-          "doc": "Beneficiary's bank or depository institution"
         },
         {
           "value": "11",
           "name": "OrderOriginationTrader",
-          "since": "4.3",
-          "sort": 10,
           "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
-        },
-        {
-          "value": "110",
-          "name": "Borrower",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 107,
-          "doc": "Borrower"
-        },
-        {
-          "value": "111",
-          "name": "PrimaryObligator",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 108,
-          "doc": "Primary obligator"
-        },
-        {
-          "value": "112",
-          "name": "Guarantor",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 109,
-          "doc": "Guarantor"
-        },
-        {
-          "value": "113",
-          "name": "ExcludedReferenceEntity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 110,
-          "doc": "Excluded reference entity"
-        },
-        {
-          "value": "114",
-          "name": "DeterminingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 111,
-          "doc": "Determining party"
-        },
-        {
-          "value": "115",
-          "name": "HedgingParty",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 112,
-          "doc": "Hedging party"
-        },
-        {
-          "value": "116",
-          "name": "ReportingEntity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 113,
-          "doc": "Reporting entity"
-        },
-        {
-          "value": "117",
-          "name": "SalesPerson",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 114,
-          "doc": "Sales person"
-        },
-        {
-          "value": "118",
-          "name": "Operator",
-          "since": "5.0.2",
-          "ep": 173,
-          "sort": 115,
-          "doc": "Operator"
-        },
-        {
-          "value": "119",
-          "name": "CSD",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 116,
-          "doc": "Central Securities Depository (CSD)"
         },
         {
           "value": "12",
           "name": "ExecutingTrader",
-          "since": "4.3",
-          "sort": 11,
           "doc": "Executing Trader (associated with Executing Firm - actually executes)"
-        },
-        {
-          "value": "120",
-          "name": "ICSD",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 117,
-          "doc": "International Central Securities Depository (ICSD)"
-        },
-        {
-          "value": "121",
-          "name": "TradingSubAccount",
-          "since": "5.0.2",
-          "ep": 217,
-          "sort": 118,
-          "doc": "Trading sub-account"
-        },
-        {
-          "value": "122",
-          "name": "InvestmentDecisionMaker",
-          "since": "5.0.2",
-          "ep": 222,
-          "sort": 119,
-          "doc": "Investment decision maker"
-        },
-        {
-          "value": "123",
-          "name": "PublishingIntermediary",
-          "since": "5.0.2",
-          "ep": 229,
-          "sort": 120,
-          "doc": "Publishing intermediary"
-        },
-        {
-          "value": "124",
-          "name": "CSDParticipant",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 121,
-          "doc": "Central Securities Depository (CSD) Participant"
-        },
-        {
-          "value": "125",
-          "name": "Issuer",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 122,
-          "doc": "Issuer"
-        },
-        {
-          "value": "126",
-          "name": "ContraCustomerAccount",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 123,
-          "doc": "Contra Customer Account"
-        },
-        {
-          "value": "127",
-          "name": "ContraInvestmentDecisionMaker",
-          "since": "5.0.2",
-          "ep": 256,
-          "sort": 124,
-          "doc": "Contra Investment Decision Maker"
-        },
-        {
-          "value": "128",
-          "name": "AuthorizingPerson",
-          "ep": 292,
-          "sort": 125,
-          "doc": "Authorizing person"
-        },
-        {
-          "value": "129",
-          "name": "PrimaryPlaceOfListing",
-          "ep": 300,
-          "sort": 126,
-          "doc": "Primary place of listing"
         },
         {
           "value": "13",
           "name": "OrderOriginationFirm",
-          "since": "4.3",
-          "sort": 12,
           "doc": "Order Origination Firm (e.g. buy-side firm)"
-        },
-        {
-          "value": "130",
-          "name": "SecondaryPlaceOfListing",
-          "ep": 300,
-          "sort": 127,
-          "doc": "Secondary place of listing"
-        },
-        {
-          "value": "131",
-          "name": "Algorithm",
-          "ep": 303,
-          "sort": 128,
-          "doc": "Algorithm"
         },
         {
           "value": "14",
           "name": "GiveupClearingFirmDepr",
-          "since": "4.3",
-          "deprecated": "5.0.2",
-          "sort": 13,
           "doc": "Giveup Clearing Firm (firm to which trade is given up)"
         },
         {
           "value": "15",
           "name": "CorrespondantClearingFirm",
-          "since": "4.3",
-          "sort": 14,
           "doc": "Correspondant Clearing Firm"
         },
         {
           "value": "16",
           "name": "ExecutingSystem",
-          "since": "4.3",
-          "sort": 15,
           "doc": "Executing System"
         },
         {
           "value": "17",
           "name": "ContraFirm",
-          "since": "4.3",
-          "sort": 16,
           "doc": "Contra Firm"
         },
         {
           "value": "18",
           "name": "ContraClearingFirm",
-          "since": "4.3",
-          "sort": 17,
           "doc": "Contra Clearing Firm"
         },
         {
           "value": "19",
           "name": "SponsoringFirm",
-          "since": "4.3",
-          "sort": 18,
           "doc": "Sponsoring Firm"
-        },
-        {
-          "value": "2",
-          "name": "BrokerOfCredit",
-          "since": "4.3",
-          "sort": 1,
-          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
         },
         {
           "value": "20",
           "name": "UnderlyingContraFirm",
-          "since": "4.3",
-          "sort": 19,
           "doc": "Underlying Contra Firm"
         },
         {
           "value": "21",
           "name": "ClearingOrganization",
-          "since": "4.4",
-          "sort": 20,
           "doc": "Clearing Organization"
         },
         {
           "value": "22",
           "name": "Exchange",
-          "since": "4.4",
-          "sort": 21,
           "doc": "Exchange"
         },
         {
           "value": "24",
           "name": "CustomerAccount",
-          "since": "4.4",
-          "sort": 22,
           "doc": "Customer Account"
         },
         {
           "value": "25",
           "name": "CorrespondentClearingOrganization",
-          "since": "4.4",
-          "sort": 23,
           "doc": "Correspondent Clearing Organization"
         },
         {
           "value": "26",
           "name": "CorrespondentBroker",
-          "since": "4.4",
-          "sort": 24,
           "doc": "Correspondent Broker"
         },
         {
           "value": "27",
           "name": "Buyer",
-          "since": "4.4",
-          "sort": 25,
           "doc": "Buyer/Seller (Receiver/Deliverer)"
         },
         {
           "value": "28",
           "name": "Custodian",
-          "since": "4.4",
-          "sort": 26,
           "doc": "Custodian"
         },
         {
           "value": "29",
           "name": "Intermediary",
-          "since": "4.4",
-          "sort": 27,
           "doc": "Intermediary"
-        },
-        {
-          "value": "3",
-          "name": "ClientID",
-          "since": "4.3",
-          "sort": 2,
-          "doc": "Client ID (formerly FIX 4.2 ClientID)"
         },
         {
           "value": "30",
           "name": "Agent",
-          "since": "4.4",
-          "sort": 28,
           "doc": "Agent"
         },
         {
           "value": "31",
           "name": "SubCustodian",
-          "since": "4.4",
-          "sort": 29,
           "doc": "Sub-custodian"
         },
         {
           "value": "32",
           "name": "Beneficiary",
-          "since": "4.4",
-          "sort": 30,
           "doc": "Beneficiary"
         },
         {
           "value": "33",
           "name": "InterestedParty",
-          "since": "4.4",
-          "sort": 31,
           "doc": "Interested party"
         },
         {
           "value": "34",
           "name": "RegulatoryBody",
-          "since": "4.4",
-          "sort": 32,
           "doc": "Regulatory body"
         },
         {
           "value": "35",
           "name": "LiquidityProvider",
-          "since": "4.4",
-          "sort": 33,
           "doc": "Liquidity provider"
         },
         {
           "value": "36",
           "name": "EnteringTrader",
-          "since": "4.4",
-          "sort": 34,
           "doc": "Entering trader"
         },
         {
           "value": "37",
           "name": "ContraTrader",
-          "since": "4.4",
-          "sort": 35,
           "doc": "Contra trader"
         },
         {
           "value": "38",
           "name": "PositionAccount",
-          "since": "4.4",
-          "sort": 36,
           "doc": "Position account"
         },
         {
           "value": "39",
           "name": "ContraInvestorID",
-          "since": "4.4",
-          "sort": 37,
           "doc": "Contra Investor ID"
-        },
-        {
-          "value": "4",
-          "name": "ClearingFirm",
-          "since": "4.3",
-          "sort": 3,
-          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
         },
         {
           "value": "40",
           "name": "TransferToFirm",
-          "since": "4.4",
-          "sort": 38,
           "doc": "Transfer to Firm"
         },
         {
           "value": "41",
           "name": "ContraPositionAccount",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 39,
           "doc": "Contra Position Account"
         },
         {
           "value": "42",
           "name": "ContraExchange",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 40,
           "doc": "Contra Exchange"
         },
         {
           "value": "43",
           "name": "InternalCarryAccount",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 41,
           "doc": "Internal Carry Account"
         },
         {
           "value": "44",
           "name": "OrderEntryOperatorID",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 42,
           "doc": "Order Entry Operator ID"
         },
         {
           "value": "45",
           "name": "SecondaryAccountNumber",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 43,
           "doc": "Secondary Account Number"
         },
         {
           "value": "46",
           "name": "ForeignFirm",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 44,
           "doc": "Foreign Firm"
         },
         {
           "value": "47",
           "name": "ThirdPartyAllocationFirm",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 45,
           "doc": "Third Party Allocation Firm"
         },
         {
           "value": "48",
           "name": "ClaimingAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 46,
           "doc": "Claiming Account"
         },
         {
           "value": "49",
           "name": "AssetManager",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 47,
           "doc": "Asset Manager"
-        },
-        {
-          "value": "5",
-          "name": "InvestorID",
-          "since": "4.3",
-          "sort": 4,
-          "doc": "Investor ID"
         },
         {
           "value": "50",
           "name": "PledgorAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 48,
           "doc": "Pledgor Account"
         },
         {
           "value": "51",
           "name": "PledgeeAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 49,
           "doc": "Pledgee Account"
         },
         {
           "value": "52",
           "name": "LargeTraderReportableAccount",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 50,
           "doc": "Large Trader Reportable Account"
         },
         {
           "value": "53",
           "name": "TraderMnemonic",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 51,
           "doc": "Trader mnemonic"
         },
         {
           "value": "54",
           "name": "SenderLocation",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 52,
           "doc": "Sender Location"
         },
         {
           "value": "55",
           "name": "SessionID",
-          "since": "4.4",
-          "ep": 8,
-          "sort": 53,
           "doc": "Session ID"
         },
         {
           "value": "56",
           "name": "AcceptableCounterparty",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 54,
           "doc": "Acceptable Counterparty"
         },
         {
           "value": "57",
           "name": "UnacceptableCounterparty",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 55,
           "doc": "Unacceptable Counterparty"
         },
         {
           "value": "58",
           "name": "EnteringUnit",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 56,
           "doc": "Entering Unit"
         },
         {
           "value": "59",
           "name": "ExecutingUnit",
-          "since": "4.4",
-          "ep": 22,
-          "sort": 57,
           "doc": "Executing Unit"
-        },
-        {
-          "value": "6",
-          "name": "IntroducingFirm",
-          "since": "4.3",
-          "sort": 5,
-          "doc": "Introducing Firm"
         },
         {
           "value": "60",
           "name": "IntroducingBroker",
-          "since": "4.4",
-          "ep": 4,
-          "sort": 58,
           "doc": "Introducing Broker"
         },
         {
           "value": "61",
           "name": "QuoteOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 59,
           "doc": "Quote originator"
         },
         {
           "value": "62",
           "name": "ReportOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 60,
           "doc": "Report originator"
         },
         {
           "value": "63",
           "name": "SystematicInternaliser",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 61,
           "doc": "Systematic internaliser (SI)"
         },
         {
           "value": "64",
           "name": "MultilateralTradingFacility",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 62,
           "doc": "Multilateral Trading Facility (MTF)"
         },
         {
           "value": "65",
           "name": "RegulatedMarket",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 63,
           "doc": "Regulated Market (RM)"
         },
         {
           "value": "66",
           "name": "MarketMaker",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 64,
           "doc": "Market Maker"
         },
         {
           "value": "67",
           "name": "InvestmentFirm",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 65,
           "doc": "Investment Firm"
         },
         {
           "value": "68",
           "name": "HostCompetentAuthority",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 66,
           "doc": "Host Competent Authority (Host CA)"
         },
         {
           "value": "69",
           "name": "HomeCompetentAuthority",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 67,
           "doc": "Home Competent Authority (Home CA)"
-        },
-        {
-          "value": "7",
-          "name": "EnteringFirm",
-          "since": "4.3",
-          "sort": 6,
-          "doc": "Entering Firm"
         },
         {
           "value": "70",
           "name": "CompetentAuthorityLiquidity",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 68,
           "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
         },
         {
           "value": "71",
           "name": "CompetentAuthorityTransactionVenue",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 69,
           "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
         },
         {
           "value": "72",
           "name": "ReportingIntermediary",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 70,
           "doc": "Reporting intermediary"
         },
         {
           "value": "73",
           "name": "ExecutionVenue",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 71,
           "doc": "Execution Venue"
         },
         {
           "value": "74",
           "name": "MarketDataEntryOriginator",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 72,
           "doc": "Market data entry originator"
         },
         {
           "value": "75",
           "name": "LocationID",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 73,
           "doc": "Location ID"
         },
         {
           "value": "76",
           "name": "DeskID",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 74,
           "doc": "Desk ID"
         },
         {
           "value": "77",
           "name": "MarketDataMarket",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 75,
           "doc": "Market data market"
         },
         {
           "value": "78",
           "name": "AllocationEntity",
-          "since": "4.4",
-          "ep": 35,
-          "sort": 76,
           "doc": "Allocation Entity"
         },
         {
           "value": "79",
           "name": "PrimeBroker",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 77,
           "doc": "Prime Broker providing General Trade Services"
-        },
-        {
-          "value": "8",
-          "name": "Locate",
-          "since": "4.3",
-          "sort": 7,
-          "doc": "Locate / Lending Firm (for short-sales)"
         },
         {
           "value": "80",
           "name": "StepOutFirm",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 78,
           "doc": "Step-Out Firm (Prime Broker)"
         },
         {
           "value": "81",
           "name": "BrokerClearingID",
-          "since": "5.0",
-          "ep": 68,
-          "sort": 79,
           "doc": "Broker clearing identifier"
         },
         {
           "value": "82",
           "name": "CentralRegistrationDepository",
-          "since": "5.0.1",
-          "ep": 79,
-          "sort": 80,
           "doc": "Central Registration Depository (CRD)"
         },
         {
           "value": "83",
           "name": "ClearingAccount",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 81,
           "doc": "Clearing Account"
         },
         {
           "value": "84",
           "name": "AcceptableSettlingCounterparty",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 82,
           "doc": "Acceptable Settling Counterparty"
         },
         {
           "value": "85",
           "name": "UnacceptableSettlingCounterparty",
-          "since": "5.0.1",
-          "ep": 96,
-          "sort": 83,
           "doc": "Unacceptable Settling Counterparty"
         },
         {
           "value": "86",
           "name": "CLSMemberBank",
-          "since": "5.0.2",
-          "ep": 100,
-          "sort": 84,
           "doc": "CLS Member Bank"
         },
         {
           "value": "87",
           "name": "InConcertGroup",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 85,
           "doc": "In Concert Group"
         },
         {
           "value": "88",
           "name": "InConcertControllingEntity",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 86,
           "doc": "In Concert Controlling Entity"
         },
         {
           "value": "89",
           "name": "LargePositionsReportingAccount",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 87,
           "doc": "Large Positions Reporting Account"
-        },
-        {
-          "value": "9",
-          "name": "FundManagerClientID",
-          "since": "4.3",
-          "sort": 8,
-          "doc": "Fund Manager Client ID (for CIV)"
         },
         {
           "value": "90",
           "name": "SettlementFirm",
-          "since": "5.0.2",
-          "ep": 105,
-          "sort": 88,
           "doc": "Settlement Firm"
         },
         {
           "value": "91",
           "name": "SettlementAccount",
-          "since": "5.0.2",
-          "ep": 105,
-          "sort": 89,
           "doc": "Settlement account"
         },
         {
           "value": "92",
           "name": "ReportingMarketCenter",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 90,
           "doc": "Reporting Market Center"
         },
         {
           "value": "93",
           "name": "RelatedReportingMarketCenter",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 91,
           "doc": "Related Reporting Market Center"
         },
         {
           "value": "94",
           "name": "AwayMarket",
-          "since": "5.0.2",
-          "ep": 112,
-          "sort": 92,
           "doc": "Away Market"
         },
         {
           "value": "95",
           "name": "GiveupTradingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 93,
           "doc": "Give-up (trading) firm"
         },
         {
           "value": "96",
           "name": "TakeupTradingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 94,
           "doc": "Take-up (trading) firm"
         },
         {
           "value": "97",
           "name": "GiveupClearingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 95,
           "doc": "Give-up clearing firm"
         },
         {
           "value": "98",
           "name": "TakeupClearingFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 96,
           "doc": "Take-up clearing firm"
         },
         {
           "value": "99",
           "name": "OriginatingMarket",
-          "since": "5.0.2",
-          "ep": 139,
-          "sort": 97,
           "doc": "Originating Market"
+        },
+        {
+          "value": "100",
+          "name": "MarginAccount",
+          "doc": "Margin account"
+        },
+        {
+          "value": "101",
+          "name": "CollateralAssetAccount",
+          "doc": "Collateral asset account"
+        },
+        {
+          "value": "102",
+          "name": "DataRepository",
+          "doc": "Data repository"
+        },
+        {
+          "value": "103",
+          "name": "CalculationAgent",
+          "doc": "Calculation agent"
+        },
+        {
+          "value": "104",
+          "name": "ExerciseNoticeSender",
+          "doc": "Sender of exercise notice"
+        },
+        {
+          "value": "105",
+          "name": "ExerciseNoticeReceiver",
+          "doc": "Receiver of exercise notice"
+        },
+        {
+          "value": "106",
+          "name": "RateReferenceBank",
+          "doc": "Rate reference bank"
+        },
+        {
+          "value": "107",
+          "name": "Correspondent",
+          "doc": "Correspondent"
+        },
+        {
+          "value": "109",
+          "name": "BeneficiaryBank",
+          "doc": "Beneficiary's bank or depository institution"
+        },
+        {
+          "value": "110",
+          "name": "Borrower",
+          "doc": "Borrower"
+        },
+        {
+          "value": "111",
+          "name": "PrimaryObligator",
+          "doc": "Primary obligator"
+        },
+        {
+          "value": "112",
+          "name": "Guarantor",
+          "doc": "Guarantor"
+        },
+        {
+          "value": "113",
+          "name": "ExcludedReferenceEntity",
+          "doc": "Excluded reference entity"
+        },
+        {
+          "value": "114",
+          "name": "DeterminingParty",
+          "doc": "Determining party"
+        },
+        {
+          "value": "115",
+          "name": "HedgingParty",
+          "doc": "Hedging party"
+        },
+        {
+          "value": "116",
+          "name": "ReportingEntity",
+          "doc": "Reporting entity"
+        },
+        {
+          "value": "117",
+          "name": "SalesPerson",
+          "doc": "Sales person"
+        },
+        {
+          "value": "118",
+          "name": "Operator",
+          "doc": "Operator"
+        },
+        {
+          "value": "119",
+          "name": "CSD",
+          "doc": "Central Securities Depository (CSD)"
+        },
+        {
+          "value": "120",
+          "name": "ICSD",
+          "doc": "International Central Securities Depository (ICSD)"
+        },
+        {
+          "value": "121",
+          "name": "TradingSubAccount",
+          "doc": "Trading sub-account"
+        },
+        {
+          "value": "122",
+          "name": "InvestmentDecisionMaker",
+          "doc": "Investment decision maker"
+        },
+        {
+          "value": "123",
+          "name": "PublishingIntermediary",
+          "doc": "Publishing intermediary"
+        },
+        {
+          "value": "124",
+          "name": "CSDParticipant",
+          "doc": "Central Securities Depository (CSD) Participant"
+        },
+        {
+          "value": "125",
+          "name": "Issuer",
+          "doc": "Issuer"
+        },
+        {
+          "value": "126",
+          "name": "ContraCustomerAccount",
+          "doc": "Contra Customer Account"
+        },
+        {
+          "value": "127",
+          "name": "ContraInvestmentDecisionMaker",
+          "doc": "Contra Investment Decision Maker"
+        },
+        {
+          "value": "128",
+          "name": "AuthorizingPerson",
+          "doc": "Authorizing person"
+        },
+        {
+          "value": "129",
+          "name": "PrimaryPlaceOfListing",
+          "doc": "Primary place of listing"
+        },
+        {
+          "value": "130",
+          "name": "SecondaryPlaceOfListing",
+          "doc": "Secondary place of listing"
+        },
+        {
+          "value": "131",
+          "name": "Algorithm",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "1",
+          "name": "ExecutingFirm",
+          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
         }
       ],
       "fix:tag": "784"
@@ -5833,687 +4262,449 @@
       "display": "SettlPartySubIDType",
       "fix:codes": [
         {
-          "value": "1",
-          "name": "Firm",
-          "since": "4.4",
-          "doc": "Firm"
+          "value": "2",
+          "name": "Person",
+          "doc": "Person"
+        },
+        {
+          "value": "3",
+          "name": "System",
+          "doc": "System"
+        },
+        {
+          "value": "4",
+          "name": "Application",
+          "doc": "Application"
+        },
+        {
+          "value": "5",
+          "name": "FullLegalNameOfFirm",
+          "doc": "Full legal name of firm"
+        },
+        {
+          "value": "6",
+          "name": "PostalAddress",
+          "doc": "Postal address"
+        },
+        {
+          "value": "7",
+          "name": "PhoneNumber",
+          "doc": "Phone number"
+        },
+        {
+          "value": "8",
+          "name": "EmailAddress",
+          "doc": "Email address"
+        },
+        {
+          "value": "9",
+          "name": "ContactName",
+          "doc": "Contact name"
         },
         {
           "value": "10",
           "name": "SecuritiesAccountNumber",
-          "since": "4.4",
-          "sort": 9,
           "doc": "Securities account number (for settlement instructions)"
         },
         {
           "value": "11",
           "name": "RegistrationNumber",
-          "since": "4.4",
-          "sort": 10,
           "doc": "Registration number (for settlement instructions and confirmations)"
         },
         {
           "value": "12",
           "name": "RegisteredAddressForConfirmation",
-          "since": "4.4",
-          "sort": 11,
           "doc": "Registered address (for confirmation purposes)"
         },
         {
           "value": "13",
           "name": "RegulatoryStatus",
-          "since": "4.4",
-          "sort": 12,
           "doc": "Regulatory status (for confirmation purposes)"
         },
         {
           "value": "14",
           "name": "RegistrationName",
-          "since": "4.4",
-          "sort": 13,
           "doc": "Registration name (for settlement instructions)"
         },
         {
           "value": "15",
           "name": "CashAccountNumber",
-          "since": "4.4",
-          "sort": 14,
           "doc": "Cash account number (for settlement instructions)"
         },
         {
           "value": "16",
           "name": "BIC",
-          "since": "4.4",
-          "sort": 15,
           "doc": "BIC"
         },
         {
           "value": "17",
           "name": "CSDParticipantMemberCode",
-          "since": "4.4",
-          "sort": 16,
           "doc": "CSD participant member code"
         },
         {
           "value": "18",
           "name": "RegisteredAddress",
-          "since": "4.4",
-          "sort": 17,
           "doc": "Registered address"
         },
         {
           "value": "19",
           "name": "FundAccountName",
-          "since": "4.4",
-          "sort": 18,
           "doc": "Fund account name"
-        },
-        {
-          "value": "2",
-          "name": "Person",
-          "since": "4.4",
-          "sort": 1,
-          "doc": "Person"
         },
         {
           "value": "20",
           "name": "TelexNumber",
-          "since": "4.4",
-          "sort": 19,
           "doc": "Telex number"
         },
         {
           "value": "21",
           "name": "FaxNumber",
-          "since": "4.4",
-          "sort": 20,
           "doc": "Fax number"
         },
         {
           "value": "22",
           "name": "SecuritiesAccountName",
-          "since": "4.4",
-          "sort": 21,
           "doc": "Securities account name"
         },
         {
           "value": "23",
           "name": "CashAccountName",
-          "since": "4.4",
-          "sort": 22,
           "doc": "Cash account name"
         },
         {
           "value": "24",
           "name": "Department",
-          "since": "4.4",
-          "sort": 23,
           "doc": "Department"
         },
         {
           "value": "25",
           "name": "LocationDesk",
-          "since": "4.4",
-          "sort": 24,
           "doc": "Location desk"
         },
         {
           "value": "26",
           "name": "PositionAccountType",
-          "since": "4.4",
-          "sort": 25,
           "doc": "Position account type"
         },
         {
           "value": "27",
           "name": "SecurityLocateID",
-          "since": "4.4",
-          "ep": 1,
-          "sort": 26,
           "doc": "Security locate ID"
         },
         {
           "value": "28",
           "name": "MarketMaker",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 27,
           "doc": "Market maker"
         },
         {
           "value": "29",
           "name": "EligibleCounterparty",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 28,
           "doc": "Eligible counterparty"
-        },
-        {
-          "value": "3",
-          "name": "System",
-          "since": "4.4",
-          "sort": 2,
-          "doc": "System"
         },
         {
           "value": "30",
           "name": "ProfessionalClient",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 29,
           "doc": "Professional client"
         },
         {
           "value": "31",
           "name": "Location",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 30,
           "doc": "Location"
         },
         {
           "value": "32",
           "name": "ExecutionVenue",
-          "since": "4.4",
-          "ep": 26,
-          "sort": 31,
           "doc": "Execution venue"
         },
         {
           "value": "33",
           "name": "CurrencyDeliveryIdentifier",
-          "since": "5.0",
-          "ep": 44,
-          "sort": 32,
           "doc": "Currency delivery identifier"
         },
         {
           "value": "34",
           "name": "AddressCity",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 33,
           "doc": "Address City"
         },
         {
           "value": "35",
           "name": "AddressStateOrProvince",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 34,
           "doc": "Address State/Province"
         },
         {
           "value": "36",
           "name": "AddressPostalCode",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 35,
           "doc": "Address Postal Code"
         },
         {
           "value": "37",
           "name": "AddressStreet",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 36,
           "doc": "Address Street"
         },
         {
           "value": "38",
           "name": "AddressISOCountryCode",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 37,
           "doc": "Address Country (ISO country code)"
         },
         {
           "value": "39",
           "name": "ISOCountryCode",
-          "since": "5.0.2",
-          "ep": 103,
-          "sort": 38,
           "doc": "ISO country code"
-        },
-        {
-          "value": "4",
-          "name": "Application",
-          "since": "4.4",
-          "sort": 3,
-          "doc": "Application"
         },
         {
           "value": "40",
           "name": "MarketSegment",
-          "since": "5.0.2",
-          "ep": 105,
-          "sort": 39,
           "doc": "Market segment"
         },
         {
           "value": "41",
           "name": "CustomerAccountType",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 40,
           "doc": "Customer account type"
         },
         {
           "value": "42",
           "name": "OmnibusAccount",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 41,
           "doc": "Omnibus account"
         },
         {
           "value": "43",
           "name": "FundsSegregationType",
-          "since": "5.0.2",
-          "ep": 155,
-          "sort": 42,
           "doc": "Funds segregation type"
         },
         {
           "value": "44",
           "name": "GuaranteeFund",
-          "since": "5.0.2",
-          "ep": 157,
-          "sort": 43,
           "doc": "Guarantee fund"
         },
         {
           "value": "45",
           "name": "SwapDealer",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 44,
           "doc": "Swap dealer"
         },
         {
           "value": "46",
           "name": "MajorParticipant",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 45,
           "doc": "Major participant"
         },
         {
           "value": "47",
           "name": "FinancialEntity",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 46,
           "doc": "Financial entity"
         },
         {
           "value": "48",
           "name": "USPerson",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 47,
           "doc": "U.S. person"
         },
         {
           "value": "49",
           "name": "ReportingEntityIndicator",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 48,
           "doc": "Reporting entity indicator"
-        },
-        {
-          "value": "5",
-          "name": "FullLegalNameOfFirm",
-          "since": "4.4",
-          "sort": 4,
-          "doc": "Full legal name of firm"
         },
         {
           "value": "50",
           "name": "ElectedClearingRequirementException",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 49,
           "doc": "Elected clearing requirement exception"
         },
         {
           "value": "51",
           "name": "BusinessCenter",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 50,
           "doc": "Business center"
         },
         {
           "value": "52",
           "name": "ReferenceText",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 51,
           "doc": "Reference text"
         },
         {
           "value": "53",
           "name": "ShortMarkingExemptAccount",
-          "since": "5.0.2",
-          "ep": 164,
-          "sort": 52,
           "doc": "Short-marking exempt account"
         },
         {
           "value": "54",
           "name": "ParentFirmIdentifier",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 53,
           "doc": "Parent firm identifier"
         },
         {
           "value": "55",
           "name": "ParentFirmName",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 54,
           "doc": "Parent firm name"
         },
         {
           "value": "56",
           "name": "DealIdentifier",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 55,
           "doc": "Deal identifier"
         },
         {
           "value": "57",
           "name": "SystemTradeID",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 56,
           "doc": "System trade identifier"
         },
         {
           "value": "58",
           "name": "SystemTradeSubID",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 57,
           "doc": "System trade sub-identifier"
         },
         {
           "value": "59",
           "name": "FCMCode",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 58,
           "doc": "Futures Commission Merchant (FCM) code"
-        },
-        {
-          "value": "6",
-          "name": "PostalAddress",
-          "since": "4.4",
-          "sort": 5,
-          "doc": "Postal address"
         },
         {
           "value": "60",
           "name": "DlvryTrmlCode",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 59,
           "doc": "Delivery terminal customer account/code"
         },
         {
           "value": "61",
           "name": "VolntyRptEntity",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 60,
           "doc": "Voluntary reporting entity"
         },
         {
           "value": "62",
           "name": "RptObligJursdctn",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 61,
           "doc": "Reporting obligation jurisdiction"
         },
         {
           "value": "63",
           "name": "VolntyRptJursdctn",
-          "since": "5.0.2",
-          "ep": 169,
-          "sort": 62,
           "doc": "Voluntary reporting jurisdiction"
         },
         {
           "value": "64",
           "name": "CompanyActivities",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 63,
           "doc": "Company activities"
         },
         {
           "value": "65",
           "name": "EEAreaDomiciled",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 64,
           "doc": "European Economic Area domiciled"
         },
         {
           "value": "66",
           "name": "ContractLinked",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 65,
           "doc": "Contract linked to commercial or treasury financing for this counterparty"
         },
         {
           "value": "67",
           "name": "ContractAbove",
-          "since": "5.0.2",
-          "ep": 179,
-          "sort": 66,
           "doc": "Contract above clearing threshold for this counterparty"
         },
         {
           "value": "68",
           "name": "VolntyRptPty",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 67,
           "doc": "Voluntary reporting party"
         },
         {
           "value": "69",
           "name": "EndUser",
-          "since": "5.0.2",
-          "ep": 187,
-          "sort": 68,
           "doc": "End user"
-        },
-        {
-          "value": "7",
-          "name": "PhoneNumber",
-          "since": "4.4",
-          "sort": 6,
-          "doc": "Phone number"
         },
         {
           "value": "70",
           "name": "LocationOrJurisdiction",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 69,
           "doc": "Location or jurisdiction"
         },
         {
           "value": "71",
           "name": "DerivativesDealer",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 70,
           "doc": "Derivatives dealer"
         },
         {
           "value": "72",
           "name": "Domicile",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 71,
           "doc": "Domicile"
         },
         {
           "value": "73",
           "name": "ExemptFromRecognition",
-          "since": "5.0.2",
-          "ep": 192,
-          "sort": 72,
           "doc": "Exempt from recognition"
         },
         {
           "value": "74",
           "name": "Payer",
-          "since": "5.0.2",
-          "ep": 203,
-          "sort": 73,
           "doc": "Payer"
         },
         {
           "value": "75",
           "name": "Receiver",
-          "since": "5.0.2",
-          "ep": 203,
-          "sort": 74,
           "doc": "Receiver"
         },
         {
           "value": "76",
           "name": "SystematicInternaliser",
-          "since": "5.0.2",
-          "ep": 228,
-          "sort": 75,
           "doc": "Systematic Internaliser (SI)"
         },
         {
           "value": "77",
           "name": "PublishingEntityIndicator",
-          "since": "5.0.2",
-          "ep": 229,
-          "sort": 76,
           "doc": "Publishing entity indicator"
         },
         {
           "value": "78",
           "name": "FirstName",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 77,
           "doc": "First name"
         },
         {
           "value": "79",
           "name": "Surname",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 78,
           "doc": "Surname"
-        },
-        {
-          "value": "8",
-          "name": "EmailAddress",
-          "since": "4.4",
-          "sort": 7,
-          "doc": "Email address"
         },
         {
           "value": "80",
           "name": "DateOfBirth",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 79,
           "doc": "Date of birth"
         },
         {
           "value": "81",
           "name": "OrderTransmittingFirm",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 80,
           "doc": "Order transmitting firm"
         },
         {
           "value": "82",
           "name": "OrderTransmittingFirmBuyer",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 81,
           "doc": "Order transmitting firm for buyer"
         },
         {
           "value": "83",
           "name": "OrderTransmitterSeller",
-          "since": "5.0.2",
-          "ep": 232,
-          "sort": 82,
           "doc": "Order transmitter for seller"
         },
         {
           "value": "84",
           "name": "LegalEntityIdentifier",
-          "since": "5.0.2",
-          "ep": 235,
-          "sort": 83,
           "doc": "Legal Entity Identifier (ISO 17442) LEI"
         },
         {
           "value": "85",
           "name": "SubSectorClassification",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 84,
           "doc": "Sub-sector classification"
         },
         {
           "value": "86",
           "name": "PartySide",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 85,
           "doc": "Party side"
         },
         {
           "value": "87",
           "name": "LegalRegistrationCountry",
-          "since": "5.0.2",
-          "ep": 254,
-          "sort": 86,
           "doc": "Legal registration country"
         },
         {
           "value": "88",
           "name": "AlgorithmVersion",
-          "ep": 303,
-          "sort": 87,
           "doc": "Algorithm version"
         },
         {
           "value": "89",
           "name": "CertificateRegistrationStatus",
-          "ep": 303,
-          "sort": 88,
           "doc": "Certificate registration status"
         },
         {
-          "value": "9",
-          "name": "ContactName",
-          "since": "4.4",
-          "sort": 8,
-          "doc": "Contact name"
+          "value": "1",
+          "name": "Firm",
+          "doc": "Firm"
         }
       ],
       "fix:tag": "786"
@@ -6532,15 +4723,11 @@
         {
           "value": "C",
           "name": "Cash",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Cash"
         },
         {
           "value": "S",
           "name": "Securities",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Securities"
         }
       ],
@@ -6560,29 +4747,21 @@
         {
           "value": "1",
           "name": "Overnight",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Overnight"
         },
         {
           "value": "2",
           "name": "Term",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Term"
         },
         {
           "value": "3",
           "name": "Flexible",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Flexible"
         },
         {
           "value": "4",
           "name": "Open",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Open"
         }
       ],
@@ -6638,29 +4817,21 @@
         {
           "value": "0",
           "name": "UnableToProcessRequest",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Unable to process request"
         },
         {
           "value": "1",
           "name": "UnknownAccount",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Unknown account"
         },
         {
           "value": "2",
           "name": "NoMatchingSettlementInstructionsFound",
-          "since": "4.4",
-          "sort": 3,
           "doc": "No matching settlement instructions found"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -6690,125 +4861,79 @@
       "display": "AllocReportType",
       "fix:codes": [
         {
-          "value": "10",
-          "name": "Reject",
-          "since": "4.4",
-          "ep": 5,
-          "deprecated": "5.0.2",
-          "sort": 7,
-          "doc": "Reject"
-        },
-        {
-          "value": "11",
-          "name": "AcceptPending",
-          "since": "4.4",
-          "ep": 5,
-          "deprecated": "5.0.2",
-          "sort": 8,
-          "doc": "Accept Pending"
-        },
-        {
-          "value": "12",
-          "name": "Complete",
-          "since": "4.4",
-          "ep": 5,
-          "deprecated": "5.0.2",
-          "sort": 9,
-          "doc": "Complete"
-        },
-        {
-          "value": "14",
-          "name": "ReversePending",
-          "since": "4.4",
-          "ep": 5,
-          "deprecated": "5.0.2",
-          "sort": 10,
-          "doc": "Reverse Pending"
-        },
-        {
-          "value": "15",
-          "name": "Giveup",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 15,
-          "doc": "Give-up"
-        },
-        {
-          "value": "16",
-          "name": "Takeup",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 16,
-          "doc": "Take-up"
-        },
-        {
-          "value": "17",
-          "name": "Reversal",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 17,
-          "doc": "Reversal"
-        },
-        {
-          "value": "18",
-          "name": "Alleged",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 18,
-          "doc": "Alleged reversal"
-        },
-        {
-          "value": "19",
-          "name": "SubAllocationGiveup",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 19,
-          "doc": "Sub-allocation give-up"
-        },
-        {
           "value": "2",
           "name": "PreliminaryRequestToIntermediary",
-          "since": "4.4",
-          "ep": 5,
-          "sort": 1,
           "doc": "Preliminary request to intermediary"
         },
         {
           "value": "3",
           "name": "SellsideCalculatedUsingPreliminary",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Sellside calculated using preliminary (includes MiscFees and NetMoney)"
         },
         {
           "value": "4",
           "name": "SellsideCalculatedWithoutPreliminary",
-          "since": "4.4",
-          "sort": 3,
           "doc": "Sellside calculated without preliminary (sent unsolicited by sellside, includes MiscFees and NetMoney)"
         },
         {
           "value": "5",
           "name": "WarehouseRecap",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Warehouse recap"
         },
         {
           "value": "8",
           "name": "RequestToIntermediary",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Request to intermediary"
         },
         {
           "value": "9",
           "name": "Accept",
-          "since": "4.4",
-          "ep": 5,
-          "deprecated": "5.0.2",
-          "sort": 6,
           "doc": "Accept"
+        },
+        {
+          "value": "10",
+          "name": "Reject",
+          "doc": "Reject"
+        },
+        {
+          "value": "11",
+          "name": "AcceptPending",
+          "doc": "Accept Pending"
+        },
+        {
+          "value": "12",
+          "name": "Complete",
+          "doc": "Complete"
+        },
+        {
+          "value": "14",
+          "name": "ReversePending",
+          "doc": "Reverse Pending"
+        },
+        {
+          "value": "15",
+          "name": "Giveup",
+          "doc": "Give-up"
+        },
+        {
+          "value": "16",
+          "name": "Takeup",
+          "doc": "Take-up"
+        },
+        {
+          "value": "17",
+          "name": "Reversal",
+          "doc": "Reversal"
+        },
+        {
+          "value": "18",
+          "name": "Alleged",
+          "doc": "Alleged reversal"
+        },
+        {
+          "value": "19",
+          "name": "SubAllocationGiveup",
+          "doc": "Sub-allocation give-up"
         }
       ],
       "fix:tag": "794"
@@ -6839,30 +4964,21 @@
         {
           "value": "1",
           "name": "OriginalDetailsIncomplete",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Original details incomplete/incorrect"
         },
         {
           "value": "2",
           "name": "ChangeInUnderlyingOrderDetails",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Change in underlying order details"
         },
         {
           "value": "3",
           "name": "CancelledByGiveupFirm",
-          "since": "5.0.2",
-          "ep": 118,
-          "sort": 3,
           "doc": "Cancelled by give-up firm"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "4.4",
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -6894,50 +5010,36 @@
         {
           "value": "1",
           "name": "CarriedCustomerSide",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Account is carried pn customer side of books"
         },
         {
           "value": "2",
           "name": "CarriedNonCustomerSide",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Account is carried on non-customer side of books"
         },
         {
           "value": "3",
           "name": "HouseTrader",
-          "since": "4.4",
-          "sort": 3,
           "doc": "House trader"
         },
         {
           "value": "4",
           "name": "FloorTrader",
-          "since": "4.4",
-          "sort": 4,
           "doc": "Floor trader"
         },
         {
           "value": "6",
           "name": "CarriedNonCustomerSideCrossMargined",
-          "since": "4.4",
-          "sort": 5,
           "doc": "Account is carried on non-customer side of books and is cross margined"
         },
         {
           "value": "7",
           "name": "HouseTraderCrossMargined",
-          "since": "4.4",
-          "sort": 6,
           "doc": "Account is house trader and is cross margined"
         },
         {
           "value": "8",
           "name": "JointBackOfficeAccount",
-          "since": "4.4",
-          "sort": 7,
           "doc": "Joint back office account (JBO)"
         }
       ],

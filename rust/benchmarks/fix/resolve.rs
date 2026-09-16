@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hint::black_box;
 use yggdryl::{
     DataType, Field, FieldPath, FixCategory, FixCode, FixCodeValue, FixCodec, FixId, FixKey,
-    MimeType, Version,
+    MimeType,
 };
 
 use super::{DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_dialects, venue};
@@ -354,12 +354,7 @@ fn codes(criterion: &mut Criterion) {
         });
     }
 
-    // A version filter costs one comparison per code reached, not a second
-    // walk.
     let view = large.as_fix();
-    group.bench_function("300/value_at", |bencher| {
-        bencher.iter(|| black_box(&view).code_value_at(black_box(Version::MAX), black_box("0150")));
-    });
     // Writing renders the whole document once, which is what a generator pays.
     let codes: Vec<FixCode> = view
         .codes()

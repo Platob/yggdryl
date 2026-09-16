@@ -824,9 +824,6 @@ fn a_fix_code_lookup_allocates_nothing() {
     free("code_value tier three", || {
         let _ = black_box(view.code_value(black_box("m0150")));
     });
-    free("code_value_at", || {
-        let _ = black_box(view.code_value_at(black_box(Version::MAX), black_box("0150")));
-    });
 }
 
 #[test]

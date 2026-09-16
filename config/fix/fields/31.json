@@ -12,22 +12,16 @@
         {
           "value": "1",
           "name": "TradeType",
-          "ep": 285,
-          "sort": 1,
           "doc": "Trade type"
         },
         {
           "value": "2",
           "name": "TradePublicationIndicator",
-          "ep": 285,
-          "sort": 2,
           "doc": "Trade publication indicator"
         },
         {
           "value": "3",
           "name": "OrderHandlingInstruction",
-          "ep": 285,
-          "sort": 3,
           "doc": "Order handling instruction"
         }
       ],
@@ -95,13 +89,11 @@
         {
           "value": "0",
           "name": "NoQualityIssue",
-          "ep": 300,
           "doc": "No data quality issue"
         },
         {
           "value": "1",
           "name": "QualityIssue",
-          "ep": 300,
           "doc": "Data quality issue"
         }
       ],
@@ -119,24 +111,19 @@
       "display": "MDEntryStatus",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Accepted",
-          "ep": 300,
-          "doc": "Accepted"
-        },
-        {
           "value": "1",
           "name": "AcceptedWithErrors",
-          "ep": 300,
-          "sort": 1,
           "doc": "Accepted with errors"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "ep": 300,
-          "sort": 2,
           "doc": "Rejected"
+        },
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
         }
       ],
       "fix:tag": "3106"
@@ -225,31 +212,24 @@
       "display": "ReportStatus",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "ReceivedNotYetProcessed",
-          "ep": 300,
-          "doc": "Received, not yet processed"
-        },
-        {
           "value": "1",
           "name": "Accepted",
-          "ep": 300,
-          "sort": 1,
           "doc": "Accepted"
         },
         {
           "value": "2",
           "name": "Rejected",
-          "ep": 300,
-          "sort": 2,
           "doc": "Rejected"
         },
         {
           "value": "3",
           "name": "AcceptedWithErrors",
-          "ep": 300,
-          "sort": 3,
           "doc": "Accepted with errors"
+        },
+        {
+          "value": "0",
+          "name": "ReceivedNotYetProcessed",
+          "doc": "Received, not yet processed"
         }
       ],
       "fix:tag": "3113"
@@ -302,43 +282,29 @@
       "display": "LegRateSource",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Bloomberg",
-          "since": "5.0.1",
-          "ep": 82,
-          "doc": "Bloomberg"
-        },
-        {
           "value": "1",
           "name": "Reuters",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 1,
           "doc": "Reuters"
         },
         {
           "value": "2",
           "name": "Telerate",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 2,
           "doc": "Telerate"
         },
         {
           "value": "3",
           "name": "ISDARateOption",
-          "since": "5.0.2",
-          "ep": 161,
-          "sort": 3,
           "doc": "ISDA Settlement Rate Option"
         },
         {
           "value": "99",
           "name": "Other",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 99,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
         }
       ],
       "fix:tag": "3117"
@@ -355,19 +321,14 @@
       "display": "LegRateSourceType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Primary",
-          "since": "5.0.1",
-          "ep": 82,
-          "doc": "Primary"
-        },
-        {
           "value": "1",
           "name": "Secondary",
-          "since": "5.0.1",
-          "ep": 82,
-          "sort": 1,
           "doc": "Secondary"
+        },
+        {
+          "value": "0",
+          "name": "Primary",
+          "doc": "Primary"
         }
       ],
       "fix:tag": "3118"
@@ -422,50 +383,36 @@
         {
           "value": "1",
           "name": "Bloomberg",
-          "ep": 293,
-          "sort": 1,
           "doc": "Bloomberg"
         },
         {
           "value": "2",
           "name": "CentralBank",
-          "ep": 293,
-          "sort": 2,
           "doc": "Central Bank"
         },
         {
           "value": "3",
           "name": "WMR",
-          "ep": 293,
-          "sort": 3,
           "doc": "WMR"
         },
         {
           "value": "4",
           "name": "MitsubishiUFJ",
-          "ep": 293,
-          "sort": 4,
           "doc": "Mitsubishi-UFJ"
         },
         {
           "value": "5",
           "name": "LondonBullionMarketAssociation",
-          "ep": 293,
-          "sort": 5,
           "doc": "London Bullion Market Association"
         },
         {
           "value": "6",
           "name": "LondonMetalExchange",
-          "ep": 293,
-          "sort": 6,
           "doc": "London Metal Exchange"
         },
         {
           "value": "99",
           "name": "Other",
-          "ep": 293,
-          "sort": 99,
           "doc": "Other"
         }
       ],
@@ -547,211 +494,147 @@
         {
           "value": "1",
           "name": "Int",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Int"
-        },
-        {
-          "value": "10",
-          "name": "Amt",
-          "since": "4.4",
-          "sort": 10,
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "since": "4.4",
-          "sort": 11,
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "since": "4.4",
-          "sort": 12,
-          "doc": "Char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "since": "4.4",
-          "sort": 13,
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "since": "4.4",
-          "sort": 14,
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "since": "4.4",
-          "sort": 15,
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "since": "4.4",
-          "sort": 16,
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "since": "4.4",
-          "sort": 17,
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "since": "4.4",
-          "sort": 18,
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "since": "4.4",
-          "sort": 19,
-          "doc": "UTCTimestamp"
         },
         {
           "value": "2",
           "name": "Length",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Length"
-        },
-        {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "since": "4.4",
-          "sort": 20,
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "since": "4.4",
-          "sort": 21,
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "since": "4.4",
-          "sort": 22,
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "since": "4.4",
-          "sort": 23,
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "since": "4.4",
-          "ep": 34,
-          "sort": 24,
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 25,
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 26,
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 27,
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 28,
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 29,
-          "doc": "Tenor"
         },
         {
           "value": "3",
           "name": "NumInGroup",
-          "since": "4.4",
-          "sort": 3,
           "doc": "NumInGroup"
         },
         {
           "value": "4",
           "name": "SeqNum",
-          "since": "4.4",
-          "sort": 4,
           "doc": "SeqNum"
         },
         {
           "value": "5",
           "name": "TagNum",
-          "since": "4.4",
-          "sort": 5,
           "doc": "TagNum"
         },
         {
           "value": "6",
           "name": "Float",
-          "since": "4.4",
-          "sort": 6,
           "doc": "float"
         },
         {
           "value": "7",
           "name": "Qty",
-          "since": "4.4",
-          "sort": 7,
           "doc": "Qty"
         },
         {
           "value": "8",
           "name": "Price",
-          "since": "4.4",
-          "sort": 8,
           "doc": "Price"
         },
         {
           "value": "9",
           "name": "PriceOffset",
-          "since": "4.4",
-          "sort": 9,
           "doc": "PriceOffset"
+        },
+        {
+          "value": "10",
+          "name": "Amt",
+          "doc": "Amt"
+        },
+        {
+          "value": "11",
+          "name": "Percentage",
+          "doc": "Percentage"
+        },
+        {
+          "value": "12",
+          "name": "Char",
+          "doc": "Char"
+        },
+        {
+          "value": "13",
+          "name": "Boolean",
+          "doc": "Boolean"
+        },
+        {
+          "value": "14",
+          "name": "String",
+          "doc": "String"
+        },
+        {
+          "value": "15",
+          "name": "MultipleCharValue",
+          "doc": "MultipleCharValue"
+        },
+        {
+          "value": "16",
+          "name": "Currency",
+          "doc": "Currency"
+        },
+        {
+          "value": "17",
+          "name": "Exchange",
+          "doc": "Exchange"
+        },
+        {
+          "value": "18",
+          "name": "MonthYear",
+          "doc": "MonthYear"
+        },
+        {
+          "value": "19",
+          "name": "UTCTimestamp",
+          "doc": "UTCTimestamp"
+        },
+        {
+          "value": "20",
+          "name": "UTCTimeOnly",
+          "doc": "UTCTimeOnly"
+        },
+        {
+          "value": "21",
+          "name": "LocalMktDate",
+          "doc": "LocalMktDate"
+        },
+        {
+          "value": "22",
+          "name": "UTCDateOnly",
+          "doc": "UTCDateOnly"
+        },
+        {
+          "value": "23",
+          "name": "Data",
+          "doc": "data"
+        },
+        {
+          "value": "24",
+          "name": "MultipleStringValue",
+          "doc": "MultipleStringValue"
+        },
+        {
+          "value": "25",
+          "name": "Country",
+          "doc": "Country"
+        },
+        {
+          "value": "26",
+          "name": "Language",
+          "doc": "Language"
+        },
+        {
+          "value": "27",
+          "name": "TZTimeOnly",
+          "doc": "TZTimeOnly"
+        },
+        {
+          "value": "28",
+          "name": "TZTimestamp",
+          "doc": "TZTimestamp"
+        },
+        {
+          "value": "29",
+          "name": "Tenor",
+          "doc": "Tenor"
         }
       ],
       "fix:tag": "3128"
@@ -806,211 +689,147 @@
         {
           "value": "1",
           "name": "Int",
-          "since": "4.4",
-          "sort": 1,
           "doc": "Int"
-        },
-        {
-          "value": "10",
-          "name": "Amt",
-          "since": "4.4",
-          "sort": 10,
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "since": "4.4",
-          "sort": 11,
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "since": "4.4",
-          "sort": 12,
-          "doc": "Char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "since": "4.4",
-          "sort": 13,
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "since": "4.4",
-          "sort": 14,
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "since": "4.4",
-          "sort": 15,
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "since": "4.4",
-          "sort": 16,
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "since": "4.4",
-          "sort": 17,
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "since": "4.4",
-          "sort": 18,
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "since": "4.4",
-          "sort": 19,
-          "doc": "UTCTimestamp"
         },
         {
           "value": "2",
           "name": "Length",
-          "since": "4.4",
-          "sort": 2,
           "doc": "Length"
-        },
-        {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "since": "4.4",
-          "sort": 20,
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "since": "4.4",
-          "sort": 21,
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "since": "4.4",
-          "sort": 22,
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "since": "4.4",
-          "sort": 23,
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "since": "4.4",
-          "ep": 34,
-          "sort": 24,
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 25,
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 26,
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 27,
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 28,
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "since": "5.0.1",
-          "ep": 95,
-          "sort": 29,
-          "doc": "Tenor"
         },
         {
           "value": "3",
           "name": "NumInGroup",
-          "since": "4.4",
-          "sort": 3,
           "doc": "NumInGroup"
         },
         {
           "value": "4",
           "name": "SeqNum",
-          "since": "4.4",
-          "sort": 4,
           "doc": "SeqNum"
         },
         {
           "value": "5",
           "name": "TagNum",
-          "since": "4.4",
-          "sort": 5,
           "doc": "TagNum"
         },
         {
           "value": "6",
           "name": "Float",
-          "since": "4.4",
-          "sort": 6,
           "doc": "float"
         },
         {
           "value": "7",
           "name": "Qty",
-          "since": "4.4",
-          "sort": 7,
           "doc": "Qty"
         },
         {
           "value": "8",
           "name": "Price",
-          "since": "4.4",
-          "sort": 8,
           "doc": "Price"
         },
         {
           "value": "9",
           "name": "PriceOffset",
-          "since": "4.4",
-          "sort": 9,
           "doc": "PriceOffset"
+        },
+        {
+          "value": "10",
+          "name": "Amt",
+          "doc": "Amt"
+        },
+        {
+          "value": "11",
+          "name": "Percentage",
+          "doc": "Percentage"
+        },
+        {
+          "value": "12",
+          "name": "Char",
+          "doc": "Char"
+        },
+        {
+          "value": "13",
+          "name": "Boolean",
+          "doc": "Boolean"
+        },
+        {
+          "value": "14",
+          "name": "String",
+          "doc": "String"
+        },
+        {
+          "value": "15",
+          "name": "MultipleCharValue",
+          "doc": "MultipleCharValue"
+        },
+        {
+          "value": "16",
+          "name": "Currency",
+          "doc": "Currency"
+        },
+        {
+          "value": "17",
+          "name": "Exchange",
+          "doc": "Exchange"
+        },
+        {
+          "value": "18",
+          "name": "MonthYear",
+          "doc": "MonthYear"
+        },
+        {
+          "value": "19",
+          "name": "UTCTimestamp",
+          "doc": "UTCTimestamp"
+        },
+        {
+          "value": "20",
+          "name": "UTCTimeOnly",
+          "doc": "UTCTimeOnly"
+        },
+        {
+          "value": "21",
+          "name": "LocalMktDate",
+          "doc": "LocalMktDate"
+        },
+        {
+          "value": "22",
+          "name": "UTCDateOnly",
+          "doc": "UTCDateOnly"
+        },
+        {
+          "value": "23",
+          "name": "Data",
+          "doc": "data"
+        },
+        {
+          "value": "24",
+          "name": "MultipleStringValue",
+          "doc": "MultipleStringValue"
+        },
+        {
+          "value": "25",
+          "name": "Country",
+          "doc": "Country"
+        },
+        {
+          "value": "26",
+          "name": "Language",
+          "doc": "Language"
+        },
+        {
+          "value": "27",
+          "name": "TZTimeOnly",
+          "doc": "TZTimeOnly"
+        },
+        {
+          "value": "28",
+          "name": "TZTimestamp",
+          "doc": "TZTimestamp"
+        },
+        {
+          "value": "29",
+          "name": "Tenor",
+          "doc": "Tenor"
         }
       ],
       "fix:tag": "3132"
@@ -1051,66 +870,49 @@
       "display": "TradingServiceType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unknown",
-          "ep": 305,
-          "doc": "Unknown"
-        },
-        {
           "value": "1",
           "name": "Trading",
-          "ep": 305,
-          "sort": 1,
           "doc": "Trading"
         },
         {
           "value": "2",
           "name": "MarketData",
-          "ep": 305,
-          "sort": 2,
           "doc": "Market data"
         },
         {
           "value": "3",
           "name": "ReferenceData",
-          "ep": 305,
-          "sort": 3,
           "doc": "Reference data"
         },
         {
           "value": "4",
           "name": "PostTrade",
-          "ep": 305,
-          "sort": 4,
           "doc": "Post-Trade"
         },
         {
           "value": "5",
           "name": "GUI",
-          "ep": 305,
-          "sort": 5,
           "doc": "GUI"
         },
         {
           "value": "6",
           "name": "TradeReporting",
-          "ep": 305,
-          "sort": 6,
           "doc": "Trade reporting"
         },
         {
           "value": "7",
           "name": "ReportDistribution",
-          "ep": 305,
-          "sort": 7,
           "doc": "Report distribution"
         },
         {
           "value": "99",
           "name": "Other",
-          "ep": 305,
-          "sort": 8,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
         }
       ],
       "fix:tag": "3135"
@@ -1139,52 +941,39 @@
       "display": "OutageReason",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Unknown",
-          "ep": 305,
-          "doc": "Unknown"
-        },
-        {
           "value": "1",
           "name": "PowerOutage",
-          "ep": 305,
-          "sort": 1,
           "doc": "Power outage"
         },
         {
           "value": "2",
           "name": "HardwareError",
-          "ep": 305,
-          "sort": 2,
           "doc": "Hardware error"
         },
         {
           "value": "3",
           "name": "SoftwareError",
-          "ep": 305,
-          "sort": 3,
           "doc": "Software error"
         },
         {
           "value": "4",
           "name": "NetworkError",
-          "ep": 305,
-          "sort": 4,
           "doc": "Network error"
         },
         {
           "value": "5",
           "name": "ThirdPartyIssue",
-          "ep": 305,
-          "sort": 5,
           "doc": "Third-Party issue"
         },
         {
           "value": "99",
           "name": "Other",
-          "ep": 305,
-          "sort": 6,
           "doc": "Other"
+        },
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
         }
       ],
       "fix:tag": "3137"
@@ -1201,24 +990,19 @@
       "display": "HaltActionType",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "OrderQuoteCancellation",
-          "ep": 305,
-          "doc": "Order/quote cancellation"
-        },
-        {
           "value": "1",
           "name": "OrderQuoteSuspension",
-          "ep": 305,
-          "sort": 1,
           "doc": "Order/quote suspension"
         },
         {
           "value": "2",
           "name": "ExecutionHalted",
-          "ep": 305,
-          "sort": 2,
           "doc": "Execution halted"
+        },
+        {
+          "value": "0",
+          "name": "OrderQuoteCancellation",
+          "doc": "Order/quote cancellation"
         }
       ],
       "fix:tag": "3138"

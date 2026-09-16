@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use smol_str::SmolStr;
 
 use super::FixId;
-use crate::{Field, Version};
+use crate::Field;
 
 /// What a run has learned, shared by every stream the codec is cloned into.
 pub(super) struct Memo {
@@ -33,9 +33,8 @@ pub(super) struct Memo {
     names: Mutex<HashMap<SmolStr, Lookup>>,
 }
 
-/// One translation asked: the field's address, the version the read is
-/// pinned to, the text.
-type Question = (usize, Option<Version>, SmolStr);
+/// One translation asked: the field's address and the text.
+type Question = (usize, SmolStr);
 
 /// What one field states about the values it takes, read off its metadata
 /// once: the spellings it declares as an absence, and its code set.
@@ -107,24 +106,17 @@ impl Memo {
         facts
     }
 
-    /// The wire value `text` spells for `source` at `at`, exactly as
-    /// [`FixField::code_value_at`](crate::FixField::code_value_at) answers
-    /// it - and as [`FixField::code_value`](crate::FixField::code_value)
-    /// does where `at` is `None` - read once per distinct question. A field
-    /// carrying no code set answers `None` without touching the table.
-    pub(super) fn translation(
-        &self,
-        source: &Field,
-        facts: &Facts,
-        text: &str,
-        at: Option<Version>,
-    ) -> Option<SmolStr> {
+    /// The wire value `text` spells for `source`, exactly as
+    /// [`FixField::code_value`](crate::FixField::code_value) answers it, read
+    /// once per distinct question. A field carrying no code set answers
+    /// `None` without touching the table.
+    pub(super) fn translation(&self, source: &Field, facts: &Facts, text: &str) -> Option<SmolStr> {
         let stored = facts.codes.as_deref()?;
-        let key = (address(source), at, SmolStr::new(text));
+        let key = (address(source), SmolStr::new(text));
         if let Some(answer) = held(&self.translations).get(&key) {
             return answer.clone();
         }
-        let answer = super::field::translate(stored, text, at).map(SmolStr::new);
+        let answer = super::field::translate(stored, text).map(SmolStr::new);
         let mut table = held(&self.translations);
         if table.len() < Self::CAPACITY {
             table.insert(key, answer.clone());

@@ -674,7 +674,7 @@ enum Part {
 
 /// What each key of a code holds. The order is [`super::codes::KEYS`]'s, which
 /// stays the one owner of it; this says only which keys are not leaves.
-const CODE_PARTS: [Part; 9] = [Part::Leaf; 9];
+const CODE_PARTS: [Part; 5] = [Part::Leaf; 5];
 
 /// The same for a direction.
 const DIRECTION_PARTS: [Part; 2] = [Part::Leaf; 2];

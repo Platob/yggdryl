@@ -2433,47 +2433,6 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
 }
 
 #[test]
-fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
-    // A dictionary that reaches 5.0.2, holding one field whose code set spells
-    // `Restated` two ways: the value 4.2 knew, and the one that replaced it.
-    // Only one of the two is visible at a version, so which one answers is
-    // exactly which version the read used.
-    let mut scoped = FixRegistry::new();
-    let mut exectype = DataType::utf8().nullable_field("exectype");
-    exectype.as_fix_mut().set_tag(150).unwrap();
-    exectype
-        .as_fix_mut()
-        .set_codes(&[
-            yggdryl::FixCode::new("RestatedOld", "1")
-                .with_aliases(["Restated"])
-                .with_deprecated("4.3".parse::<Version>().unwrap()),
-            yggdryl::FixCode::new("Restated", "D")
-                .with_since("4.3".parse::<Version>().unwrap(), None),
-        ])
-        .unwrap();
-    scoped.insert(exectype).unwrap();
-    let registry = Arc::new(scoped);
-
-    // A 4.2 session carrying a row written to a later FIX, which is what a
-    // bridge relaying into a long-lived session actually sends.
-    let frame: &[u8] = b"8=FIX.4.2|9=0|35=UL|212=17|213=EXECTYPE=Restated|10=0|";
-
-    // The frame's `BeginString` is the envelope's and stays the message's;
-    // the row inside `XmlData` states no version of its own, so it is read at
-    // the dictionary's newest rather than at the session's.
-    let message = super::fixed_codec(Arc::clone(&registry))
-        .parse_fix_line(frame)
-        .unwrap();
-    assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
-    assert_eq!(message.by_tag(150).unwrap().as_str(), Some("D"));
-
-    // A version the row itself states answers for the nested row too.
-    let dated =
-        super::dated_line(&super::fixed_codec(Arc::clone(&registry)), frame, "4.2").unwrap();
-    assert_eq!(dated.by_tag(150).unwrap().as_str(), Some("1"));
-}
-
-#[test]
 fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
     let reader = reader();
     // A bridge relaying an execution report writes the whole document into

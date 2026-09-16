@@ -34,19 +34,14 @@
       "display": "BatchProcessMode",
       "fix:codes": [
         {
-          "value": "0",
-          "name": "Update",
-          "since": "5.0.2",
-          "ep": 178,
-          "doc": "Update/incremental (default if not specified)"
-        },
-        {
           "value": "1",
           "name": "Snapshot",
-          "since": "5.0.2",
-          "ep": 178,
-          "sort": 1,
           "doc": "Snapshot"
+        },
+        {
+          "value": "0",
+          "name": "Update",
+          "doc": "Update/incremental (default if not specified)"
         }
       ],
       "fix:tag": "50002"

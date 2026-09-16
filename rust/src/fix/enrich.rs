@@ -646,7 +646,7 @@ fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
         // it is, for a tag no dictionary explains.
         let value = registry.get_field_by_tag(tag).map_or_else(
             || Scalar::from(text),
-            |field| super::build::typed_spelling(field, text, version),
+            |field| super::build::typed_spelling(field, text),
         );
         if !value.is_null() {
             dropped.push((tag, value));
@@ -703,7 +703,7 @@ fn occurrences_of(
             entry
                 .value()
                 .as_str()
-                .map(|text| super::build::typed_spelling(member, text, version))
+                .map(|text| super::build::typed_spelling(member, text))
                 .filter(|held| !held.is_null())
         } else {
             occurrences_of(member, entry.children(), version)
