@@ -939,6 +939,22 @@ impl FixCodec
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
 pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: timestamp, thread bracket, pluginid, level; kept ULBridge's because the line shape is the product's, where the plugin reading is not)
 
+### yggdryl::graph  [rust\src\graph\mod.rs]
+pub mod element;
+  pub use element::{Element, TimeElement};
+
+### yggdryl::graph::element  [rust\src\graph\element.rs]
+pub trait Element  (one element of a graph: its own identity and its parents', both read and written; object-safe)
+  fn uuid(&self) -> Uuid
+  fn set_uuid(&mut self, uuid: Uuid)
+  fn parentuuids(&self) -> &[Uuid]  (the element's own ordered list; empty for a root)
+  fn set_parentuuids(&mut self, parents: Vec<Uuid>)  (replaces the list whole; an empty one makes a root)
+pub trait TimeElement: Element  (an element that happened at one instant and digests to one code)
+  fn unix(&self) -> i128  (nanoseconds since the Unix epoch, UTC)
+  fn set_unix(&mut self, unix: i128)
+  fn hashcode(&self) -> u64  (the digest the element's content answers to, held beside it)
+  fn set_hashcode(&mut self, hashcode: u64)
+
 ### yggdryl::hashing  [rust\src\hashing\mod.rs]
 pub mod txhash;
   pub mod xxhash;

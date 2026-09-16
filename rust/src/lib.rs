@@ -26,6 +26,7 @@ mod fix_category;
 pub use fix_category::FixCategory;
 pub mod expression;
 pub mod fix;
+pub mod graph;
 pub mod hashing;
 pub mod holder;
 mod iobase;

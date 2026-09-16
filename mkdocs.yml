@@ -234,6 +234,7 @@ nav:
     - Holder attributes: expression/holder.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
+  - Graph: graph.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

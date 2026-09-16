@@ -689,7 +689,7 @@ used still reaches the value.
 The registry is version-blind: it holds every tag ever defined and filters by
 none. A field is the field, under the one name and datatype the dictionary
 gives it, and a spelling an earlier version used reaches it as an ordinary
-[alias](#a-field-is-its-tag-and-its-name) the generator writes beside it.
+[name](#one-namespace) the generator writes beside it.
 
 A field FIX retired is still in the dictionary: the generator writes every tag
 some FIX 4.0 to 5.0 SP2 dictionary declares and the newest lacks -
@@ -699,7 +699,7 @@ what was sent.
 
 How a retired field or value is restated travels on the field it is about:
 [`fix:replacements`](#a-field-carries-what-replaced-it) says which field takes
-what, and a [code set](#a-field-carries-its-own-code-set) states one reading of
+what, and a [code set](#a-field-carries-its-code-set) states one reading of
 every value it declares.
 
 `fix:nulls` holds the field's explicit wire spellings for absence. These
