@@ -1,5 +1,5 @@
 {
-  "version": "0.1.4",
+  "version": "0.1.6",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -96,19 +96,19 @@
     ]
   },
   "kpi": {
-    "fields": 6267,
+    "fields": 6276,
     "groups": 581,
     "enumFields": 2026,
     "codes": 27209,
     "lineage": 1603,
-    "aliases": 45,
+    "aliases": 46,
     "alternates": 0,
     "messages": 182,
-    "components": 929,
-    "columns": 111,
+    "components": 930,
+    "columns": 121,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 20,
+    "datatypes": 23,
     "versions": 10,
     "dtypes": [
       [
@@ -117,7 +117,7 @@
       ],
       [
         "utf8",
-        1932
+        1935
       ],
       [
         "float64",
@@ -133,7 +133,7 @@
       ],
       [
         "currency",
-        165
+        167
       ],
       [
         "binary",
@@ -141,7 +141,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        73
+        74
       ],
       [
         "time64(ns)",
@@ -176,11 +176,23 @@
         2
       ],
       [
+        "bloomberg",
+        1
+      ],
+      [
+        "cusip",
+        1
+      ],
+      [
         "fixed_ascii(2)",
         1
       ],
       [
         "isin",
+        1
+      ],
+      [
+        "sedol",
         1
       ],
       [
@@ -28400,6 +28412,60 @@
         },
         "name": "individualallocsubqtyattribute",
         "nullable": false
+      },
+      {
+        "dtype": {
+          "fields": [
+            {
+              "dtype": {
+                "type": "cfi"
+              },
+              "metadata": {},
+              "name": "cficode",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "isin"
+              },
+              "metadata": {},
+              "name": "isincode",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "bloomberg"
+              },
+              "metadata": {},
+              "name": "bloombergcode",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "cusip"
+              },
+              "metadata": {},
+              "name": "cusipcode",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "sedol"
+              },
+              "metadata": {},
+              "name": "sedolcode",
+              "nullable": true
+            }
+          ],
+          "type": "struct"
+        },
+        "metadata": {
+          "description": "Every identifier this instrument is known by, filled from the columns beside it.",
+          "display": "InstIds",
+          "fix:tag": "65036"
+        },
+        "name": "instids",
+        "nullable": true
       },
       {
         "dtype": {
@@ -457007,7 +457073,8 @@
         "metadata": {
           "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
           "display": "Version",
-          "fix:tag": "65001"
+          "fix:tag": "65001",
+          "fix:transient": "false"
         },
         "name": "version",
         "nullable": true
@@ -457033,27 +457100,11 @@
         "metadata": {
           "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
           "display": "UpdatedAt",
-          "fix:tag": "65003"
+          "fix:tag": "65003",
+          "fix:transient": "false"
         },
         "name": "updatedat",
         "nullable": false
-      },
-      {
-        "dtype": {
-          "timezone": "UTC",
-          "type": "datetime64",
-          "unit": "nanosecond"
-        },
-        "metadata": {
-          "description": "The hour updatedat falls in: updatedat floored to the partition width, as an instant.",
-          "display": "TimePartition",
-          "field:partition": "true",
-          "fix:tag": "65004",
-          "partition:sources": "[\"updatedat\"]",
-          "transform:expression": "truncate(updatedat, 'hour')"
-        },
-        "name": "timepartition",
-        "nullable": true
       },
       {
         "dtype": {
@@ -457084,7 +457135,7 @@
           "type": "string"
         },
         "metadata": {
-          "description": "The session a message came from: the message's own statement, else the session instance its bridge handled the line on.",
+          "description": "The session a message came from, as the message states it.",
           "display": "SenderSessionId",
           "fix:aliases": "SessionId",
           "fix:tag": "65007"
@@ -457188,7 +457239,8 @@
           "description": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary.",
           "display": "State",
           "fix:derivation": "coalesce(ordstatus, exectype)",
-          "fix:tag": "65015"
+          "fix:tag": "65015",
+          "fix:transient": "false"
         },
         "name": "state",
         "nullable": true
@@ -457202,7 +457254,8 @@
         "metadata": {
           "description": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
           "display": "InstUuid",
-          "fix:tag": "65016"
+          "fix:tag": "65016",
+          "fix:transient": "false"
         },
         "name": "instuuid",
         "nullable": true
@@ -457215,10 +457268,11 @@
         },
         "metadata": {
           "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-          "display": "Uuid",
-          "fix:tag": "65017"
+          "display": "MsgHash",
+          "fix:tag": "65017",
+          "fix:transient": "false"
         },
-        "name": "uuid",
+        "name": "msghash",
         "nullable": false
       },
       {
@@ -457229,10 +457283,11 @@
         },
         "metadata": {
           "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-          "display": "PUuid",
-          "fix:tag": "65018"
+          "display": "MsgPHash",
+          "fix:tag": "65018",
+          "fix:transient": "false"
         },
-        "name": "puuid",
+        "name": "msgphash",
         "nullable": false
       },
       {
@@ -457256,7 +457311,8 @@
         "metadata": {
           "description": "The preceding message's updatedat in the selected event chain.",
           "display": "PrevUpdatedAt",
-          "fix:tag": "65021"
+          "fix:tag": "65021",
+          "fix:transient": "false"
         },
         "name": "prevupdatedat",
         "nullable": true
@@ -457269,10 +457325,11 @@
         },
         "metadata": {
           "description": "The preceding message's sixteen identity bytes in the selected event chain.",
-          "display": "PrevUuid",
-          "fix:tag": "65022"
+          "display": "PrevMsgHash",
+          "fix:tag": "65022",
+          "fix:transient": "false"
         },
-        "name": "prevuuid",
+        "name": "prevmsghash",
         "nullable": true
       },
       {
@@ -457284,7 +457341,8 @@
         "metadata": {
           "description": "The creation instant, preserved after initial materialization.",
           "display": "CreatedAt",
-          "fix:tag": "65023"
+          "fix:tag": "65023",
+          "fix:transient": "false"
         },
         "name": "createdat",
         "nullable": false
@@ -457296,7 +457354,8 @@
         "metadata": {
           "description": "The exact event-chain name; empty means unknown.",
           "display": "Code",
-          "fix:tag": "65024"
+          "fix:tag": "65024",
+          "fix:transient": "false"
         },
         "name": "code",
         "nullable": false
@@ -457308,12 +457367,13 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "description": "The real event's instant, independent of the snapshot grid.",
+          "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
           "display": "SnapshotAt",
-          "fix:tag": "65025"
+          "fix:tag": "65025",
+          "fix:transient": "false"
         },
         "name": "snapshotat",
-        "nullable": false
+        "nullable": true
       },
       {
         "dtype": {
@@ -457322,7 +457382,8 @@
         "metadata": {
           "description": "The object this message's line was read from.",
           "display": "SourceUrl",
-          "fix:tag": "65026"
+          "fix:tag": "65026",
+          "fix:transient": "false"
         },
         "name": "sourceurl",
         "nullable": true
@@ -457334,9 +457395,143 @@
         "metadata": {
           "description": "How many pairs the message carried, in arrival order.",
           "display": "NoFixEntries",
-          "fix:tag": "65027"
+          "fix:tag": "65027",
+          "fix:transient": "false"
         },
         "name": "nofixentries",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
+          "display": "RecordedAt",
+          "fix:aliases": "mtime",
+          "fix:derivation": "sendingtime",
+          "fix:tag": "65028",
+          "fix:transient": "false"
+        },
+        "name": "recordedat",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The instant the message stops being good: ExpireTime, else ValidUntilTime, else ExpireDate, else the instrument's MaturityDate.",
+          "display": "ExpiredAt",
+          "fix:derivation": "coalesce(expiretime, validuntiltime, expiredate, maturitydate)",
+          "fix:tag": "65029"
+        },
+        "name": "expiredat",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "currency"
+        },
+        "metadata": {
+          "description": "The currency the bid lane is denominated in: the message's own Currency, else SettlCurrency.",
+          "display": "BidCurrency",
+          "fix:derivation": "coalesce(currency, settlcurrency)",
+          "fix:tag": "65030"
+        },
+        "name": "bidcurrency",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "currency"
+        },
+        "metadata": {
+          "description": "The currency the offer lane is denominated in: the message's own Currency, else SettlCurrency.",
+          "display": "OfferCurrency",
+          "fix:derivation": "coalesce(currency, settlcurrency)",
+          "fix:tag": "65031"
+        },
+        "name": "offercurrency",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
+          "display": "BridgeSessionId",
+          "fix:tag": "65032"
+        },
+        "name": "bridgesessionid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "bloomberg"
+        },
+        "metadata": {
+          "description": "The instrument's Bloomberg identifier: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg.",
+          "display": "BloombergCode",
+          "fix:derivation": "coalesce(case when securityidsource = 'A' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'A'][0].securityaltid as bloomberg), case when securityidsource = 'S' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'S'][0].securityaltid as bloomberg))",
+          "fix:tag": "65033"
+        },
+        "name": "bloombergcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "cusip"
+        },
+        "metadata": {
+          "description": "The instrument's CUSIP: the message's own, else a SecurityID or SecurityAltID whose source is CUSIP.",
+          "display": "CUSIPCode",
+          "fix:derivation": "coalesce(case when securityidsource = '1' then try_cast(securityid as cusip) end, try_cast(secaltidgrp[securityaltidsource = '1'][0].securityaltid as cusip))",
+          "fix:tag": "65034"
+        },
+        "name": "cusipcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "sedol"
+        },
+        "metadata": {
+          "description": "The instrument's SEDOL: the message's own, else a SecurityID or SecurityAltID whose source is SEDOL.",
+          "display": "SEDOLCode",
+          "fix:derivation": "coalesce(case when securityidsource = '2' then try_cast(securityid as sedol) end, try_cast(secaltidgrp[securityaltidsource = '2'][0].securityaltid as sedol))",
+          "fix:tag": "65035"
+        },
+        "name": "sedolcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The session and the message context that name one message within it, joined by a colon.",
+          "display": "SessionMsgId",
+          "fix:tag": "65037"
+        },
+        "name": "sessionmsgid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The session, the message context and the sequence number that name one occurrence of one message, joined by colons.",
+          "display": "SessionMsgSeqId",
+          "fix:tag": "65038"
+        },
+        "name": "sessionmsgseqid",
         "nullable": true
       }
     ],
@@ -471285,6 +471480,258 @@
   "row": {
     "columns": [
       {
+        "c": "updatedat",
+        "t": 65003,
+        "n": "UpdatedAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The settled message instant, truncated to the snapshot grid by the lifecycle."
+      },
+      {
+        "c": "prevupdatedat",
+        "t": 65021,
+        "n": "PrevUpdatedAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The preceding message's updatedat in the selected event chain."
+      },
+      {
+        "c": "createdat",
+        "t": 65023,
+        "n": "CreatedAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The creation instant, preserved after initial materialization."
+      },
+      {
+        "c": "snapshotat",
+        "t": 65025,
+        "n": "SnapshotAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot."
+      },
+      {
+        "c": "recordedat",
+        "t": 65028,
+        "n": "RecordedAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime."
+      },
+      {
+        "c": "expiredat",
+        "t": 65029,
+        "n": "ExpiredAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The instant the message stops being good: ExpireTime, else ValidUntilTime, else ExpireDate, else the instrument's MaturityDate."
+      },
+      {
+        "c": "instuuid",
+        "t": 65016,
+        "n": "InstUuid",
+        "y": "fixed_size_binary(16)",
+        "x": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
+      },
+      {
+        "c": "msghash",
+        "t": 65017,
+        "n": "MsgHash",
+        "y": "fixed_size_binary(16)",
+        "x": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64."
+      },
+      {
+        "c": "msgphash",
+        "t": 65018,
+        "n": "MsgPHash",
+        "y": "fixed_size_binary(16)",
+        "x": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone."
+      },
+      {
+        "c": "prevmsghash",
+        "t": 65022,
+        "n": "PrevMsgHash",
+        "y": "fixed_size_binary(16)",
+        "x": "The preceding message's sixteen identity bytes in the selected event chain."
+      },
+      {
+        "c": "code",
+        "t": 65024,
+        "n": "Code",
+        "y": "utf8",
+        "x": "The exact event-chain name; empty means unknown."
+      },
+      {
+        "c": "version",
+        "t": 65001,
+        "n": "Version",
+        "y": "utf8",
+        "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
+      },
+      {
+        "c": "symbolticker",
+        "t": 65002,
+        "n": "SymbolTicker",
+        "y": "utf8",
+        "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
+      },
+      {
+        "c": "parentclordid",
+        "t": 65005,
+        "n": "ParentClOrdID",
+        "y": "utf8",
+        "x": "The client order identifier this order descends from, which no standard tag names."
+      },
+      {
+        "c": "parentorderid",
+        "t": 65006,
+        "n": "ParentOrderID",
+        "y": "utf8",
+        "x": "The venue order identifier this order descends from, which no standard tag names."
+      },
+      {
+        "c": "sendersessionid",
+        "t": 65007,
+        "n": "SenderSessionId",
+        "y": "utf8",
+        "x": "The session a message came from, as the message states it."
+      },
+      {
+        "c": "msgctxid",
+        "t": 65008,
+        "n": "MsgCtxId",
+        "y": "utf8",
+        "x": "The message context a bridge handled the message in, as its own log names it."
+      },
+      {
+        "c": "pluginid",
+        "t": 65009,
+        "n": "PluginId",
+        "y": "utf8",
+        "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own pluginid column, never derived."
+      },
+      {
+        "c": "prevpluginid",
+        "t": 65010,
+        "n": "PrevPluginId",
+        "y": "utf8",
+        "x": "The plugin the message came through before the one that logged it, as the bridge names it: the row's own prevpluginid column, never derived."
+      },
+      {
+        "c": "sendersessionname",
+        "t": 65011,
+        "n": "SenderSessionName",
+        "y": "utf8",
+        "x": "The name of the session a message came from, as the bridge row states it."
+      },
+      {
+        "c": "targetsessionname",
+        "t": 65012,
+        "n": "TargetSessionName",
+        "y": "utf8",
+        "x": "The name of the session a message went to, as the bridge row states it."
+      },
+      {
+        "c": "isincode",
+        "t": 65013,
+        "n": "ISINCode",
+        "y": "isin",
+        "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
+      },
+      {
+        "c": "miccode",
+        "t": 65014,
+        "n": "MICCode",
+        "y": "mic",
+        "x": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt."
+      },
+      {
+        "c": "state",
+        "t": 65015,
+        "n": "State",
+        "y": "state",
+        "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
+      },
+      {
+        "c": "targetsessionid",
+        "t": 65019,
+        "n": "TargetSessionId",
+        "y": "utf8",
+        "x": "The session a message went to, as the message states it."
+      },
+      {
+        "c": "altids",
+        "t": 65020,
+        "n": "AltIds",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened."
+      },
+      {
+        "c": "sourceurl",
+        "t": 65026,
+        "n": "SourceUrl",
+        "y": "url",
+        "x": "The object this message's line was read from."
+      },
+      {
+        "c": "bidcurrency",
+        "t": 65030,
+        "n": "BidCurrency",
+        "y": "currency",
+        "x": "The currency the bid lane is denominated in: the message's own Currency, else SettlCurrency."
+      },
+      {
+        "c": "offercurrency",
+        "t": 65031,
+        "n": "OfferCurrency",
+        "y": "currency",
+        "x": "The currency the offer lane is denominated in: the message's own Currency, else SettlCurrency."
+      },
+      {
+        "c": "bridgesessionid",
+        "t": 65032,
+        "n": "BridgeSessionId",
+        "y": "utf8",
+        "x": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself."
+      },
+      {
+        "c": "bloombergcode",
+        "t": 65033,
+        "n": "BloombergCode",
+        "y": "bloomberg",
+        "x": "The instrument's Bloomberg identifier: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg."
+      },
+      {
+        "c": "cusipcode",
+        "t": 65034,
+        "n": "CUSIPCode",
+        "y": "cusip",
+        "x": "The instrument's CUSIP: the message's own, else a SecurityID or SecurityAltID whose source is CUSIP."
+      },
+      {
+        "c": "sedolcode",
+        "t": 65035,
+        "n": "SEDOLCode",
+        "y": "sedol",
+        "x": "The instrument's SEDOL: the message's own, else a SecurityID or SecurityAltID whose source is SEDOL."
+      },
+      {
+        "c": "instids",
+        "t": 65036,
+        "n": "InstIds",
+        "y": "struct(field(\"cficode\",cfi,nullable=true,metadata={}),field(\"isincode\",isin,nullable=true,metadata={}),field(\"bloombergcode\",bloomberg,nullable=true,metadata={}),field(\"cusipcode\",cusip,nullable=true,metadata={}),field(\"sedolcode\",sedol,nullable=true,metadata={}))",
+        "x": "Every identifier this instrument is known by, filled from the columns beside it."
+      },
+      {
+        "c": "sessionmsgid",
+        "t": 65037,
+        "n": "SessionMsgId",
+        "y": "utf8",
+        "x": "The session and the message context that name one message within it, joined by a colon."
+      },
+      {
+        "c": "sessionmsgseqid",
+        "t": 65038,
+        "n": "SessionMsgSeqId",
+        "y": "utf8",
+        "x": "The session, the message context and the sequence number that name one occurrence of one message, joined by colons."
+      },
+      {
         "c": "beginstring",
         "t": 8,
         "n": "BeginString",
@@ -471859,188 +472306,6 @@
         "x": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)"
       },
       {
-        "c": "version",
-        "t": 65001,
-        "n": "Version",
-        "y": "utf8",
-        "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
-      },
-      {
-        "c": "symbolticker",
-        "t": 65002,
-        "n": "SymbolTicker",
-        "y": "utf8",
-        "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
-      },
-      {
-        "c": "updatedat",
-        "t": 65003,
-        "n": "UpdatedAt",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The settled message instant, truncated to the snapshot grid by the lifecycle."
-      },
-      {
-        "c": "timepartition",
-        "t": 65004,
-        "n": "TimePartition",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The hour updatedat falls in: updatedat floored to the partition width, as an instant."
-      },
-      {
-        "c": "parentclordid",
-        "t": 65005,
-        "n": "ParentClOrdID",
-        "y": "utf8",
-        "x": "The client order identifier this order descends from, which no standard tag names."
-      },
-      {
-        "c": "parentorderid",
-        "t": 65006,
-        "n": "ParentOrderID",
-        "y": "utf8",
-        "x": "The venue order identifier this order descends from, which no standard tag names."
-      },
-      {
-        "c": "sendersessionid",
-        "t": 65007,
-        "n": "SenderSessionId",
-        "y": "utf8",
-        "x": "The session a message came from: the message's own statement, else the session instance its bridge handled the line on."
-      },
-      {
-        "c": "msgctxid",
-        "t": 65008,
-        "n": "MsgCtxId",
-        "y": "utf8",
-        "x": "The message context a bridge handled the message in, as its own log names it."
-      },
-      {
-        "c": "pluginid",
-        "t": 65009,
-        "n": "PluginId",
-        "y": "utf8",
-        "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own pluginid column, never derived."
-      },
-      {
-        "c": "prevpluginid",
-        "t": 65010,
-        "n": "PrevPluginId",
-        "y": "utf8",
-        "x": "The plugin the message came through before the one that logged it, as the bridge names it: the row's own prevpluginid column, never derived."
-      },
-      {
-        "c": "sendersessionname",
-        "t": 65011,
-        "n": "SenderSessionName",
-        "y": "utf8",
-        "x": "The name of the session a message came from, as the bridge row states it."
-      },
-      {
-        "c": "targetsessionname",
-        "t": 65012,
-        "n": "TargetSessionName",
-        "y": "utf8",
-        "x": "The name of the session a message went to, as the bridge row states it."
-      },
-      {
-        "c": "isincode",
-        "t": 65013,
-        "n": "ISINCode",
-        "y": "isin",
-        "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
-      },
-      {
-        "c": "miccode",
-        "t": 65014,
-        "n": "MICCode",
-        "y": "mic",
-        "x": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt."
-      },
-      {
-        "c": "state",
-        "t": 65015,
-        "n": "State",
-        "y": "state",
-        "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
-      },
-      {
-        "c": "instuuid",
-        "t": 65016,
-        "n": "InstUuid",
-        "y": "fixed_size_binary(16)",
-        "x": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
-      },
-      {
-        "c": "uuid",
-        "t": 65017,
-        "n": "Uuid",
-        "y": "fixed_size_binary(16)",
-        "x": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64."
-      },
-      {
-        "c": "puuid",
-        "t": 65018,
-        "n": "PUuid",
-        "y": "fixed_size_binary(16)",
-        "x": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone."
-      },
-      {
-        "c": "targetsessionid",
-        "t": 65019,
-        "n": "TargetSessionId",
-        "y": "utf8",
-        "x": "The session a message went to, as the message states it."
-      },
-      {
-        "c": "altids",
-        "t": 65020,
-        "n": "AltIds",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened."
-      },
-      {
-        "c": "prevupdatedat",
-        "t": 65021,
-        "n": "PrevUpdatedAt",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The preceding message's updatedat in the selected event chain."
-      },
-      {
-        "c": "prevuuid",
-        "t": 65022,
-        "n": "PrevUuid",
-        "y": "fixed_size_binary(16)",
-        "x": "The preceding message's sixteen identity bytes in the selected event chain."
-      },
-      {
-        "c": "createdat",
-        "t": 65023,
-        "n": "CreatedAt",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The creation instant, preserved after initial materialization."
-      },
-      {
-        "c": "code",
-        "t": 65024,
-        "n": "Code",
-        "y": "utf8",
-        "x": "The exact event-chain name; empty means unknown."
-      },
-      {
-        "c": "snapshotat",
-        "t": 65025,
-        "n": "SnapshotAt",
-        "y": "datetime64(ns,\"UTC\")",
-        "x": "The real event's instant, independent of the snapshot grid."
-      },
-      {
-        "c": "sourceurl",
-        "t": 65026,
-        "n": "SourceUrl",
-        "y": "url",
-        "x": "The object this message's line was read from."
-      },
-      {
         "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
@@ -472058,8 +472323,8 @@
         "c": "fixentries",
         "t": 0,
         "n": "FixEntries",
-        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
-        "x": "Every pair the message carried, in arrival order and untranslated."
+        "y": "list(field(\"fixentry\",struct(field(\"tagnum\",int32,nullable=true,metadata={\"display\":\"TagNum\"}),field(\"tagname\",utf8,nullable=false,metadata={\"display\":\"TagName\"}),field(\"tagvalue\",utf8,nullable=true,metadata={\"display\":\"TagValue\"}),field(\"tagkey\",utf8,nullable=true,metadata={\"display\":\"TagKey\"}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tagnum\",int32,nullable=true,metadata={\"display\":\"TagNum\"}),field(\"tagname\",utf8,nullable=false,metadata={\"display\":\"TagName\"}),field(\"tagvalue\",utf8,nullable=true,metadata={\"display\":\"TagValue\"}),field(\"tagkey\",utf8,nullable=true,metadata={\"display\":\"TagKey\"}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tagnum\",int32,nullable=true,metadata={\"display\":\"TagNum\"}),field(\"tagname\",utf8,nullable=false,metadata={\"display\":\"TagName\"}),field(\"tagvalue\",utf8,nullable=true,metadata={\"display\":\"TagValue\"}),field(\"tagkey\",utf8,nullable=true,metadata={\"display\":\"TagKey\"}),field(\"fixentries\",utf8,nullable=true,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
+        "x": "Every pair the message carried, in arrival order, beside what the dictionary made of it."
       }
     ],
     "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nfix.schema(registry, 'FixMessage')"
@@ -472315,7 +472580,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -472342,7 +472608,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -472356,7 +472623,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -472369,10 +472637,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -472383,10 +472652,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -472396,7 +472666,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -472408,12 +472679,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             }
           ],
           "type": "struct"
@@ -472444,10 +472716,10 @@
         "029",
         "2024-02-01T12:34:56.123000000Z",
         "2024-02-01T12:34:56.123000000Z",
-        "l6+9Ru1INMDVQL5u+Csaxw==",
+        "l6+9Ru1INMAyDVY8qHD5MQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:34:56.123000000Z"
+        null
       ],
       "mime": "text/fix",
       "msgtype": "D",
@@ -472674,7 +472946,7 @@
       "digest": "9696554ac611d41091e56e98a4f561d2",
       "ticker": "AAPL@XNAS",
       "clock": "2024-02-01T12:34:56.123000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))]"
     },
@@ -472958,7 +473230,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -472985,7 +473258,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -472999,7 +473273,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -473012,10 +473287,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -473026,10 +473302,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -473039,7 +473316,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -473051,12 +473329,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             }
           ],
           "type": "struct"
@@ -473089,10 +473368,10 @@
         "249",
         "2024-02-01T12:34:57.900000000Z",
         "2024-02-01T12:34:57.900000000Z",
-        "l6+9R1czEwAZzLDU8iIWkQ==",
+        "l6+9R1czEwB7/TS0VY/VtQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:34:57.900000000Z"
+        null
       ],
       "mime": "text/fix",
       "msgtype": "8",
@@ -473334,7 +473613,7 @@
       "digest": "20fa7bfae629c075e5e13241d3b2059c",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:34:57.900000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))]"
     },
@@ -473670,7 +473949,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -473697,7 +473977,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -473711,7 +473992,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -473724,10 +474006,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -473738,10 +474021,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -473751,7 +474035,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -473763,12 +474048,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -473827,10 +474113,10 @@
         "055",
         "2024-02-01T12:35:02.000000000Z",
         "2024-02-01T12:35:02.000000000Z",
-        "l6+9SEuUHADAWT6mJ4tAww==",
+        "l6+9SEuUHAAdGkbuduM5gQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:35:02.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -474051,7 +474337,7 @@
       "digest": "d945e237f1e044ec2fa94e2bf862c3b4",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:02.000000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))]"
     },
@@ -476960,7 +477246,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -476987,7 +477274,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -477001,7 +477289,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -477014,10 +477303,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -477028,10 +477318,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -477041,7 +477332,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -477053,12 +477345,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -477330,10 +477623,10 @@
         "026",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACQ0SudgIqa+w==",
+        "l6aAQgI8FAAgzaVf8I0WwA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -477469,7 +477762,7 @@
       "digest": "948e968e4353a7779eb307909c4d96bc",
       "ticker": "BRN",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))]"
     },
@@ -477612,7 +477905,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -477639,7 +477933,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -477653,7 +477948,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -477666,10 +477962,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -477680,10 +477977,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -477693,7 +477991,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -477705,12 +478004,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -477748,10 +478048,10 @@
         "240",
         "2024-02-01T12:35:00.000000000Z",
         "2024-02-01T12:35:00.000000000Z",
-        "l6+9R9ReiABTJXuBhbyMgw==",
+        "l6+9R9ReiADh88JwCrUNwQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:35:00.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -477883,7 +478183,7 @@
       "digest": "16e9b46a1e5af695cf5485c23d08ff7d",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:00.000000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))]"
     },
@@ -478052,7 +478352,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -478079,7 +478380,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -478093,7 +478395,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -478106,10 +478409,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -478120,10 +478424,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -478133,7 +478438,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -478145,12 +478451,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             }
           ],
           "type": "struct"
@@ -478175,10 +478482,10 @@
         "228",
         "2024-02-01T12:00:00.000000000Z",
         "2024-02-01T12:00:00.000000000Z",
-        "l6+7XuKdgACMH4j9Y0ZgpA==",
+        "l6+7XuKdgACfU6Dc6XKeKQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:00:00.000000000Z"
+        null
       ],
       "mime": "text/fix",
       "msgtype": "A",
@@ -478303,7 +478610,7 @@
       "digest": "31564381679a398b2e7472ff52a70c81",
       "ticker": null,
       "clock": "2024-02-01T12:00:00.000000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))]"
     },
@@ -478417,7 +478724,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -478444,7 +478752,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -478458,7 +478767,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -478471,10 +478781,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -478485,10 +478796,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -478498,7 +478810,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -478510,12 +478823,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             }
           ],
           "type": "struct"
@@ -478536,10 +478850,10 @@
         "151",
         "2024-02-01T12:35:01.000000000Z",
         "2024-02-01T12:35:01.000000000Z",
-        "l6+9SA/5UgAitc4JfZyR5g==",
+        "l6+9SA/5UgB1mHI7/GzJSA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:35:01.000000000Z"
+        null
       ],
       "mime": "text/fix",
       "msgtype": "0",
@@ -478644,7 +478958,7 @@
       "digest": "13ad44e6cf85d1be05046be3db50369f",
       "ticker": null,
       "clock": "2024-02-01T12:35:01.000000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))]"
     },
@@ -478810,7 +479124,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -478837,7 +479152,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -478851,7 +479167,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -478864,10 +479181,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -478878,10 +479196,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -478891,7 +479210,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -478903,12 +479223,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -478948,10 +479269,10 @@
         "179",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABuh1z+h2hvZg==",
+        "l6aAQgI8FACuzLQOgcVWfw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -479087,7 +479408,7 @@
       "digest": "8822601c8c9d30edb2547aec5aaae324",
       "ticker": null,
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))]"
     },
@@ -479298,7 +479619,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -479325,7 +479647,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -479339,7 +479662,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -479352,10 +479676,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -479366,10 +479691,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -479379,7 +479705,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -479391,12 +479718,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -479439,10 +479767,10 @@
         "104",
         "2024-02-01T12:36:00.000000000Z",
         "2024-02-01T12:36:00.000000000Z",
-        "l6+9Vcyl4ADDoXkRqOX9Ig==",
+        "l6+9Vcyl4AAd5ETy0vMAng==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-02-01T12:36:00.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -479648,7 +479976,7 @@
       "digest": "d74995bbc3a1525298c1e22fcf71023d",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:36:00.000000000Z",
-      "partition": "2024-02-01T12:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))]"
     },
@@ -479806,7 +480134,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -479833,7 +480162,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -479847,7 +480177,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -479860,10 +480191,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -479874,10 +480206,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -479887,7 +480220,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -479899,12 +480233,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -479943,10 +480278,10 @@
         "045",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABk0hduK0MPgw==",
+        "l6aAQgI8FACmDbIz9CQ52A==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -480111,7 +480446,7 @@
       "digest": "f03766f963a31ac8a60e5fb3f77fc1f5",
       "ticker": "4:US0378331005@XNAS",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
     },
@@ -480340,7 +480675,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -480367,7 +480703,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -480381,7 +480718,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -480394,10 +480732,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -480408,10 +480747,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -480421,7 +480761,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -480433,12 +480774,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -480482,10 +480824,10 @@
         "042",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACrL1C7dZDsDg==",
+        "l6aAQgI8FABB7IRcJEfR5w==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -480654,7 +480996,7 @@
       "digest": "5095235cdd04feda1527428a535bfcbb",
       "ticker": "BRN@XLON",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))]"
     },
@@ -480820,7 +481162,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -480834,7 +481177,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -480848,7 +481192,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -480861,10 +481206,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -480875,10 +481221,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -480888,7 +481235,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -480900,12 +481248,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -480946,10 +481295,10 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FAAniMGHYlXaBQ==",
+        "l6aAQgI8FACK1csydz4q9A==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/ullink",
@@ -481052,7 +481401,7 @@
       "digest": "3453421e1590f50e8050f00d019b5c82",
       "ticker": "TTF",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE\\x04\\x03PARTYIDSOURCE=D\\x04\\x03PARTYROLE=1|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
@@ -481167,7 +481516,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -481194,7 +481544,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -481208,7 +481559,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -481221,10 +481573,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -481235,10 +481588,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -481248,7 +481602,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -481260,12 +481615,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -481301,10 +481657,10 @@
         "122",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABXOfH9ssmqjg==",
+        "l6aAQgI8FAAGwahgqXFtWQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fixul",
@@ -481420,7 +481776,7 @@
       "digest": "1c8e0f1914ec2b3c2c234d9b635b209a",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
     },
@@ -481530,7 +481886,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -481557,7 +481914,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -481571,7 +481929,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -481584,10 +481943,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -481598,10 +481958,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -481611,7 +481972,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -481623,12 +481985,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -481664,10 +482027,10 @@
         "204",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADG8T8GVoDv4w==",
+        "l6aAQgI8FACDT/5Sd6KzuQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -481778,7 +482141,7 @@
       "digest": "b7512dfb3ab7518e3742f082a095d3e0",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
     },
@@ -481893,7 +482256,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -481920,7 +482284,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -481934,7 +482299,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -481947,10 +482313,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -481961,10 +482328,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -481974,7 +482342,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -481986,12 +482355,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -482027,10 +482397,10 @@
         "029",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADVpn724BZzAA==",
+        "l6aAQgI8FAC+jI7FVwQodA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -482128,7 +482498,7 @@
       "digest": "3b30ede943bb27d750388e53d2ae5dac",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))]"
     },
@@ -482195,7 +482565,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -482209,7 +482580,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -482223,7 +482595,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -482236,10 +482609,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -482250,10 +482624,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -482263,7 +482638,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -482275,12 +482651,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -482312,10 +482689,10 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADR5hJVzUGKDA==",
+        "l6aAQgI8FADq+iOxg6n60g==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/key-value",
@@ -482356,7 +482733,7 @@
       "digest": "070d81d9300f0d2932ca48fdea0a0537",
       "ticker": null,
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
     },
@@ -482471,7 +482848,8 @@
               "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
-                "fix:tag": "65001"
+                "fix:tag": "65001",
+                "fix:transient": "false"
               },
               "name": "version",
               "nullable": false
@@ -482498,7 +482876,8 @@
               "metadata": {
                 "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
                 "display": "UpdatedAt",
-                "fix:tag": "65003"
+                "fix:tag": "65003",
+                "fix:transient": "false"
               },
               "name": "updatedat",
               "nullable": false
@@ -482512,7 +482891,8 @@
               "metadata": {
                 "description": "The creation instant, preserved after initial materialization.",
                 "display": "CreatedAt",
-                "fix:tag": "65023"
+                "fix:tag": "65023",
+                "fix:transient": "false"
               },
               "name": "createdat",
               "nullable": false
@@ -482525,10 +482905,11 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
-                "fix:tag": "65017"
+                "display": "MsgHash",
+                "fix:tag": "65017",
+                "fix:transient": "false"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -482539,10 +482920,11 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
-                "fix:tag": "65018"
+                "display": "MsgPHash",
+                "fix:tag": "65018",
+                "fix:transient": "false"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -482552,7 +482934,8 @@
               "metadata": {
                 "description": "The exact event-chain name; empty means unknown.",
                 "display": "Code",
-                "fix:tag": "65024"
+                "fix:tag": "65024",
+                "fix:transient": "false"
               },
               "name": "code",
               "nullable": false
@@ -482564,12 +482947,13 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The real event's instant, independent of the snapshot grid.",
+                "description": "The instant a reading of this chain was taken at, ungridded; empty on every row that is not a snapshot.",
                 "display": "SnapshotAt",
-                "fix:tag": "65025"
+                "fix:tag": "65025",
+                "fix:transient": "false"
               },
               "name": "snapshotat",
-              "nullable": false
+              "nullable": true
             },
             {
               "dtype": {
@@ -482605,10 +482989,10 @@
         "999",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABpc1mewUWVGg==",
+        "l6aAQgI8FAD3SBinUQhWwA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
-        "2024-01-02T10:15:30.000000000Z",
+        null,
         "2024-01-02T10:15:30.000000000Z"
       ],
       "mime": "text/fix",
@@ -482741,7 +483125,7 @@
       "digest": "3dc6316f635adb56b2e58b2ab9e48aa1",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "2024-01-02T10:00:00.000000000Z",
+      "snapshot": null,
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
     }

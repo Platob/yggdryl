@@ -1075,6 +1075,7 @@ static_field_constructor!(super::string::CfiType, DataType::Cfi);
 static_field_constructor!(super::string::IsinType, DataType::Isin);
 static_field_constructor!(super::string::CusipType, DataType::Cusip);
 static_field_constructor!(super::string::SedolType, DataType::Sedol);
+static_field_constructor!(super::string::BloombergType, DataType::Bloomberg);
 static_field_constructor!(super::string::SideType, DataType::Side);
 static_field_constructor!(super::string::StateType, DataType::State);
 static_field_constructor!(super::string::TimeInForceType, DataType::TimeInForce);

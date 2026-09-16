@@ -65,10 +65,6 @@ pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 /// The tag and name carrying the settled message or snapshot grid instant.
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");
 
-/// The tag and name carrying the hour updatedat falls in, which is the
-/// partition a row is stored under.
-pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
-
 /// The tag and name carrying the client order identifier this one descends
 /// from.
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
@@ -110,13 +106,14 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
 /// The tag and name carrying the instrument's sixteen identity bytes.
+/// The tag and name carrying the instrument's identity bytes.
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
 /// The tag and name carrying the message's time/content identity bytes.
-pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
+pub const MSGHASH_TAG_NAME: (i32, &str) = (65_017, "msghash");
 
 /// The tag and name carrying the event chain's identity bytes.
-pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
+pub const MSGPHASH_TAG_NAME: (i32, &str) = (65_018, "msgphash");
 
 /// The tag and name carrying the session a message went to, as the message
 /// states it.
@@ -131,7 +128,7 @@ pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");
 
 /// The tag and name carrying the preceding message's identity bytes in its
 /// event chain.
-pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
+pub const PREVMSGHASH_TAG_NAME: (i32, &str) = (65_022, "prevmsghash");
 
 /// The tag and name carrying the message's creation instant.
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
@@ -161,6 +158,46 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 /// count column is for.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
+/// The tag and name carrying the instant the capture itself recorded the line.
+pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");
+
+/// The tag and name carrying the instant the message says it stops being good.
+pub const EXPIREDAT_TAG_NAME: (i32, &str) = (65_029, "expiredat");
+
+/// The tag and name carrying the currency the bid lane is denominated in.
+pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");
+
+/// The tag and name carrying the currency the offer lane is denominated in.
+pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");
+
+/// The tag and name carrying the session instance a bridge handled a line on.
+///
+/// Not `sessionid`: that spelling is a bridge row's own `SESSIONID` key,
+/// which names the counterparty session a message states it is on, and
+/// [`SENDERSESSIONID_TAG_NAME`] already owns it. This is the bridge's own
+/// connection instance, and the two are separate facts - one message states
+/// its session once, while two connections to one counterparty are two
+/// instances.
+pub const BRIDGESESSIONID_TAG_NAME: (i32, &str) = (65_032, "bridgesessionid");
+
+/// The tag and name carrying the instrument's Bloomberg identifier.
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_033, "bloombergcode");
+
+/// The tag and name carrying the instrument's CUSIP.
+pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_034, "cusipcode");
+
+/// The tag and name carrying the instrument's SEDOL.
+pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_035, "sedolcode");
+
+/// The tag and name carrying every identifier the instrument is known by.
+pub const INSTIDS_TAG_NAME: (i32, &str) = (65_036, "instids");
+
+/// The tag and name naming one message within its session.
+pub const SESSIONMSGID_TAG_NAME: (i32, &str) = (65_037, "sessionmsgid");
+
+/// The tag and name naming one occurrence of one message within its session.
+pub const SESSIONMSGSEQID_TAG_NAME: (i32, &str) = (65_038, "sessionmsgseqid");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -173,24 +210,6 @@ pub const fn is_crate_tag(tag: i32) -> bool {
 /// since 4.4, and a field it already declares is never given a second tag.
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 
-/// How wide a partition is, in seconds: the one width `timepartition` has.
-///
-/// An hour. A day is too coarse to prune a capture with - a session's whole
-/// traffic lands in one partition - and a minute makes a day of capture
-/// fourteen hundred of them, which is more files than rows in the quiet ones.
-/// The `timepartition` field's `transform:expression`,
-/// `truncate(updatedat, 'hour')`, spells the same hour for the expression
-/// layer, and [`FixMsg::time_partition`](super::FixMsg::time_partition)
-/// floors by this constant, so the declared derivation and the value a row
-/// carries never say different things.
-pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
-
-/// How `timepartition` derives from `updatedat`, as the crate field declares
-/// it in its `transform:expression`: the expression layer's own
-/// `truncate(temporal, 'hour')`, which floors an instant to the hour that
-/// contains it - before the epoch as after it.
-const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
-
 /// How `isincode` derives from the message where it states none, as the
 /// crate field declares it in its `fix:derivation` (decision 38): the
 /// primary identifier under the ISIN source, else the alternate identifier
@@ -199,10 +218,34 @@ const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
 /// primary did not. Each is read through `try_cast(... as isin)`, so a
 /// primary no check digit closes is null rather than an answer, and the
 /// alternate is consulted behind it; a spelling neither closes is silence.
-const ISINCODE_DERIVATION: &str = "coalesce(case when securityidsource = '4' then \
-                                   try_cast(securityid as isin) end, \
-                                   try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid \
-                                   as isin))";
+/// How an instrument identifier derives, for one `SecurityIDSource` code and
+/// the type the identifier is.
+///
+/// One shape for all four, because there is only one rule: the message's own
+/// `SecurityID` when its source says this is what it is, else the first
+/// `SecurityAltID` occurrence whose source says so. `isincode` has read this
+/// way since decision 38; `cusipcode`, `sedolcode` and `bloombergcode` are
+/// the same sentence with a different letter in it, and writing them as a
+/// second mechanism in Rust would be four hand-maintained copies of a
+/// declaration the registry already evaluates.
+fn identifier_derivation(sources: &[&str], code: &str) -> String {
+    let arms: Vec<String> = sources
+        .iter()
+        .flat_map(|source| {
+            [
+                format!(
+                    "case when securityidsource = '{source}' then \
+                     try_cast(securityid as {code}) end"
+                ),
+                format!(
+                    "try_cast(secaltidgrp[securityaltidsource = '{source}'][0].securityaltid \
+                     as {code})"
+                ),
+            ]
+        })
+        .collect();
+    format!("coalesce({})", arms.join(", "))
+}
 
 /// How `miccode` derives: the exchange the instrument is listed on, the
 /// destination it was routed to, or the market it last traded on, the first
@@ -212,6 +255,37 @@ const MICCODE_DERIVATION: &str = "coalesce(securityexchange, exdestination, last
 /// How `state` derives: the order's status, else what the report said
 /// happened, both read as the crate's one lifecycle vocabulary.
 const STATE_DERIVATION: &str = "coalesce(ordstatus, exectype)";
+
+/// What dated the line, where the capture did not.
+///
+/// The capture's own instant reaches this column by name (see the aliases on
+/// the field), so this is only the fallback: a message whose line carried no
+/// timestamp is recorded at the instant it says it was sent. Enrichment fills
+/// and never overwrites, so a line that *was* dated keeps that date.
+const RECORDEDAT_DERIVATION: &str = "sendingtime";
+
+/// What a message says about when it stops being good, strongest first.
+///
+/// `ExpireTime(126)` is the order's own instant and the only one of these
+/// that is already a point in time, so it leads. `ValidUntilTime(62)` is the
+/// same statement made by a quote. `ExpireDate(432)` is the order's expiry
+/// stated as a day rather than an instant, which is weaker because it needs a
+/// session close to mean anything exact. `MaturityDate(541)` is last and is
+/// not the order's statement at all - it is the instrument's, and an order
+/// cannot outlive the thing it trades, so it bounds the answer when nothing
+/// closer was said.
+const EXPIREDAT_DERIVATION: &str = "coalesce(expiretime, validuntiltime, expiredate, maturitydate)";
+
+/// What denominates a quote lane.
+///
+/// FIX states no currency per lane: a two-sided quote carries one
+/// `Currency(15)` and both lanes are in it, with `SettlCurrency(120)` behind
+/// it for a message that separates settlement from quotation. So both lanes
+/// derive from the same pair and answer the same value on an ordinary
+/// message - which is the point, because the column is there for the dialect
+/// that *does* split them. Enrichment fills and never overwrites, so a bridge
+/// stating one lane's currency keeps it and only the other lane derives.
+const LANE_CURRENCY_DERIVATION: &str = "coalesce(currency, settlcurrency)";
 
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
@@ -240,6 +314,36 @@ pub(super) fn version_field() -> Option<&'static Field> {
     VERSION_FIELD.as_ref()
 }
 
+/// The crate's own columns that are about *this message* rather than about
+/// the instrument its chain follows, and so never carry forward.
+///
+/// The clocks, because a later message has its own; the identities, because
+/// they are computed from the message that carries them; `code`, because the
+/// lifecycle stamps it from the chain rather than from the message before;
+/// `state`, because carrying an order's last state onto a message that did
+/// not state one would report a life the venue never described;
+/// `nofixentries` and `sourceurl` and `version`, because they are facts about
+/// the line this row was read from.
+///
+/// Everything else the crate owns is about the instrument or the session -
+/// `isincode`, `miccode`, `symbolticker`, `altids`, the lane currencies,
+/// `expiredat`, the session names and ids - and carries.
+const SETTLED_TO_ONE_MESSAGE: [i32; 13] = [
+    UPDATEDAT_TAG_NAME.0,
+    CREATEDAT_TAG_NAME.0,
+    SNAPSHOTAT_TAG_NAME.0,
+    RECORDEDAT_TAG_NAME.0,
+    PREVUPDATEDAT_TAG_NAME.0,
+    INSTUUID_TAG_NAME.0,
+    MSGHASH_TAG_NAME.0,
+    MSGPHASH_TAG_NAME.0,
+    PREVMSGHASH_TAG_NAME.0,
+    CODE_TAG_NAME.0,
+    STATE_TAG_NAME.0,
+    NOFIXENTRIES_TAG_NAME.0,
+    SOURCEURL_TAG_NAME.0,
+];
+
 /// One field of the crate's own, from its tag and name, with a FIX-style
 /// display.
 ///
@@ -255,6 +359,9 @@ fn crated(
     field.as_fix_mut().set_tag(tag)?;
     field.set_display(display)?;
     field.set_description(description)?;
+    if SETTLED_TO_ONE_MESSAGE.contains(&tag) || tag == VERSION_TAG_NAME.0 {
+        field.as_fix_mut().set_transient(false)?;
+    }
     Ok(field)
 }
 
@@ -270,6 +377,21 @@ fn derived(
 ) -> Result<Field> {
     let mut field = crated(identity, display, dtype, description)?;
     field.as_fix_mut().set_derivation(&derivation.parse()?)?;
+    Ok(field)
+}
+
+/// One field a bridge spells under its own names *and* that derives where
+/// none of them arrived - the two halves of a fill, on one field.
+fn aliased_derived(
+    identity: (i32, &str),
+    display: &str,
+    dtype: DataType,
+    description: &str,
+    aliases: &[&str],
+    derivation: &str,
+) -> Result<Field> {
+    let mut field = derived(identity, display, dtype, description, derivation)?;
+    field.as_fix_mut().set_aliases(aliases.iter().copied())?;
     Ok(field)
 }
 
@@ -300,44 +422,6 @@ fn build() -> Result<Vec<Field>> {
          field name in sorted order; repeating-group members are not flattened.",
     )?;
     altids.as_fix_mut().set_counter(ALTIDS_TAG_NAME.0)?;
-    // The hour that updatedat falls in, as the same instant type updatedat
-    // has: a partition value is compared and ranged over, and an instant
-    // floored to its hour ranges exactly as the clock it was cut from.
-    let mut timepartition = crated(
-        TIMEPARTITION_TAG_NAME,
-        "TimePartition",
-        super::schema::CLOCK_DATATYPE,
-        "The hour updatedat falls in: updatedat floored to the partition \
-         width, as an instant.",
-    )?;
-    // A column a path spells out and an Iceberg spec partitions by identity:
-    // the value *is* the partition, so a reader prunes on its bounds and a
-    // writer lays rows out by it without a transform between them.
-    timepartition.set_partition(true);
-    // Named by the column it reads, because that is what the column is
-    // called in a row.
-    //
-    // Written through the protocol view rather than through
-    // `PartitionFieldMut::set_sources`, because that half of the partition
-    // layer is built only with Arrow and these fields exist whether or not it
-    // is. The rendering is the crate's one canonical spelling either way, and
-    // the metadata write validates it exactly as the setter's would.
-    let sources = crate::metadata::render_source_list(
-        crate::metadata::PARTITION_SOURCES_KEY,
-        [UPDATEDAT_TAG_NAME.1.to_owned()],
-    )?;
-    timepartition
-        .as_partition_mut()
-        .insert("sources", sources)?;
-    // How it derives, in the expression layer's own vocabulary: a batch
-    // missing the column, or holding its default there, is filled by
-    // `Field::apply_arrow_batch` with exactly what `FixMsg::time_partition`
-    // answers for a row. A `truncate` over a column and a unit literal is
-    // not a call over plain columns, so it is stored as the expression text.
-    timepartition
-        .as_transform_mut()
-        .set_term(&TIMEPARTITION_DERIVATION.parse()?)?;
-
     Ok(vec![
         // The version the message was *read* at, which is not always the one
         // its `BeginString` claims: a venue that mislabels its session still
@@ -364,7 +448,6 @@ fn build() -> Result<Vec<Field>> {
             super::schema::CLOCK_DATATYPE,
             "The settled message instant, truncated to the snapshot grid by the lifecycle.",
         )?,
-        timepartition,
         // Where an order came from. FIX threads a replace chain through
         // `OrigClOrdID(41)`, which says what this message *replaces* - not
         // what it descends from. A slice of a parent order, or a leg of a
@@ -387,15 +470,14 @@ fn build() -> Result<Vec<Field>> {
         )?,
         // The session a message came from, and half of a pair whose target
         // side takes the block's next free tag below. A bridge row spells only
-        // its own `SESSIONID`, which this side keeps as an alias; where a row
-        // spells none, the session instance the bridge's own row header
-        // brackets fills it, never over a reading the message stated itself.
+        // its own `SESSIONID`, which this side keeps as an alias; the instance
+        // a bridge's row header brackets is a second fact and has a column of
+        // its own ([`BRIDGESESSIONID_TAG_NAME`]).
         aliased(
             SENDERSESSIONID_TAG_NAME,
             "SenderSessionId",
             DataType::utf8(),
-            "The session a message came from: the message's own statement, \
-             else the session instance its bridge handled the line on.",
+            "The session a message came from, as the message states it.",
             &["SessionId"],
         )?,
         // The message context a bridge handled the line in, from the bracket
@@ -464,7 +546,7 @@ fn build() -> Result<Vec<Field>> {
             DataType::Isin,
             "The instrument's ISIN: the message's own, else SecurityID or a \
              SecurityAltID whose source is ISIN.",
-            ISINCODE_DERIVATION,
+            &identifier_derivation(&["4"], "isin"),
         )?,
         derived(
             MICCODE_TAG_NAME,
@@ -495,16 +577,16 @@ fn build() -> Result<Vec<Field>> {
              its currency.",
         )?,
         crated(
-            UUID_TAG_NAME,
-            "Uuid",
+            MSGHASH_TAG_NAME,
+            "MsgHash",
             super::identity::IDENTITY_DATATYPE,
             "The message's sixteen bytes: signed updatedat nanoseconds with \
              the sign bit flipped, then all 64 bits of the canonical named \
              message content's XXH64.",
         )?,
         crated(
-            PUUID_TAG_NAME,
-            "PUuid",
+            MSGPHASH_TAG_NAME,
+            "MsgPHash",
             super::identity::IDENTITY_DATATYPE,
             "The event chain's sixteen bytes: the big-endian XXH3-128 of code \
              alone.",
@@ -525,8 +607,8 @@ fn build() -> Result<Vec<Field>> {
             "The preceding message's updatedat in the selected event chain.",
         )?,
         crated(
-            PREVUUID_TAG_NAME,
-            "PrevUuid",
+            PREVMSGHASH_TAG_NAME,
+            "PrevMsgHash",
             super::identity::IDENTITY_DATATYPE,
             "The preceding message's sixteen identity bytes in the selected \
              event chain.",
@@ -547,7 +629,8 @@ fn build() -> Result<Vec<Field>> {
             SNAPSHOTAT_TAG_NAME,
             "SnapshotAt",
             super::schema::CLOCK_DATATYPE,
-            "The real event's instant, independent of the snapshot grid.",
+            "The instant a reading of this chain was taken at, ungridded; empty \
+             on every row that is not a snapshot.",
         )?,
         // Where the line was read from, typed as the URL it is. A text read
         // names its own column `sourceurl` too, so a capture fills this
@@ -568,8 +651,171 @@ fn build() -> Result<Vec<Field>> {
             DataType::Int32,
             "How many pairs the message carried, in arrival order.",
         )?,
+        // When the capture wrote the line down, which is a fact about the
+        // capture and not about the message - so it is outside the content
+        // hash for the same reason `sourceurl` is: one day's log re-cut,
+        // replayed or copied records the same message at a second instant,
+        // and both copies must digest alike.
+        // The text reader already carries the line's own instant, under the
+        // name it gives that column - so the fill is an alias, the way every
+        // other capture column reaches its field, rather than a second
+        // mapping. `mtime` is the reader's own spelling and the rest are the
+        // ones it accepts for it, so a batch from anywhere lands here too.
+        // What no line dated is the message's own `SendingTime`, which is
+        // where the derivation picks up.
+        aliased_derived(
+            RECORDEDAT_TAG_NAME,
+            "RecordedAt",
+            super::schema::CLOCK_DATATYPE,
+            "The instant the capture recorded this line: the line's own text \
+             timestamp, else SendingTime.",
+            // `mtime` only. The text reader accepts `timestamp`, `time`,
+            // `ts`, `written_at` and `event_time` for that column too, but
+            // those are its *intake* spellings and this is a dictionary: an
+            // alias here is a name the registry answers for, and
+            // `event_time` folds onto the shipped `EventTime(1145)`, which
+            // is that field's name and not this one's to take.
+            &["mtime"],
+            RECORDEDAT_DERIVATION,
+        )?,
+        derived(
+            EXPIREDAT_TAG_NAME,
+            "ExpiredAt",
+            super::schema::CLOCK_DATATYPE,
+            "The instant the message stops being good: ExpireTime, else \
+             ValidUntilTime, else ExpireDate, else the instrument's \
+             MaturityDate.",
+            EXPIREDAT_DERIVATION,
+        )?,
+        derived(
+            BIDCURRENCY_TAG_NAME,
+            "BidCurrency",
+            DataType::Currency,
+            "The currency the bid lane is denominated in: the message's own \
+             Currency, else SettlCurrency.",
+            LANE_CURRENCY_DERIVATION,
+        )?,
+        derived(
+            OFFERCURRENCY_TAG_NAME,
+            "OfferCurrency",
+            DataType::Currency,
+            "The currency the offer lane is denominated in: the message's own \
+             Currency, else SettlCurrency.",
+            LANE_CURRENCY_DERIVATION,
+        )?,
+        // The session instance the bridge handled a line on, which its own
+        // row header states and no FIX message carries: `SenderCompID` names
+        // a counterparty, and two connections to one counterparty are two
+        // sessions. It is filled from the bracket alone, because the joined
+        // identifiers below must be the same string on every leg of one
+        // message and a leg that spelled its own session would split them.
+        crated(
+            BRIDGESESSIONID_TAG_NAME,
+            "BridgeSessionId",
+            DataType::utf8(),
+            "The session instance a bridge handled a line on, as its own row \
+             header brackets it - never what the message states about itself.",
+        )?,
+        // The three identifiers beside `isincode`, each typed as the code it
+        // is so a row joins on it rather than on text that looks like one.
+        derived(
+            BLOOMBERGCODE_TAG_NAME,
+            "BloombergCode",
+            DataType::Bloomberg,
+            "The instrument's Bloomberg identifier: the message's own, else a \
+             SecurityID or SecurityAltID whose source is Bloomberg.",
+            &identifier_derivation(&["A", "S"], "bloomberg"),
+        )?,
+        derived(
+            CUSIPCODE_TAG_NAME,
+            "CUSIPCode",
+            DataType::Cusip,
+            "The instrument's CUSIP: the message's own, else a SecurityID or \
+             SecurityAltID whose source is CUSIP.",
+            &identifier_derivation(&["1"], "cusip"),
+        )?,
+        derived(
+            SEDOLCODE_TAG_NAME,
+            "SEDOLCode",
+            DataType::Sedol,
+            "The instrument's SEDOL: the message's own, else a SecurityID or \
+             SecurityAltID whose source is SEDOL.",
+            &identifier_derivation(&["2"], "sedol"),
+        )?,
+        instids()?,
+        // One message within its session, and one occurrence of it. Built by
+        // concatenation rather than hashed, because a reader grepping a log
+        // for `e7254b20:9f015ed023` must find the same string the row holds.
+        crated(
+            SESSIONMSGID_TAG_NAME,
+            "SessionMsgId",
+            DataType::utf8(),
+            "The session and the message context that name one message within \
+             it, joined by a colon.",
+        )?,
+        crated(
+            SESSIONMSGSEQID_TAG_NAME,
+            "SessionMsgSeqId",
+            DataType::utf8(),
+            "The session, the message context and the sequence number that \
+             name one occurrence of one message, joined by colons.",
+        )?,
     ])
 }
+
+/// Every identifier one instrument is known by, as one column.
+///
+/// A Struct rather than five columns beside each other, because they are one
+/// fact with five spellings: a reader joining two captures wants "the same
+/// instrument", and a venue that publishes an ISIN while another publishes a
+/// SEDOL is describing the same thing. The five stay *also* available as
+/// their own columns, because a table partitions and filters on a column and
+/// not on a struct member - this is the joined view of them, not a second
+/// owner: [`FixMsg::instrument_ids`](super::FixMsg) fills it from those
+/// columns rather than from anything of its own.
+///
+/// Built once and shared: the members are this crate's own types and owe
+/// nothing to a dictionary, so every registry and every row holds the same
+/// field.
+fn instids() -> Result<Field> {
+    static FIELD: LazyLock<Option<Field>> = LazyLock::new(|| match build_instids() {
+        Ok(field) => Some(field),
+        Err(error) => {
+            log::warn!("building the FIX instrument identifier struct: {error}");
+            None
+        }
+    });
+    FIELD.clone().ok_or_else(|| crate::Error::InvalidRecord {
+        path: smol_str::SmolStr::new_static(INSTIDS_TAG_NAME.1),
+        reason: crate::text::expected_got("an instrument identifier struct", "a refused build"),
+    })
+}
+
+/// The members, in the order a reader reads them: what the instrument *is*,
+/// then what each registry calls it.
+fn build_instids() -> Result<Field> {
+    let member = |name: &str, dtype: DataType| dtype.nullable_field(name);
+    let mut field = DataType::from_fields([
+        member(CFICODE_MEMBER, DataType::Cfi),
+        member(ISINCODE_TAG_NAME.1, DataType::Isin),
+        member(BLOOMBERGCODE_TAG_NAME.1, DataType::Bloomberg),
+        member(CUSIPCODE_TAG_NAME.1, DataType::Cusip),
+        member(SEDOLCODE_TAG_NAME.1, DataType::Sedol),
+    ])?
+    .nullable_field(INSTIDS_TAG_NAME.1);
+    field.as_fix_mut().set_tag(INSTIDS_TAG_NAME.0)?;
+    field.set_display("InstIds")?;
+    field.set_description(
+        "Every identifier this instrument is known by, filled from the columns \
+         beside it.",
+    )?;
+    Ok(field)
+}
+
+/// What the classification member of [`instids`] is called.
+///
+/// FIX's own name for it, because that is the column it is filled from.
+const CFICODE_MEMBER: &str = "cficode";
 
 /// The fields this crate defines, in tag order.
 ///
@@ -580,26 +826,18 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 27);
+/// assert_eq!(held.len(), 37);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
-/// assert_eq!(held[20].dtype(), held[2].dtype());
-/// assert_eq!(held[21].dtype(), &yggdryl::DataType::fixed_size_binary(16)?);
-/// assert!(held[20].is_nullable() && held[21].is_nullable());
-/// // The partition is the hour `updatedat` falls in, typed as that clock is,
-/// // marked as the column a layout is cut on, and derived by the expression
-/// // layer's own `truncate`.
-/// assert_eq!(held[3].name(), "timepartition");
-/// assert_eq!(held[3].dtype(), held[2].dtype());
-/// assert!(held[3].is_partition());
+/// // No partition column: how a layout is cut is the target's to decide -
+/// // an Iceberg table takes an `hour` transform over `updatedat` - and a
+/// // materialized copy of that instant was a second owner of it.
+/// assert!(held.iter().all(|field| !field.is_partition()));
+/// assert!(held.iter().all(|field| field.name() != "timepartition"));
+/// // The columns a message implies declare how, on the field itself.
+/// let state = held.iter().find(|field| field.name() == "state").expect("state");
 /// assert_eq!(
-///     held[3].as_transform().term()?.map(|term| term.to_string()),
-///     Some("truncate(updatedat, 'hour')".to_owned()),
-/// );
-/// // The three columns a message implies declare how, on the field itself.
-/// assert_eq!(held[14].name(), "state");
-/// assert_eq!(
-///     held[14].as_fix().derivation()?.map(|term| term.to_string()),
+///     state.as_fix().derivation()?.map(|term| term.to_string()),
 ///     Some("coalesce(ordstatus, exectype)".to_owned()),
 /// );
 /// // Above every tag FIX or a venue publishes, and its tag and name are

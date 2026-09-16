@@ -8,8 +8,8 @@ use crate::{DataType, Digest, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::{CLOCK_DATATYPE, FIXENTRIES_COLUMN};
 use super::{
-    CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME,
-    UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME,
+    SNAPSHOTAT_TAG_NAME, UPDATEDAT_TAG_NAME,
 };
 
 /// The bytes every FIX identity column holds.
@@ -83,7 +83,7 @@ impl std::fmt::Display for IdentityText {
 pub(super) enum Role {
     Updated,
     Created,
-    Uuid,
+    MsgHash,
     Persistent,
     Code,
     Snapshot,
@@ -94,7 +94,7 @@ impl Role {
     pub(super) const ALL: [Self; 7] = [
         Self::Updated,
         Self::Created,
-        Self::Uuid,
+        Self::MsgHash,
         Self::Persistent,
         Self::Code,
         Self::Snapshot,
@@ -105,8 +105,8 @@ impl Role {
         match self {
             Self::Updated => UPDATEDAT_TAG_NAME,
             Self::Created => CREATEDAT_TAG_NAME,
-            Self::Uuid => UUID_TAG_NAME,
-            Self::Persistent => PUUID_TAG_NAME,
+            Self::MsgHash => MSGHASH_TAG_NAME,
+            Self::Persistent => MSGPHASH_TAG_NAME,
             Self::Code => CODE_TAG_NAME,
             Self::Snapshot => SNAPSHOTAT_TAG_NAME,
             Self::Sending => (52, "sendingtime"),
@@ -119,7 +119,7 @@ impl Role {
 
     fn dtype(self) -> DataType {
         match self {
-            Self::Uuid | Self::Persistent => IDENTITY_DATATYPE,
+            Self::MsgHash | Self::Persistent => IDENTITY_DATATYPE,
             Self::Code => DataType::utf8(),
             _ => CLOCK_DATATYPE,
         }
@@ -127,6 +127,21 @@ impl Role {
 }
 
 pub(super) fn is_mandatory(tag: i32) -> bool {
+    // `snapshotat` is a role - replay reads it back where a snapshot wrote
+    // one - without being a value every message has, so it is the one role
+    // whose column is nullable.
+    Role::of(tag).is_some_and(|role| !matches!(role, Role::Snapshot))
+}
+
+/// Whether a column is one the replay bundle holds, whatever it is spelled.
+///
+/// [`is_mandatory`] says the *value* must be there; this says the *column*
+/// must. They differ on `snapshotat` alone: a row that is not a snapshot
+/// carries the column empty, and a row that cannot carry it at all could not
+/// replay a snapshot that was taken. So a holder is never removed and is
+/// always reached by its tag under whatever name it was renamed to, while
+/// only the values a message always has refuse a null.
+pub(super) fn is_held(tag: i32) -> bool {
     Role::of(tag).is_some()
 }
 
@@ -166,7 +181,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
             .and_then(|known| registry.identity_of(known).map(|(tag, _)| tag))
     });
     if let (Some(tag), Some(claim)) = (explicit, named) {
-        if tag != claim && is_mandatory(claim) {
+        if tag != claim && is_held(claim) {
             return Err(refused(
                 field.name(),
                 format_args!("FIX tag {claim} claimed by its name"),
@@ -180,12 +195,17 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 /// Whether a column stands outside the content a message is identified by.
 ///
 /// Three of them are the identity itself and would hash themselves:
-/// `uuid` is what is being computed, and `updatedat` and `createdat` are the
+/// `msghash` is what is being computed, and `updatedat` and `createdat` are the
 /// clocks it is computed against. `sourceurl` is outside for the opposite
 /// reason: where a line was read from is a fact about the capture, not about
 /// the message. The same message read out of a re-cut file, a replayed
 /// archive or a second copy of one day's log is the same message, and it must
 /// digest to the same sixteen bytes in all of them.
+///
+/// `recordedat` is outside for the same reason as `sourceurl` and beside it:
+/// *when* a capture wrote the line down is a fact about the capture, not
+/// about the message. The same message re-cut, replayed or copied is recorded
+/// at a second instant and must still digest to the same sixteen bytes.
 ///
 /// `nofixentries` is outside because the record it counts is: the arrival
 /// record is the message rather than a reading of it, and a count of it is
@@ -193,10 +213,11 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 /// would otherwise identify differently from the row that carries it.
 fn outside_content(tag: i32) -> bool {
     [
-        UUID_TAG_NAME.0,
+        MSGHASH_TAG_NAME.0,
         UPDATEDAT_TAG_NAME.0,
         CREATEDAT_TAG_NAME.0,
         super::SOURCEURL_TAG_NAME.0,
+        super::RECORDEDAT_TAG_NAME.0,
         super::NOFIXENTRIES_TAG_NAME.0,
     ]
     .contains(&tag)
@@ -267,7 +288,14 @@ impl Plan {
 
     pub(super) fn require_bundle(&self, schema: &Field) -> Result<()> {
         for role in Role::ALL {
+            // Every role's column is required - the holder is what replay
+            // reads back - but `snapshotat` is the one whose value is not:
+            // it says this row is a reading the lifecycle took, and an
+            // ordinary message is not one.
             let at = self.index(role)?;
+            if matches!(role, Role::Snapshot) {
+                continue;
+            }
             if schema.fields()[at].is_nullable() {
                 return Err(refused(
                     schema.fields()[at].name(),
@@ -292,6 +320,9 @@ impl Plan {
             };
             match value {
                 Some(value) if !value.is_null() => validate_value(name, &role.dtype(), value)?,
+                // The snapshot clock is empty on every row no snapshot took,
+                // so what replay needs from it is the holder and not a value.
+                Some(_) if matches!(role, Role::Snapshot) => {}
                 _ => {
                     return Err(refused(
                         name,
@@ -316,7 +347,9 @@ impl Plan {
         }
         for role in Role::ALL {
             let at = self.index(role)?;
-            if matches!(role, Role::Uuid | Role::Persistent) && values[at].is_null() {
+            if matches!(role, Role::MsgHash | Role::Persistent | Role::Snapshot)
+                && values[at].is_null()
+            {
                 continue;
             }
             validate_value(schema.fields()[at].name(), &role.dtype(), &values[at])?;
@@ -356,7 +389,7 @@ impl Plan {
                 .map(|at| (schema.fields()[*at].name(), &values[*at])),
             0,
         );
-        let uuid = identity_scalar(
+        let msghash = identity_scalar(
             TxHash::new_in(
                 nanos,
                 TimeUnit::Nanosecond,
@@ -364,32 +397,32 @@ impl Plan {
             )?
             .into_ordered_bytes()?,
         );
-        let uuid_at = self.index(Role::Uuid)?;
+        let msghash_at = self.index(Role::MsgHash)?;
         assert_identity(
-            &schema.fields()[uuid_at],
-            &values[uuid_at],
-            &uuid,
-            assertions.uuid,
+            &schema.fields()[msghash_at],
+            &values[msghash_at],
+            &msghash,
+            assertions.msghash,
         )?;
-        values[uuid_at] = uuid;
+        values[msghash_at] = msghash;
         Ok(Hard {
             updatedat: values[updated_at].clone(),
             createdat: values[self.index(Role::Created)?].clone(),
-            uuid: values[uuid_at].clone(),
-            puuid: values[persistent_at].clone(),
+            msghash: values[msghash_at].clone(),
+            msgphash: values[persistent_at].clone(),
         })
     }
 }
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Assertions {
-    pub(super) uuid: bool,
+    pub(super) msghash: bool,
     pub(super) persistent: bool,
 }
 
 impl Assertions {
     pub(super) const STATED: Self = Self {
-        uuid: true,
+        msghash: true,
         persistent: true,
     };
 }
@@ -398,8 +431,8 @@ impl Assertions {
 pub(super) struct Hard {
     pub(super) updatedat: Scalar,
     pub(super) createdat: Scalar,
-    pub(super) uuid: Scalar,
-    pub(super) puuid: Scalar,
+    pub(super) msghash: Scalar,
+    pub(super) msgphash: Scalar,
 }
 
 /// The event chain's sixteen bytes: the XXH3-128 of the exact code bytes,
@@ -464,17 +497,42 @@ pub(super) fn fresh(
         .or_else(|| fallback.filter(|value| !value.is_null()).cloned())
         .map_or_else(now, Ok)?;
     validate_value("sendingtime", &CLOCK_DATATYPE, &sending)?;
-    let transact = initial
-        .iter()
-        .position(|column| column.tag == Some(60))
-        .and_then(|at| values.get(at))
-        .filter(|value| !value.is_null())
-        .cloned();
-    let snapshot = source(Role::Snapshot)
+    let stated_clock = |tag: i32| {
+        initial
+            .iter()
+            .position(|column| column.tag == Some(tag))
+            .and_then(|at| values.get(at))
+            .filter(|value| !value.is_null())
+            .cloned()
+    };
+    let transact = stated_clock(60);
+    // The instant the event happened, which is what the clocks below default
+    // to. It is not the same thing as the `snapshotat` column: this is always
+    // knowable, and the column says something narrower.
+    let event = source(Role::Snapshot)
         .or(transact)
         .unwrap_or_else(|| sending.clone());
-    let updated = source(Role::Updated).unwrap_or_else(|| snapshot.clone());
-    let created = source(Role::Created).unwrap_or_else(|| snapshot.clone());
+    // `snapshotat` is a *stated* value or nothing. A snapshot is a reading
+    // the lifecycle takes of a chain at a grid instant; an ordinary message
+    // is not one, and filling the column on every message made "this row is
+    // a snapshot" unanswerable from the row. The lifecycle stamps it where
+    // it takes one; intake only keeps what the message itself said.
+    let snapshot = source(Role::Snapshot).unwrap_or(Scalar::Null);
+    let updated = source(Role::Updated).unwrap_or_else(|| event.clone());
+    // What a message says about its own creation, strongest first: a stated
+    // `createdat`, then `OrigSendingTime(122)`, then the snapshot instant.
+    //
+    // 122 is in the middle because of what it means. A resend carries the
+    // instant the original was sent, and that original is when this message
+    // came into being - so a replayed message dated only by the resend would
+    // otherwise be created at the moment it was replayed, and the chain's
+    // first `createdat` would move every time a session gapped. It is below a
+    // stated `createdat` because that is the caller's own statement, and
+    // above the snapshot because the snapshot is when the event happened
+    // rather than when the message was made.
+    let created = source(Role::Created)
+        .or_else(|| stated_clock(122))
+        .unwrap_or_else(|| event.clone());
     let defaults = [
         updated,
         created,
@@ -505,7 +563,10 @@ pub(super) fn fresh(
         if members[at].as_fix().tag()? != Some(role.identity().0) {
             members[at].as_fix_mut().set_tag(role.identity().0)?;
         }
-        members[at].set_nullable(false);
+        // Every role but the snapshot is a value the message always has, so
+        // its column cannot be null. `snapshotat` is the reading rather than
+        // the message, and stays nullable.
+        members[at].set_nullable(matches!(role, Role::Snapshot));
         if values[at].is_null() {
             values[at] = defaults[role as usize].clone();
         }

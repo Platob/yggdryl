@@ -231,6 +231,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['isin', fields.isin('value')],
     ['cusip', fields.cusip('value')],
     ['sedol', fields.sedol('value')],
+    ['bloomberg', fields.bloomberg('value')],
     ['side', fields.side('value')],
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
@@ -262,7 +263,7 @@ test('typed field factories cover every native datatype variant', () => {
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
   // so no field builds them.
-  assert.equal(byId.size, 63)
+  assert.equal(byId.size, 64)
   assert.deepEqual(
     [...byId.keys()].sort(),
     binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),
@@ -460,6 +461,7 @@ test('the registered codes build their own datatype at their own width', () => {
     ['isin', [fields.isin('instrument'), 12]],
     ['cusip', [fields.cusip('cusip'), 9]],
     ['sedol', [fields.sedol('sedol'), 7]],
+    ['bloomberg', [fields.bloomberg('bloomberg'), 32]],
   ])
 
   for (const [name, [value, width]] of declared) {

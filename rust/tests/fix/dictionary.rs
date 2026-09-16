@@ -130,13 +130,23 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                     .expect("valid tag")
                     .expect("a derived definition tag");
                 assert!(
-                    yggdryl::FixId::is_definition_tag(derived)
-                        || (category == FixCategory::Groups
-                            && matches!(field.dtype(), DataType::Map(_))
-                            && yggdryl::is_crate_tag(derived)
-                            && field.as_fix().counter().unwrap() == Some(derived)),
+                    yggdryl::FixId::is_definition_tag(derived) || yggdryl::is_crate_tag(derived),
                     "{category}/{name} tag {derived}"
                 );
+                // A crate tag on a named definition means the definition is
+                // one of this crate's own columns, reached by the tag the
+                // fixed row files it under: `altids` is the Map whose counter
+                // is that tag, `instids` the Struct beside it.
+                if yggdryl::is_crate_tag(derived) {
+                    assert!(
+                        yggdryl::fix_crate_fields()
+                            .expect("the crate's own fields")
+                            .iter()
+                            .any(|own| own.name() == name
+                                && own.as_fix().tag().unwrap() == Some(derived)),
+                        "{category}/{name} holds crate tag {derived} without being one"
+                    );
+                }
                 assert!(
                     derived_tags.insert(derived),
                     "{category}/{name} repeats derived tag {derived}"
@@ -408,9 +418,9 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus updatedat, timepartition, createdat,
-    // snapshotat and prevupdatedat.
-    assert_eq!(utc, 73, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat,
+    // prevupdatedat, recordedat and expiredat.
+    assert_eq!(utc, 74, "instants stated in UTC");
 }
 
 #[test]
@@ -520,22 +530,44 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// `OrderQty` reading a canceled quantity outright, `isincode` reading each
 /// identifier through `try_cast(... as isin)`. It then types the four
 /// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
-/// `fixed_size_binary(16)` rather than `uuid`. Then the crate's own
-/// `sourceurl` - where a line was read from is a column of the row, typed as
-/// the URL it is - and `nofixentries`, the counter the arrival record group
-/// is counted by. The last thing to move it is the canonical documents
-/// becoming the arrays they always were: `fix:codes` is `[{...}]` where it
-/// was `{"codes":[{...}]}`, and `fix:lineage`, `fix:replacements` and
-/// `fix:directions` lose the same wrapper, so every shipped field carrying
-/// one holds different text for the same facts.
+/// `fixed_size_binary(16)` rather than `uuid`. The last things to move this
+/// number are the crate's own `sourceurl` - where a line was read from is a
+/// column of the row, typed as the URL it is - and `nofixentries`, the
+/// counter the arrival record group is counted by. It then reverses decision
+/// 26's retirement of the `msghash` spelling: the message identity is
+/// `msghash` (65017), the chain's is `msgphash` (65018) and the preceding
+/// message's is `prevmsghash` (65022). Only the name moves - the tags, the
+/// layouts and every identity recipe are what they were, and the 65000 that
+/// carried the original `msghash` stays retired and unreused. It then adds
+/// four columns after them - `recordedat`, `expiredat` and the two lane
+/// currencies - each declaring on the field itself how it fills, and reorders
+/// the fixed row so the crate's own clocks and identities lead it. It then
+/// retires `timepartition` - how a layout is cut is the target's, and an
+/// Iceberg table takes an `hour` transform over `updatedat` - and marks the
+/// columns settled to one message with `fix:transient`. It then adds the
+/// session the bridge handled a line on, the three instrument identifiers
+/// beside `isincode`, the `instids` component that joins all five, and the
+/// two session message identifiers - seven columns, each declaring on the
+/// field itself how it fills. `instids` is a component rather than a scalar,
+/// so it is the first named definition to answer to a crate tag rather than
+/// to a derived one, and the components count moves with it. The bracket's
+/// session is `bridgesessionid`, not `sessionid`: a bridge row spells its own
+/// `SESSIONID` for the counterparty session, which `sendersessionid` already
+/// owns. `snapshotat` moves with them: it is what a snapshot stamps and
+/// nothing else, so its description says so and its column is nullable. The
+/// last thing to move it is the canonical documents becoming the arrays they
+/// always were: `fix:codes` is `[{...}]` where it was `{"codes":[{...}]}`,
+/// and `fix:lineage`, `fix:replacements` and `fix:directions` lose the same
+/// wrapper, so every shipped field carrying one holds different text for the
+/// same facts.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_300_787_928_050_199_931);
+    assert_eq!(registry.stable_hash(), 8_550_823_950_921_093_740);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        928 + super::crated_messages()
+        928 + super::crated_messages() + super::crated_components()
     );
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
 }

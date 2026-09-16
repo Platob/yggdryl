@@ -27,7 +27,9 @@ use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry};
 use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
 use yggdryl::types::temporal::Interval;
-use yggdryl::types::{Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};
+use yggdryl::types::{
+    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
+};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, Scalar, TimeUnit, Timezone, i256,
@@ -658,6 +660,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "sedol" => Sedol::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Code(Code::Sedol(value)))
+            .map_err(value_error),
+        "bloomberg" => Bloomberg::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Code(Code::Bloomberg(value)))
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Code(Code::Side(value)))

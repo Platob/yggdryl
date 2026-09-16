@@ -94,6 +94,7 @@ fn names(message: &FixMsg) -> Vec<&str> {
 }
 
 /// Initial business columns, the settled bundle, then facts restatement adds.
+///
 fn with_bundle<'a>(before: &[&'a str], after: &[&'a str]) -> Vec<&'a str> {
     before
         .iter()
@@ -102,12 +103,17 @@ fn with_bundle<'a>(before: &[&'a str], after: &[&'a str]) -> Vec<&'a str> {
             "sendingtime",
             "updatedat",
             "createdat",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "code",
             "snapshotat",
         ])
         .chain(after.iter().copied())
+        // Last, because it is enrichment's own fill rather than part of the
+        // settled bundle or of what restatement adds: it derives from
+        // `SendingTime`, which every settled message has, so every enriched
+        // message ends on it.
+        .chain(["recordedat"])
         .collect()
 }
 

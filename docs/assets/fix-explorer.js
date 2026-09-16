@@ -258,7 +258,7 @@
     body.append(grid(['Native answer', 'Value'], [
       ['MIME type', frame.mime], ['message code', frame.msgtype], ['direction', frame.direction],
       ['root', frame.root], ['field count', frame.size],
-      ['ticker', frame.ticker], ['updatedat', frame.clock], ['partition', frame.partition], ['digest', frame.digest],
+      ['ticker', frame.ticker], ['updatedat', frame.clock], ['snapshotat', frame.snapshot], ['digest', frame.digest],
     ]))
     body.append(make('h4', null, 'Native anomalies'), note(frame.anomalies.length ? frame.anomalies.join(', ') : 'No anomalies reported.'))
     const arrivals = panel('Raw arrivals', `${frame.arrivals.length} entries`)

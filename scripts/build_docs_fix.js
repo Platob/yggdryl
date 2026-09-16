@@ -400,7 +400,9 @@ function frameCase(registry, reader, schema, key, label, line) {
   const ticker = held.symbolTicker()
   // The settled grid clock every message carries (decision 26).
   const clock = held.updatedat()
-  const partition = held.timePartition(3600)
+  // The instant a snapshot of this chain was taken at, which an ordinary read
+  // never is, so it is empty here and says so.
+  const snapshot = held.byTag(65025)
   const text = escapedText([...bytes])
   return {
     key,
@@ -425,7 +427,7 @@ function frameCase(registry, reader, schema, key, label, line) {
     digest: Buffer.from(held.digest()).toString('hex'),
     ticker: ticker === null ? null : String(ticker.toJSON()),
     clock: String(clock.toJSON()),
-    partition: partition === null ? null : String(partition.toJSON()),
+    snapshot: snapshot.kind === 'null' ? null : String(snapshot.toJSON()),
     // What the package re-emits from the entries, which is the encoder's
     // proof: a composed frame that does not match this is a composed frame
     // that is wrong.

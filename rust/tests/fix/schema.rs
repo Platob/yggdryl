@@ -5,15 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::{
-    DataType, Field, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, fix_column_of, fix_schema,
-};
-
-/// One nanosecond UTC instant, the layout every settled clock and the
-/// partition have.
-fn clock(nanoseconds: i64) -> Scalar {
-    Scalar::datetime64(nanoseconds, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
-}
+use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -51,8 +43,23 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 107);
-    let (message, crated) = tags.split_at(tags.len() - 28);
+    assert_eq!(tags.len(), 117);
+    // The crate's own lead the row in three groups - clocks, identities,
+    // then the rest - and the protocol's own follow them.
+    let (crated, message) = tags.split_at(36);
+    assert_eq!(
+        crated,
+        [
+            65_003, 65_021, 65_023, 65_025, 65_028, 65_029, // clocks
+            65_016, 65_017, 65_018, 65_022, 65_024, // identities, and the code
+            65_001, 65_002, 65_005, 65_006, 65_007, 65_008, 65_009, 65_010, 65_011, 65_012, 65_013,
+            65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031, 65_032, 65_033, 65_034, 65_035,
+            65_036, 65_037, 65_038,
+        ]
+    );
+    // The arrival record closes the row, so its counter waits for the end
+    // with it rather than standing among the crate's other columns, and
+    // `MsgDirection` waits with it.
     assert_eq!(
         message,
         [
@@ -60,28 +67,25 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             BODY_TAGS.as_slice(),
             GROUP_TAGS.as_slice(),
             TRAILER_TAGS.as_slice(),
+            &[385, 65_027],
         ]
         .concat()
-    );
-    // The arrival record closes the row, so its counter waits for the end
-    // with it rather than standing among the crate's other columns.
-    assert_eq!(
-        crated,
-        (65_001..=65_026).chain([385, 65_027]).collect::<Vec<_>>()
     );
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
+    // The protocol's own close the row now that the crate's lead it, and the
+    // arrival record still closes everything.
     assert_eq!(
         &names[names.len() - 9..],
         [
-            "prevupdatedat",
-            "prevuuid",
-            "createdat",
-            "code",
-            "snapshotat",
-            "sourceurl",
+            "secaltidgrp",
+            "notrdregtimestamps",
+            "trdregtimestamps",
+            "signaturelength",
+            "signature",
+            "checksum",
             "msgdirection",
             "nofixentries",
             "fixentries",
@@ -89,7 +93,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     );
     for tag in [
         yggdryl::PREVUPDATEDAT_TAG_NAME.0,
-        yggdryl::PREVUUID_TAG_NAME.0,
+        yggdryl::PREVMSGHASH_TAG_NAME.0,
     ] {
         assert_eq!(
             schema
@@ -112,9 +116,16 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // A column is spelled by the dictionary's folded name and found by the
     // tag its field carries: 32 is `LastShares` in 4.2 and `LastQty` in a
     // newest one, and the column is the dictionary's one `lastqty` in both.
-    assert_eq!(&names[..3], ["beginstring", "bodylength", "msgtype"]);
-    assert_eq!(schema.index_of("msgtype"), Some(2));
-    assert_eq!(column_of(&schema, 35), 2);
+    // The crate's own clocks lead the row, then its identities, then the
+    // standard header - a table is read by time and joined by identity.
+    assert_eq!(&names[..3], ["updatedat", "prevupdatedat", "createdat"]);
+    let header = schema.index_of("beginstring").expect("the header opens");
+    assert_eq!(
+        &names[header..header + 3],
+        ["beginstring", "bodylength", "msgtype"]
+    );
+    assert_eq!(schema.index_of("msgtype"), Some(header + 2));
+    assert_eq!(column_of(&schema, 35), header + 2);
     assert_eq!(names[column_of(&schema, 32)], "lastqty");
     assert_eq!(names.last(), Some(&"fixentries"));
 
@@ -135,7 +146,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUPDATEDAT_TAG_NAME.0),
         typed(yggdryl::UPDATEDAT_TAG_NAME.0)
     );
-    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), super::identity_dtype());
+    assert_eq!(
+        typed(yggdryl::PREVMSGHASH_TAG_NAME.0),
+        super::identity_dtype()
+    );
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
@@ -144,7 +158,6 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::VERSION_TAG_NAME.0, "Version"),
         (yggdryl::SYMBOLTICKER_TAG_NAME.0, "SymbolTicker"),
         (yggdryl::UPDATEDAT_TAG_NAME.0, "UpdatedAt"),
-        (yggdryl::TIMEPARTITION_TAG_NAME.0, "TimePartition"),
         (yggdryl::PARENTCLORDID_TAG_NAME.0, "ParentClOrdID"),
         (yggdryl::PARENTORDERID_TAG_NAME.0, "ParentOrderID"),
         (yggdryl::SENDERSESSIONID_TAG_NAME.0, "SenderSessionId"),
@@ -157,16 +170,18 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
         (yggdryl::INSTUUID_TAG_NAME.0, "InstUuid"),
-        (yggdryl::UUID_TAG_NAME.0, "Uuid"),
-        (yggdryl::PUUID_TAG_NAME.0, "PUuid"),
+        (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
+        (yggdryl::MSGPHASH_TAG_NAME.0, "MsgPHash"),
         (yggdryl::PREVUPDATEDAT_TAG_NAME.0, "PrevUpdatedAt"),
-        (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
+        (yggdryl::PREVMSGHASH_TAG_NAME.0, "PrevMsgHash"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
-    // The seven replay holders, BeginString and derived partition are required.
+    // The replay bundle and BeginString are required, and nothing else:
+    // `snapshotat` is only what a snapshot stamps, so it is nullable like
+    // every other column a message may not state.
     let required: Vec<&str> = fields
         .iter()
         .filter(|field| !field.is_nullable())
@@ -175,15 +190,13 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "beginstring",
-            "sendingtime",
             "updatedat",
-            "timepartition",
-            "uuid",
-            "puuid",
             "createdat",
+            "msghash",
+            "msgphash",
             "code",
-            "snapshotat"
+            "beginstring",
+            "sendingtime"
         ]
     );
 }
@@ -194,7 +207,8 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
     use yggdryl::{
-        FixMsg, INSTUUID_TAG_NAME, IOMedia, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME,
+        FixMsg, INSTUUID_TAG_NAME, IOMedia, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     };
 
     let (registry, codec) = reader();
@@ -210,7 +224,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
                 0xee, 0xff,
             ],
         ),
-        (PREVUUID_TAG_NAME, [0xff; 16]),
+        (PREVMSGHASH_TAG_NAME, [0xff; 16]),
     ];
     message
         .set_many(
@@ -233,7 +247,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    for (tag, _) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+    for (tag, _) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME] {
         super::identity_bytes(at(&row, &schema, tag));
     }
     assert_eq!(
@@ -262,9 +276,9 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     );
     for (_, name) in [
         INSTUUID_TAG_NAME,
-        UUID_TAG_NAME,
-        PUUID_TAG_NAME,
-        PREVUUID_TAG_NAME,
+        MSGHASH_TAG_NAME,
+        MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     ] {
         // Plain sixteen bytes, with no extension name over them: a lake
         // engine reads the storage and nothing has to know the extension.
@@ -408,7 +422,7 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
         .unwrap();
     let row = order.into_row(&schema).unwrap();
 
-    super::identity_bytes(at(&row, &schema, yggdryl::UUID_TAG_NAME.0));
+    super::identity_bytes(at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
@@ -416,29 +430,9 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
         Some("AAPL@XNAS"),
     );
 
-    // The clock, and the partition it falls in - the hour, floored, as the
-    // same instant layout, so a row lands in the partition that contains it
-    // and the column ranges exactly as the clock does.
+    // The clock the row is cut by - how a layout is cut from it is the
+    // target's, not a column of this crate's.
     assert!(!at(&row, &schema, yggdryl::UPDATEDAT_TAG_NAME.0).is_null());
-    let partition = at(&row, &schema, yggdryl::TIMEPARTITION_TAG_NAME.0);
-    let seconds = 1_704_190_530_i64; // 2024-01-02T10:15:30Z
-    assert_eq!(
-        partition,
-        &clock((seconds - seconds % yggdryl::DEFAULT_PARTITION_SECONDS) * 1_000_000_000)
-    );
-    assert_eq!(partition, &order.time_partition());
-    assert_eq!(
-        partition.dtype().unwrap(),
-        at(&row, &schema, yggdryl::UPDATEDAT_TAG_NAME.0)
-            .dtype()
-            .unwrap()
-    );
-    // Floored rather than truncated toward zero, so a clock before the epoch
-    // lands in the hour that contains it rather than the one after.
-    let early = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=B|60=19691231-23:30:00.000|10=0|", false)
-        .unwrap();
-    assert_eq!(early.time_partition(), clock(-3_600_000_000_000));
 
     // The version it was read at, which is not always what the frame claimed.
     assert_eq!(
@@ -448,7 +442,7 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
 
     // Hard identities and clocks are stored mirrors, never invented arrivals.
     assert!(order.get_by_tag(65_000).is_none());
-    assert!(order.get_by_tag(yggdryl::UUID_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG_NAME.0).is_some());
     assert!(order.get_by_tag(yggdryl::UPDATEDAT_TAG_NAME.0).is_some());
     assert!(
         order
@@ -529,9 +523,30 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let unknown: Vec<_> = entries
         .iter()
         .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
-        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .map(|entry| entry.get(3).and_then(Scalar::as_str).unwrap())
         .collect();
     assert_eq!(unknown, ["9999", "VenueOwnThing"]);
+
+    // A key no dictionary explains is named after itself: `tagname` cannot be
+    // null, and the arrival's own spelling is the only name it has.
+    let named: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
+        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .collect();
+    assert_eq!(named, ["9999", "VenueOwnThing"]);
+
+    // A key one does explain carries the dictionary's name beside the
+    // arrival's, so a consumer groups by name without a dictionary of its own.
+    let beginstring = entries
+        .iter()
+        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(8))
+        .expect("the BeginString arrival");
+    assert_eq!(
+        beginstring.get(1).and_then(Scalar::as_str),
+        Some("beginstring")
+    );
+    assert_eq!(beginstring.get(3).and_then(Scalar::as_str), Some("8"));
 }
 
 /// The two documents a datatype writes name it the same way.
@@ -580,100 +595,6 @@ fn a_datatype_is_named_the_same_by_both_documents() {
     }
 }
 
-#[test]
-fn a_batch_missing_the_partition_is_filled_with_the_hour_of_updatedat() {
-    use arrow_array::{Array, TimestampNanosecondArray};
-    use yggdryl::ArrowCastOptions;
-
-    const LINES: [&str; 2] = [
-        "8=FIX.4.4|35=D|11=A|60=20240102-10:15:30.000|10=0|",
-        "8=FIX.4.4|35=8|37=O1|60=20240102-11:59:59.999|10=0|",
-    ];
-
-    let (registry, codec) = reader();
-    let codec = codec.with_separator(b'|');
-    let schema = fix_schema(&registry, "fix").unwrap();
-    let mut batch = codec
-        .arrow_reader(schema.clone(), codec.parse_lines(LINES))
-        .expect("a reader")
-        .next()
-        .expect("one batch")
-        .expect("read");
-    let at = column_of(&schema, yggdryl::TIMEPARTITION_TAG_NAME.0);
-    let updatedat = column_of(&schema, yggdryl::UPDATEDAT_TAG_NAME.0);
-    let stamped = batch.remove_column(at);
-
-    // The crate field declares how it derives, so the schema fills the
-    // column it is missing - at its declared position, typed as declared -
-    // with exactly what a row carries: `updatedat` floored to the hour.
-    assert_eq!(batch.num_columns() + 1, schema.field_len());
-    let applied = schema
-        .apply_arrow_batch(&batch, false, true, true, ArrowCastOptions::new())
-        .expect("the declared derivation applies");
-    assert_eq!(applied.num_columns(), schema.field_len());
-    assert_eq!(applied.schema().field(at).name(), "timepartition");
-    let filled = applied
-        .column(at)
-        .as_any()
-        .downcast_ref::<TimestampNanosecondArray>()
-        .expect("the partition is a nanosecond instant");
-    let clocks = applied
-        .column(updatedat)
-        .as_any()
-        .downcast_ref::<TimestampNanosecondArray>()
-        .expect("the clock is a nanosecond instant");
-    assert_eq!(filled.null_count(), 0);
-    let hour = yggdryl::DEFAULT_PARTITION_SECONDS * 1_000_000_000;
-    for row in 0..applied.num_rows() {
-        assert_eq!(filled.value(row), clocks.value(row).div_euclid(hour) * hour);
-    }
-    assert_eq!(filled.value(0), 1_704_189_600_000_000_000);
-    assert_eq!(filled.value(1), 1_704_193_200_000_000_000);
-    // Which is the column the reader had written, so a batch that carries
-    // the column is left exactly as it is.
-    assert_eq!(applied.column(at).as_ref(), stamped.as_ref());
-    let again = schema
-        .apply_arrow_batch(&applied, false, true, true, ArrowCastOptions::new())
-        .expect("applying twice changes nothing");
-    assert_eq!(again, applied);
-}
-
-#[cfg(feature = "iceberg")]
-#[test]
-fn the_fixed_schema_partitions_by_identity_on_timepartition() {
-    use yggdryl::media::iceberg::{PartitionSpec, Transform, assign_field_ids};
-
-    let (registry, _) = reader();
-    let mut schema = fix_schema(&registry, "fix").unwrap();
-    // The one column a layout is cut on, marked on the schema itself.
-    assert_eq!(
-        schema.partition_field_names().collect::<Vec<_>>(),
-        ["timepartition"]
-    );
-    let partition = &schema.fields()[column_of(&schema, yggdryl::TIMEPARTITION_TAG_NAME.0)];
-    assert!(!partition.is_nullable());
-    assert_eq!(
-        partition.as_partition().sources().unwrap(),
-        Some(vec!["updatedat".to_owned()])
-    );
-    assert_eq!(partition.get_metadata("iceberg:transform"), None);
-
-    // An Iceberg spec built from it partitions by identity on that column,
-    // so manifest and file pruning read the column's own bounds.
-    assign_field_ids(&mut schema, 1).unwrap();
-    let spec = PartitionSpec::from_schema(0, &schema).unwrap();
-    assert!(!spec.is_unpartitioned());
-    let fields = &spec.fields;
-    assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0].name, "timepartition");
-    assert_eq!(fields[0].transform, Transform::Identity);
-    let source = &schema.fields()[column_of(&schema, yggdryl::TIMEPARTITION_TAG_NAME.0)];
-    assert_eq!(
-        Some(fields[0].source_id),
-        source.parquet_field_id().unwrap()
-    );
-}
-
 /// The four identity columns cross a lake as `fixed[16]`, byte for byte.
 ///
 /// This is the whole reason they are bytes: an Iceberg table maps
@@ -687,7 +608,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{INSTUUID_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME};
+    use yggdryl::{INSTUUID_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -708,9 +629,9 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .collect();
     let identities = [
         INSTUUID_TAG_NAME,
-        UUID_TAG_NAME,
-        PUUID_TAG_NAME,
-        PREVUUID_TAG_NAME,
+        MSGHASH_TAG_NAME,
+        MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     ];
     // Read off the projected row, because the fixed schema is what the table
     // holds and a projection is content: `uuid` digests the row it lands in
@@ -751,9 +672,9 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .join(format!("yggdryl-fix-identity-lake-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).unwrap();
-    // Unpartitioned: what is pinned here is the identity columns' storage,
-    // not the layout the hour is cut on, which
-    // `the_fixed_schema_partitions_by_identity_on_timepartition` owns.
+    // Unpartitioned: what is pinned here is the identity columns' storage.
+    // How a layout is cut is the target's - an Iceberg table takes an `hour`
+    // transform over `updatedat` - and no longer a column of this crate's.
     let mut table = Table::create(
         Folder::new(&path).unwrap(),
         FormatVersion::V2,
@@ -841,7 +762,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     assert!(at(&row, &schema, yggdryl::ISINCODE_TAG_NAME.0).is_null());
     // The row is still a row: the columns beside the unreadable ones are
     // filled, and the identity bundle still settled.
-    assert!(!at(&row, &schema, yggdryl::UUID_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0).is_null());
 }
 
 /// A market spelled wider than a MIC derives nothing rather than refusing.

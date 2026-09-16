@@ -9,8 +9,8 @@ use super::{
 use yggdryl::types::nested::Mapping;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, DataType, Error, Field, FixCategory, FixLifecycle, FixMsg,
-    FixRegistry, INSTUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
-    UUID_TAG_NAME,
+    FixRegistry, INSTUUID_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, Scalar, TimeUnit,
+    Timezone, UPDATEDAT_TAG_NAME,
 };
 
 fn field(name: &str, tag: i32, dtype: DataType) -> Field {
@@ -93,7 +93,7 @@ fn event(
     row(registry, cells)
 }
 
-fn uuid(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
+fn tagged_identity(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
     message
         .get_by_tag(tag)
         .filter(|value| !value.is_null())
@@ -101,7 +101,7 @@ fn uuid(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
 }
 
 fn chain(message: &FixMsg) -> [u8; 16] {
-    uuid(message, PUUID_TAG_NAME.0).expect("every message has its code identity")
+    tagged_identity(message, MSGPHASH_TAG_NAME.0).expect("every message has its code identity")
 }
 
 fn located(error: Error, expected: &str) {
@@ -155,23 +155,23 @@ fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomic
         .fill(event(&registry, Some(scope), None, 0, &[("id", "A")]))
         .unwrap();
     let mut message = event(&registry, Some(scope), None, 1, &[("id", "A")]);
-    for tag in [UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
+    for tag in [MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
         let before = message.clone();
         located(
             message
                 .set(tag, identity_scalar(numbered_identity(456)))
                 .unwrap_err(),
-            if tag == UUID_TAG_NAME.0 {
-                "$.uuid"
+            if tag == MSGHASH_TAG_NAME.0 {
+                "$.msghash"
             } else {
-                "$.puuid"
+                "$.msgphash"
             },
         );
         assert_eq!(message, before);
     }
     let resolved = life.fill(message).unwrap();
     assert_eq!(chain(&resolved), chain(&original));
-    assert_eq!(uuid(&resolved, INSTUUID_TAG_NAME.0), Some(scope));
+    assert_eq!(tagged_identity(&resolved, INSTUUID_TAG_NAME.0), Some(scope));
     assert_eq!(life.alive(), 1);
 }
 
@@ -195,7 +195,7 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
         );
         let expected = persistent_identity(&code);
         assert_eq!(chain(&message), expected);
-        assert_eq!(uuid(&message, INSTUUID_TAG_NAME.0), scope);
+        assert_eq!(tagged_identity(&message, INSTUUID_TAG_NAME.0), scope);
         assert!(!chains.contains(&expected));
         chains.push(expected);
     }
@@ -590,8 +590,12 @@ fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup(
             Scalar::from("00000000-0000-0000-0000-000000000000"),
             "$.instuuid",
         ),
-        (PUUID_TAG_NAME.0, Scalar::from(vec![0_u8; 16]), "$.puuid"),
-        (UUID_TAG_NAME.0, Scalar::from(1_i64), "$.uuid"),
+        (
+            MSGPHASH_TAG_NAME.0,
+            Scalar::from(vec![0_u8; 16]),
+            "$.msgphash",
+        ),
+        (MSGHASH_TAG_NAME.0, Scalar::from(1_i64), "$.msghash"),
     ];
     for (tag, value, path) in invalid {
         let mut life = FixLifecycle::new(Arc::clone(&registry));
@@ -607,7 +611,7 @@ fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup(
             cells.push((ALTIDS_TAG_NAME.0, mapping(&[("a", "LIVE"), ("b", "NEW")])));
         }
         let built = try_row(&registry, cells);
-        let error = if [UUID_TAG_NAME.0, PUUID_TAG_NAME.0].contains(&tag) {
+        let error = if [MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0].contains(&tag) {
             built.unwrap_err()
         } else {
             life.fill(built.unwrap()).unwrap_err()
@@ -721,7 +725,7 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
             }
             // Mandatory wrong layouts fail before a message exists; the
             // reported actual datatype itself is bounded, not the payload.
-            for (tag, name) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+            for (tag, name) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME] {
                 let Error::InvalidRecord { path, reason } =
                     try_row(&registry, [(tag, Scalar::from(long.clone()))]).unwrap_err()
                 else {
@@ -749,11 +753,11 @@ fn a_stated_foreign_hash_cannot_manufacture_an_unrelated_chain_collision() {
     located(
         message
             .set(
-                PUUID_TAG_NAME.0,
+                MSGPHASH_TAG_NAME.0,
                 identity_scalar(persistent_identity("-/NEW")),
             )
             .unwrap_err(),
-        "$.puuid",
+        "$.msgphash",
     );
     assert_eq!(message, before);
     let mut life = FixLifecycle::new(Arc::clone(&registry));

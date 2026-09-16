@@ -48,6 +48,7 @@ mod arrow;
 #[cfg(feature = "arrow")]
 pub(crate) mod casts;
 /// The ten registered codes' values.
+mod cfi;
 mod code;
 mod codes;
 mod dictionary;
@@ -59,13 +60,15 @@ mod registries;
 mod scalars;
 
 pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
+pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};
 pub use code::{
-    Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
+    Bloomberg, Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State,
+    TimeInForce,
 };
 pub(crate) use codes::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH,
-    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_text, code_cell_text,
-    code_extension_name, code_for_extension,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_text,
+    code_cell_text, code_extension_name, code_for_extension,
 };
 #[cfg(feature = "arrow")]
 pub(crate) use codes::{code_refusal, code_text};

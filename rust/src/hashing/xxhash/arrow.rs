@@ -1211,6 +1211,7 @@ fn feed_cell(
         | DataType::Isin
         | DataType::Cusip
         | DataType::Sedol
+        | DataType::Bloomberg
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce

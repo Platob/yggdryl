@@ -5,11 +5,11 @@ use std::sync::Arc;
 use super::{identity_bytes, identity_dtype, identity_scalar, numbered_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
-    UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar,
+    TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
-const IDENTITIES: [(i32, &str); 3] = [UUID_TAG_NAME, PUUID_TAG_NAME, INSTUUID_TAG_NAME];
+const IDENTITIES: [(i32, &str); 3] = [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, INSTUUID_TAG_NAME];
 
 fn field((tag, name): (i32, &str), dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
@@ -68,7 +68,7 @@ fn custom_registry(base: &FixRegistry, target: &Field, registered: bool) -> Arc<
     Arc::new(registry)
 }
 
-fn uuid(message: &FixMsg, tag: i32) -> [u8; 16] {
+fn tagged_identity(message: &FixMsg, tag: i32) -> [u8; 16] {
     identity_bytes(message.by_tag(tag).unwrap())
 }
 
@@ -127,7 +127,7 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
                     .unwrap();
                 for (tag, _) in IDENTITIES {
-                    uuid(&accepted, tag);
+                    tagged_identity(&accepted, tag);
                 }
                 assert_eq!(life.alive(), 1);
             }
@@ -149,7 +149,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
                 let live = life
                     .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false).unwrap())
                     .unwrap();
-                let persistent = uuid(&live, PUUID_TAG_NAME.0);
+                let persistent = tagged_identity(&live, MSGPHASH_TAG_NAME.0);
                 let message = event(
                     Arc::clone(&custom),
                     &[("a", "LIVE"), ("b", "NEW")],
@@ -166,12 +166,15 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
                 let independent = life
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
                     .unwrap();
-                assert_ne!(uuid(&independent, PUUID_TAG_NAME.0), persistent);
+                assert_ne!(
+                    tagged_identity(&independent, MSGPHASH_TAG_NAME.0),
+                    persistent
+                );
                 assert_eq!(life.alive(), 2, "a refusal cannot attach the new alias");
                 let unchanged = life
                     .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false).unwrap())
                     .unwrap();
-                assert_eq!(uuid(&unchanged, PUUID_TAG_NAME.0), persistent);
+                assert_eq!(tagged_identity(&unchanged, MSGPHASH_TAG_NAME.0), persistent);
                 assert_eq!(life.alive(), 2);
             }
         }
@@ -198,7 +201,7 @@ fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_rety
                 .try_with_interval_ns(1)
                 .unwrap();
             let message = life.fill(message.unwrap()).unwrap();
-            uuid(&message, identity.0);
+            tagged_identity(&message, identity.0);
             assert_eq!(
                 message.as_field().get_field(identity.1).unwrap().dtype(),
                 &identity_dtype(),
@@ -249,7 +252,7 @@ fn previous(message: &FixMsg, expected: Option<(i64, [u8; 16])>) {
         message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
         &timestamp
     );
-    assert_eq!(message.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &uuid);
+    assert_eq!(message.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(), &uuid);
 }
 
 fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), DataType)> {
@@ -272,7 +275,7 @@ fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), Data
             ],
         ),
         (
-            PREVUUID_TAG_NAME,
+            PREVMSGHASH_TAG_NAME,
             vec![
                 clock_type(),
                 DataType::utf8(),
@@ -359,7 +362,7 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
                             101,
                         ))
                         .unwrap();
-                    let persistent = uuid(&live, PUUID_TAG_NAME.0);
+                    let persistent = tagged_identity(&live, MSGPHASH_TAG_NAME.0);
                     previous(&live, None);
                     let rejected = timed_event(
                         Arc::clone(&custom),
@@ -381,8 +384,11 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
                             303,
                         ))
                         .unwrap();
-                    assert_eq!(uuid(&next, PUUID_TAG_NAME.0), persistent);
-                    previous(&next, Some((101, uuid(&live, UUID_TAG_NAME.0))));
+                    assert_eq!(tagged_identity(&next, MSGPHASH_TAG_NAME.0), persistent);
+                    previous(
+                        &next,
+                        Some((101, tagged_identity(&live, MSGHASH_TAG_NAME.0))),
+                    );
                     let independent = life
                         .fill(timed_event(
                             Arc::clone(&registry),
@@ -393,7 +399,10 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
                             404,
                         ))
                         .unwrap();
-                    assert_ne!(uuid(&independent, PUUID_TAG_NAME.0), persistent);
+                    assert_ne!(
+                        tagged_identity(&independent, MSGPHASH_TAG_NAME.0),
+                        persistent
+                    );
                     previous(&independent, None);
                     assert_eq!(life.alive(), 2, "a refusal cannot attach an identifier");
                 }
@@ -407,7 +416,7 @@ fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
     let registry = Arc::new(FixRegistry::new());
     for (identity, dtype) in [
         (PREVUPDATEDAT_TAG_NAME, clock_type()),
-        (PREVUUID_TAG_NAME, identity_dtype()),
+        (PREVMSGHASH_TAG_NAME, identity_dtype()),
     ] {
         let target = field((identity.0, "custom_previous"), dtype.clone());
         for registered in [false, true] {
@@ -427,7 +436,7 @@ fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
                 );
                 let message = life.fill(message).unwrap();
                 previous(&message, expected);
-                expected = Some((instant, uuid(&message, UUID_TAG_NAME.0)));
+                expected = Some((instant, tagged_identity(&message, MSGHASH_TAG_NAME.0)));
                 assert_eq!(
                     message
                         .as_field()

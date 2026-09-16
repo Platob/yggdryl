@@ -8,7 +8,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::types::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::{
     ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME,
-    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
+    MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME,
 };
 
@@ -75,7 +75,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
             )
             .expect("a later arrival stating an earlier creation instant");
         assert_ne!(scoped.createdat(), later.createdat());
-        assert_eq!(scoped.uuid(), later.uuid(), "creation alone is not content");
+        assert_eq!(
+            scoped.msghash(),
+            later.msghash(),
+            "creation alone is not content"
+        );
         derived.extend([scoped, later]);
     }
     let stated = codec
@@ -111,15 +115,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
             if expected_chains != 0 && index % 2 == 1 {
                 let (timestamp, uuid) = previous.as_ref().expect("the scope's first message");
                 assert_eq!(stamped.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), timestamp);
-                assert_eq!(stamped.by_tag(PREVUUID_TAG_NAME.0).unwrap(), uuid);
+                assert_eq!(stamped.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(), uuid);
             } else {
-                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVMSGHASH_TAG_NAME.0] {
                     assert_eq!(stamped.by_tag(tag).unwrap(), &Scalar::Null, "{name}");
                 }
             }
-            previous = Some((stamped.updatedat().clone(), stamped.uuid().clone()));
+            previous = Some((stamped.updatedat().clone(), stamped.msghash().clone()));
             if expected_chains != 0 {
-                let Scalar::Bytes(value) = stamped.by_tag(PUUID_TAG_NAME.0).unwrap() else {
+                let Scalar::Bytes(value) = stamped.by_tag(MSGPHASH_TAG_NAME.0).unwrap() else {
                     panic!("sixteen code identity bytes");
                 };
                 identities.insert(value.as_bytes().to_vec());
@@ -169,7 +173,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         for (index, snapshot) in snapshots.iter().enumerate() {
             assert_eq!(snapshot.updatedat(), message.updatedat());
             assert_eq!(snapshot.createdat(), rows[index * 2].createdat());
-            assert!(snapshot.by_tag(PREVUUID_TAG_NAME.0).unwrap().is_null());
+            assert!(snapshot.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap().is_null());
         }
         group.bench_function(format!("{name}_snapshots"), |bencher| {
             bencher.iter_batched(

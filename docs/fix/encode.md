@@ -81,7 +81,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - `BodyLength` and `CheckSum` retain the values that arrived; emission does not
   repair an invalid frame.
 - Enum display names in a typed row do not replace the original wire codes.
-- Settled values the codec supplied - a default `SendingTime`, `updatedat`, `uuid` and the rest - are row values, never entries, so they are never emitted.
+- Settled values the codec supplied - a default `SendingTime`, `updatedat`, `msghash` and the rest - are row values, never entries, so they are never emitted.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)

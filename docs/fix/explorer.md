@@ -18,7 +18,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,265 |
+| Scalar fields | 6,241 | 6,267 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 929 |
 | Messages, a subset of components | 181 | 182 |
@@ -33,7 +33,7 @@ The live additions are the crate's 26 scalar fields, the `altids` group and the 
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_267);
+    assert_eq!(registry.len(), 6_276);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.definition(FixCategory::Groups, "parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -61,7 +61,7 @@ The live additions are the crate's 26 scalar fields, the `altids` group and the 
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_267
+    assert len(registry) == 6_276
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
@@ -88,7 +88,7 @@ The live additions are the crate's 26 scalar fields, the `altids` group and the 
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_267)
+    assert.equal(registry.size, 6_276)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)

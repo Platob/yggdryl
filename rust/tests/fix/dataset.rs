@@ -676,12 +676,9 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             transact
         };
         assert_eq!(&held[column(yggdryl::UPDATEDAT_TAG_NAME.0)], event);
-        assert_eq!(&held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)], event);
         assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
-        assert!(
-            !held[column(yggdryl::TIMEPARTITION_TAG_NAME.0)].is_null(),
-            "row {row} has a partition"
-        );
+        // A read is not a snapshot, so no row of a capture carries one.
+        assert!(held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)].is_null());
         assert!(
             held[column(8)]
                 .as_str()
@@ -690,7 +687,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             held[column(8)]
         );
         assert_eq!(
-            super::identity_bytes(&held[column(yggdryl::UUID_TAG_NAME.0)]).len(),
+            super::identity_bytes(&held[column(yggdryl::MSGHASH_TAG_NAME.0)]).len(),
             16,
             "row {row} has a sixteen-byte content identity"
         );
@@ -698,16 +695,25 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // uid is the bridge's own and is carried in front, so `sendersessionid`
         // holds only what the message itself spelled - a bridge row's
         // `SESSIONID`, and nothing on any other line.
-        let context = &text[line_of(row)][at(&text_names, "msgCtxId")];
+        let context = &text[line_of(row)][at(&text_names, "msgctxid")];
         assert_eq!(
             &held[column(yggdryl::MSGCTXID_TAG_NAME.0)],
             context,
             "row {row} context"
         );
-        // The session column reads the message's own statement where the line
-        // makes one, and the instance its bridge bracketed in front of the
-        // line where it does not - a fill never lands over a stated reading.
-        let uid = &text[line_of(row)][at(&text_names, "senderSessionId")];
+        // `bridgesessionid` is the session *instance* the bridge handled the
+        // line on, which the bracket states and no message carries; the
+        // capture is named for that column, so the bracket's reading lands
+        // there and nowhere else.
+        let instance = &text[line_of(row)][at(&text_names, "bridgesessionid")];
+        assert_eq!(
+            &held[column(yggdryl::BRIDGESESSIONID_TAG_NAME.0)],
+            instance,
+            "row {row} session instance from the bracket"
+        );
+        // `sendersessionid` stays the message's own statement and nothing
+        // else: `SenderCompID` names a counterparty, and two connections to
+        // one counterparty are two sessions, so they are two facts.
         let session = &held[column(yggdryl::SENDERSESSIONID_TAG_NAME.0)];
         let line = body(&text_names, &text[line_of(row)]);
         if line.contains("|SESSIONID=") {
@@ -716,7 +722,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
                 "row {row} states its own session"
             );
         } else {
-            assert_eq!(session, uid, "row {row} session from the bracket");
+            assert!(session.is_null(), "row {row} states no session of its own");
         }
         // The plugin that logged the line is the bracket's own capture, on
         // every row the line read into - and it is never anything else: the
@@ -756,7 +762,12 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .expect("the Jolokia read");
     let jolokia = row_of(jolokia);
     assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG_NAME.0)].is_null());
+    assert!(rows[jolokia][column(yggdryl::BRIDGESESSIONID_TAG_NAME.0)].is_null());
     assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG_NAME.0)].is_null());
+    // And with no session and no context, neither joined identifier is half
+    // a name: a concatenation of nothing is nothing.
+    assert!(rows[jolokia][column(yggdryl::SESSIONMSGID_TAG_NAME.0)].is_null());
+    assert!(rows[jolokia][column(yggdryl::SESSIONMSGSEQID_TAG_NAME.0)].is_null());
     let stating = |key: &str| {
         text.iter()
             .position(|held| body(&text_names, held).contains(&format!("|{key}")))
@@ -798,7 +809,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .expect("a routed row");
     assert_eq!(
         &rows[row_of(routed)][column(34)],
-        &text[routed][at(&text_names, "seqNum")]
+        &text[routed][at(&text_names, "msgseqnum")]
     );
     let fill = text
         .iter()

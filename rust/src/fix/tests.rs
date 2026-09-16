@@ -13,7 +13,6 @@ use crate::fix::{
     FixCodes, FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
 };
 use crate::holder::local::Folder;
-use crate::types::BytesParameters;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixLineage,
     FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
@@ -94,6 +93,18 @@ fn seeded_fields() -> usize {
 /// spelling `1` keeps every total below true of the next one too.
 fn crated_messages() -> usize {
     usize::from(crate::fix_plugin_message().is_ok())
+}
+
+/// The named components this crate defines beside the dictionary's own.
+///
+/// A definition is filed by the shape it has, so every crate column shaped as
+/// a Struct is a component: `instids` is one.
+fn crated_components() -> usize {
+    crate::fix_crate_fields()
+        .expect("the crate's own fields")
+        .iter()
+        .filter(|field| matches!(field.dtype(), DataType::Struct(_)))
+        .count()
 }
 
 /// The crate's own field names, in the order every registry iterates them:
@@ -949,10 +960,20 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `isincode`, `miccode` and `state` derive on the fields themselves -
     // `isincode` reading each identifier through `try_cast(... as isin)` -
     // and finally types the four identity columns as `fixed_size_binary(16)`
-    // rather than `uuid`. The crate's own `sourceurl` and `nofixentries`
-    // moved it last: where a line was read from is a column of the row, and
-    // the arrival record is a group with a counter of its own.
-    assert_eq!(carrying.stable_hash(), 16_480_440_802_188_505_214);
+    // rather than `uuid` - the Arrow type, which no two lake engines read
+    // alike. The crate's own `sourceurl` and `nofixentries` moved it after
+    // that: where a line was read from is a column of the row, and the
+    // arrival record is a group with a counter of its own. It moved last for
+    // the spellings, `msghash`/`msgphash`/`prevmsghash` replacing
+    // `uuid`/`puuid`/`prevuuid` on the same tags and layouts, and then the
+    // four columns after them: `recordedat`, `expiredat` and the two lane
+    // currencies, each declaring how it fills on the field itself. It moved
+    // when `timepartition` went - how a layout is cut is the target's - and
+    // when the columns settled to one message said so with `fix:transient`.
+    // It moved last for the bridge's own names, the three identifiers beside
+    // `isincode`, the struct that joins them, and `snapshotat` saying that
+    // only a snapshot stamps it.
+    assert_eq!(carrying.stable_hash(), 18_403_013_702_931_979_337);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -1823,12 +1844,15 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     assert_eq!(registry.msgtype("VenueOrder").unwrap().name(), "VenueOrder");
     assert_eq!(registry.msgtype("venue_order").unwrap().as_str(), "D");
     assert_eq!(registry.msgtype("neworder_single").unwrap().as_str(), "D");
-    // The two this test added, behind the one every registry starts with.
+    // The two this test added, behind the ones every registry starts with -
+    // the crate's own message and its `instids` component.
     assert_eq!(
         registry
             .definitions(FixCategory::Components)
             .map(Field::name)
-            .filter(|name| *name != crate::PLUGINCONFIG_CODE_NAME.1)
+            .filter(|name| {
+                *name != crate::PLUGINCONFIG_CODE_NAME.1 && *name != crate::INSTIDS_TAG_NAME.1
+            })
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "VenueOrder"]
     );
@@ -5039,7 +5063,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     // which every registry carries (decision 19).
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        928 + crated_messages()
+        928 + crated_messages() + crated_components()
     );
     assert_eq!(registry.msgtypes().count(), 181 + crated_messages());
 }
@@ -5552,10 +5576,10 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let DataType::List(item) = held.dtype() else {
         panic!("a list, got {}", held.dtype());
     };
-    // Exactly three fixentry levels on every root-to-leaf path, each with
-    // the same four members - what the line said and what FIX added, and
-    // nothing the message already answers - the fourth a non-null
-    // fixentries that is a deeper list twice and the binary leaf at the
+    // Exactly three fixentry levels on every root-to-leaf path, each with the
+    // same five members - what the line said, what the dictionary made of it,
+    // and nothing the message already answers - the fifth a fixentries that
+    // is a non-null deeper list twice and the nullable text leaf at the
     // bottom.
     let mut held = item;
     for level in 1..=3 {
@@ -5565,7 +5589,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         let names: Vec<&str> = members.iter().map(Field::name).collect();
         assert_eq!(
             names,
-            ["tag", "key", "value", "fixentries"],
+            ["tagnum", "tagname", "tagvalue", "tagkey", "fixentries"],
             "{column} level {level}",
         );
         assert_eq!(
@@ -5573,11 +5597,23 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
             &DataType::Int32,
             "{column} level {level}"
         );
-        let tail = &members[3];
-        assert!(!tail.is_nullable(), "{column} level {level} tail");
+        // The dictionary's name for the arrival is the one member that cannot
+        // be null: a consumer groups a wire name by it without a dictionary
+        // of its own, so an absence there would be its problem to solve.
+        assert!(!members[1].is_nullable(), "{column} level {level} tagname");
+        assert!(members[2].is_nullable(), "{column} level {level} tagvalue");
+        assert!(members[3].is_nullable(), "{column} level {level} tagkey");
+        let tail = &members[4];
         match tail.dtype() {
-            DataType::List(deeper) if level < 3 => held = deeper,
-            DataType::Bytes(bytes) if level == 3 && *bytes == BytesParameters::default() => {
+            DataType::List(deeper) if level < 3 => {
+                assert!(!tail.is_nullable(), "{column} level {level} tail");
+                held = deeper;
+            }
+            DataType::String(_) if level == 3 => {
+                // Nullable, because "nothing was folded" is an absence and a
+                // leaf that spelled it as the empty string could not be told
+                // from one that folded an empty subtree.
+                assert!(tail.is_nullable(), "{column} level {level} tail");
                 break;
             }
             other => panic!("{column} level {level}: {other}"),
@@ -5644,25 +5680,30 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         .as_sequence()
         .expect("the arrival column");
     let level1 = entries[1].as_sequence().expect("the counter entry");
-    let level2 = level1[3].as_sequence().expect("one child list")[0]
+    let level2 = level1[4].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-2 entry")
         .to_vec();
-    let level3 = level2[3].as_sequence().expect("one child list")[0]
+    let level3 = level2[4].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-3 entry")
         .to_vec();
-    let leaf = level3[3].as_bytes().expect("the binary leaf");
+    let leaf = level3[4].as_str().expect("the folded text leaf");
     assert!(!leaf.is_empty(), "two levels folded into it");
 
     // The leaf recovers exactly the folded entries through the one JSON
     // parser this crate has: level 4 carrying level 5.
-    let decoded = crate::from_json_scalar(leaf).expect("a decodable leaf");
+    let decoded = crate::from_json_scalar(leaf.as_bytes()).expect("a decodable leaf");
     let folded = decoded.as_sequence().expect("the folded children");
     assert_eq!(folded.len(), 1);
     let level4 = folded[0].as_sequence().expect("the level-4 entry").to_vec();
     assert_eq!(level4[0].as_i64(), Some(453));
-    let level5 = level4[3].as_sequence().expect("its children")[0]
+    // A folded entry carries the same five members in the same order as a
+    // materialized one, so a reader walks the decode exactly as it walks the
+    // levels above it.
+    assert_eq!(level4.len(), 5);
+    assert_eq!(level4[1].as_str(), Some("nopartyids"));
+    let level5 = level4[4].as_sequence().expect("its children")[0]
         .as_sequence()
         .expect("the level-5 entry")
         .to_vec();
@@ -5672,7 +5713,7 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     // A flat sibling's child list is empty: nothing arrived under it and
     // nothing was folded for it.
     let flat = entries[0].as_sequence().expect("the msgtype entry");
-    assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
+    assert_eq!(flat[4].as_sequence().map(<[Scalar]>::len), Some(0));
 
     // Wire emission walks the whole tree pre-order, so what comes back is
     // what went in.
@@ -5777,7 +5818,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 54, "{names:?}");
+    assert_eq!(names.len(), 65, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -5798,8 +5839,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        32,
-        "29 shipped fields and the crate's three columns"
+        39,
+        "29 shipped fields and the crate's ten columns"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -5841,7 +5882,10 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
         .map(|field| field.name().to_owned())
         .collect();
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
-    assert_eq!(names.len(), 54, "the edit reads a column another rule read");
+    // The four columns added after `state` read eight sources between them -
+    // the expiry chain's four tags, the lane currencies' two, and the two
+    // clocks - so the working schema is that much wider.
+    assert_eq!(names.len(), 65, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -5858,7 +5902,14 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
         [
             super::ISINCODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
-            super::STATE_TAG_NAME.0
+            super::STATE_TAG_NAME.0,
+            super::RECORDEDAT_TAG_NAME.0,
+            super::EXPIREDAT_TAG_NAME.0,
+            super::BIDCURRENCY_TAG_NAME.0,
+            super::OFFERCURRENCY_TAG_NAME.0,
+            super::BLOOMBERGCODE_TAG_NAME.0,
+            super::CUSIPCODE_TAG_NAME.0,
+            super::SEDOLCODE_TAG_NAME.0,
         ]
     );
     // A stated crate column is never overwritten and never re-derived, and

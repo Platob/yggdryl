@@ -1324,7 +1324,7 @@ type MsgPickle = (Py<PyAny>, (String, String, String));
 /// The schema is one non-null Struct `Field` - the only row schema - and the
 /// value the row it declares, so a mapping input is canonicalized into that
 /// order by the core exactly as every other row is. Every message carries
-/// the settled bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+/// the settled bundle - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
 /// `snapshotat` and `SendingTime` - each non-null, and the core holds the
 /// first four directly, so their readers answer without a lookup. The row is
 /// written through `set` and `remove`; the entries never are, because they
@@ -1382,7 +1382,7 @@ impl PyFixMsg {
     /// definition and settled: `SendingTime` is the stated one, else UTC
     /// now; `snapshotat` the stated one, else `TransactTime`, else
     /// `SendingTime`; `updatedat` and `createdat` default to `snapshotat`;
-    /// `code` to the empty unknown name; `uuid` and `puuid` are computed, and
+    /// `code` to the empty unknown name; `msghash` and `msgphash` are computed, and
     /// a stated one that disagrees is a `ValueError`.
     #[new]
     #[pyo3(signature = (field, value, registry=None))]
@@ -1409,9 +1409,9 @@ impl PyFixMsg {
     /// `fixentries` column, so `into_bytes` re-emits the line the row was
     /// read from; a row without that column has no entries. Nothing is
     /// parsed again and no clock is read: a replayable row carries the whole
-    /// non-null bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+    /// non-null bundle - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
     /// `snapshotat` and `SendingTime` - a missing or mistyped member is a
-    /// located `ValueError`, and a stated `uuid` or `puuid` the row's content
+    /// located `ValueError`, and a stated `msghash` or `msgphash` the row's content
     /// does not hash to is refused. `registry` defaults to the process one.
     #[staticmethod]
     #[pyo3(signature = (schema, row, registry=None))]
@@ -1555,8 +1555,8 @@ impl PyFixMsg {
     /// contract; `None` is stored as a stated null, except under a mandatory
     /// field, which refuses it. An existing child is replaced where it stands
     /// and an absent one appended; a bare tag no dictionary explains appends
-    /// a text child named by its decimal. Only the row changes, and `uuid`
-    /// and `puuid` are recomputed from it - a written `uuid` or `puuid` is an
+    /// a text child named by its decimal. Only the row changes, and `msghash`
+    /// and `msgphash` are recomputed from it - a written `msghash` or `msgphash` is an
     /// assertion the result must hash to; the settled clocks stay unless the
     /// write names one, and the entries, the wire and the digest stay what
     /// they were.
@@ -1577,7 +1577,7 @@ impl PyFixMsg {
     ///
     /// The key resolves as `set` resolves one, and a key reaching nothing
     /// answers `None` and changes nothing. The entries are untouched. A
-    /// mandatory field - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+    /// mandatory field - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
     /// `snapshotat` or `SendingTime` - refuses removal with a `ValueError`,
     /// and the message stays exactly as it was. A hashed message is frozen
     /// and refuses with `TypeError`.
@@ -1682,30 +1682,24 @@ impl PyFixMsg {
 
     /// The message's time and content identity.
     ///
-    /// The crate's non-null `uuid` (65017): sixteen `fixedbinary(16)` bytes,
+    /// The crate's non-null `msghash` (65017): sixteen `fixedbinary(16)` bytes,
     /// the signed nanoseconds of `updatedat` with the sign bit flipped in
     /// bytes 0..8 and all 64 bits of the XXH64 of the message's named
-    /// content - `uuid`, `updatedat`, `createdat` and the arrival record
+    /// content - `msghash`, `updatedat`, `createdat` and the arrival record
     /// excluded - in bytes 8..16. `bytes` in Python. Recomputed whenever the
     /// row changes.
-    fn uuid(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.uuid().clone())
+    fn msghash(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.msghash().clone())
     }
 
     /// The event chain's identity.
     ///
-    /// The crate's non-null `puuid` (65018): the sixteen big-endian
+    /// The crate's non-null `msgphash` (65018): the sixteen big-endian
     /// `fixedbinary(16)` bytes of the XXH3-128 of `code`'s exact UTF-8 bytes
-    /// alone, so one chain name is one `puuid` and the empty unknown name
+    /// alone, so one chain name is one `msgphash` and the empty unknown name
     /// hashes the empty bytes. `bytes` in Python.
-    fn puuid(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.puuid().clone())
-    }
-
-    /// The hour `updatedat` falls in, as an instant: the partition a row is
-    /// stored under.
-    fn time_partition(&self) -> Option<PyScalar> {
-        Self::answered(Some(&self.inner.time_partition()))
+    fn msgphash(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.msgphash().clone())
     }
 
     /// The one value a facet names, or `None` where it is not unambiguous.
@@ -1777,7 +1771,7 @@ impl PyFixMsg {
     /// and is null otherwise. The `fixentries` list closes the row with the
     /// whole arrival record. A schema missing or mistyping a member of the
     /// settled bundle, or a cell its column cannot hold, is a `ValueError`,
-    /// and the projected `uuid` is recomputed over what the row holds.
+    /// and the projected `msghash` is recomputed over what the row holds.
     #[allow(clippy::wrong_self_convention)]
     fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
@@ -2131,7 +2125,7 @@ impl PyFixCodec {
     /// Only the row is filled: the arrival record is what the wire carried
     /// and is left alone, so `into_bytes` re-emits the received line either
     /// way, and a stated value is never replaced. The settled clocks are
-    /// carried rather than read again, and `uuid` and `puuid` are recomputed
+    /// carried rather than read again, and `msghash` and `msgphash` are recomputed
     /// over the filled row, so a second enrichment is equal.
     /// The component's identifiers fill its own-level `altids` Map without
     /// flattening groups or replacing a stated map, including an empty one.
@@ -2276,7 +2270,7 @@ impl PyFixCodec {
     ///
     /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
     /// iterable, every message answered as `FixLifecycle.fill` answers one:
-    /// its `code` names the live chain `puuid` hashes, its previous-message
+    /// its `code` names the live chain `msgphash` hashes, its previous-message
     /// stamps and the chain's first `createdat` are carried, and `updatedat`
     /// is truncated to the one-second epoch grid while `snapshotat` keeps
     /// the real instant; a terminal state closes the chain. The iterable is
@@ -2399,9 +2393,9 @@ impl PyFixLifecycle {
     /// `updatedat` becomes its grid instant - floored to a multiple of
     /// `interval_ns` - while `snapshotat` keeps the real one; a live chain's
     /// first accepted `createdat` replaces a later one; each absent previous
-    /// stamp, `prevupdatedat` and `prevuuid`, comes from the chain's last
+    /// stamp, `prevupdatedat` and `prevmsghash`, comes from the chain's last
     /// message, and a stated one is kept; a derived `instuuid` fills where
-    /// none is stated. `uuid` and `puuid` are then settled over the result.
+    /// none is stated. `msghash` and `msgphash` are then settled over the result.
     /// A terminal state closes the chain after its stamps. The entries are
     /// untouched, so `into_bytes` re-emits the received line.
     ///
@@ -2498,10 +2492,10 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// with the whole arrival record. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`, and
-/// is what fills it. `beginstring`, `sendingtime`, `updatedat`,
-/// `timepartition`, `uuid`, `puuid`, `createdat`, `code` and `snapshotat` are
-/// the non-null columns; a dictionary missing a member of the settled bundle
-/// is a `ValueError`.
+/// is what fills it. `beginstring`, `sendingtime`, `updatedat`, `msghash`,
+/// `msgphash`, `createdat` and `code` are the non-null columns, while
+/// `snapshotat` is nullable because only a snapshot stamps it; a dictionary
+/// missing a member of the settled bundle is a `ValueError`.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -2538,7 +2532,7 @@ pub(crate) fn fix_generic_message(
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
-/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+/// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
 /// and the row fills it from what the capture stated.
 #[pyfunction]
@@ -2572,11 +2566,11 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// logged it and the one it came through before that, and the two session
 /// names the line spells - the three facts a row derives from what the
 /// message said: its ISIN, its market and the order's state - the
-/// instrument's `instuuid`, the message's `uuid` and the chain's `puuid`,
-/// the previous message's `prevupdatedat` and `prevuuid`, `createdat`,
+/// instrument's `instuuid`, the message's `msghash` and the chain's `msgphash`,
+/// the previous message's `prevupdatedat` and `prevmsghash`, `createdat`,
 /// `code` and `snapshotat`, the `sourceurl` a line was read from, and the
 /// `nofixentries` that counts its arrival record. The Map holds the message's own-level
-/// identifiers. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+/// identifiers. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
 /// `snapshotat` are non-null; every other definition is nullable. Every
 /// registry holds these definitions from construction beside the seeded
 /// `SendingTime` and `TransactTime`; only scalar fields contribute to its

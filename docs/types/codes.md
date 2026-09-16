@@ -1,6 +1,6 @@
 # Codes
 
-The ten registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
+The eleven registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
 
 A code is an identity over a published registry, not a string with a charset: a currency is ISO 4217 the way a [URL](../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is - Arrow's `Utf8`, under the code's own extension name - held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](text.md).
 
@@ -18,6 +18,7 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `side`, FIX `Side(54)` | 4 | `utf8`, `yggdryl.side` |
 | `state`, a ranked lifecycle | 10 | `utf8`, `yggdryl.state` |
 | `timeinforce`, FIX `TimeInForce(59)` | 8 | `utf8`, `yggdryl.timeinforce` |
+| `bloomberg`, a Bloomberg identifier | 32 | `utf8`, `yggdryl.bloomberg` |
 
 | | |
 | --- | --- |
@@ -72,6 +73,10 @@ A code is an identity over a published registry, not a string with a charset: a 
             ("side", DataType::Side, 4),
             ("state", DataType::State, 10),
             ("timeinforce", DataType::TimeInForce, 8),
+            // Thirty-two bytes, and the one width that is only a bound: a
+            // ticker, a market and a yellow key have no fixed length between
+            // them, and no standard closes a Bloomberg identifier.
+            ("bloomberg", DataType::Bloomberg, 32),
         ]
     );
 
@@ -125,9 +130,10 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "currency", "mic", "cfi", "isin", "cusip", "sedol",
-             "side", "state", "timeinforce")] == [
+             "side", "state", "timeinforce", "bloomberg")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("side", 4), ("state", 10), ("timeinforce", 8),
+        ("bloomberg", 32),
     ]
 
     # A value is the text, and carries its identity.
@@ -177,9 +183,9 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce']
+      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 4, 10, 8],
+      [2, 3, 4, 6, 12, 9, 7, 4, 10, 8, 32],
     )
 
     // A securities identifier is closed by its own check digit: a column of
@@ -479,6 +485,13 @@ assert!(State::from_spelling("Rejected").unwrap().is_failed());
 
 `timeinforce` is eight bytes over FIX's `TimeInForce(59)` code set, stored as
 the wire value rather than a name for it, exactly as `side` is.
+
+`bloomberg` is the one code here with no shape to check: an identifier is a
+ticker, a market and a yellow key with spaces between them - `AAPL US EQUITY` -
+or a FIGI, and the standard that would say which is a terminal's rather than a
+registry's. So canonical is what it is for every code - ASCII that fits the
+thirty-two bytes, in upper case - and no more, because refusing a spelling
+nobody published would be a guess.
 
 ## Edges
 

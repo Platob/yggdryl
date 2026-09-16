@@ -1299,7 +1299,9 @@ mod s3 {
         Credentials, File, Folder, ObjectOptions, file_with, folder_with,
     };
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::media::iceberg::{
+        FormatVersion, PartitionSpec, Table, Transform, assign_field_ids,
+    };
     use yggdryl::media::text::TextOptions;
     use yggdryl::{
         DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
@@ -1593,8 +1595,14 @@ mod s3 {
         )
         .expect("the schema rebuilds");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
-        let spec = PartitionSpec::identity(1, &schema, &["timepartition"])
-            .expect("timepartition is a column");
+        // There is no `timepartition` column: how a layout is cut is the
+        // target's, so the table takes an `hour` transform over the
+        // `updatedat` the row already carries rather than a materialized copy
+        // of that instant.
+        let mut spec =
+            PartitionSpec::identity(1, &schema, &["updatedat"]).expect("updatedat is a column");
+        spec.fields[0].transform = Transform::Hour;
+        spec.fields[0].name = "updatedat_hour".into();
         let fix_table = |label: &str| {
             Table::create(
                 folder(&store, &next(label)),

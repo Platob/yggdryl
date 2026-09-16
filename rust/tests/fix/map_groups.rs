@@ -293,7 +293,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
 
 #[test]
 fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
-    for alias_tag in [9001, yggdryl::UUID_TAG_NAME.0, 52] {
+    for alias_tag in [9001, yggdryl::MSGHASH_TAG_NAME.0, 52] {
         let mut registry = FixRegistry::new();
         let mut alias = if let Some(field) = registry.get_field_by_tag(alias_tag) {
             field.clone()
@@ -322,7 +322,7 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
             Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from("O-1"))]).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
         assert_eq!(source.by_tag(65_020).unwrap(), &mapping);
-        super::identity_bytes(source.uuid());
+        super::identity_bytes(source.msghash());
         let row = source.into_row(source.as_field()).unwrap();
         let restored = FixMsg::from_row(Arc::clone(&registry), source.as_field(), &row).unwrap();
         assert_eq!(restored.by_tag(65_020).unwrap(), &mapping);

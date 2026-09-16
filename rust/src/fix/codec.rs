@@ -1688,8 +1688,8 @@ impl FixCodec {
     /// Stamps a stream of messages with the identities it implies, in order.
     ///
     /// One [`FixLifecycle`](super::FixLifecycle) over the whole stream: each
-    /// message gets its `instuuid`, its `uuid` and - where it carries an order
-    /// identifier - the `puuid` of the chain that identifier reaches,
+    /// message gets its `instuuid`, its `msghash` and - where it carries an order
+    /// identifier - the `msgphash` of the chain that identifier reaches,
     /// and a terminal state closes the chain. Nothing is collected: the
     /// iterator is the stream, and what is held is the orders still alive.
     /// Owned messages and their fallible counterparts compose directly;
@@ -2656,9 +2656,18 @@ mod clock_intake_tests {
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
+        // `TransactTime` still settles the event instant the clocks default
+        // to; what it no longer does is fill `snapshotat`, which says this
+        // row is a reading the lifecycle took.
         assert_eq!(
-            message.by_tag(super::super::SNAPSHOTAT_TAG_NAME.0).unwrap(),
+            message.by_tag(super::super::UPDATEDAT_TAG_NAME.0).unwrap(),
             message.by_tag(60).unwrap()
+        );
+        assert!(
+            message
+                .by_tag(super::super::SNAPSHOTAT_TAG_NAME.0)
+                .unwrap()
+                .is_null()
         );
         assert_eq!(
             message.by_tag(super::super::UPDATEDAT_TAG_NAME.0).unwrap(),
@@ -2685,9 +2694,14 @@ mod clock_intake_tests {
             .unwrap()
             .unwrap();
         assert_eq!(message.by_tag(52).unwrap(), &clock(17));
-        assert_eq!(
-            message.by_tag(super::super::SNAPSHOTAT_TAG_NAME.0).unwrap(),
-            &clock(17)
+        // `snapshotat` says this row is a reading the lifecycle took. An
+        // intake that took none leaves it null rather than copying a clock
+        // into it, which is what makes the question answerable from the row.
+        assert!(
+            message
+                .by_tag(super::super::SNAPSHOTAT_TAG_NAME.0)
+                .unwrap()
+                .is_null()
         );
     }
 
