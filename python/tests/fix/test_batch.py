@@ -562,7 +562,8 @@ def test_a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index
     assert message.field.index_of("symbol") == at, "same position"
     assert len(message) == len(before) + 2, "two unknown children beside the tagged ones"
     assert message.by_tag(55).as_py() == "MSFT"
-    assert message.by_tag(54).as_py() == "2"
+    # A side is stored as the explicit value the wire code names.
+    assert message.by_tag(54).as_py() == "SELL"
     # The content identity changes; every other tag still reaches its previous value.
     for tag, value in before.items():
         if tag in (55, 54):

@@ -361,7 +361,7 @@ fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns(
             "one value per column"
         );
         assert_eq!(at(&row, schema, 55).as_str(), Some("AAPL"));
-        assert_eq!(at(&row, schema, 54).as_str(), Some("1"));
+        assert_eq!(at(&row, schema, 54).as_str(), Some("BUY"));
     }
     let wide_row = order.into_row(&wide).unwrap();
     assert_eq!(at(&wide_row, &wide, 11).as_str(), Some("ORDER-1"));
@@ -483,7 +483,7 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
         .sole_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
         .unwrap();
     let row = quote.into_row(&schema).unwrap();
-    assert_eq!(at(&row, &schema, 54).as_str(), Some("1"));
+    assert_eq!(at(&row, &schema, 54).as_str(), Some("BUY"));
 
     // And a stated column is never overwritten by a derivation.
     let stated = reader

@@ -140,7 +140,7 @@ ulbridge[001]:0.field.securityid	"CH0012214059"
 ulbridge[001]:0.field.securitytype	"equity"
 ulbridge[001]:0.field.securityexchange	"XSWX"
 ulbridge[001]:0.field.cficode	"ESXXXX"
-ulbridge[001]:0.field.side	"1"
+ulbridge[001]:0.field.side	"BUY"
 ulbridge[001]:0.field.ordtype	"2"
 ulbridge[001]:0.field.price	72.28
 ulbridge[001]:0.field.orderqty	300.0
@@ -302,7 +302,7 @@ enrich.ulbridge[001]:0.field.securitytype	"equity"
 enrich.ulbridge[001]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[001]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[001]:0.field.product	5
-enrich.ulbridge[001]:0.field.side	"1"
+enrich.ulbridge[001]:0.field.side	"BUY"
 enrich.ulbridge[001]:0.field.ordtype	"2"
 enrich.ulbridge[001]:0.field.price	72.28
 enrich.ulbridge[001]:0.field.orderqty	300.0
@@ -464,7 +464,7 @@ ulbridge[003]:0.field.securityid	"CH0012214059"
 ulbridge[003]:0.field.securitytype	"equity"
 ulbridge[003]:0.field.securityexchange	"XSWX"
 ulbridge[003]:0.field.cficode	"ESXXXX"
-ulbridge[003]:0.field.side	"1"
+ulbridge[003]:0.field.side	"BUY"
 ulbridge[003]:0.field.ordtype	"2"
 ulbridge[003]:0.field.price	72.28
 ulbridge[003]:0.field.orderqty	300.0
@@ -625,7 +625,7 @@ enrich.ulbridge[003]:0.field.securitytype	"equity"
 enrich.ulbridge[003]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[003]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[003]:0.field.product	5
-enrich.ulbridge[003]:0.field.side	"1"
+enrich.ulbridge[003]:0.field.side	"BUY"
 enrich.ulbridge[003]:0.field.ordtype	"2"
 enrich.ulbridge[003]:0.field.price	72.28
 enrich.ulbridge[003]:0.field.orderqty	300.0
@@ -704,7 +704,7 @@ ulbridge[004]:0.field.securityid	"CH0012214059"
 ulbridge[004]:0.field.securitytype	"equity"
 ulbridge[004]:0.field.securityexchange	"XSWX"
 ulbridge[004]:0.field.cficode	"ESXXXX"
-ulbridge[004]:0.field.side	"1"
+ulbridge[004]:0.field.side	"BUY"
 ulbridge[004]:0.field.ordtype	"2"
 ulbridge[004]:0.field.price	72.28
 ulbridge[004]:0.field.orderqty	300.0
@@ -854,7 +854,7 @@ ulbridge[005]:0.field.securityidsource	"4"
 ulbridge[005]:0.field.securitytype	"CS"
 ulbridge[005]:0.field.securityexchange	"XSWX"
 ulbridge[005]:0.field.cficode	"ESVTFR"
-ulbridge[005]:0.field.side	"1"
+ulbridge[005]:0.field.side	"BUY"
 ulbridge[005]:0.field.ordtype	"2"
 ulbridge[005]:0.field.price	83.08
 ulbridge[005]:0.field.orderqty	600.0
@@ -985,7 +985,7 @@ ulbridge[006]:0.field.securityidsource	"isin"
 ulbridge[006]:0.field.securitytype	"equity"
 ulbridge[006]:0.field.securityexchange	"XSWX"
 ulbridge[006]:0.field.cficode	"ESVTFR"
-ulbridge[006]:0.field.side	"1"
+ulbridge[006]:0.field.side	"BUY"
 ulbridge[006]:0.field.ordtype	"2"
 ulbridge[006]:0.field.price	83.08
 ulbridge[006]:0.field.orderqty	600.0
@@ -1115,7 +1115,7 @@ enrich.ulbridge[006]:0.field.securitytype	"equity"
 enrich.ulbridge[006]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[006]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[006]:0.field.product	5
-enrich.ulbridge[006]:0.field.side	"1"
+enrich.ulbridge[006]:0.field.side	"BUY"
 enrich.ulbridge[006]:0.field.ordtype	"2"
 enrich.ulbridge[006]:0.field.price	83.08
 enrich.ulbridge[006]:0.field.orderqty	600.0
@@ -1259,7 +1259,7 @@ ulbridge[007]:0.field.securityidsource	"isin"
 ulbridge[007]:0.field.securitytype	"equity"
 ulbridge[007]:0.field.securityexchange	"XSWX"
 ulbridge[007]:0.field.cficode	"ESVTFR"
-ulbridge[007]:0.field.side	"1"
+ulbridge[007]:0.field.side	"BUY"
 ulbridge[007]:0.field.ordtype	"2"
 ulbridge[007]:0.field.price	83.08
 ulbridge[007]:0.field.orderqty	600.0
@@ -1403,7 +1403,7 @@ enrich.ulbridge[007]:0.field.securitytype	"equity"
 enrich.ulbridge[007]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[007]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[007]:0.field.product	5
-enrich.ulbridge[007]:0.field.side	"1"
+enrich.ulbridge[007]:0.field.side	"BUY"
 enrich.ulbridge[007]:0.field.ordtype	"2"
 enrich.ulbridge[007]:0.field.price	83.08
 enrich.ulbridge[007]:0.field.orderqty	600.0
@@ -1544,7 +1544,7 @@ ulbridge[008]:0.field.securityidsource	"isin"
 ulbridge[008]:0.field.securitytype	"equity"
 ulbridge[008]:0.field.securityexchange	"XSWX"
 ulbridge[008]:0.field.cficode	"ESVTFR"
-ulbridge[008]:0.field.side	"1"
+ulbridge[008]:0.field.side	"BUY"
 ulbridge[008]:0.field.ordtype	"2"
 ulbridge[008]:0.field.price	83.08
 ulbridge[008]:0.field.orderqty	600.0
@@ -1685,7 +1685,7 @@ enrich.ulbridge[008]:0.field.securitytype	"equity"
 enrich.ulbridge[008]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[008]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[008]:0.field.product	5
-enrich.ulbridge[008]:0.field.side	"1"
+enrich.ulbridge[008]:0.field.side	"BUY"
 enrich.ulbridge[008]:0.field.ordtype	"2"
 enrich.ulbridge[008]:0.field.price	83.08
 enrich.ulbridge[008]:0.field.orderqty	600.0
@@ -1830,7 +1830,7 @@ ulbridge[009]:0.field.securityidsource	"isin"
 ulbridge[009]:0.field.securitytype	"equity"
 ulbridge[009]:0.field.securityexchange	"XSWX"
 ulbridge[009]:0.field.cficode	"ESVTFR"
-ulbridge[009]:0.field.side	"1"
+ulbridge[009]:0.field.side	"BUY"
 ulbridge[009]:0.field.ordtype	"2"
 ulbridge[009]:0.field.price	83.08
 ulbridge[009]:0.field.orderqty	600.0
@@ -1975,7 +1975,7 @@ enrich.ulbridge[009]:0.field.securitytype	"equity"
 enrich.ulbridge[009]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[009]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[009]:0.field.product	5
-enrich.ulbridge[009]:0.field.side	"1"
+enrich.ulbridge[009]:0.field.side	"BUY"
 enrich.ulbridge[009]:0.field.ordtype	"2"
 enrich.ulbridge[009]:0.field.price	83.08
 enrich.ulbridge[009]:0.field.orderqty	600.0
@@ -2122,7 +2122,7 @@ ulbridge[010]:0.field.securityidsource	"isin"
 ulbridge[010]:0.field.securitytype	"equity"
 ulbridge[010]:0.field.securityexchange	"XSWX"
 ulbridge[010]:0.field.cficode	"ESVTFR"
-ulbridge[010]:0.field.side	"1"
+ulbridge[010]:0.field.side	"BUY"
 ulbridge[010]:0.field.ordtype	"2"
 ulbridge[010]:0.field.price	83.08
 ulbridge[010]:0.field.orderqty	600.0
@@ -2269,7 +2269,7 @@ enrich.ulbridge[010]:0.field.securitytype	"equity"
 enrich.ulbridge[010]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[010]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[010]:0.field.product	5
-enrich.ulbridge[010]:0.field.side	"1"
+enrich.ulbridge[010]:0.field.side	"BUY"
 enrich.ulbridge[010]:0.field.ordtype	"2"
 enrich.ulbridge[010]:0.field.price	83.08
 enrich.ulbridge[010]:0.field.orderqty	600.0
@@ -2416,7 +2416,7 @@ ulbridge[011]:0.field.securityidsource	"isin"
 ulbridge[011]:0.field.securitytype	"equity"
 ulbridge[011]:0.field.securityexchange	"XSWX"
 ulbridge[011]:0.field.cficode	"ESVTFR"
-ulbridge[011]:0.field.side	"1"
+ulbridge[011]:0.field.side	"BUY"
 ulbridge[011]:0.field.ordtype	"2"
 ulbridge[011]:0.field.price	83.08
 ulbridge[011]:0.field.orderqty	600.0
@@ -2563,7 +2563,7 @@ enrich.ulbridge[011]:0.field.securitytype	"equity"
 enrich.ulbridge[011]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[011]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[011]:0.field.product	5
-enrich.ulbridge[011]:0.field.side	"1"
+enrich.ulbridge[011]:0.field.side	"BUY"
 enrich.ulbridge[011]:0.field.ordtype	"2"
 enrich.ulbridge[011]:0.field.price	83.08
 enrich.ulbridge[011]:0.field.orderqty	600.0
@@ -2711,7 +2711,7 @@ ulbridge[013]:0.field.securityidsource	"isin"
 ulbridge[013]:0.field.securitytype	"equity"
 ulbridge[013]:0.field.securityexchange	"XSWX"
 ulbridge[013]:0.field.cficode	"ESVTFR"
-ulbridge[013]:0.field.side	"1"
+ulbridge[013]:0.field.side	"BUY"
 ulbridge[013]:0.field.ordtype	"2"
 ulbridge[013]:0.field.price	83.08
 ulbridge[013]:0.field.orderqty	600.0
@@ -2858,7 +2858,7 @@ enrich.ulbridge[013]:0.field.securitytype	"equity"
 enrich.ulbridge[013]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[013]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[013]:0.field.product	5
-enrich.ulbridge[013]:0.field.side	"1"
+enrich.ulbridge[013]:0.field.side	"BUY"
 enrich.ulbridge[013]:0.field.ordtype	"2"
 enrich.ulbridge[013]:0.field.price	83.08
 enrich.ulbridge[013]:0.field.orderqty	600.0
@@ -3006,7 +3006,7 @@ ulbridge[014]:0.field.securityidsource	"isin"
 ulbridge[014]:0.field.securitytype	"equity"
 ulbridge[014]:0.field.securityexchange	"XSWX"
 ulbridge[014]:0.field.cficode	"ESVTFR"
-ulbridge[014]:0.field.side	"1"
+ulbridge[014]:0.field.side	"BUY"
 ulbridge[014]:0.field.ordtype	"2"
 ulbridge[014]:0.field.price	83.08
 ulbridge[014]:0.field.orderqty	600.0
@@ -3154,7 +3154,7 @@ enrich.ulbridge[014]:0.field.securitytype	"equity"
 enrich.ulbridge[014]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[014]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[014]:0.field.product	5
-enrich.ulbridge[014]:0.field.side	"1"
+enrich.ulbridge[014]:0.field.side	"BUY"
 enrich.ulbridge[014]:0.field.ordtype	"2"
 enrich.ulbridge[014]:0.field.price	83.08
 enrich.ulbridge[014]:0.field.orderqty	600.0
@@ -3302,7 +3302,7 @@ ulbridge[015]:0.field.securityidsource	"isin"
 ulbridge[015]:0.field.securitytype	"equity"
 ulbridge[015]:0.field.securityexchange	"XSWX"
 ulbridge[015]:0.field.cficode	"ESVTFR"
-ulbridge[015]:0.field.side	"1"
+ulbridge[015]:0.field.side	"BUY"
 ulbridge[015]:0.field.ordtype	"2"
 ulbridge[015]:0.field.price	83.08
 ulbridge[015]:0.field.orderqty	600.0
@@ -3450,7 +3450,7 @@ enrich.ulbridge[015]:0.field.securitytype	"equity"
 enrich.ulbridge[015]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[015]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[015]:0.field.product	5
-enrich.ulbridge[015]:0.field.side	"1"
+enrich.ulbridge[015]:0.field.side	"BUY"
 enrich.ulbridge[015]:0.field.ordtype	"2"
 enrich.ulbridge[015]:0.field.price	83.08
 enrich.ulbridge[015]:0.field.orderqty	600.0
@@ -3602,7 +3602,7 @@ ulbridge[020]:0.field.securityidsource	"isin"
 ulbridge[020]:0.field.securitytype	"equity"
 ulbridge[020]:0.field.securityexchange	"XSWX"
 ulbridge[020]:0.field.cficode	"ESVTFR"
-ulbridge[020]:0.field.side	"1"
+ulbridge[020]:0.field.side	"BUY"
 ulbridge[020]:0.field.ordtype	"2"
 ulbridge[020]:0.field.price	83.08
 ulbridge[020]:0.field.orderqty	600.0
@@ -3751,7 +3751,7 @@ enrich.ulbridge[020]:0.field.securitytype	"equity"
 enrich.ulbridge[020]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[020]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[020]:0.field.product	5
-enrich.ulbridge[020]:0.field.side	"1"
+enrich.ulbridge[020]:0.field.side	"BUY"
 enrich.ulbridge[020]:0.field.ordtype	"2"
 enrich.ulbridge[020]:0.field.price	83.08
 enrich.ulbridge[020]:0.field.orderqty	600.0
@@ -3901,7 +3901,7 @@ ulbridge[021]:0.field.securityidsource	"isin"
 ulbridge[021]:0.field.securitytype	"equity"
 ulbridge[021]:0.field.securityexchange	"XSWX"
 ulbridge[021]:0.field.cficode	"ESVTFR"
-ulbridge[021]:0.field.side	"1"
+ulbridge[021]:0.field.side	"BUY"
 ulbridge[021]:0.field.ordtype	"2"
 ulbridge[021]:0.field.price	83.08
 ulbridge[021]:0.field.orderqty	600.0
@@ -4050,7 +4050,7 @@ enrich.ulbridge[021]:0.field.securitytype	"equity"
 enrich.ulbridge[021]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[021]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[021]:0.field.product	5
-enrich.ulbridge[021]:0.field.side	"1"
+enrich.ulbridge[021]:0.field.side	"BUY"
 enrich.ulbridge[021]:0.field.ordtype	"2"
 enrich.ulbridge[021]:0.field.price	83.08
 enrich.ulbridge[021]:0.field.orderqty	600.0
@@ -4158,7 +4158,7 @@ ulbridge[023]:0.field.securityidsource	"4"
 ulbridge[023]:0.field.securitytype	"CS"
 ulbridge[023]:0.field.securityexchange	"XSWX"
 ulbridge[023]:0.field.cficode	"ESXXXX"
-ulbridge[023]:0.field.side	"1"
+ulbridge[023]:0.field.side	"BUY"
 ulbridge[023]:0.field.ordtype	"2"
 ulbridge[023]:0.field.price	121.94
 ulbridge[023]:0.field.orderqty	400.0
@@ -4253,7 +4253,7 @@ ulbridge[024]:0.field.securityid	"CH0012005267"
 ulbridge[024]:0.field.securitytype	"equity"
 ulbridge[024]:0.field.securityexchange	"XSWX"
 ulbridge[024]:0.field.cficode	"ESXXXX"
-ulbridge[024]:0.field.side	"1"
+ulbridge[024]:0.field.side	"BUY"
 ulbridge[024]:0.field.ordtype	"2"
 ulbridge[024]:0.field.price	121.94
 ulbridge[024]:0.field.orderqty	400.0
@@ -4348,7 +4348,7 @@ enrich.ulbridge[024]:0.field.securitytype	"equity"
 enrich.ulbridge[024]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[024]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[024]:0.field.product	5
-enrich.ulbridge[024]:0.field.side	"1"
+enrich.ulbridge[024]:0.field.side	"BUY"
 enrich.ulbridge[024]:0.field.ordtype	"2"
 enrich.ulbridge[024]:0.field.price	121.94
 enrich.ulbridge[024]:0.field.orderqty	400.0
@@ -4493,7 +4493,7 @@ ulbridge[025]:0.field.securityid	"CH0012005267"
 ulbridge[025]:0.field.securitytype	"equity"
 ulbridge[025]:0.field.securityexchange	"XSWX"
 ulbridge[025]:0.field.cficode	"ESXXXX"
-ulbridge[025]:0.field.side	"1"
+ulbridge[025]:0.field.side	"BUY"
 ulbridge[025]:0.field.ordtype	"2"
 ulbridge[025]:0.field.price	121.94
 ulbridge[025]:0.field.orderqty	400.0
@@ -4641,7 +4641,7 @@ enrich.ulbridge[025]:0.field.securitytype	"equity"
 enrich.ulbridge[025]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[025]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[025]:0.field.product	5
-enrich.ulbridge[025]:0.field.side	"1"
+enrich.ulbridge[025]:0.field.side	"BUY"
 enrich.ulbridge[025]:0.field.ordtype	"2"
 enrich.ulbridge[025]:0.field.price	121.94
 enrich.ulbridge[025]:0.field.orderqty	400.0
@@ -4788,7 +4788,7 @@ ulbridge[026]:0.field.securityid	"CH0012005267"
 ulbridge[026]:0.field.securitytype	"equity"
 ulbridge[026]:0.field.securityexchange	"XSWX"
 ulbridge[026]:0.field.cficode	"ESXXXX"
-ulbridge[026]:0.field.side	"1"
+ulbridge[026]:0.field.side	"BUY"
 ulbridge[026]:0.field.ordtype	"2"
 ulbridge[026]:0.field.price	121.94
 ulbridge[026]:0.field.orderqty	400.0
@@ -4936,7 +4936,7 @@ enrich.ulbridge[026]:0.field.securitytype	"equity"
 enrich.ulbridge[026]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[026]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[026]:0.field.product	5
-enrich.ulbridge[026]:0.field.side	"1"
+enrich.ulbridge[026]:0.field.side	"BUY"
 enrich.ulbridge[026]:0.field.ordtype	"2"
 enrich.ulbridge[026]:0.field.price	121.94
 enrich.ulbridge[026]:0.field.orderqty	400.0
@@ -5083,7 +5083,7 @@ ulbridge[027]:0.field.securityid	"CH0012005267"
 ulbridge[027]:0.field.securitytype	"equity"
 ulbridge[027]:0.field.securityexchange	"XSWX"
 ulbridge[027]:0.field.cficode	"ESXXXX"
-ulbridge[027]:0.field.side	"1"
+ulbridge[027]:0.field.side	"BUY"
 ulbridge[027]:0.field.ordtype	"2"
 ulbridge[027]:0.field.price	121.94
 ulbridge[027]:0.field.orderqty	400.0
@@ -5231,7 +5231,7 @@ enrich.ulbridge[027]:0.field.securitytype	"equity"
 enrich.ulbridge[027]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[027]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[027]:0.field.product	5
-enrich.ulbridge[027]:0.field.side	"1"
+enrich.ulbridge[027]:0.field.side	"BUY"
 enrich.ulbridge[027]:0.field.ordtype	"2"
 enrich.ulbridge[027]:0.field.price	121.94
 enrich.ulbridge[027]:0.field.orderqty	400.0
@@ -5380,7 +5380,7 @@ ulbridge[030]:0.field.securityid	"CH0012005267"
 ulbridge[030]:0.field.securitytype	"equity"
 ulbridge[030]:0.field.securityexchange	"XSWX"
 ulbridge[030]:0.field.cficode	"ESXXXX"
-ulbridge[030]:0.field.side	"1"
+ulbridge[030]:0.field.side	"BUY"
 ulbridge[030]:0.field.ordtype	"2"
 ulbridge[030]:0.field.price	121.94
 ulbridge[030]:0.field.orderqty	400.0
@@ -5529,7 +5529,7 @@ enrich.ulbridge[030]:0.field.securitytype	"equity"
 enrich.ulbridge[030]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[030]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[030]:0.field.product	5
-enrich.ulbridge[030]:0.field.side	"1"
+enrich.ulbridge[030]:0.field.side	"BUY"
 enrich.ulbridge[030]:0.field.ordtype	"2"
 enrich.ulbridge[030]:0.field.price	121.94
 enrich.ulbridge[030]:0.field.orderqty	400.0
@@ -5678,7 +5678,7 @@ ulbridge[032]:0.field.securityid	"CH0012005267"
 ulbridge[032]:0.field.securitytype	"equity"
 ulbridge[032]:0.field.securityexchange	"XSWX"
 ulbridge[032]:0.field.cficode	"ESXXXX"
-ulbridge[032]:0.field.side	"1"
+ulbridge[032]:0.field.side	"BUY"
 ulbridge[032]:0.field.ordtype	"2"
 ulbridge[032]:0.field.price	121.94
 ulbridge[032]:0.field.orderqty	400.0
@@ -5826,7 +5826,7 @@ enrich.ulbridge[032]:0.field.securitytype	"equity"
 enrich.ulbridge[032]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[032]:0.field.cficode	"ESXXXX"
 enrich.ulbridge[032]:0.field.product	5
-enrich.ulbridge[032]:0.field.side	"1"
+enrich.ulbridge[032]:0.field.side	"BUY"
 enrich.ulbridge[032]:0.field.ordtype	"2"
 enrich.ulbridge[032]:0.field.price	121.94
 enrich.ulbridge[032]:0.field.orderqty	400.0
@@ -5904,7 +5904,7 @@ ulbridge[033]:0.field.securityid	"CH0012005267"
 ulbridge[033]:0.field.securitytype	"equity"
 ulbridge[033]:0.field.securityexchange	"XSWX"
 ulbridge[033]:0.field.cficode	"ESXXXX"
-ulbridge[033]:0.field.side	"1"
+ulbridge[033]:0.field.side	"BUY"
 ulbridge[033]:0.field.ordtype	"2"
 ulbridge[033]:0.field.price	121.94
 ulbridge[033]:0.field.orderqty	400.0
@@ -6051,7 +6051,7 @@ ulbridge[034]:0.field.securityidsource	"4"
 ulbridge[034]:0.field.securitytype	"CS"
 ulbridge[034]:0.field.securityexchange	"XSWX"
 ulbridge[034]:0.field.cficode	"ESVTFR"
-ulbridge[034]:0.field.side	"1"
+ulbridge[034]:0.field.side	"BUY"
 ulbridge[034]:0.field.ordtype	"2"
 ulbridge[034]:0.field.price	83.08
 ulbridge[034]:0.field.orderqty	600.0
@@ -6175,7 +6175,7 @@ ulbridge[035]:0.field.securityidsource	"isin"
 ulbridge[035]:0.field.securitytype	"equity"
 ulbridge[035]:0.field.securityexchange	"XSWX"
 ulbridge[035]:0.field.cficode	"ESVTFR"
-ulbridge[035]:0.field.side	"1"
+ulbridge[035]:0.field.side	"BUY"
 ulbridge[035]:0.field.ordtype	"2"
 ulbridge[035]:0.field.price	83.08
 ulbridge[035]:0.field.orderqty	600.0
@@ -6297,7 +6297,7 @@ enrich.ulbridge[035]:0.field.securitytype	"equity"
 enrich.ulbridge[035]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[035]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[035]:0.field.product	5
-enrich.ulbridge[035]:0.field.side	"1"
+enrich.ulbridge[035]:0.field.side	"BUY"
 enrich.ulbridge[035]:0.field.ordtype	"2"
 enrich.ulbridge[035]:0.field.price	83.08
 enrich.ulbridge[035]:0.field.orderqty	600.0
@@ -6436,7 +6436,7 @@ ulbridge[036]:0.field.securityidsource	"isin"
 ulbridge[036]:0.field.securitytype	"equity"
 ulbridge[036]:0.field.securityexchange	"XSWX"
 ulbridge[036]:0.field.cficode	"ESVTFR"
-ulbridge[036]:0.field.side	"1"
+ulbridge[036]:0.field.side	"BUY"
 ulbridge[036]:0.field.ordtype	"2"
 ulbridge[036]:0.field.price	83.08
 ulbridge[036]:0.field.orderqty	600.0
@@ -6574,7 +6574,7 @@ enrich.ulbridge[036]:0.field.securitytype	"equity"
 enrich.ulbridge[036]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[036]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[036]:0.field.product	5
-enrich.ulbridge[036]:0.field.side	"1"
+enrich.ulbridge[036]:0.field.side	"BUY"
 enrich.ulbridge[036]:0.field.ordtype	"2"
 enrich.ulbridge[036]:0.field.price	83.08
 enrich.ulbridge[036]:0.field.orderqty	600.0
@@ -6714,7 +6714,7 @@ ulbridge[037]:0.field.securityidsource	"isin"
 ulbridge[037]:0.field.securitytype	"equity"
 ulbridge[037]:0.field.securityexchange	"XSWX"
 ulbridge[037]:0.field.cficode	"ESVTFR"
-ulbridge[037]:0.field.side	"1"
+ulbridge[037]:0.field.side	"BUY"
 ulbridge[037]:0.field.ordtype	"2"
 ulbridge[037]:0.field.price	83.08
 ulbridge[037]:0.field.orderqty	600.0
@@ -6852,7 +6852,7 @@ enrich.ulbridge[037]:0.field.securitytype	"equity"
 enrich.ulbridge[037]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[037]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[037]:0.field.product	5
-enrich.ulbridge[037]:0.field.side	"1"
+enrich.ulbridge[037]:0.field.side	"BUY"
 enrich.ulbridge[037]:0.field.ordtype	"2"
 enrich.ulbridge[037]:0.field.price	83.08
 enrich.ulbridge[037]:0.field.orderqty	600.0
@@ -6999,7 +6999,7 @@ ulbridge[038]:0.field.securityidsource	"isin"
 ulbridge[038]:0.field.securitytype	"equity"
 ulbridge[038]:0.field.securityexchange	"XSWX"
 ulbridge[038]:0.field.cficode	"ESVTFR"
-ulbridge[038]:0.field.side	"1"
+ulbridge[038]:0.field.side	"BUY"
 ulbridge[038]:0.field.ordtype	"2"
 ulbridge[038]:0.field.price	83.08
 ulbridge[038]:0.field.orderqty	600.0
@@ -7144,7 +7144,7 @@ enrich.ulbridge[038]:0.field.securitytype	"equity"
 enrich.ulbridge[038]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[038]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[038]:0.field.product	5
-enrich.ulbridge[038]:0.field.side	"1"
+enrich.ulbridge[038]:0.field.side	"BUY"
 enrich.ulbridge[038]:0.field.ordtype	"2"
 enrich.ulbridge[038]:0.field.price	83.08
 enrich.ulbridge[038]:0.field.orderqty	600.0
@@ -7291,7 +7291,7 @@ ulbridge[039]:0.field.securityidsource	"isin"
 ulbridge[039]:0.field.securitytype	"equity"
 ulbridge[039]:0.field.securityexchange	"XSWX"
 ulbridge[039]:0.field.cficode	"ESVTFR"
-ulbridge[039]:0.field.side	"1"
+ulbridge[039]:0.field.side	"BUY"
 ulbridge[039]:0.field.ordtype	"2"
 ulbridge[039]:0.field.price	83.08
 ulbridge[039]:0.field.orderqty	600.0
@@ -7436,7 +7436,7 @@ enrich.ulbridge[039]:0.field.securitytype	"equity"
 enrich.ulbridge[039]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[039]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[039]:0.field.product	5
-enrich.ulbridge[039]:0.field.side	"1"
+enrich.ulbridge[039]:0.field.side	"BUY"
 enrich.ulbridge[039]:0.field.ordtype	"2"
 enrich.ulbridge[039]:0.field.price	83.08
 enrich.ulbridge[039]:0.field.orderqty	600.0
@@ -7588,7 +7588,7 @@ ulbridge[043]:0.field.securityidsource	"isin"
 ulbridge[043]:0.field.securitytype	"equity"
 ulbridge[043]:0.field.securityexchange	"XSWX"
 ulbridge[043]:0.field.cficode	"ESVTFR"
-ulbridge[043]:0.field.side	"1"
+ulbridge[043]:0.field.side	"BUY"
 ulbridge[043]:0.field.ordtype	"2"
 ulbridge[043]:0.field.price	83.08
 ulbridge[043]:0.field.orderqty	600.0
@@ -7737,7 +7737,7 @@ enrich.ulbridge[043]:0.field.securitytype	"equity"
 enrich.ulbridge[043]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[043]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[043]:0.field.product	5
-enrich.ulbridge[043]:0.field.side	"1"
+enrich.ulbridge[043]:0.field.side	"BUY"
 enrich.ulbridge[043]:0.field.ordtype	"2"
 enrich.ulbridge[043]:0.field.price	83.08
 enrich.ulbridge[043]:0.field.orderqty	600.0
@@ -7889,7 +7889,7 @@ ulbridge[044]:0.field.securityidsource	"isin"
 ulbridge[044]:0.field.securitytype	"equity"
 ulbridge[044]:0.field.securityexchange	"XSWX"
 ulbridge[044]:0.field.cficode	"ESVTFR"
-ulbridge[044]:0.field.side	"1"
+ulbridge[044]:0.field.side	"BUY"
 ulbridge[044]:0.field.ordtype	"2"
 ulbridge[044]:0.field.price	83.08
 ulbridge[044]:0.field.orderqty	600.0
@@ -8039,7 +8039,7 @@ enrich.ulbridge[044]:0.field.securitytype	"equity"
 enrich.ulbridge[044]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[044]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[044]:0.field.product	5
-enrich.ulbridge[044]:0.field.side	"1"
+enrich.ulbridge[044]:0.field.side	"BUY"
 enrich.ulbridge[044]:0.field.ordtype	"2"
 enrich.ulbridge[044]:0.field.price	83.08
 enrich.ulbridge[044]:0.field.orderqty	600.0
@@ -8191,7 +8191,7 @@ ulbridge[045]:0.field.securityidsource	"isin"
 ulbridge[045]:0.field.securitytype	"equity"
 ulbridge[045]:0.field.securityexchange	"XSWX"
 ulbridge[045]:0.field.cficode	"ESVTFR"
-ulbridge[045]:0.field.side	"1"
+ulbridge[045]:0.field.side	"BUY"
 ulbridge[045]:0.field.ordtype	"2"
 ulbridge[045]:0.field.price	83.08
 ulbridge[045]:0.field.orderqty	600.0
@@ -8341,7 +8341,7 @@ enrich.ulbridge[045]:0.field.securitytype	"equity"
 enrich.ulbridge[045]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[045]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[045]:0.field.product	5
-enrich.ulbridge[045]:0.field.side	"1"
+enrich.ulbridge[045]:0.field.side	"BUY"
 enrich.ulbridge[045]:0.field.ordtype	"2"
 enrich.ulbridge[045]:0.field.price	83.08
 enrich.ulbridge[045]:0.field.orderqty	600.0
@@ -8495,7 +8495,7 @@ ulbridge[047]:0.field.securityidsource	"isin"
 ulbridge[047]:0.field.securitytype	"equity"
 ulbridge[047]:0.field.securityexchange	"XSWX"
 ulbridge[047]:0.field.cficode	"ESVTFR"
-ulbridge[047]:0.field.side	"1"
+ulbridge[047]:0.field.side	"BUY"
 ulbridge[047]:0.field.ordtype	"2"
 ulbridge[047]:0.field.price	83.08
 ulbridge[047]:0.field.orderqty	600.0
@@ -8646,7 +8646,7 @@ enrich.ulbridge[047]:0.field.securitytype	"equity"
 enrich.ulbridge[047]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[047]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[047]:0.field.product	5
-enrich.ulbridge[047]:0.field.side	"1"
+enrich.ulbridge[047]:0.field.side	"BUY"
 enrich.ulbridge[047]:0.field.ordtype	"2"
 enrich.ulbridge[047]:0.field.price	83.08
 enrich.ulbridge[047]:0.field.orderqty	600.0
@@ -8802,7 +8802,7 @@ ulbridge[051]:0.field.securityidsource	"isin"
 ulbridge[051]:0.field.securitytype	"equity"
 ulbridge[051]:0.field.securityexchange	"XSWX"
 ulbridge[051]:0.field.cficode	"ESVTFR"
-ulbridge[051]:0.field.side	"1"
+ulbridge[051]:0.field.side	"BUY"
 ulbridge[051]:0.field.ordtype	"2"
 ulbridge[051]:0.field.price	83.08
 ulbridge[051]:0.field.orderqty	600.0
@@ -8954,7 +8954,7 @@ enrich.ulbridge[051]:0.field.securitytype	"equity"
 enrich.ulbridge[051]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[051]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[051]:0.field.product	5
-enrich.ulbridge[051]:0.field.side	"1"
+enrich.ulbridge[051]:0.field.side	"BUY"
 enrich.ulbridge[051]:0.field.ordtype	"2"
 enrich.ulbridge[051]:0.field.price	83.08
 enrich.ulbridge[051]:0.field.orderqty	600.0
@@ -9110,7 +9110,7 @@ ulbridge[052]:0.field.securityidsource	"isin"
 ulbridge[052]:0.field.securitytype	"equity"
 ulbridge[052]:0.field.securityexchange	"XSWX"
 ulbridge[052]:0.field.cficode	"ESVTFR"
-ulbridge[052]:0.field.side	"1"
+ulbridge[052]:0.field.side	"BUY"
 ulbridge[052]:0.field.ordtype	"2"
 ulbridge[052]:0.field.price	83.08
 ulbridge[052]:0.field.orderqty	600.0
@@ -9263,7 +9263,7 @@ enrich.ulbridge[052]:0.field.securitytype	"equity"
 enrich.ulbridge[052]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[052]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[052]:0.field.product	5
-enrich.ulbridge[052]:0.field.side	"1"
+enrich.ulbridge[052]:0.field.side	"BUY"
 enrich.ulbridge[052]:0.field.ordtype	"2"
 enrich.ulbridge[052]:0.field.price	83.08
 enrich.ulbridge[052]:0.field.orderqty	600.0
@@ -9418,7 +9418,7 @@ ulbridge[053]:0.field.securityidsource	"isin"
 ulbridge[053]:0.field.securitytype	"equity"
 ulbridge[053]:0.field.securityexchange	"XSWX"
 ulbridge[053]:0.field.cficode	"ESVTFR"
-ulbridge[053]:0.field.side	"1"
+ulbridge[053]:0.field.side	"BUY"
 ulbridge[053]:0.field.ordtype	"2"
 ulbridge[053]:0.field.price	83.08
 ulbridge[053]:0.field.orderqty	600.0
@@ -9571,7 +9571,7 @@ enrich.ulbridge[053]:0.field.securitytype	"equity"
 enrich.ulbridge[053]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[053]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[053]:0.field.product	5
-enrich.ulbridge[053]:0.field.side	"1"
+enrich.ulbridge[053]:0.field.side	"BUY"
 enrich.ulbridge[053]:0.field.ordtype	"2"
 enrich.ulbridge[053]:0.field.price	83.08
 enrich.ulbridge[053]:0.field.orderqty	600.0
@@ -9720,7 +9720,7 @@ ulbridge[055]:0.field.securityidsource	"4"
 ulbridge[055]:0.field.securitytype	"CS"
 ulbridge[055]:0.field.securityexchange	"XSWX"
 ulbridge[055]:0.field.cficode	"ESVTFR"
-ulbridge[055]:0.field.side	"1"
+ulbridge[055]:0.field.side	"BUY"
 ulbridge[055]:0.field.ordtype	"2"
 ulbridge[055]:0.field.price	83.08
 ulbridge[055]:0.field.orderqty	600.0
@@ -9851,7 +9851,7 @@ ulbridge[056]:0.field.securityidsource	"isin"
 ulbridge[056]:0.field.securitytype	"equity"
 ulbridge[056]:0.field.securityexchange	"XSWX"
 ulbridge[056]:0.field.cficode	"ESVTFR"
-ulbridge[056]:0.field.side	"1"
+ulbridge[056]:0.field.side	"BUY"
 ulbridge[056]:0.field.ordtype	"2"
 ulbridge[056]:0.field.price	83.08
 ulbridge[056]:0.field.orderqty	600.0
@@ -9981,7 +9981,7 @@ enrich.ulbridge[056]:0.field.securitytype	"equity"
 enrich.ulbridge[056]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[056]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[056]:0.field.product	5
-enrich.ulbridge[056]:0.field.side	"1"
+enrich.ulbridge[056]:0.field.side	"BUY"
 enrich.ulbridge[056]:0.field.ordtype	"2"
 enrich.ulbridge[056]:0.field.price	83.08
 enrich.ulbridge[056]:0.field.orderqty	600.0
@@ -10125,7 +10125,7 @@ ulbridge[057]:0.field.securityidsource	"isin"
 ulbridge[057]:0.field.securitytype	"equity"
 ulbridge[057]:0.field.securityexchange	"XSWX"
 ulbridge[057]:0.field.cficode	"ESVTFR"
-ulbridge[057]:0.field.side	"1"
+ulbridge[057]:0.field.side	"BUY"
 ulbridge[057]:0.field.ordtype	"2"
 ulbridge[057]:0.field.price	83.08
 ulbridge[057]:0.field.orderqty	600.0
@@ -10269,7 +10269,7 @@ enrich.ulbridge[057]:0.field.securitytype	"equity"
 enrich.ulbridge[057]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[057]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[057]:0.field.product	5
-enrich.ulbridge[057]:0.field.side	"1"
+enrich.ulbridge[057]:0.field.side	"BUY"
 enrich.ulbridge[057]:0.field.ordtype	"2"
 enrich.ulbridge[057]:0.field.price	83.08
 enrich.ulbridge[057]:0.field.orderqty	600.0
@@ -10414,7 +10414,7 @@ ulbridge[058]:0.field.securityidsource	"isin"
 ulbridge[058]:0.field.securitytype	"equity"
 ulbridge[058]:0.field.securityexchange	"XSWX"
 ulbridge[058]:0.field.cficode	"ESVTFR"
-ulbridge[058]:0.field.side	"1"
+ulbridge[058]:0.field.side	"BUY"
 ulbridge[058]:0.field.ordtype	"2"
 ulbridge[058]:0.field.price	83.08
 ulbridge[058]:0.field.orderqty	600.0
@@ -10559,7 +10559,7 @@ enrich.ulbridge[058]:0.field.securitytype	"equity"
 enrich.ulbridge[058]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[058]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[058]:0.field.product	5
-enrich.ulbridge[058]:0.field.side	"1"
+enrich.ulbridge[058]:0.field.side	"BUY"
 enrich.ulbridge[058]:0.field.ordtype	"2"
 enrich.ulbridge[058]:0.field.price	83.08
 enrich.ulbridge[058]:0.field.orderqty	600.0
@@ -10706,7 +10706,7 @@ ulbridge[059]:0.field.securityidsource	"isin"
 ulbridge[059]:0.field.securitytype	"equity"
 ulbridge[059]:0.field.securityexchange	"XSWX"
 ulbridge[059]:0.field.cficode	"ESVTFR"
-ulbridge[059]:0.field.side	"1"
+ulbridge[059]:0.field.side	"BUY"
 ulbridge[059]:0.field.ordtype	"2"
 ulbridge[059]:0.field.price	83.08
 ulbridge[059]:0.field.orderqty	600.0
@@ -10853,7 +10853,7 @@ enrich.ulbridge[059]:0.field.securitytype	"equity"
 enrich.ulbridge[059]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[059]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[059]:0.field.product	5
-enrich.ulbridge[059]:0.field.side	"1"
+enrich.ulbridge[059]:0.field.side	"BUY"
 enrich.ulbridge[059]:0.field.ordtype	"2"
 enrich.ulbridge[059]:0.field.price	83.08
 enrich.ulbridge[059]:0.field.orderqty	600.0
@@ -11000,7 +11000,7 @@ ulbridge[060]:0.field.securityidsource	"isin"
 ulbridge[060]:0.field.securitytype	"equity"
 ulbridge[060]:0.field.securityexchange	"XSWX"
 ulbridge[060]:0.field.cficode	"ESVTFR"
-ulbridge[060]:0.field.side	"1"
+ulbridge[060]:0.field.side	"BUY"
 ulbridge[060]:0.field.ordtype	"2"
 ulbridge[060]:0.field.price	83.08
 ulbridge[060]:0.field.orderqty	600.0
@@ -11147,7 +11147,7 @@ enrich.ulbridge[060]:0.field.securitytype	"equity"
 enrich.ulbridge[060]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[060]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[060]:0.field.product	5
-enrich.ulbridge[060]:0.field.side	"1"
+enrich.ulbridge[060]:0.field.side	"BUY"
 enrich.ulbridge[060]:0.field.ordtype	"2"
 enrich.ulbridge[060]:0.field.price	83.08
 enrich.ulbridge[060]:0.field.orderqty	600.0
@@ -11295,7 +11295,7 @@ ulbridge[062]:0.field.securityidsource	"isin"
 ulbridge[062]:0.field.securitytype	"equity"
 ulbridge[062]:0.field.securityexchange	"XSWX"
 ulbridge[062]:0.field.cficode	"ESVTFR"
-ulbridge[062]:0.field.side	"1"
+ulbridge[062]:0.field.side	"BUY"
 ulbridge[062]:0.field.ordtype	"2"
 ulbridge[062]:0.field.price	83.08
 ulbridge[062]:0.field.orderqty	600.0
@@ -11442,7 +11442,7 @@ enrich.ulbridge[062]:0.field.securitytype	"equity"
 enrich.ulbridge[062]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[062]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[062]:0.field.product	5
-enrich.ulbridge[062]:0.field.side	"1"
+enrich.ulbridge[062]:0.field.side	"BUY"
 enrich.ulbridge[062]:0.field.ordtype	"2"
 enrich.ulbridge[062]:0.field.price	83.08
 enrich.ulbridge[062]:0.field.orderqty	600.0
@@ -11590,7 +11590,7 @@ ulbridge[063]:0.field.securityidsource	"isin"
 ulbridge[063]:0.field.securitytype	"equity"
 ulbridge[063]:0.field.securityexchange	"XSWX"
 ulbridge[063]:0.field.cficode	"ESVTFR"
-ulbridge[063]:0.field.side	"1"
+ulbridge[063]:0.field.side	"BUY"
 ulbridge[063]:0.field.ordtype	"2"
 ulbridge[063]:0.field.price	83.08
 ulbridge[063]:0.field.orderqty	600.0
@@ -11738,7 +11738,7 @@ enrich.ulbridge[063]:0.field.securitytype	"equity"
 enrich.ulbridge[063]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[063]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[063]:0.field.product	5
-enrich.ulbridge[063]:0.field.side	"1"
+enrich.ulbridge[063]:0.field.side	"BUY"
 enrich.ulbridge[063]:0.field.ordtype	"2"
 enrich.ulbridge[063]:0.field.price	83.08
 enrich.ulbridge[063]:0.field.orderqty	600.0
@@ -11886,7 +11886,7 @@ ulbridge[064]:0.field.securityidsource	"isin"
 ulbridge[064]:0.field.securitytype	"equity"
 ulbridge[064]:0.field.securityexchange	"XSWX"
 ulbridge[064]:0.field.cficode	"ESVTFR"
-ulbridge[064]:0.field.side	"1"
+ulbridge[064]:0.field.side	"BUY"
 ulbridge[064]:0.field.ordtype	"2"
 ulbridge[064]:0.field.price	83.08
 ulbridge[064]:0.field.orderqty	600.0
@@ -12034,7 +12034,7 @@ enrich.ulbridge[064]:0.field.securitytype	"equity"
 enrich.ulbridge[064]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[064]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[064]:0.field.product	5
-enrich.ulbridge[064]:0.field.side	"1"
+enrich.ulbridge[064]:0.field.side	"BUY"
 enrich.ulbridge[064]:0.field.ordtype	"2"
 enrich.ulbridge[064]:0.field.price	83.08
 enrich.ulbridge[064]:0.field.orderqty	600.0
@@ -12186,7 +12186,7 @@ ulbridge[069]:0.field.securityidsource	"isin"
 ulbridge[069]:0.field.securitytype	"equity"
 ulbridge[069]:0.field.securityexchange	"XSWX"
 ulbridge[069]:0.field.cficode	"ESVTFR"
-ulbridge[069]:0.field.side	"1"
+ulbridge[069]:0.field.side	"BUY"
 ulbridge[069]:0.field.ordtype	"2"
 ulbridge[069]:0.field.price	83.08
 ulbridge[069]:0.field.orderqty	600.0
@@ -12335,7 +12335,7 @@ enrich.ulbridge[069]:0.field.securitytype	"equity"
 enrich.ulbridge[069]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[069]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[069]:0.field.product	5
-enrich.ulbridge[069]:0.field.side	"1"
+enrich.ulbridge[069]:0.field.side	"BUY"
 enrich.ulbridge[069]:0.field.ordtype	"2"
 enrich.ulbridge[069]:0.field.price	83.08
 enrich.ulbridge[069]:0.field.orderqty	600.0
@@ -12485,7 +12485,7 @@ ulbridge[070]:0.field.securityidsource	"isin"
 ulbridge[070]:0.field.securitytype	"equity"
 ulbridge[070]:0.field.securityexchange	"XSWX"
 ulbridge[070]:0.field.cficode	"ESVTFR"
-ulbridge[070]:0.field.side	"1"
+ulbridge[070]:0.field.side	"BUY"
 ulbridge[070]:0.field.ordtype	"2"
 ulbridge[070]:0.field.price	83.08
 ulbridge[070]:0.field.orderqty	600.0
@@ -12634,7 +12634,7 @@ enrich.ulbridge[070]:0.field.securitytype	"equity"
 enrich.ulbridge[070]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[070]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[070]:0.field.product	5
-enrich.ulbridge[070]:0.field.side	"1"
+enrich.ulbridge[070]:0.field.side	"BUY"
 enrich.ulbridge[070]:0.field.ordtype	"2"
 enrich.ulbridge[070]:0.field.price	83.08
 enrich.ulbridge[070]:0.field.orderqty	600.0
@@ -12781,7 +12781,7 @@ ulbridge[072]:0.field.securityidsource	"4"
 ulbridge[072]:0.field.securitytype	"CS"
 ulbridge[072]:0.field.securityexchange	"XSWX"
 ulbridge[072]:0.field.cficode	"ESVTFR"
-ulbridge[072]:0.field.side	"1"
+ulbridge[072]:0.field.side	"BUY"
 ulbridge[072]:0.field.ordtype	"2"
 ulbridge[072]:0.field.price	83.08
 ulbridge[072]:0.field.orderqty	600.0
@@ -12905,7 +12905,7 @@ ulbridge[073]:0.field.securityidsource	"isin"
 ulbridge[073]:0.field.securitytype	"equity"
 ulbridge[073]:0.field.securityexchange	"XSWX"
 ulbridge[073]:0.field.cficode	"ESVTFR"
-ulbridge[073]:0.field.side	"1"
+ulbridge[073]:0.field.side	"BUY"
 ulbridge[073]:0.field.ordtype	"2"
 ulbridge[073]:0.field.price	83.08
 ulbridge[073]:0.field.orderqty	600.0
@@ -13027,7 +13027,7 @@ enrich.ulbridge[073]:0.field.securitytype	"equity"
 enrich.ulbridge[073]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[073]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[073]:0.field.product	5
-enrich.ulbridge[073]:0.field.side	"1"
+enrich.ulbridge[073]:0.field.side	"BUY"
 enrich.ulbridge[073]:0.field.ordtype	"2"
 enrich.ulbridge[073]:0.field.price	83.08
 enrich.ulbridge[073]:0.field.orderqty	600.0
@@ -13166,7 +13166,7 @@ ulbridge[074]:0.field.securityidsource	"isin"
 ulbridge[074]:0.field.securitytype	"equity"
 ulbridge[074]:0.field.securityexchange	"XSWX"
 ulbridge[074]:0.field.cficode	"ESVTFR"
-ulbridge[074]:0.field.side	"1"
+ulbridge[074]:0.field.side	"BUY"
 ulbridge[074]:0.field.ordtype	"2"
 ulbridge[074]:0.field.price	83.08
 ulbridge[074]:0.field.orderqty	600.0
@@ -13304,7 +13304,7 @@ enrich.ulbridge[074]:0.field.securitytype	"equity"
 enrich.ulbridge[074]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[074]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[074]:0.field.product	5
-enrich.ulbridge[074]:0.field.side	"1"
+enrich.ulbridge[074]:0.field.side	"BUY"
 enrich.ulbridge[074]:0.field.ordtype	"2"
 enrich.ulbridge[074]:0.field.price	83.08
 enrich.ulbridge[074]:0.field.orderqty	600.0
@@ -13444,7 +13444,7 @@ ulbridge[075]:0.field.securityidsource	"isin"
 ulbridge[075]:0.field.securitytype	"equity"
 ulbridge[075]:0.field.securityexchange	"XSWX"
 ulbridge[075]:0.field.cficode	"ESVTFR"
-ulbridge[075]:0.field.side	"1"
+ulbridge[075]:0.field.side	"BUY"
 ulbridge[075]:0.field.ordtype	"2"
 ulbridge[075]:0.field.price	83.08
 ulbridge[075]:0.field.orderqty	600.0
@@ -13582,7 +13582,7 @@ enrich.ulbridge[075]:0.field.securitytype	"equity"
 enrich.ulbridge[075]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[075]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[075]:0.field.product	5
-enrich.ulbridge[075]:0.field.side	"1"
+enrich.ulbridge[075]:0.field.side	"BUY"
 enrich.ulbridge[075]:0.field.ordtype	"2"
 enrich.ulbridge[075]:0.field.price	83.08
 enrich.ulbridge[075]:0.field.orderqty	600.0
@@ -13729,7 +13729,7 @@ ulbridge[076]:0.field.securityidsource	"isin"
 ulbridge[076]:0.field.securitytype	"equity"
 ulbridge[076]:0.field.securityexchange	"XSWX"
 ulbridge[076]:0.field.cficode	"ESVTFR"
-ulbridge[076]:0.field.side	"1"
+ulbridge[076]:0.field.side	"BUY"
 ulbridge[076]:0.field.ordtype	"2"
 ulbridge[076]:0.field.price	83.08
 ulbridge[076]:0.field.orderqty	600.0
@@ -13874,7 +13874,7 @@ enrich.ulbridge[076]:0.field.securitytype	"equity"
 enrich.ulbridge[076]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[076]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[076]:0.field.product	5
-enrich.ulbridge[076]:0.field.side	"1"
+enrich.ulbridge[076]:0.field.side	"BUY"
 enrich.ulbridge[076]:0.field.ordtype	"2"
 enrich.ulbridge[076]:0.field.price	83.08
 enrich.ulbridge[076]:0.field.orderqty	600.0
@@ -14021,7 +14021,7 @@ ulbridge[077]:0.field.securityidsource	"isin"
 ulbridge[077]:0.field.securitytype	"equity"
 ulbridge[077]:0.field.securityexchange	"XSWX"
 ulbridge[077]:0.field.cficode	"ESVTFR"
-ulbridge[077]:0.field.side	"1"
+ulbridge[077]:0.field.side	"BUY"
 ulbridge[077]:0.field.ordtype	"2"
 ulbridge[077]:0.field.price	83.08
 ulbridge[077]:0.field.orderqty	600.0
@@ -14166,7 +14166,7 @@ enrich.ulbridge[077]:0.field.securitytype	"equity"
 enrich.ulbridge[077]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[077]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[077]:0.field.product	5
-enrich.ulbridge[077]:0.field.side	"1"
+enrich.ulbridge[077]:0.field.side	"BUY"
 enrich.ulbridge[077]:0.field.ordtype	"2"
 enrich.ulbridge[077]:0.field.price	83.08
 enrich.ulbridge[077]:0.field.orderqty	600.0
@@ -14318,7 +14318,7 @@ ulbridge[081]:0.field.securityidsource	"isin"
 ulbridge[081]:0.field.securitytype	"equity"
 ulbridge[081]:0.field.securityexchange	"XSWX"
 ulbridge[081]:0.field.cficode	"ESVTFR"
-ulbridge[081]:0.field.side	"1"
+ulbridge[081]:0.field.side	"BUY"
 ulbridge[081]:0.field.ordtype	"2"
 ulbridge[081]:0.field.price	83.08
 ulbridge[081]:0.field.orderqty	600.0
@@ -14467,7 +14467,7 @@ enrich.ulbridge[081]:0.field.securitytype	"equity"
 enrich.ulbridge[081]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[081]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[081]:0.field.product	5
-enrich.ulbridge[081]:0.field.side	"1"
+enrich.ulbridge[081]:0.field.side	"BUY"
 enrich.ulbridge[081]:0.field.ordtype	"2"
 enrich.ulbridge[081]:0.field.price	83.08
 enrich.ulbridge[081]:0.field.orderqty	600.0
@@ -14619,7 +14619,7 @@ ulbridge[082]:0.field.securityidsource	"isin"
 ulbridge[082]:0.field.securitytype	"equity"
 ulbridge[082]:0.field.securityexchange	"XSWX"
 ulbridge[082]:0.field.cficode	"ESVTFR"
-ulbridge[082]:0.field.side	"1"
+ulbridge[082]:0.field.side	"BUY"
 ulbridge[082]:0.field.ordtype	"2"
 ulbridge[082]:0.field.price	83.08
 ulbridge[082]:0.field.orderqty	600.0
@@ -14769,7 +14769,7 @@ enrich.ulbridge[082]:0.field.securitytype	"equity"
 enrich.ulbridge[082]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[082]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[082]:0.field.product	5
-enrich.ulbridge[082]:0.field.side	"1"
+enrich.ulbridge[082]:0.field.side	"BUY"
 enrich.ulbridge[082]:0.field.ordtype	"2"
 enrich.ulbridge[082]:0.field.price	83.08
 enrich.ulbridge[082]:0.field.orderqty	600.0
@@ -14921,7 +14921,7 @@ ulbridge[083]:0.field.securityidsource	"isin"
 ulbridge[083]:0.field.securitytype	"equity"
 ulbridge[083]:0.field.securityexchange	"XSWX"
 ulbridge[083]:0.field.cficode	"ESVTFR"
-ulbridge[083]:0.field.side	"1"
+ulbridge[083]:0.field.side	"BUY"
 ulbridge[083]:0.field.ordtype	"2"
 ulbridge[083]:0.field.price	83.08
 ulbridge[083]:0.field.orderqty	600.0
@@ -15071,7 +15071,7 @@ enrich.ulbridge[083]:0.field.securitytype	"equity"
 enrich.ulbridge[083]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[083]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[083]:0.field.product	5
-enrich.ulbridge[083]:0.field.side	"1"
+enrich.ulbridge[083]:0.field.side	"BUY"
 enrich.ulbridge[083]:0.field.ordtype	"2"
 enrich.ulbridge[083]:0.field.price	83.08
 enrich.ulbridge[083]:0.field.orderqty	600.0
@@ -15225,7 +15225,7 @@ ulbridge[085]:0.field.securityidsource	"isin"
 ulbridge[085]:0.field.securitytype	"equity"
 ulbridge[085]:0.field.securityexchange	"XSWX"
 ulbridge[085]:0.field.cficode	"ESVTFR"
-ulbridge[085]:0.field.side	"1"
+ulbridge[085]:0.field.side	"BUY"
 ulbridge[085]:0.field.ordtype	"2"
 ulbridge[085]:0.field.price	83.08
 ulbridge[085]:0.field.orderqty	600.0
@@ -15376,7 +15376,7 @@ enrich.ulbridge[085]:0.field.securitytype	"equity"
 enrich.ulbridge[085]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[085]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[085]:0.field.product	5
-enrich.ulbridge[085]:0.field.side	"1"
+enrich.ulbridge[085]:0.field.side	"BUY"
 enrich.ulbridge[085]:0.field.ordtype	"2"
 enrich.ulbridge[085]:0.field.price	83.08
 enrich.ulbridge[085]:0.field.orderqty	600.0
@@ -15532,7 +15532,7 @@ ulbridge[089]:0.field.securityidsource	"isin"
 ulbridge[089]:0.field.securitytype	"equity"
 ulbridge[089]:0.field.securityexchange	"XSWX"
 ulbridge[089]:0.field.cficode	"ESVTFR"
-ulbridge[089]:0.field.side	"1"
+ulbridge[089]:0.field.side	"BUY"
 ulbridge[089]:0.field.ordtype	"2"
 ulbridge[089]:0.field.price	83.08
 ulbridge[089]:0.field.orderqty	600.0
@@ -15684,7 +15684,7 @@ enrich.ulbridge[089]:0.field.securitytype	"equity"
 enrich.ulbridge[089]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[089]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[089]:0.field.product	5
-enrich.ulbridge[089]:0.field.side	"1"
+enrich.ulbridge[089]:0.field.side	"BUY"
 enrich.ulbridge[089]:0.field.ordtype	"2"
 enrich.ulbridge[089]:0.field.price	83.08
 enrich.ulbridge[089]:0.field.orderqty	600.0
@@ -15840,7 +15840,7 @@ ulbridge[090]:0.field.securityidsource	"isin"
 ulbridge[090]:0.field.securitytype	"equity"
 ulbridge[090]:0.field.securityexchange	"XSWX"
 ulbridge[090]:0.field.cficode	"ESVTFR"
-ulbridge[090]:0.field.side	"1"
+ulbridge[090]:0.field.side	"BUY"
 ulbridge[090]:0.field.ordtype	"2"
 ulbridge[090]:0.field.price	83.08
 ulbridge[090]:0.field.orderqty	600.0
@@ -15993,7 +15993,7 @@ enrich.ulbridge[090]:0.field.securitytype	"equity"
 enrich.ulbridge[090]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[090]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[090]:0.field.product	5
-enrich.ulbridge[090]:0.field.side	"1"
+enrich.ulbridge[090]:0.field.side	"BUY"
 enrich.ulbridge[090]:0.field.ordtype	"2"
 enrich.ulbridge[090]:0.field.price	83.08
 enrich.ulbridge[090]:0.field.orderqty	600.0
@@ -16148,7 +16148,7 @@ ulbridge[091]:0.field.securityidsource	"isin"
 ulbridge[091]:0.field.securitytype	"equity"
 ulbridge[091]:0.field.securityexchange	"XSWX"
 ulbridge[091]:0.field.cficode	"ESVTFR"
-ulbridge[091]:0.field.side	"1"
+ulbridge[091]:0.field.side	"BUY"
 ulbridge[091]:0.field.ordtype	"2"
 ulbridge[091]:0.field.price	83.08
 ulbridge[091]:0.field.orderqty	600.0
@@ -16301,7 +16301,7 @@ enrich.ulbridge[091]:0.field.securitytype	"equity"
 enrich.ulbridge[091]:0.field.securityexchange	"XSWX"
 enrich.ulbridge[091]:0.field.cficode	"ESVTFR"
 enrich.ulbridge[091]:0.field.product	5
-enrich.ulbridge[091]:0.field.side	"1"
+enrich.ulbridge[091]:0.field.side	"BUY"
 enrich.ulbridge[091]:0.field.ordtype	"2"
 enrich.ulbridge[091]:0.field.price	83.08
 enrich.ulbridge[091]:0.field.orderqty	600.0
@@ -16438,7 +16438,7 @@ ulbridge[100]:0.field.symbol	"ABBN.S"
 ulbridge[100]:0.field.securityid	"CH0012221716"
 ulbridge[100]:0.field.securityidsource	"4"
 ulbridge[100]:0.field.securityexchange	"XSWX"
-ulbridge[100]:0.field.side	"1"
+ulbridge[100]:0.field.side	"BUY"
 ulbridge[100]:0.field.currency	"CHF"
 ulbridge[100]:0.field.lastpx	83.08
 ulbridge[100]:0.field.lastqty	21.0
@@ -16481,7 +16481,7 @@ ulbridge[101]:0.field.msgseqnum	40219
 ulbridge[101]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 ulbridge[101]:0.field.clordid	"OD9EOEDJ401"
 ulbridge[101]:0.field.symbol	"HOLN"
-ulbridge[101]:0.field.side	"1"
+ulbridge[101]:0.field.side	"BUY"
 ulbridge[101]:0.field.ordtype	"2"
 ulbridge[101]:0.field.price	72.3
 ulbridge[101]:0.field.orderqty	50.0
@@ -16605,7 +16605,7 @@ ulbridge[104]:0.field.securityidsource	"isin"
 ulbridge[104]:0.field.securitytype	"equity"
 ulbridge[104]:0.field.securityexchange	"XSWX"
 ulbridge[104]:0.field.cficode	"ESVTFR"
-ulbridge[104]:0.field.side	"1"
+ulbridge[104]:0.field.side	"BUY"
 ulbridge[104]:0.field.ordtype	"2"
 ulbridge[104]:0.field.price	83.04
 ulbridge[104]:0.field.orderqty	36.0
@@ -16703,7 +16703,7 @@ ulbridge[106]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 ulbridge[106]:0.field.account	"ACCT1"
 ulbridge[106]:0.field.clordid	"OD9EOEDJ401"
 ulbridge[106]:0.field.symbol	"HOLN"
-ulbridge[106]:0.field.side	"1"
+ulbridge[106]:0.field.side	"BUY"
 ulbridge[106]:0.field.ordtype	"2"
 ulbridge[106]:0.field.price	72.3
 ulbridge[106]:0.field.orderqty	50.0
@@ -16753,7 +16753,7 @@ ulbridge[107]:0.field.msgseqnum	3092
 ulbridge[107]:0.field.sendingtime	"2026-08-14T12:46:40.020000000Z"
 ulbridge[107]:0.field.clordid	"OD9EOEDJ401"
 ulbridge[107]:0.field.symbol	"HOLN"
-ulbridge[107]:0.field.side	"1"
+ulbridge[107]:0.field.side	"BUY"
 ulbridge[107]:0.field.ordtype	"2"
 ulbridge[107]:0.field.price	72.3
 ulbridge[107]:0.field.orderqty	50.0
@@ -16885,7 +16885,7 @@ ulbridge[112]:0.field.execid	"00011377096XEEA0"
 ulbridge[112]:0.field.symbol	"HOLN"
 ulbridge[112]:0.field.securityid	"CH0012214059"
 ulbridge[112]:0.field.securityidsource	"4"
-ulbridge[112]:0.field.side	"1"
+ulbridge[112]:0.field.side	"BUY"
 ulbridge[112]:0.field.currency	"CHF"
 ulbridge[112]:0.field.lastpx	72.28
 ulbridge[112]:0.field.lastqty	120.0
@@ -17050,7 +17050,7 @@ ulbridge[122]:0.field.execid	"2062"
 ulbridge[122]:0.field.symbol	"1605"
 ulbridge[122]:0.field.securityid	"TW0001605004"
 ulbridge[122]:0.field.securityidsource	"4"
-ulbridge[122]:0.field.side	"1"
+ulbridge[122]:0.field.side	"BUY"
 ulbridge[122]:0.field.ordtype	"1"
 ulbridge[122]:0.field.orderqty	3000000.0
 ulbridge[122]:0.field.currency	"TWD"
@@ -17122,7 +17122,7 @@ ulbridge[123]:0.field.orderid	"20260814_TP1_CLIENT_1013"
 ulbridge[123]:0.field.execid	"2062"
 ulbridge[123]:0.field.symbol	"1605"
 ulbridge[123]:0.field.securityid	"TW0001605004"
-ulbridge[123]:0.field.side	"1"
+ulbridge[123]:0.field.side	"BUY"
 ulbridge[123]:0.field.ordtype	"1"
 ulbridge[123]:0.field.orderqty	3000000.0
 ulbridge[123]:0.field.currency	"TWD"
@@ -17193,7 +17193,7 @@ enrich.ulbridge[123]:0.field.execid	"2062"
 enrich.ulbridge[123]:0.field.symbol	"1605"
 enrich.ulbridge[123]:0.field.securityid	"TW0001605004"
 enrich.ulbridge[123]:0.field.securityidsource	"4"
-enrich.ulbridge[123]:0.field.side	"1"
+enrich.ulbridge[123]:0.field.side	"BUY"
 enrich.ulbridge[123]:0.field.ordtype	"1"
 enrich.ulbridge[123]:0.field.orderqty	3000000.0
 enrich.ulbridge[123]:0.field.currency	"TWD"
@@ -17272,7 +17272,7 @@ ulbridge[125]:0.field.orderid	"20260814_TP1_CLIENT_1013"
 ulbridge[125]:0.field.execid	"2062"
 ulbridge[125]:0.field.symbol	"1605"
 ulbridge[125]:0.field.securityid	"TW0001605004"
-ulbridge[125]:0.field.side	"1"
+ulbridge[125]:0.field.side	"BUY"
 ulbridge[125]:0.field.ordtype	"1"
 ulbridge[125]:0.field.orderqty	3000000.0
 ulbridge[125]:0.field.currency	"TWD"
@@ -17348,7 +17348,7 @@ enrich.ulbridge[125]:0.field.execid	"2062"
 enrich.ulbridge[125]:0.field.symbol	"1605"
 enrich.ulbridge[125]:0.field.securityid	"TW0001605004"
 enrich.ulbridge[125]:0.field.securityidsource	"4"
-enrich.ulbridge[125]:0.field.side	"1"
+enrich.ulbridge[125]:0.field.side	"BUY"
 enrich.ulbridge[125]:0.field.ordtype	"1"
 enrich.ulbridge[125]:0.field.orderqty	3000000.0
 enrich.ulbridge[125]:0.field.currency	"TWD"
@@ -17438,7 +17438,7 @@ ulbridge[129]:0.field.securityid	"TW0002454006"
 ulbridge[129]:0.field.securityidsource	"4"
 ulbridge[129]:0.field.securitytype	"CS"
 ulbridge[129]:0.field.cficode	"ESXXXX"
-ulbridge[129]:0.field.side	"2"
+ulbridge[129]:0.field.side	"SELL"
 ulbridge[129]:0.field.orderqty	10000.0
 ulbridge[129]:0.field.offersize	10000.0
 ulbridge[129]:0.field.transacttime	"2026-08-14T21:59:46.000000000Z"
@@ -18100,7 +18100,7 @@ shapes[000]:0.field.msgtype	"D"
 shapes[000]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 shapes[000]:0.field.clordid	"ORDER-1"
 shapes[000]:0.field.symbol	"AAPL"
-shapes[000]:0.field.side	"1"
+shapes[000]:0.field.side	"BUY"
 shapes[000]:0.field.checksum	"203"
 shapes[000]:0.field.msgdirection	"S"
 shapes[000]:0.field.nofixentries	7
@@ -18178,7 +18178,7 @@ shapes[003]:0.field.beginstring	"FIX.4.2"
 shapes[003]:0.field.msgtype	"UL"
 shapes[003]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 shapes[003]:0.field.symbol	"TTF"
-shapes[003]:0.field.side	"1"
+shapes[003]:0.field.side	"BUY"
 shapes[003]:0.field.checksum	"044"
 shapes[003]:0.field.msgdirection	"S"
 shapes[003]:0.field.nofixentries	5
@@ -18206,7 +18206,7 @@ shapes[004]:0.field.msgtype	"D"
 shapes[004]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 shapes[004]:0.field.clordid	"ORDER-1"
 shapes[004]:0.field.symbol	"AAPL"
-shapes[004]:0.field.side	"1"
+shapes[004]:0.field.side	"BUY"
 shapes[004]:0.field.checksum	"000"
 shapes[004]:0.field.nofixentries	6
 shapes[004].messages	1
@@ -18228,7 +18228,7 @@ shapes[005]:0.field.symbolticker	"TTF"
 shapes[005]:0.field.beginstring	"FIX.4.4"
 shapes[005]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 shapes[005]:0.field.symbol	"TTF"
-shapes[005]:0.field.side	"1"
+shapes[005]:0.field.side	"BUY"
 shapes[005]:0.field.nofixentries	3
 shapes[005].messages	1
 shapes[006].line	ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1
@@ -18254,7 +18254,7 @@ shapes[006]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 shapes[006]:0.field.account	"A1"
 shapes[006]:0.field.clordid	"ORDER-1"
 shapes[006]:0.field.symbol	"AAPL"
-shapes[006]:0.field.side	"1"
+shapes[006]:0.field.side	"BUY"
 shapes[006]:0.field.nofixentries	5
 shapes[006].messages	1
 shapes[007].line	After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR
@@ -18480,7 +18480,7 @@ frames[006]:0.field.beginstring	"FIX.4.4"
 frames[006]:0.field.msgtype	"D"
 frames[006]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 frames[006]:0.field.symbol	"AAPL"
-frames[006]:0.field.side	"1"
+frames[006]:0.field.side	"BUY"
 frames[006]:0.field.checksum	"0"
 frames[006]:0.field.nofixentries	5
 frames[006].messages	1
@@ -19190,7 +19190,7 @@ frames[039]:0.field.xmldatalen	38
 frames[039]:0.field.xmldata	"TVNHVFlQRT1EfE9SREVSSUQ9OXwjT1JERVJJRD05fCNTSURFPTE="
 frames[039]:0.field.orderid	"9"
 frames[039]:0.field.symbol	"TTF"
-frames[039]:0.field.side	"1"
+frames[039]:0.field.side	"BUY"
 frames[039]:0.field.checksum	"0"
 frames[039]:0.field.nofixentries	6
 frames[039].messages	1
@@ -19428,7 +19428,7 @@ bridge[000]:0.field.targetcompid	"VENUE"
 bridge[000]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[000]:0.field.clordid	"ORDER-1"
 bridge[000]:0.field.symbol	"AAPL"
-bridge[000]:0.field.side	"1"
+bridge[000]:0.field.side	"BUY"
 bridge[000]:0.field.price	10.5
 bridge[000]:0.field.orderqty	100.0
 bridge[000]:0.field.bidpx	10.5
@@ -19477,7 +19477,7 @@ bridge[001]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[001]:0.field.orderid	"O-9"
 bridge[001]:0.field.execid	"E-1"
 bridge[001]:0.field.symbol	"AAPL"
-bridge[001]:0.field.side	"1"
+bridge[001]:0.field.side	"BUY"
 bridge[001]:0.field.orderqty	100.0
 bridge[001]:0.field.lastpx	10.5
 bridge[001]:0.field.lastqty	40.0
@@ -19530,7 +19530,7 @@ bridge[002]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[002]:0.field.orderid	"O-9"
 bridge[002]:0.field.execid	"E-2"
 bridge[002]:0.field.symbol	"AAPL"
-bridge[002]:0.field.side	"1"
+bridge[002]:0.field.side	"BUY"
 bridge[002]:0.field.orderqty	100.0
 bridge[002]:0.field.currency	"EUR"
 bridge[002]:0.field.lastpx	10.5
@@ -19563,7 +19563,7 @@ bridge[003]:0.field.beginstring	"FIX.4.4"
 bridge[003]:0.field.msgtype	"D"
 bridge[003]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[003]:0.field.symbol	"TTF"
-bridge[003]:0.field.side	"1"
+bridge[003]:0.field.side	"BUY"
 bridge[003]:0.field.orderqty	1200.0
 bridge[003]:0.field.bidsize	1200.0
 bridge[003]:0.field.nopartyids	1
@@ -19581,40 +19581,30 @@ bridge[004]:0.entry[2]	t0 OrdQty=50
 bridge[004]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
-bridge[004]:0.field.msghash	"l6aAQgI8FAChQvDQL6JBkw=="
+bridge[004]:0.field.msghash	"l6aAQgI8FADrYFkrMSCWVg=="
 bridge[004]:0.field.msgphash	"maoG0wFHmNhgAcMkRo1Jfw=="
 bridge[004]:0.field.code	""
 bridge[004]:0.field.version	"4.4"
 bridge[004]:0.field.beginstring	"FIX.4.4"
 bridge[004]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.clordid	"ORDER-2"
-bridge[004]:0.field.side	"1"
+bridge[004]:0.field.side	"BUY"
 bridge[004]:0.field.nofixentries	3
 bridge[004].messages	1
 bridge[005].line	{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","State":"logged"},"status":200}
-bridge[005]:0.type	pluginconfig
-bridge[005]:0.digest	0319dbd3eef48164582e3b3a34c0483d
-bridge[005]:0.wire	SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin|MBeanType=Plugin|PluginType=FIX|BeginString=FIX.4.2|SenderCompID=ULB_BKRBDG|State=logged|TargetCompID=ULB_PTBDG|
-bridge[005]:0.entry[0]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin
-bridge[005]:0.entry[1]	t20011 MBeanType=Plugin
-bridge[005]:0.entry[2]	t20012 PluginType=FIX
-bridge[005]:0.entry[3]	t8 BeginString=FIX.4.2
-bridge[005]:0.entry[4]	t49 SenderCompID=ULB_BKRBDG
-bridge[005]:0.entry[5]	t20019 State=logged
-bridge[005]:0.entry[6]	t56 TargetCompID=ULB_PTBDG
+bridge[005]:0.type	unknown
+bridge[005]:0.digest	99aa06d3014798d86001c324468d497f
+bridge[005]:0.wire	
 bridge[005]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
 bridge[005]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
 bridge[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
-bridge[005]:0.field.msghash	"l6aAQgI8FACEAKpUmfFCeQ=="
+bridge[005]:0.field.msghash	"l6aAQgI8FADIsUaHsRv5Fg=="
 bridge[005]:0.field.msgphash	"maoG0wFHmNhgAcMkRo1Jfw=="
 bridge[005]:0.field.code	""
 bridge[005]:0.field.version	"4.4"
-bridge[005]:0.field.beginstring	"FIX.4.2"
-bridge[005]:0.field.msgtype	"UCFG"
-bridge[005]:0.field.sendercompid	"ULB_BKRBDG"
-bridge[005]:0.field.targetcompid	"ULB_PTBDG"
+bridge[005]:0.field.beginstring	"FIX.4.4"
 bridge[005]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
-bridge[005]:0.field.nofixentries	7
+bridge[005]:0.field.nofixentries	0
 bridge[005].messages	1
 bridge[006].line	no level printed by this plugin, and no pairs either
 bridge[006].messages	0
@@ -19706,7 +19696,7 @@ bridge[008]:0.field.orderid	"O-20260814-1003"
 bridge[008]:0.field.execid	"E-20260814-4507"
 bridge[008]:0.field.symbol	"EXAMPLECO"
 bridge[008]:0.field.securityid	"XX0000000001"
-bridge[008]:0.field.side	"1"
+bridge[008]:0.field.side	"BUY"
 bridge[008]:0.field.ordtype	"1"
 bridge[008]:0.field.price	547.771791547861
 bridge[008]:0.field.orderqty	982.0
@@ -19763,7 +19753,7 @@ bridge[009]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 bridge[009]:0.field.account	"client"
 bridge[009]:0.field.clordid	"20260814_TP1_CLIENT_1003"
 bridge[009]:0.field.symbol	"EXAMPLECO"
-bridge[009]:0.field.side	"1"
+bridge[009]:0.field.side	"BUY"
 bridge[009]:0.field.ordtype	"1"
 bridge[009]:0.field.orderqty	982.0
 bridge[009]:0.field.currency	"INR"
@@ -19826,7 +19816,7 @@ lift[000]:0.field.msgseqnum	7
 lift[000]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[000]:0.field.clordid	"ORDER-1"
 lift[000]:0.field.symbol	"AAPL"
-lift[000]:0.field.side	"1"
+lift[000]:0.field.side	"BUY"
 lift[000]:0.field.price	12.5
 lift[000]:0.field.orderqty	100.0
 lift[000]:0.field.bidpx	12.5
@@ -19890,7 +19880,7 @@ lift[002]:0.field.beginstring	"FIX.4.4"
 lift[002]:0.field.msgtype	"8"
 lift[002]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[002]:0.field.execid	"E"
-lift[002]:0.field.side	"1"
+lift[002]:0.field.side	"BUY"
 lift[002]:0.field.price	12.5
 lift[002]:0.field.lastpx	12.75
 lift[002]:0.field.lastqty	50.0
@@ -19919,7 +19909,7 @@ lift[003]:0.field.beginstring	"FIX.4.4"
 lift[003]:0.field.msgtype	"D"
 lift[003]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[003]:0.field.clordid	"A"
-lift[003]:0.field.side	"1"
+lift[003]:0.field.side	"BUY"
 lift[003]:0.field.price	12.5
 lift[003]:0.field.orderqty	100.0
 lift[003]:0.field.bidpx	12.5
@@ -19949,7 +19939,7 @@ lift[004]:0.field.beginstring	"FIX.4.4"
 lift[004]:0.field.msgtype	"D"
 lift[004]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[004]:0.field.clordid	"A"
-lift[004]:0.field.side	"2"
+lift[004]:0.field.side	"SELL"
 lift[004]:0.field.price	12.5
 lift[004]:0.field.orderqty	100.0
 lift[004]:0.field.offerpx	12.5
@@ -19979,7 +19969,7 @@ lift[005]:0.field.beginstring	"FIX.4.4"
 lift[005]:0.field.msgtype	"D"
 lift[005]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[005]:0.field.clordid	"A"
-lift[005]:0.field.side	"8"
+lift[005]:0.field.side	"CROSS"
 lift[005]:0.field.price	12.5
 lift[005]:0.field.orderqty	100.0
 lift[005]:0.field.checksum	"0"
@@ -20963,7 +20953,7 @@ latest[000]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 latest[000]:0.field.orderid	"O1"
 latest[000]:0.field.execid	"E1"
 latest[000]:0.field.symbol	"AAPL"
-latest[000]:0.field.side	"1"
+latest[000]:0.field.side	"BUY"
 latest[000]:0.field.lastpx	10.5
 latest[000]:0.field.lastqty	100.0
 latest[000]:0.field.cumqty	100.0
@@ -21176,7 +21166,7 @@ verbatim[006]:0.field.beginstring	"FIX.4.4"
 verbatim[006]:0.field.msgtype	"D"
 verbatim[006]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 verbatim[006]:0.field.symbol	"AAPL"
-verbatim[006]:0.field.side	"1"
+verbatim[006]:0.field.side	"BUY"
 verbatim[006]:0.field.checksum	"0"
 verbatim[006]:0.field.nofixentries	5
 verbatim[006].messages	1
@@ -21888,7 +21878,7 @@ verbatim[039]:0.field.xmldatalen	38
 verbatim[039]:0.field.xmldata	"TVNHVFlQRT1EfE9SREVSSUQ9OXwjT1JERVJJRD05fCNTSURFPTE="
 verbatim[039]:0.field.orderid	"9"
 verbatim[039]:0.field.symbol	"TTF"
-verbatim[039]:0.field.side	"1"
+verbatim[039]:0.field.side	"BUY"
 verbatim[039]:0.field.checksum	"0"
 verbatim[039]:0.field.nofixentries	6
 verbatim[039].messages	1

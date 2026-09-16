@@ -630,7 +630,8 @@ test('a set value replaces an existing child in place and keeps the tag index', 
   assert.equal(message.field.indexOf('symbol'), at, 'same position')
   assert.equal(message.size, before.size + 2, 'two unknown children beside the tagged ones')
   assert.equal(message.byTag(55).asJs(), 'MSFT')
-  assert.equal(message.byTag(54).asJs(), '2')
+  // A side is stored as the explicit value the wire code names.
+  assert.equal(message.byTag(54).asJs(), 'SELL')
   // Content identity changes; every other tag still reaches its previous
   // value, the settled clocks and the chain identity included.
   for (const [tag, value] of before) {

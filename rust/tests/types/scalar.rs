@@ -680,11 +680,11 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
-    let side = string::Code::Side(string::Side::new("1").unwrap());
-    let time_in_force = string::Code::TimeInForce(string::TimeInForce::new("1").unwrap());
+    let side = string::Code::Side(string::Side::new("BUY").unwrap());
+    let time_in_force = string::Code::TimeInForce(string::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
-    assert_ne!(Scalar::from(side), Scalar::from("1"));
+    assert_ne!(Scalar::from(side), Scalar::from("BUY"));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

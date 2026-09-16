@@ -1467,7 +1467,7 @@ mod types {
             (DataType::Mic, "XPAR"),
             (DataType::Cfi, "ESVUFR"),
             (DataType::Isin, "US0378331005"),
-            (DataType::Side, "1"),
+            (DataType::Side, "BUY"),
             (DataType::State, "0"),
             (DataType::TimeInForce, "GTC"),
         ] {

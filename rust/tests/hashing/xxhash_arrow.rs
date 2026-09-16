@@ -283,7 +283,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         ),
         (
             Field::new("side", DataType::Side, true),
-            Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
         ),
         (
             Field::new("msgtype", DataType::utf8(), true),

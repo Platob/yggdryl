@@ -583,10 +583,10 @@ impl DataTypeId {
         match self {
             Self::Country => Some(2),
             Self::Currency => Some(3),
-            Self::Mic | Self::Side => Some(4),
+            Self::Mic => Some(4),
             Self::Cfi => Some(6),
             Self::Sedol => Some(7),
-            Self::TimeInForce => Some(8),
+            Self::Side | Self::TimeInForce => Some(8),
             Self::Cusip => Some(9),
             Self::State => Some(10),
             Self::Isin => Some(12),

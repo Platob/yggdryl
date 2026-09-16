@@ -68,7 +68,7 @@ pub use code::{
 pub(crate) use codes::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
     SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_text,
-    code_cell_text, code_extension_name, code_for_extension,
+    ascii_text_sized, code_cell_text, code_extension_name, code_for_extension,
 };
 #[cfg(feature = "arrow")]
 pub(crate) use codes::{code_refusal, code_text};

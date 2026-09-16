@@ -3712,8 +3712,8 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Si
   pub fn is_done(&self) -> bool  // State only
   pub fn is_cancelled(&self) -> bool  // State only
   pub fn is_failed(&self) -> bool  // State only
-  pub fn read(spelling: &str) -> Result<Self>  // State only
-  pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
+  pub fn read(spelling: &str) -> Result<Self>  // Side and State: the value contract's reading, refusing a spelling that names none
+  pub fn from_spelling(spelling: &str) -> Option<Self>  // Side and State: the FIX wire code (unfolded), the specification's name (folded) or the stored value, onto the one explicit value
   // Cfi only: the ISO 10962 semantics, beside the value rather than in `fix`
   pub const LENGTH: usize = 6
   pub const UNKNOWN: char = 'X'
@@ -3740,7 +3740,7 @@ pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sed
 
 ### yggdryl::types::string::codes  [rust\src\types\string\codes.rs]
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::Bloomberg, 32)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::Bloomberg, 32)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
@@ -3776,7 +3776,7 @@ impl StringEnum
   pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]
-  pub const SIDES: &'static [&'static str]
+  pub const SIDES: &'static [&'static str]  (the explicit side values, sorted: ASDEF, BORROW, BUY, BUYMINUS, CROSS, CROSSSH, CROSSSHX, LEND, OPPOSITE, REDEEM, SELL, SELLPLUS, SELLUND, SSHORT, SSHORTEX, SUBSCR, UNDISC, UNKNOWN - one per side FIX's Side(54) names across every version and UNKNOWN; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
   pub const STATES: &'static [&'static str]
   pub const TIMESINFORCE: &'static [&'static str]
   pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, state, timeinforce

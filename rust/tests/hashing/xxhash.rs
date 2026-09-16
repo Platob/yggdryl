@@ -1070,7 +1070,7 @@ mod values {
             Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
             Scalar::String(stored("USD", fixed_ascii(4))),
             Scalar::Code(Code::Currency(Currency::new("USD").unwrap())),
-            Scalar::Code(Code::Side(Side::new("1").unwrap())),
+            Scalar::Code(Code::Side(Side::new("BUY").unwrap())),
             Scalar::Code(Code::TimeInForce(TimeInForce::new("1").unwrap())),
             Scalar::Enum(Enum::Codec(Codec::Gzip)),
             Scalar::Enum(Enum::Codec(Codec::Zstd)),

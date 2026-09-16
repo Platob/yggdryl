@@ -516,7 +516,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
 
     // The fill's body: symbol, side, quantities and prices, typed.
     assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
-    assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("1"));
+    assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("BUY"));
     assert_eq!(tag_column(&read, 38)[FILL_ROW].as_f64(), Some(982.0));
     assert_eq!(
         tag_column(&read, 44)[FILL_ROW].as_f64(),

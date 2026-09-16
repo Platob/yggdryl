@@ -581,6 +581,121 @@ code_leaf!(Side, SIDE_WIDTH);
 code_leaf!(State, STATE_WIDTH);
 code_leaf!(TimeInForce, TIMEINFORCE_WIDTH);
 
+impl Side {
+    /// The side one spelling names, refused where none does.
+    ///
+    /// [`Self::from_spelling`] as the value contract reads it: a column typed
+    /// `side` holds the explicit values only, so text that names no side
+    /// leaves the column null rather than storing a spelling nothing reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the spelling.
+    pub fn read(spelling: &str) -> Result<Self> {
+        Self::from_spelling(spelling).ok_or_else(|| crate::Error::InvalidDataType {
+            kind: "side",
+            reason: smol_str::format_smolstr!(
+                "expected a side code, name or stored value, got {spelling:?}"
+            ),
+        })
+    }
+
+    /// The side one spelling names, or `None` where none does.
+    ///
+    /// Three vocabularies reach one value, because they name one thing:
+    ///
+    /// - a FIX `Side(54)` wire code - `1`, `2`, `5`, `H`;
+    /// - the specification's own name for it - `Buy`, `SellShort`, `AsDefined`;
+    /// - the stored value itself - `BUY`, `SSHORT`, `ASDEF`.
+    ///
+    /// Names fold the way every other name in this crate folds: ASCII case
+    /// insensitive, with `_`, `-` and spaces ignored, so `SellShort`,
+    /// `sell_short` and `SELL SHORT` are one spelling. A wire code does
+    /// **not** fold, because `A` and `a` are different codes in FIX.
+    ///
+    /// ```
+    /// use yggdryl::types::Side;
+    ///
+    /// // The wire code, the specification's name and the stored value.
+    /// assert_eq!(Side::from_spelling("1").unwrap().as_str(), "BUY");
+    /// assert_eq!(Side::from_spelling("SellShort").unwrap().as_str(), "SSHORT");
+    /// assert_eq!(Side::from_spelling("sshort").unwrap().as_str(), "SSHORT");
+    /// assert_eq!(Side::from_spelling("H").unwrap().as_str(), "SELLUND");
+    /// assert!(Side::from_spelling("X").is_none());
+    /// ```
+    #[must_use]
+    pub fn from_spelling(spelling: &str) -> Option<Self> {
+        if crate::types::StringEnum::SIDES.contains(&spelling) {
+            return Self::new(spelling).ok();
+        }
+        if let Some(held) = SIDE_CODES
+            .iter()
+            .find(|(code, _)| *code == spelling)
+            .map(|(_, side)| *side)
+        {
+            return Self::new(held).ok();
+        }
+        let folded = folded_spelling(spelling);
+        SIDE_NAMES
+            .iter()
+            .find(|(name, _)| *name == folded.as_str())
+            .map(|(_, side)| *side)
+            .and_then(|held| Self::new(held).ok())
+    }
+}
+
+/// FIX's `Side(54)` wire codes, unfolded, and the explicit value each names.
+static SIDE_CODES: &[(&str, &str)] = &[
+    ("1", "BUY"),
+    ("2", "SELL"),
+    ("3", "BUYMINUS"),
+    ("4", "SELLPLUS"),
+    ("5", "SSHORT"),
+    ("6", "SSHORTEX"),
+    ("7", "UNDISC"),
+    ("8", "CROSS"),
+    ("9", "CROSSSH"),
+    ("A", "CROSSSHX"),
+    ("B", "ASDEF"),
+    ("C", "OPPOSITE"),
+    ("D", "SUBSCR"),
+    ("E", "REDEEM"),
+    ("F", "LEND"),
+    ("G", "BORROW"),
+    ("H", "SELLUND"),
+];
+
+/// Every name that reaches a side, folded: the specification's, and the
+/// stored values in any case.
+static SIDE_NAMES: &[(&str, &str)] = &[
+    ("asdef", "ASDEF"),
+    ("asdefined", "ASDEF"),
+    ("borrow", "BORROW"),
+    ("buy", "BUY"),
+    ("buyminus", "BUYMINUS"),
+    ("cross", "CROSS"),
+    ("crossshort", "CROSSSH"),
+    ("crossshortexempt", "CROSSSHX"),
+    ("crosssh", "CROSSSH"),
+    ("crossshx", "CROSSSHX"),
+    ("lend", "LEND"),
+    ("opposite", "OPPOSITE"),
+    ("redeem", "REDEEM"),
+    ("sell", "SELL"),
+    ("sellplus", "SELLPLUS"),
+    ("sellshort", "SSHORT"),
+    ("sellshortexempt", "SSHORTEX"),
+    ("sellund", "SELLUND"),
+    ("sellundisclosed", "SELLUND"),
+    ("sshort", "SSHORT"),
+    ("sshortex", "SSHORTEX"),
+    ("subscr", "SUBSCR"),
+    ("subscribe", "SUBSCR"),
+    ("undisc", "UNDISC"),
+    ("undisclosed", "UNDISC"),
+    ("unknown", "UNKNOWN"),
+];
+
 impl State {
     /// The rank a stored state opens with, first to terminal.
     ///

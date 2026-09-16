@@ -15,20 +15,21 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `isin`, ISO 6166 | 12 | `utf8`, `yggdryl.isin` |
 | `cusip`, CUSIP Global Services | 9 | `utf8`, `yggdryl.cusip` |
 | `sedol`, London Stock Exchange | 7 | `utf8`, `yggdryl.sedol` |
-| `side`, FIX `Side(54)` | 4 | `utf8`, `yggdryl.side` |
+| `side`, a side of the market | 8 | `utf8`, `yggdryl.side` |
 | `state`, a ranked lifecycle | 10 | `utf8`, `yggdryl.state` |
 | `timeinforce`, FIX `TimeInForce(59)` | 8 | `utf8`, `yggdryl.timeinforce` |
 | `bloomberg`, a Bloomberg identifier | 32 | `utf8`, `yggdryl.bloomberg` |
 
 | | |
 | --- | --- |
-| Value | `Scalar::Code(Code)`: the text; equality, order and hash carry the identity, so `Side("1")` and `TimeInForce("1")` are two values |
+| Value | `Scalar::Code(Code)`: the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values |
+| Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name its dictionary gives each code, so a dialect's own code maps as its dictionary says |
 | Storage | the text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | the extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
 | `ascii_packed` | the value's bytes padded to that width and read big-endian into one `i128` - the padding is the packing's, never a column's: a fixed US-ASCII string of at most sixteen bytes or a code; everything else refused |
 | `StringEnum` | a name plus one US-ASCII value per member under `field:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
-| Rust only | `DataType::CODES`, the `Code` enum and its leaves, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
+| Rust only | `DataType::CODES`, the `Code` enum and its leaves, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
 
 ## Use
 
@@ -68,9 +69,10 @@ A code is an identity over a published registry, not a string with a charset: a 
             ("isin", DataType::Isin, 12),
             ("cusip", DataType::Cusip, 9),
             ("sedol", DataType::Sedol, 7),
-            // The FIX-facing codes, each at the width it needs: a state
+            // The lifecycle codes, each at the width it needs: a side is
+            // its explicit spelling, `SSHORTEX` the longest, and a state
             // carries two digits of rank before its name.
-            ("side", DataType::Side, 4),
+            ("side", DataType::Side, 8),
             ("state", DataType::State, 10),
             ("timeinforce", DataType::TimeInForce, 8),
             // Thirty-two bytes, and the one width that is only a bound: a
@@ -84,7 +86,12 @@ A code is an identity over a published registry, not a string with a charset: a 
     let usd = currency.scalar("USD")?;
     assert_eq!(usd.as_str(), Some("USD"));
     assert_eq!(usd.kind(), "currency");
-    assert_ne!(DataType::Side.scalar("1")?, DataType::TimeInForce.scalar("1")?);
+    assert_ne!(DataType::Side.scalar("BUY")?, DataType::TimeInForce.scalar("BUY")?);
+    // A side is read by its spelling: FIX's code, the specification's name
+    // and the stored value reach one explicit value, and nothing else is held.
+    assert_eq!(DataType::Side.scalar("1")?.as_str(), Some("BUY"));
+    assert_eq!(DataType::Side.scalar("SellShort")?.as_str(), Some("SSHORT"));
+    assert!(DataType::Side.scalar("Z").is_err());
     // A plain string of the same width is a string.
     assert_eq!(Scalar::from("USD").kind(), "string");
 
@@ -132,7 +139,7 @@ A code is an identity over a published registry, not a string with a charset: a 
             ("country", "currency", "mic", "cfi", "isin", "cusip", "sedol",
              "side", "state", "timeinforce", "bloomberg")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
-        ("cusip", 9), ("sedol", 7), ("side", 4), ("state", 10), ("timeinforce", 8),
+        ("cusip", 9), ("sedol", 7), ("side", 8), ("state", 10), ("timeinforce", 8),
         ("bloomberg", 32),
     ]
 
@@ -140,7 +147,13 @@ A code is an identity over a published registry, not a string with a charset: a 
     usd = currency.scalar("USD")
     assert usd.as_str() == "USD"
     assert usd.kind == "currency"
-    assert DataType("side").scalar("1") != DataType("timeinforce").scalar("1")
+    assert DataType("side").scalar("BUY") != DataType("timeinforce").scalar("BUY")
+    # A side is read by its spelling: FIX's code and the specification's
+    # name reach the explicit value, and nothing else is held.
+    assert DataType("side").scalar("1").as_py() == "BUY"
+    assert DataType("side").scalar("SellShort").as_py() == "SSHORT"
+    with pytest.raises(ValueError, match="side"):
+        DataType("side").scalar("Z")
     # A securities identifier is closed by its own check digit, so one digit
     # off is refused and lower case folds to the identifier it spells.
     assert DataType("isin").scalar("us0378331005").as_py() == "US0378331005"

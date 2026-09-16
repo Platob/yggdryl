@@ -240,10 +240,10 @@ mod readings {
         );
         // A code spells its characters' bytes, which is the payload its text
         // column stores; so does any other text, and nothing more.
-        let code = DataType::Side.scalar("1").unwrap();
+        let code = DataType::Side.scalar("BUY").unwrap();
         assert_eq!(
             DataType::binary().scalar(code).unwrap().as_bytes(),
-            Some(b"1".as_slice())
+            Some(b"BUY".as_slice())
         );
         let text = dtype("fixed_ascii(4)").scalar("US").unwrap();
         assert_eq!(

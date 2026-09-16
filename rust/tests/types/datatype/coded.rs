@@ -33,7 +33,7 @@ const CODED: [(&str, DataType, usize, &str); 10] = [
     ("isin", DataType::Isin, 12, "US0378331005"),
     ("cusip", DataType::Cusip, 9, "037833100"),
     ("sedol", DataType::Sedol, 7, "B0YBKJ7"),
-    ("side", DataType::Side, 4, "1"),
+    ("side", DataType::Side, 8, "BUY"),
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),
 ];
@@ -154,31 +154,50 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
 fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     // The value contract accepts the text, rewrites it into the declared
     // representation, and answers an unchanged value untouched.
-    let side = DataType::Side.scalar(Scalar::from("1")).unwrap();
+    let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
     assert!(matches!(side, Scalar::Code(Code::Side(_))));
-    assert_eq!(side.as_str(), Some("1"));
+    assert_eq!(side.as_str(), Some("BUY"));
     assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
+    // A side is read by its spelling: FIX's wire code and the
+    // specification's name reach the same explicit value.
+    assert_eq!(DataType::Side.scalar(Scalar::from("1")).unwrap(), side);
+    assert_eq!(DataType::Side.scalar(Scalar::from("Buy")).unwrap(), side);
 
     // Packing is the crate's fixed-ASCII packing at the code's own width:
     // NUL-padded up to it, the padding gone on the way back. The padding is
     // the packing's; the column stores no padding at all.
     assert_eq!(
-        DataType::Side.ascii_packed(b"1").unwrap(),
-        DataType::fixed_ascii(4)
+        DataType::Side.ascii_packed(b"BUY").unwrap(),
+        DataType::fixed_ascii(8)
             .unwrap()
-            .ascii_packed(b"1")
+            .ascii_packed(b"BUY")
             .unwrap()
     );
-    for (dtype, value) in [(DataType::Side, "1"), (DataType::Side, "2")] {
+    for (dtype, value) in [(DataType::Side, "BUY"), (DataType::Side, "SSHORTEX")] {
         let packed = dtype.ascii_packed(value.as_bytes()).unwrap();
         let read = dtype.ascii_value(packed).unwrap();
         assert_eq!(read.as_str(), value, "{dtype} {value}");
     }
 
-    // A value longer than the width is the refusal any fixed-ASCII field
-    // gives, and it names the type.
-    let refused = DataType::Side.scalar(Scalar::from("TOOLONG")).unwrap_err();
-    assert!(refused.to_string().contains("4 bytes"), "{refused}");
+    // A spelling that names no side is refused by name: the width bounds
+    // the value read, never the spelling, so a long name still reads.
+    let refused = DataType::Side
+        .scalar(Scalar::from("TOOLONGSIDE"))
+        .unwrap_err();
+    assert!(refused.to_string().contains("side"), "{refused}");
+    assert_eq!(
+        DataType::Side
+            .scalar(Scalar::from("SellShortExempt"))
+            .unwrap()
+            .as_str(),
+        Some("SSHORTEX")
+    );
+    // A time in force is the text it is, at its width, and a value longer
+    // than the width is the refusal any fixed-ASCII field gives.
+    let refused = DataType::TimeInForce
+        .scalar(Scalar::from("TOOLONGTIF"))
+        .unwrap_err();
+    assert!(refused.to_string().contains("8 bytes"), "{refused}");
 }
 
 #[test]
@@ -243,14 +262,21 @@ fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
 
 #[test]
 fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
-    // These declare a vocabulary exactly as `Mic` does: a venue's own message
-    // type, and a side no version defines, are held rather than refused.
-    for (dtype, outside) in [(DataType::Side, "Z"), (DataType::TimeInForce, "X")] {
-        let stored = dtype.scalar(Scalar::from(outside)).unwrap();
-        assert_eq!(stored.as_str(), Some(outside), "{dtype}");
-        let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
-        assert_eq!(dtype.ascii_value(packed).unwrap().as_str(), outside);
-    }
+    // A time in force declares a vocabulary exactly as `Mic` does: a value no
+    // version defines is held rather than refused.
+    let (dtype, outside) = (DataType::TimeInForce, "X");
+    let stored = dtype.scalar(Scalar::from(outside)).unwrap();
+    assert_eq!(stored.as_str(), Some(outside), "{dtype}");
+    let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
+    assert_eq!(dtype.ascii_value(packed).unwrap().as_str(), outside);
+    // A side is the explicit values and nothing else, read by spelling as a
+    // state is: a letter no version defines is refused rather than stored.
+    let refused = DataType::Side.scalar(Scalar::from("Z")).unwrap_err();
+    assert!(refused.to_string().contains("side"), "{refused}");
+    assert_eq!(
+        DataType::Side.scalar(Scalar::from("5")).unwrap().as_str(),
+        Some("SSHORT")
+    );
 
     // The listing is what a name resolves from, and two readers answer the
     // same members because it is a constant.
@@ -281,8 +307,10 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
 #[test]
 fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // A row whose line does not say a side has none, and the crate already
-    // spells "no answer" one way.
-    assert!(!StringEnum::SIDES.contains(&"UNKNOWN"));
+    // spells "no answer" one way: `UNKNOWN` is what a value that must state
+    // a side states where none was said, as a state's `00UNKNOWN` is, and
+    // never what a column says for an absent one.
+    assert!(StringEnum::SIDES.contains(&"UNKNOWN"));
     assert!(!StringEnum::SIDES.contains(&"NONE"));
 
     let field = Field::new("side", DataType::Side, true);
@@ -315,15 +343,15 @@ fn a_code_carries_its_identity_into_equality_and_order() {
     // Two codes whose bytes agree are two values: the identity compares
     // first, then the text, so a side and a time in force never collide in
     // a set or sort beside each other.
-    let side = DataType::Side.scalar(Scalar::from("1")).unwrap();
-    let tif = DataType::TimeInForce.scalar(Scalar::from("1")).unwrap();
+    let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
+    let tif = DataType::TimeInForce.scalar(Scalar::from("BUY")).unwrap();
     assert_eq!(side.as_str(), tif.as_str());
     assert_ne!(side, tif);
     assert_ne!(side.cmp(&tif), std::cmp::Ordering::Equal);
-    assert_eq!(side, DataType::Side.scalar(Scalar::from("1")).unwrap());
+    assert_eq!(side, DataType::Side.scalar(Scalar::from("BUY")).unwrap());
 
     // And a code is not the string of the same characters.
-    assert_ne!(side, Scalar::from("1"));
+    assert_ne!(side, Scalar::from("BUY"));
     assert_ne!(
         DataType::Currency.scalar(Scalar::from("USD")).unwrap(),
         DataType::fixed_ascii(3).unwrap().scalar("USD").unwrap()

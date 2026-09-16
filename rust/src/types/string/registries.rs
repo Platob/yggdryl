@@ -98,18 +98,23 @@ impl StringEnum {
         "XZCE",
     ];
 
-    /// FIX's `SideCodeSet`, the union across every version, sorted.
+    /// Every side of the market a value may hold, sorted: the crate's own
+    /// explicit spellings, one per side FIX's `Side(54)` code set names
+    /// across every version, and `UNKNOWN` for a side stated as none.
     ///
-    /// A datatype is parameter-free and a listing is a constant, so every
-    /// reader answers the same members and one datatype serves every version:
-    /// a 4.2 message and a newest one agree about what `1` means. Per-member
-    /// pedigree stays in the field's own `fix:codes` document, because that is
-    /// where a version can be asked about.
-    ///
-    /// The listing is a vocabulary, never a whitelist: a venue's own side is
-    /// stored, not refused.
+    /// The stored value is the spelling and never FIX's one-character code:
+    /// `BUY` rather than `1`, `SSHORT` rather than `5`, so a column reads
+    /// without a dictionary beside it and a 4.2 message and a newest one
+    /// agree about what a side is. A FIX code or the specification's name
+    /// reaches the value through [`Side::from_spelling`](crate::types::Side::from_spelling),
+    /// which is how a registry maps tag 54 onto it; per-member pedigree stays
+    /// in the field's own `fix:codes` document, because that is where a
+    /// version can be asked about. A spelling that names no side is refused
+    /// rather than stored, exactly as a state is.
     pub const SIDES: &'static [&'static str] = &[
-        "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H",
+        "ASDEF", "BORROW", "BUY", "BUYMINUS", "CROSS", "CROSSSH", "CROSSSHX", "LEND", "OPPOSITE",
+        "REDEEM", "SELL", "SELLPLUS", "SELLUND", "SSHORT", "SSHORTEX", "SUBSCR", "UNDISC",
+        "UNKNOWN",
     ];
 
     /// Which way a captured line moved.

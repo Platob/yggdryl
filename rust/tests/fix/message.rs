@@ -79,7 +79,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         "two unknown children beside the tagged ones"
     );
     assert_eq!(message.by_tag(55).unwrap(), &Scalar::from("MSFT"));
-    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("2"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("SELL"));
     // Content identity changes; every other tag still reaches its previous value.
     for (tag, value) in before {
         if tag == 55 || tag == 54 {

@@ -342,7 +342,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     // Removed, and the value answered; a mandatory field refuses removal and
     // a null; the other tags still reach their children.
-    assert_eq!(message.remove(54)?.as_ref().and_then(Scalar::as_str), Some("1"));
+    assert_eq!(message.remove(54)?.as_ref().and_then(Scalar::as_str), Some("BUY"));
     assert_eq!(message.get_by_tag(54), None);
     assert_eq!(message.remove("nosuchfield")?, None);
     assert!(message.remove("updatedat").is_err());
@@ -410,7 +410,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     # Removed, and the value answered; a mandatory field refuses removal and
     # a null; the other tags still reach their children.
-    assert message.remove(54).as_py() == "1"
+    assert message.remove(54).as_py() == "BUY"
     assert message.get_by_tag(54) is None
     assert message.remove("nosuchfield") is None
     with pytest.raises(ValueError):
@@ -476,7 +476,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     // Removed, and the value answered; a mandatory field refuses removal and
     // a null; the other tags still reach their children.
-    assert.equal(message.remove(54).asJs(), '1')
+    assert.equal(message.remove(54).asJs(), 'BUY')
     assert.equal(message.getByTag(54), null)
     assert.equal(message.remove('nosuchfield'), null)
     assert.throws(() => message.remove('updatedat'))

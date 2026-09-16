@@ -355,8 +355,8 @@ test('a registered code is its own datatype over its standard width', () => {
     // Nine and seven, each closed by its own check digit too.
     ['cusip', 9],
     ['sedol', 7],
-    // The FIX codes are held to the width their standard fixes.
-    ['side', 4],
+    // The lifecycle codes are held to the width their spellings need.
+    ['side', 8],
     ['state', 10],
     ['timeinforce', 8],
   ]) {

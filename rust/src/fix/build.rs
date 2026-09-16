@@ -37,7 +37,7 @@ use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
-use crate::types::{Code, State};
+use crate::types::{Code, Side, State};
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -2215,11 +2215,21 @@ fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Res
     // A state is read through the name the field gives its code before
     // the code itself, because two fields share a letter and not a
     // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
-    // an `OrdStatus`. The code answers where the dictionary names none.
-    if matches!(field.dtype(), DataType::State) {
-        if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
-            return Ok(Scalar::Code(Code::State(state)));
+    // an `OrdStatus`. The code answers where the dictionary names none. A
+    // side is read the same way, so a dialect's own code reaches the
+    // explicit value through the name its dictionary gives it.
+    match field.dtype() {
+        DataType::State => {
+            if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
+                return Ok(Scalar::Code(Code::State(state)));
+            }
         }
+        DataType::Side => {
+            if let Some(side) = view.code_name(spelling).and_then(Side::from_spelling) {
+                return Ok(Scalar::Code(Code::Side(side)));
+            }
+        }
+        _ => {}
     }
     // Every wire value is text, and the generic value contract does not
     // read text as a number, an instant or a flag. Two of those it can

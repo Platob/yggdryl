@@ -80,7 +80,7 @@ pub(crate) use string::{
     TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub(crate) use string::{
-    ascii_bytes, ascii_text, code_cell_text, code_for_extension, trim_padding,
+    ascii_bytes, ascii_text, ascii_text_sized, code_cell_text, code_for_extension, trim_padding,
 };
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;

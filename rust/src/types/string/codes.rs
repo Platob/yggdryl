@@ -100,11 +100,13 @@ pub(crate) const CUSIP_WIDTH: usize = 9;
 /// Exchange fixes and the check digit closes.
 pub(crate) const SEDOL_WIDTH: usize = 7;
 
-/// The most bytes FIX's side of a trade may be.
+/// The most bytes a side of the market may be.
 ///
-/// The standard's values are one character and a venue's are not going to be
-/// five, so four is room without waste.
-pub(crate) const SIDE_WIDTH: usize = 4;
+/// The stored values are the crate's own explicit spellings - `BUY`, `SELL`,
+/// `SSHORTEX`, `CROSSSHX` - rather than FIX's one-character codes, and the
+/// longest of them is eight. Fixed here because widening later would change
+/// a discriminant, which is a wire contract.
+pub(crate) const SIDE_WIDTH: usize = 8;
 
 /// The most bytes a thing's state may be.
 ///

@@ -1626,7 +1626,7 @@ fn a_cancel_request_and_its_reject_are_typed_and_the_reject_states_its_state() {
         rows[row_of(request)][column(41)].as_str(),
         Some("0102000452788801")
     );
-    assert_eq!(rows[row_of(request)][column(54)].as_str(), Some("2"));
+    assert_eq!(rows[row_of(request)][column(54)].as_str(), Some("SELL"));
     assert_eq!(rows[row_of(request)][column(38)].as_f64(), Some(10000.0));
     assert_eq!(rows[row_of(request)][column(385)].as_str(), Some("S"));
     // A request states no status, so the crate's `state` has nothing to read.

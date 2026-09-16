@@ -680,10 +680,11 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::Sedol(value) => super::string::Sedol::new(value)
                 .map(|value| Self::Code(Code::Sedol(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Side(value) => super::string::Side::new(value)
+            // A side and a state are read by their spelling, exactly as a
+            // column reads them.
+            StructuralValue::Side(value) => super::string::Side::read(&value)
                 .map(|value| Self::Code(Code::Side(value)))
                 .map_err(D::Error::custom),
-            // A state is read by its spelling, exactly as a column reads it.
             StructuralValue::State(value) => super::string::State::read(&value)
                 .map(|value| Self::Code(Code::State(value)))
                 .map_err(D::Error::custom),

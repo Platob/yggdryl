@@ -92,28 +92,23 @@ const QUOTES: &[&str] = &["S", "i", "W", "X", "b", "R"];
 /// The message types carrying a fill.
 const FILLS: &[&str] = &["8", "AE", "AK"];
 
-/// The symbolic names whose side takes the bid lane.
+/// The sides that take the bid lane, as the crate's own explicit values.
 ///
 /// Domain knowledge, written where a reviewer can check it: Orchestra does not
-/// publish which side takes which lane. The names are resolved to wire values
-/// through the dictionary's own code set and never matched as text - a
-/// `SellShortExempt` beginning with `Sell` is a fact about English, and
-/// reasoning from it is exactly what these listings exist to avoid.
-const BID_LANE: &[&str] = &["Buy", "BuyMinus"];
+/// publish which side takes which lane. A stated side is already the explicit
+/// value its dictionary's code set named - `BUY` for a `1` - so a lane is
+/// decided by that value alone and never by matching text: a `SSHORTEX`
+/// spelling `SELL` inside it is a fact about English, and reasoning from it
+/// is exactly what these listings exist to avoid.
+const BID_LANE: &[&str] = &["BUY", "BUYMINUS"];
 
-/// The symbolic names whose side takes the ask lane.
+/// The sides that take the ask lane, as the crate's own explicit values.
 ///
-/// Everything absent from both listings - `Cross`, `CrossShort`,
-/// `CrossShortExempt`, `Undisclosed`, `AsDefined`, `Opposite`, and any code a
-/// dialect adds - takes no lane. A cross is both sides at once and `Opposite`
-/// means "whatever the other leg was", so neither can fill one.
-const ASK_LANE: &[&str] = &[
-    "Sell",
-    "SellPlus",
-    "SellShort",
-    "SellShortExempt",
-    "SellUndisclosed",
-];
+/// Everything absent from both listings - `CROSS`, `CROSSSH`, `CROSSSHX`,
+/// `UNDISC`, `ASDEF`, `OPPOSITE`, and a side stated as none - takes no lane.
+/// A cross is both sides at once and `OPPOSITE` means "whatever the other leg
+/// was", so neither can fill one.
+const ASK_LANE: &[&str] = &["SELL", "SELLPLUS", "SSHORT", "SSHORTEX", "SELLUND"];
 
 /// Every facet, in the order a batch writer's columns take.
 ///
@@ -262,19 +257,19 @@ pub fn fix_lifts() -> impl Iterator<Item = &'static FixLift> {
 /// The two lane listings say which *names* fill a lane, and the dictionary
 /// translates a stated side's spelling before it is matched against them. A
 /// *derived* side is the other direction and has no spelling to translate, so
-/// it is the wire value FIX's side code set has given `Buy` since 2.7. A
-/// dialect that renumbers its side code set still lifts a stated side through
-/// its own dictionary; it simply gets no derived one, which is P9-R1 rather
-/// than a gap.
-static DERIVED_BID: LazyLock<Scalar> = LazyLock::new(|| packed_side("1"));
+/// it is the crate's own explicit value for the side a bid is. A dialect
+/// that renumbers its side code set still lifts a stated side through its
+/// own dictionary; it simply gets no derived one, which is P9-R1 rather than
+/// a gap.
+static DERIVED_BID: LazyLock<Scalar> = LazyLock::new(|| packed_side("BUY"));
 
 /// The side an ask lane implies, as the packed datatype types it.
-static DERIVED_ASK: LazyLock<Scalar> = LazyLock::new(|| packed_side("2"));
+static DERIVED_ASK: LazyLock<Scalar> = LazyLock::new(|| packed_side("SELL"));
 
-/// One wire side value through the crate's own value contract.
-fn packed_side(wire: &str) -> Scalar {
+/// One explicit side value through the crate's own value contract.
+fn packed_side(side: &str) -> Scalar {
     DataType::Side
-        .scalar(Scalar::from(wire))
+        .scalar(Scalar::from(side))
         .unwrap_or(Scalar::Null)
 }
 
@@ -557,23 +552,14 @@ impl FixMsg {
 
     /// Whether this message's stated side takes `lane`.
     ///
-    /// The side's own value is named once and the name is matched against the
-    /// listing, rather than each listed name being translated to a value and
-    /// compared. Naming a value addresses one record; translating a name
-    /// scans the whole code set to prove no second one is spelled the same,
-    /// and this asked for that five times to decide one lane.
-    ///
-    /// It is still the canonical name that is compared, never a prefix of it.
+    /// The stored side is the explicit value the dictionary's code set named
+    /// when the message was built, so the listing is consulted for that
+    /// value as it stands; a side held as text is read by its spelling
+    /// first, so a wire code or a name a caller wrote in answers the same.
     fn in_lane(&self, lane: &'static [&'static str]) -> bool {
         let Some(text) = self.flat(54).and_then(Scalar::as_str) else {
             return false;
         };
-        let Some(field) = self.registry().get_field_by_tag(54) else {
-            return false;
-        };
-        field.as_fix().code_name(text).is_some_and(|name| {
-            lane.iter()
-                .any(|held| crate::types::folds_equal(held, name))
-        })
+        crate::types::Side::from_spelling(text).is_some_and(|side| lane.contains(&side.as_str()))
     }
 }

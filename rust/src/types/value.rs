@@ -22,7 +22,8 @@ use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
     Code, Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes,
-    code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
+    ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
+    value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -763,7 +764,14 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let Some(bytes) = ascii_bytes(value) else {
                 return canonicalization_failure(dtype);
             };
-            let text = code_cell_text(dtype, bytes)?;
+            // A side and a state are read by their spelling, and a name is
+            // longer than the value it names - `SellShortExempt` for
+            // `SSHORTEX` - so the width holds the value read, never the
+            // spelling; every other code is the text it is, at its width.
+            let text = match dtype {
+                D::Side | D::State => ascii_text_sized(None, bytes)?,
+                _ => code_cell_text(dtype, bytes)?,
+            };
             let canonical = match dtype {
                 D::Country => Code::Country(crate::types::Country::new(text)?),
                 D::Currency => Code::Currency(crate::types::Currency::new(text)?),
@@ -773,11 +781,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Cusip => Code::Cusip(crate::types::Cusip::new(text)?),
                 D::Sedol => Code::Sedol(crate::types::Sedol::new(text)?),
                 D::Bloomberg => Code::Bloomberg(crate::types::Bloomberg::new(text)?),
-                D::Side => Code::Side(crate::types::Side::new(text)?),
-                // A state is read by its spelling: the wire code, the
-                // specification's name or a stored value all reach the one
-                // ranked value, and a spelling that names no state is refused
-                // rather than stored unranked.
+                // A side and a state are read by their spelling: the wire
+                // code, the specification's name or a stored value all reach
+                // the one explicit value, and a spelling that names none is
+                // refused rather than stored unread.
+                D::Side => Code::Side(crate::types::Side::read(text)?),
                 D::State => Code::State(crate::types::State::read(text)?),
                 D::TimeInForce => Code::TimeInForce(crate::types::TimeInForce::new(text)?),
                 _ => unreachable!("registered code matched above"),
@@ -1457,6 +1465,11 @@ fn validate_dtype_value(
         | D::Side
         | D::State
         | D::TimeInForce => match ascii_bytes(value) {
+            // A side and a state are read by their spelling, which may be
+            // longer than the value it names; the width holds the value.
+            Some(bytes) if matches!(dtype, D::Side | D::State) => ascii_text_sized(None, bytes)
+                .map(|_| ())
+                .map_err(ascii_failure),
             Some(bytes) => code_cell_text(dtype, bytes)
                 .map(|_| ())
                 .map_err(ascii_failure),

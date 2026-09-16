@@ -533,7 +533,7 @@ fn a_string_enum_needs_a_fixed_ascii_width_its_members_pack_into() {
     // bytes or a code, and refused by name everywhere else.
     let sides = StringEnum::from_logical_name("side").unwrap();
     for accepted in [
-        DataType::fixed_ascii(4).unwrap(),
+        DataType::fixed_ascii(8).unwrap(),
         DataType::fixed_ascii(16).unwrap(),
         DataType::Side,
     ] {

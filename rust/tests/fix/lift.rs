@@ -22,7 +22,7 @@ fn an_order_answers_who_what_how_much_and_when() {
 
     assert_eq!(lifted(&order, "id"), Some("ORDER-1"));
     assert_eq!(lifted(&order, "symbol"), Some("AAPL"));
-    assert_eq!(lifted(&order, "side"), Some("1"));
+    assert_eq!(lifted(&order, "side"), Some("BUY"));
     assert_eq!(lifted(&order, "sender"), Some("SENDER"));
     assert_eq!(lifted(&order, "target"), Some("TARGET"));
     assert_eq!(order.lifted("quantity"), Some(&Scalar::from(100.0_f64)));
@@ -244,13 +244,13 @@ fn one_lane_implies_a_side_and_two_lanes_imply_nothing() {
     let bidding = reader
         .sole_line(b"8=FIX.4.4|35=S|117=Q1|132=12.4|10=0|", false)
         .unwrap();
-    assert_eq!(lifted(&bidding, "side"), Some("1"));
+    assert_eq!(lifted(&bidding, "side"), Some("BUY"));
     assert_eq!(bidding.lift_source("side"), Some(132));
 
     let offering = reader
         .sole_line(b"8=FIX.4.4|35=S|117=Q1|133=12.6|10=0|", false)
         .unwrap();
-    assert_eq!(lifted(&offering, "side"), Some("2"));
+    assert_eq!(lifted(&offering, "side"), Some("SELL"));
 
     // A two-sided quote is the case that makes the rule safe to have at all.
     let both = reader
@@ -272,7 +272,11 @@ fn enrichment_fills_and_never_overwrites() {
     let stated = reader
         .sole_line(b"8=FIX.4.4|35=S|117=Q1|132=12.4|54=2|10=0|", false)
         .unwrap();
-    assert_eq!(lifted(&stated, "side"), Some("2"), "the stated side wins");
+    assert_eq!(
+        lifted(&stated, "side"),
+        Some("SELL"),
+        "the stated side wins"
+    );
     assert_eq!(stated.lift_source("side"), Some(54));
 
     // An order stating its own bid lane keeps it rather than deriving one.
