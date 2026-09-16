@@ -855,6 +855,31 @@ pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
     self::rows::batch_from_values(root, schema, &canonical)
 }
 
+/// Build one batch from rows this root has already canonicalized.
+///
+/// [`batch_from_value`] is the entry for rows that are not: it canonicalizes
+/// every one and then builds. A decoder that types an all-text wire has
+/// already done exactly that - [`Field::from_natural_value`] answers the
+/// canonical row - so canonicalizing again is the same walk over the same
+/// rows a second time, and on a large document that is the larger half of
+/// what a read costs. This is the build without that second walk, for the
+/// readers that can say where their rows came from.
+///
+/// It is not a validation shortcut: [`array_from_values`](value::array_from_values)
+/// is the same builder either entry reaches, and a value it cannot hold is
+/// the same refusal here as there.
+///
+/// # Errors
+///
+/// Returns an error when a row cannot be held by the field that declares it.
+pub(crate) fn batch_from_canonical_rows(
+    root: &Field,
+    schema: SchemaRef,
+    rows: &[Scalar],
+) -> Result<RecordBatch> {
+    self::rows::batch_from_values(root, schema, rows)
+}
+
 /// Validate one external one-row Arrow array and decode its canonical value.
 ///
 /// # Errors

@@ -3621,6 +3621,18 @@ outside a flat row model - cells are keyed by a sparse ordinal over an axis
 cross product - and refusing it by namespace is the right answer rather than
 flattening it.
 
+**Nothing after the parse is paid for until it is asked for.** A document has
+no index, so the parse reads all of it - but that is the only thing that has
+to. A read answers a reader that knows its schema and has built nothing, then
+types and builds one batch at a time: a schema read builds no arrays at all
+(38% of what it used to cost on a 20,000-row document), and a caller that
+stops after one batch stops paying. And typing a leaf under its field *is*
+canonicalization - `Field::from_natural_value` answers the canonical row - so
+the batch build takes the rows as they are. The old path canonicalized every
+row a second time on the way into Arrow; `arrow::batch_from_canonical_rows` is
+the entry that does not, and the structured-text bridge, which carried the
+same second pass for the same reason, uses it too. One owner, one walk.
+
 **The bindings reach the whole surface, in one spelling each.** Python and
 JavaScript get the document and schema pair - `loads`, `dumps`,
 `loads_with_field`, `schema`, `schema_dumps` - and the settings a record read

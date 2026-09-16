@@ -135,6 +135,44 @@ fn rows_written_as_xml_read_back_as_the_rows_that_were_written() {
 }
 
 #[test]
+fn a_read_builds_one_batch_at_a_time_and_only_when_one_is_asked_for() {
+    // A document has no index, so the parse reads all of it - but the Arrow
+    // side is built a batch at a time, and a caller that wants one batch, or
+    // only the schema, never pays for the rest.
+    let handle = written(
+        "batched.xml",
+        "<rows><r><a>1</a></r><r><a>2</a></r><r><a>3</a></r>\
+         <r><a>4</a></r><r><a>5</a></r></rows>",
+    );
+    let mut options = handle.record_options().unwrap();
+    options.set_batch_row_size(Some(2));
+
+    let counts: Vec<usize> = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(|batch| batch.unwrap().num_rows())
+        .collect();
+    assert_eq!(counts, vec![2, 2, 1]);
+
+    // The schema is answered before any batch is built, so a reader that is
+    // never drained has built nothing.
+    let reader = handle.read_arrow_reader(&options).unwrap();
+    assert_eq!(reader.schema().fields().len(), 1);
+    drop(reader);
+
+    // And a bound nobody set is one batch for a document this size.
+    let unbounded = handle.record_options().unwrap();
+    assert_eq!(
+        handle
+            .read_arrow_reader(&unbounded)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .collect::<Vec<_>>(),
+        vec![5]
+    );
+}
+
+#[test]
 fn an_empty_handle_is_an_empty_table_rather_than_a_refusal() {
     let handle = handle_named("empty.xml");
     let options = handle.record_options().unwrap();

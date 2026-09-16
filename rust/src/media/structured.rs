@@ -55,19 +55,18 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(
     };
     // Every row goes through the field's own value contract, which is what
     // restates a document's number at the scale a decimal column declares and
-    // its text at the unit a temporal one does. The batch build canonicalizes
-    // again on the way in; that second pass is the price of the first being
-    // the only thing that reads a document's spellings.
+    // its text at the unit a temporal one does. That crossing answers the
+    // canonical row, so the batch build takes the rows as they are rather
+    // than walking every one of them again to canonicalize what already is.
     let canonical = rows
         .as_sequence()
         .unwrap_or_default()
         .iter()
         .map(|row| root.from_natural_value(row.clone()))
         .collect::<Result<Vec<_>>>()?;
-    Ok(ArrowScalar::from_rows(
-        &root,
-        &Scalar::from_sequence(canonical),
-    )?)
+    let schema = crate::arrow::arrow_schema_from_field(&root)?;
+    let batch = crate::arrow::batch_from_canonical_rows(&root, schema, &canonical)?;
+    Ok(ArrowScalar::from_batch_as(root, batch)?)
 }
 
 /// Replace a handle's contents with one Arrow value as structured text.

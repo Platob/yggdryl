@@ -302,6 +302,8 @@ A write emits one spelling for an undeclared column - a child element - and the 
 
 A document states no schema and carries no index: there is no header to read a field out of and no footer to count rows in. So `read_arrow_field`, `row_size` and `column_size` all read the document. That is a property of the encoding, not a shortcut taken here.
 
+What *is* avoided is everything after the parse. A reader knows its schema before it builds anything, so a schema read builds no arrays at all; the rows are typed and built one batch at a time, bounded by `batch_row_size`, so a caller that reads one batch pays for one batch. And typing a leaf under its field answers that column's canonical value, so the batch build takes the rows as they are rather than canonicalizing what already is.
+
 XML does not compress internally, so - unlike Avro and Parquet - a handle declaring an outer content coding reads and writes through that coding rather than refusing it.
 
 Numbers, and the command that regenerates them, are on the [index page](index.md#performance).

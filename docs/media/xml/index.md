@@ -59,13 +59,15 @@ Measured on 20,000 rows of four columns, one of them an attribute, release build
 
 | Path | Time | Throughput |
 | --- | --- | --- |
-| `read_arrow_reader`, nothing declared | 91.0 ms | 220 Kelem/s |
-| `read_arrow_reader`, field declared | 94.0 ms | 213 Kelem/s |
-| `read_arrow_reader`, one column of four | 64.3 ms | 311 Kelem/s |
-| `read_arrow_field` | 90.3 ms | 222 Kelem/s |
-| `from_utf8` | 52.1 ms | 27.4 MiB/s |
+| `read_arrow_reader`, nothing declared | 83.5 ms | 239 Kelem/s |
+| `read_arrow_reader`, field declared | 88.3 ms | 227 Kelem/s |
+| `read_arrow_reader`, one column of four | 61.7 ms | 324 Kelem/s |
+| `read_arrow_field` | 57.0 ms | 351 Kelem/s |
+| `from_utf8` | 50.4 ms | 28.3 MiB/s |
 
 A document states no schema and carries no index, so unlike Avro and Parquet every one of those reads the document. What a caller declares changes how much of it is decoded, not whether it is read.
+
+What it does not change is the Arrow side, and that is built lazily: a reader answers its schema before building anything and then builds one batch at a time, so a schema read pays the parse and nothing else, and a caller that stops after one batch stops paying. Typing a leaf answers the column's canonical value already, so the batch build takes the rows as they are rather than walking every one of them a second time.
 
 ```bash
 cargo bench -p yggdryl --bench media -- media/xml

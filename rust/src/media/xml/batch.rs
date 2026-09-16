@@ -15,6 +15,14 @@
 //! encoding rather than a shortcut taken here, and it is stated wherever the
 //! cost of a record surface is stated.
 //!
+//! What is *not* a property of the encoding is anything after the parse, and
+//! none of it is paid for until it is asked for. [`read_batch_reader`] answers
+//! a reader that knows its schema and has built nothing, then types and builds
+//! one batch at a time; a schema read builds no arrays at all, and a caller
+//! that stops after one batch stops paying. Typing a leaf under its field
+//! answers that column's canonical value, so the build takes the rows as they
+//! are rather than walking every one of them a second time.
+//!
 //! # Structure, never type
 //!
 //! Every leaf on the wire is text. A read given no field infers the shape and
@@ -26,10 +34,14 @@
 //! Avro and Parquet - a handle declaring an outer content coding is read and
 //! written through that coding rather than refused.
 
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::SmolStr;
 
 use crate::arrow::{ArrowScalar, BatchReader, Result};
-use crate::media::IORecordOptions;
+use crate::media::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions};
 use crate::{Field, IOBase, Scalar};
 
 use super::document::{DEFAULT_ROW_NAME, Spelling, read_rows};
@@ -74,16 +86,101 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         Some(field) => field.clone(),
         None => spelling.apply(field_of(&name, &rows, options)?)?,
     };
-    // Every row crosses the field's own value contract, which is what types
-    // an all-text encoding's leaves. The batch build canonicalizes again on
-    // the way in; that second pass is the price of the first being the only
-    // thing that reads a document's spellings.
-    let canonical = rows
-        .into_iter()
-        .map(|row| root.from_natural_value(fit(row, &root)))
-        .collect::<crate::Result<Vec<_>>>()?;
-    let value = ArrowScalar::from_rows(&root, &Scalar::from_sequence(canonical))?;
-    value.into_reader()
+    Bulk::new(root, rows, options).map(|bulk| Box::new(bulk) as BatchReader)
+}
+
+/// A document's rows, typed and built one batch at a time.
+///
+/// A document has no index, so the parse reads all of it - but nothing after
+/// the parse has to hold all of it at once. Each batch types exactly the rows
+/// it holds and builds exactly their columns, so the Arrow side of a read
+/// costs one batch rather than one array as wide as the document, and a caller
+/// that stops early stops paying.
+///
+/// The typing is the crossing every all-text encoding owes its leaves, and it
+/// answers the *canonical* row - so the build takes them as they are rather
+/// than walking every row a second time to canonicalize what is already
+/// canonical.
+struct Bulk {
+    /// The Struct root the rows live under.
+    root: Field,
+    /// The Arrow schema that root projects to, resolved once per stream.
+    schema: SchemaRef,
+    /// Every row the document proved, in document order.
+    rows: std::vec::IntoIter<Scalar>,
+    /// Rows per batch.
+    batch_rows: usize,
+    /// The typed rows of the batch being built, reused across batches.
+    typed: Vec<Scalar>,
+    /// Whether any batch has been yielded yet.
+    yielded: bool,
+    /// Whether a row already failed; a reader fuses after the first refusal.
+    failed: bool,
+}
+
+impl Bulk {
+    /// Prepare one document's rows for building.
+    fn new(root: Field, rows: Vec<Scalar>, options: &XmlOptions) -> Result<Self> {
+        let batch_rows = options
+            .batch_row_size()
+            .unwrap_or(DEFAULT_RECORD_BATCH_ROW_SIZE)
+            .max(1);
+        Ok(Self {
+            schema: crate::arrow::arrow_schema_from_field(&root)?,
+            root,
+            rows: rows.into_iter(),
+            batch_rows,
+            typed: Vec::with_capacity(batch_rows.min(1024)),
+            yielded: false,
+            failed: false,
+        })
+    }
+
+    /// Type and build the next batch, or answer that the rows are spent.
+    fn next_batch(&mut self) -> crate::Result<Option<RecordBatch>> {
+        self.typed.clear();
+        if self.rows.len() == 0 {
+            // A document with no rows is a table with no rows, which is one
+            // empty batch rather than a stream that never yields - the shape
+            // an empty handle has always answered. A document that did have
+            // rows has said everything it has to say.
+            if self.yielded {
+                return Ok(None);
+            }
+        } else {
+            for row in self.rows.by_ref().take(self.batch_rows) {
+                self.typed
+                    .push(self.root.from_natural_value(fit(row, &self.root))?);
+            }
+        }
+        self.yielded = true;
+        crate::arrow::batch_from_canonical_rows(&self.root, Arc::clone(&self.schema), &self.typed)
+            .map(Some)
+            .map_err(Into::into)
+    }
+}
+
+impl Iterator for Bulk {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.failed {
+            return None;
+        }
+        match self.next_batch() {
+            Ok(batch) => batch.map(Ok),
+            Err(error) => {
+                self.failed = true;
+                Some(Err(ArrowError::ExternalError(Box::new(error))))
+            }
+        }
+    }
+}
+
+impl arrow_array::RecordBatchReader for Bulk {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
 }
 
 /// Replace a handle's contents with one stream of rows, as one document.
