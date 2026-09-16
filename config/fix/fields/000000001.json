@@ -523,7 +523,7 @@
       "display": "ClientID",
       "fix:replacements": [
         {
-          "plan": "select [{partyid: clientid, partyrole: ('3')}] as parties",
+          "plan": "select [{partyid: clientid, partyrole: '3'}] as parties",
           "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -686,7 +686,7 @@
       "fix:derivation": "grosstradeamt * settlcurrfxrate",
       "fix:replacements": [
         {
-          "plan": "select settlcurramt as allocsettlcurramt where :group = ('a', 'l', 'l', 'o', 'c', 'g', 'r', 'p')"
+          "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
         }
       ],
       "fix:tag": "119"
@@ -704,7 +704,7 @@
       "fix:derivation": "currency",
       "fix:replacements": [
         {
-          "plan": "select settlcurrency as allocsettlcurrency where :group = ('a', 'l', 'l', 'o', 'c', 'g', 'r', 'p')"
+          "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
         }
       ],
       "fix:tag": "120"
@@ -1495,11 +1495,11 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select ('F') as exectype where exectype = ('1')",
+          "plan": "select 'F' as exectype where exectype = '1'",
           "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select ('F') as exectype where exectype = ('2')",
+          "plan": "select 'F' as exectype where exectype = '2'",
           "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -1810,31 +1810,31 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('C', 'E', 'D')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('D', 'T', 'C')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('E', 'U', 'R')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('F', 'E', 'D')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('P', 'N', 'Y')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('C'), partyrole: ('1', '0')}] as parties where settllocation = ('P', 'T', 'C')",
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select [{partyid: settllocation, partyidsource: ('E'), partyrole: ('1', '0')}] as parties",
+          "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties",
           "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -2996,11 +2996,11 @@
       "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
       "fix:replacements": [
         {
-          "plan": "select ('T', 'N', 'O', 'T', 'E') as securitytype where securitytype = ('U', 'S', 'T')",
+          "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('T', 'B', 'I', 'L', 'L') as securitytype where securitytype = ('U', 'S', 'T', 'B')",
+          "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'",
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -3432,7 +3432,7 @@
       "display": "SecondaryOrderID",
       "fix:replacements": [
         {
-          "plan": "select secondaryorderid as massactionreportid where :msgtype = ('r')"
+          "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
         }
       ],
       "fix:tag": "198"

@@ -105,11 +105,11 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select ('A') as ordercapacity where customerorfirm = ('0')",
+          "plan": "select 'A' as ordercapacity where customerorfirm = '0'",
           "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"
         },
         {
-          "plan": "select ('P') as ordercapacity where customerorfirm = ('1')",
+          "plan": "select 'P' as ordercapacity where customerorfirm = '1'",
           "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -421,39 +421,39 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('I', 'N', 'T', 'E', 'R', 'P', 'O', 'L', 'A', 'T', 'E', 'D') as benchmarkcurvepoint where benchmark = ('1')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'",
           "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('5', 'Y') as benchmarkcurvepoint where benchmark = ('2')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'",
           "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('5', 'Y', '-', 'O', 'L', 'D') as benchmarkcurvepoint where benchmark = ('3')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'",
           "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('1', '0', 'Y') as benchmarkcurvepoint where benchmark = ('4')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'",
           "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('1', '0', 'Y', '-', 'O', 'L', 'D') as benchmarkcurvepoint where benchmark = ('5')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'",
           "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('3', '0', 'Y') as benchmarkcurvepoint where benchmark = ('6')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'",
           "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('T', 'r', 'e', 'a', 's', 'u', 'r', 'y') as benchmarkcurvename, ('3', '0', 'Y', '-', 'O', 'L', 'D') as benchmarkcurvepoint where benchmark = ('7')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'",
           "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('L', 'I', 'B', 'O', 'R') as benchmarkcurvename, ('3', 'M') as benchmarkcurvepoint where benchmark = ('8')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'",
           "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('U', 'S', 'D') as benchmarkcurvecurrency, ('L', 'I', 'B', 'O', 'R') as benchmarkcurvename, ('6', 'M') as benchmarkcurvepoint where benchmark = ('9')",
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'",
           "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -836,11 +836,11 @@
       "fix:deprecated": "4.4",
       "fix:replacements": [
         {
-          "plan": "select ('1') as terminationtype where repurchaseterm = ('1')",
+          "plan": "select '1' as terminationtype where repurchaseterm = '1'",
           "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"
         },
         {
-          "plan": "select ('2') as terminationtype",
+          "plan": "select '2' as terminationtype",
           "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"
         }
       ],

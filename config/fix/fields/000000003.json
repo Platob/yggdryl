@@ -1561,11 +1561,11 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select ('T', 'N', 'O', 'T', 'E') as underlyingsecuritytype where underlyingsecuritytype = ('U', 'S', 'T')",
+          "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('T', 'B', 'I', 'L', 'L') as underlyingsecuritytype where underlyingsecuritytype = ('U', 'S', 'T', 'B')",
+          "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'",
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],

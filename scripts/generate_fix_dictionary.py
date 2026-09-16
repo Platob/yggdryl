@@ -1056,7 +1056,7 @@ PRODUCT_OF_GROUP = (
 EXERCISE = "case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end"
 
 
-def quoted(values: Iterable[str]) -> str:
+def quoted_list(values: Iterable[str]) -> str:
     """A membership list in the grammar's canonical spelling."""
     return "(" + ", ".join(f"'{value}'" for value in values) + ")"
 
@@ -1083,7 +1083,7 @@ def cfi_case() -> str:
     `PutOrCall` where the pattern leaves one open."""
     branches = []
     for types, pattern in CFI_OF_SECURITYTYPE:
-        when = f"upper(securitytype) in {quoted(types)}"
+        when = f"upper(securitytype) in {quoted_list(types)}"
         if "?" in pattern:
             head, tail = pattern.split("?")
             then = f"concat('{head}', {EXERCISE}, '{tail}')"
@@ -1106,7 +1106,7 @@ def product_case(codes: list[dict[str, Any]]) -> str:
         members = by_group.get(group)
         if not members:
             raise ValueError(f"the SecurityType code set files nothing under {group!r}")
-        branches.append((f"upper(securitytype) in {quoted(sorted(members))}", str(product)))
+        branches.append((f"upper(securitytype) in {quoted_list(sorted(members))}", str(product)))
     branches.extend((f"cficode ilike '{category}%'", str(product)) for category, product in PRODUCT_OF_CFI)
     return case(branches)
 
@@ -1139,7 +1139,7 @@ def country_case() -> str:
     the crate's registry lists as a country answers - `XS`, `EU` and every
     unassigned pair are silence."""
     prefix = "substring(isincode, 1, 2)"
-    return case([(f"{prefix} in {quoted(crate_countries())}", prefix)])
+    return case([(f"{prefix} in {quoted_list(crate_countries())}", prefix)])
 
 # Target tag -> the term, in the grammar's canonical spelling. `Product(460)`
 # is generated from the dictionary's own code set by `attach_derivations`.
@@ -1147,7 +1147,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # The average of one fill is that fill's price, stated only where the
     # report says the whole done quantity is this fill: an average over two
     # fills is not derivable from one of them.
-    (6, f"case when msgtype in {quoted(REPORTS)} and cumqty = lastqty and lastqty > 0 then lastpx end"),
+    (6, f"case when msgtype in {quoted_list(REPORTS)} and cumqty = lastqty and lastqty > 0 then lastpx end"),
     # Appendix D's identity read each way: what was done is what was ordered
     # minus what is left, what was ordered is what was done plus what is
     # left - and nothing is left once the order is closed. A negative
@@ -1157,7 +1157,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # canceled quantity answers that way, and one that states what is left
     # answers done plus left whatever it canceled; the canceled quantity is
     # read last where nothing says what is left.
-    (14, f"case when msgtype in {quoted(REPORTS)} and orderqty - leavesqty >= 0 then orderqty - leavesqty end"),
+    (14, f"case when msgtype in {quoted_list(REPORTS)} and orderqty - leavesqty >= 0 then orderqty - leavesqty end"),
     # Appendix O: a trade settling in the currency it was dealt in states the
     # dealt currency once, so each states the other.
     (15, "settlcurrency"),
@@ -1168,12 +1168,12 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # A forward price is quoted as a spot rate and the points away from it,
     # and the points are already in price units, so the two add.
     (31, "lastspotrate + lastforwardpoints"),
-    (38, f"case when msgtype in {quoted(REPORTS)} and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in {quoted(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
+    (38, f"case when msgtype in {quoted_list(REPORTS)} and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in {quoted_list(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
     # A report stating an execution type the two code sets spell alike has
     # stated its order status; a trade has stated it in what is left and
     # what was done: nothing left is filled, something left after something
     # done is partially filled.
-    (39, f"case when msgtype in {quoted(REPORTS)} and exectype in {quoted(AGREED)} then exectype when msgtype in {quoted(REPORTS)} and exectype in {quoted(TRADES)} and leavesqty = 0 then '2' when msgtype in {quoted(REPORTS)} and exectype in {quoted(TRADES)} and leavesqty > 0 and cumqty > 0 then '1' end"),
+    (39, f"case when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(AGREED)} then exectype when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(TRADES)} and leavesqty = 0 then '2' when msgtype in {quoted_list(REPORTS)} and exectype in {quoted_list(TRADES)} and leavesqty > 0 and cumqty > 0 then '1' end"),
     # A message stating its ISIN and no `SecurityID` - a bridge row's
     # `ISINCODE`, or an alternate identifier alone - has stated its primary
     # identifier, whose validation then states the source.
@@ -1183,7 +1183,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)"),
     # `TimeInForce` defines its own absence: an order, a replace or a report
     # stating none is a day order.
-    (59, f"case when msgtype in {quoted(TIMED)} then '0' end"),
+    (59, f"case when msgtype in {quoted_list(TIMED)} then '0' end"),
     # Appendix O: the settled amount is the traded amount at the stated rate.
     (119, "grosstradeamt * settlcurrfxrate"),
     (120, "currency"),
@@ -1193,13 +1193,13 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # The forward quoting, read on each side of a two-sided quote.
     (132, "bidspotrate + bidforwardpoints"),
     (133, "offerspotrate + offerforwardpoints"),
-    (151, f"case when msgtype in {quoted(REPORTS)} and ordstatus in {quoted(CLOSED)} then 0 when msgtype in {quoted(REPORTS)} and ordstatus in {quoted(WORKING)} and orderqty - cumqty >= 0 then orderqty - cumqty end"),
+    (151, f"case when msgtype in {quoted_list(REPORTS)} and ordstatus in {quoted_list(CLOSED)} then 0 when msgtype in {quoted_list(REPORTS)} and ordstatus in {quoted_list(WORKING)} and orderqty - cumqty >= 0 then orderqty - cumqty end"),
     # Appendix 6-D, both ways, and the exercise character of an option.
     (167, prefix_case(SECURITYTYPE_OF_CFI)),
     (201, prefix_case(PUTORCALL_OF_CFI)),
     # A fill's worth, which Appendix O settles on and Appendix D's execution
     # reports carry.
-    (381, f"case when msgtype in {quoted(REPORTS)} then lastqty * lastpx end"),
+    (381, f"case when msgtype in {quoted_list(REPORTS)} then lastqty * lastpx end"),
     (461, cfi_case()),
     # ISO 6166 opens a number with the ISO 3166 code of the country whose
     # agency numbered it, where one did: the crate's registry of countries

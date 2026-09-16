@@ -1625,11 +1625,11 @@
       ],
       "fix:replacements": [
         {
-          "plan": "select ('T', 'N', 'O', 'T', 'E') as legsecuritytype where legsecuritytype = ('U', 'S', 'T')",
+          "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
         },
         {
-          "plan": "select ('T', 'B', 'I', 'L', 'L') as legsecuritytype where legsecuritytype = ('U', 'S', 'T', 'B')",
+          "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'",
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -3948,10 +3948,10 @@
       "fix:deprecated": "5.0.1",
       "fix:replacements": [
         {
-          "plan": "select legqty as legorderqty where :msgtype in (('R'), ('A', 'J'), ('A', 'G'), ('S'), ('A', 'I'), ('A', 'B'), ('8'))"
+          "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
         },
         {
-          "plan": "select legqty as leglastqty where :msgtype in (('A', 'E'), ('A', 'R'))"
+          "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
         }
       ],
       "fix:tag": "687"

@@ -3052,11 +3052,11 @@
       "fix:deprecated": "5.0",
       "fix:replacements": [
         {
-          "plan": "select ('1') as tradepublishindicator where publishtrdindicator = ('Y')",
+          "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'",
           "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"
         },
         {
-          "plan": "select ('0') as tradepublishindicator where publishtrdindicator = ('N')",
+          "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'",
           "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"
         }
       ],

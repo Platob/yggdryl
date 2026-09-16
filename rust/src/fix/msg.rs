@@ -657,24 +657,7 @@ impl FixMsg {
         let Some(values) = self.value.as_sequence() else {
             return Vec::new();
         };
-        // A group's count is the group entry's own value, so the counter
-        // child beside the group states nothing the entries do not already.
-        let counted = |child: &Field| {
-            !child.dtype().is_nested()
-                && child
-                    .as_fix()
-                    .tag()
-                    .ok()
-                    .flatten()
-                    .is_some_and(|tag| self.index_of_group(tag).is_some())
-        };
-        self.field
-            .fields()
-            .iter()
-            .zip(values)
-            .filter(|(child, _)| !counted(child))
-            .filter_map(|(child, value)| entry_of(child, value))
-            .collect()
+        entries_of(self.field.fields(), values)
     }
 
     /// Every entry the wire carries, in wire order: the standard header
@@ -1512,6 +1495,34 @@ impl FixMsg {
     }
 }
 
+/// One level of the row as the entries it states, in its order: every
+/// child through [`entry_of`], except the counter scalar beside the group
+/// it counts - at the root, in a component, in an occurrence alike - since
+/// a group's count is the group entry's own value and the counter child
+/// states nothing the entries do not already.
+fn entries_of(fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
+    let counters: Vec<i32> = fields
+        .iter()
+        .filter(|child| child.dtype().is_nested())
+        .filter_map(|child| child.as_fix().counter().ok().flatten())
+        .collect();
+    let counted = |child: &Field| {
+        !child.dtype().is_nested()
+            && child
+                .as_fix()
+                .tag()
+                .ok()
+                .flatten()
+                .is_some_and(|tag| counters.contains(&tag))
+    };
+    fields
+        .iter()
+        .zip(values)
+        .filter(|(child, _)| !counted(child))
+        .filter_map(|(child, value)| entry_of(child, value))
+        .collect()
+}
+
 /// One row child as the entry it is: a scalar as one stated entry, a
 /// repeating group as its counter entry with an entry per occurrence and
 /// the occurrence's members under each, a component as an entry heading
@@ -1529,12 +1540,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
                 .iter()
                 .filter_map(|occurrence| match item.dtype() {
                     DataType::Struct(_) => {
-                        let members = occurrence
-                            .as_sequence()?
-                            .iter()
-                            .zip(item.fields())
-                            .filter_map(|(value, member)| entry_of(member, value))
-                            .collect();
+                        let members = entries_of(item.fields(), occurrence.as_sequence()?);
                         let own = item.as_fix().tag().ok().flatten().unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
                     }
@@ -1554,12 +1560,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
             }
         }
         DataType::Struct(_) => {
-            let members = value
-                .as_sequence()?
-                .iter()
-                .zip(field.fields())
-                .filter_map(|(value, member)| entry_of(member, value))
-                .collect();
+            let members = entries_of(field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }
         DataType::Map(_) => {
