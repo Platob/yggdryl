@@ -313,8 +313,9 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
 
 /// Whether a field is one the crate defines rather than a store.
 ///
-/// Both halves of every store ask this: a writer to leave them out, a reader
-/// to read past a copy an older writer left in.
+/// The reading half of every store asks this, to read past the copy a writer
+/// left in: a dump states the whole row, and the crate's own definition is
+/// still the one that types it.
 fn is_crate_field(field: &Field) -> bool {
     field
         .as_fix()
@@ -327,8 +328,8 @@ fn is_crate_field(field: &Field) -> bool {
 /// Whether one definition is the crate's own message.
 ///
 /// `pluginconfig` is to the components what the crate's own fields are to
-/// the fields: every registry holds it from construction, so a store that
-/// wrote it would claim to define what it only inherited (decision 19).
+/// the fields: a store writes it so a dump is the whole dictionary, and a
+/// reader holding it from construction reads that copy past (decision 19).
 fn is_crate_message(field: &Field) -> bool {
     field.name() == super::PLUGINCONFIG_CODE_NAME.1
 }
@@ -418,23 +419,19 @@ impl FixRegistry {
         self.validate_catalog()?;
         let mut document = Vec::with_capacity(FixCategory::ALL.len());
         for category in FixCategory::ALL {
+            // Every definition the dictionary holds, the crate's own among
+            // them: a snapshot is the whole row as this registry types it,
+            // not the half a store happened to declare. Reading one back
+            // takes the crate's copy over the document's, so the two never
+            // collide; the folder store writes the same way in `write_into`.
             let fields = if category == FixCategory::Fields {
-                // The crate's own fields are not a store's to state: every
-                // registry holds them from construction, so writing them here
-                // would make a snapshot claim to define what it only inherited
-                // - and reading it back would collide with the held copy. The
-                // folder store keeps the same rule in `write_into`.
                 self.iter()
-                    .filter(|field| !is_crate_field(field))
                     .cloned()
                     .map(|field| super::document::dump(field.into_value()))
                     .collect::<Result<Vec<_>>>()?
             } else {
-                // And the crate's own message is not a store's to state,
-                // for the reason its own fields are not.
                 self.catalog
                     .iter(category)
-                    .filter(|field| !is_crate_field(field) && !is_crate_message(field))
                     .cloned()
                     .map(|field| {
                         compact(field, true)
@@ -707,15 +704,13 @@ impl FixRegistry {
         self.validate_catalog()?;
         let mut documents: BTreeMap<String, Scalar> = BTreeMap::new();
         let mut shards: BTreeMap<i32, Vec<Field>> = BTreeMap::new();
+        // Every field the dictionary holds, the crate's own among them, so a
+        // written store states the whole row rather than the half it declared
+        // itself. The crate's block is one shard of its own, above every tag
+        // a dictionary reaches, and a reader takes the held definition over
+        // the document it finds there.
         for field in self {
             let (tag, _) = super::registry::canonical_identity(field)?;
-            // The crate's own fields are the crate's rather than the store's:
-            // every registry holds them from construction, so a store that
-            // wrote them would only hand them back to a reader that already
-            // had them.
-            if super::is_crate_tag(tag) {
-                continue;
-            }
             shards.entry(shard_of(tag)).or_default().push(field.clone());
         }
         for (shard, fields) in shards {
@@ -730,11 +725,8 @@ impl FixRegistry {
             );
         }
         for entry in self.catalog.all() {
-            // And the crate's own message, for the reason its own fields
-            // are skipped above.
-            if is_crate_field(entry.field.as_field()) || is_crate_message(entry.field.as_field()) {
-                continue;
-            }
+            // And every named definition, the crate's own message among them,
+            // for the reason its own fields are written above.
             let path = format!("{}/{}.json", entry.category, entry.field.name());
             documents.insert(
                 path,

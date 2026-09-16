@@ -686,7 +686,7 @@ pub struct FixCodec
   pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine>  (owned or borrowed lines and either Result; borrows without cloning, moves errors unchanged, fuses source exhaustion)
   pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills licensed by the specification. Namespace composition already ran at initial intake before clock defaults. Settled clocks are retained and identities recomputed atomically; decisions 20 and 26)
   pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill; decision 20)
-  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instuuid-scoped identifiers; grid/history semantics of decision 26)
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instrument-scoped identifiers; grid/history semantics of decision 26)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
@@ -737,7 +737,6 @@ pub const TARGETSESSIONNAME_TAG_NAME: (i32, &str) = (65_012, "targetsessionname"
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
-pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");  (nullable fixed_size_binary(16): the instrument digest's sixteen big-endian bytes)
 pub const MSGHASH_TAG_NAME: (i32, &str) = (65_017, "msghash");  (non-null fixed_size_binary(16): the sign-flipped updatedat nanoseconds then the whole XXH64 of the named content)
 pub const MSGPHASH_TAG_NAME: (i32, &str) = (65_018, "msgphash");  (non-null fixed_size_binary(16): the code's XXH3-128, big-endian)
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");

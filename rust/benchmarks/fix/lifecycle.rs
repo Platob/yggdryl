@@ -5,27 +5,12 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::types::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::{
-    ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME,
-    MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar, TimeUnit, Timezone,
-    UPDATEDAT_TAG_NAME,
+    ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, MSGPHASH_TAG_NAME,
+    PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 use super::seed;
-
-/// One instrument scope as the sixteen bytes the column holds.
-fn identity(payload: u128) -> Scalar {
-    Scalar::Bytes(
-        Bytes::new(payload.to_be_bytes())
-            .try_with_parameters(
-                BytesParameters::new(BytesLayout::FixedSizeBinary)
-                    .try_with_bound(16)
-                    .unwrap(),
-            )
-            .unwrap(),
-    )
-}
 
 const SCOPES: usize = crate::bench_profile::corpus(128, 4);
 
@@ -47,21 +32,26 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let created = message.createdat().as_datetime64().unwrap().0;
     let mut derived = Vec::with_capacity(SCOPES * 2);
     for scope in 0..SCOPES {
-        let mut scoped = message.clone();
+        // One instrument per scope: the lifecycle digests what the message
+        // says the instrument is, so a distinct symbol is a distinct scope
+        // and no column states one.
+        let line = format!(
+            "8=FIX.4.4|35=D|11=ORDER-REUSED|55=SCOPE-{scope}|60=20260102-10:15:30.000|10=0|"
+        );
+        let mut scoped = codec
+            .parse_fix_line(line.as_bytes())
+            .expect("one scoped order frame");
         scoped
-            .set_many([
-                (INSTUUID_TAG_NAME.0, identity(scope as u128)),
-                (
-                    CREATEDAT_TAG_NAME.0,
-                    Scalar::datetime64(
-                        created + 100 + scope as i64,
-                        TimeUnit::Nanosecond,
-                        Timezone::UTC,
-                    )
-                    .unwrap(),
-                ),
-            ])
-            .expect("a native scope and creation clock");
+            .set_many([(
+                CREATEDAT_TAG_NAME.0,
+                Scalar::datetime64(
+                    created + 100 + scope as i64,
+                    TimeUnit::Nanosecond,
+                    Timezone::UTC,
+                )
+                .unwrap(),
+            )])
+            .expect("a native creation clock");
         let mut later = scoped.clone();
         later
             .set(

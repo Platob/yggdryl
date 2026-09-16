@@ -1688,9 +1688,9 @@ impl FixCodec {
     /// Stamps a stream of messages with the identities it implies, in order.
     ///
     /// One [`FixLifecycle`](super::FixLifecycle) over the whole stream: each
-    /// message gets its `instuuid`, its `msghash` and - where it carries an order
-    /// identifier - the `msgphash` of the chain that identifier reaches,
-    /// and a terminal state closes the chain. Nothing is collected: the
+    /// message gets its `msghash` and - where it carries an order identifier -
+    /// the `msgphash` of the chain that identifier reaches, scoped by the
+    /// instrument the message names, and a terminal state closes the chain. Nothing is collected: the
     /// iterator is the stream, and what is held is the orders still alive.
     /// Owned messages and their fallible counterparts compose directly;
     /// source errors do not advance the lifecycle, and exhaustion is fused.

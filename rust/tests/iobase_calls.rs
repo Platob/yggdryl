@@ -61,10 +61,14 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
+    // Five documents and the three category roots: the store's own field
+    // shard, the crate's block on its own shard, its `altids` group and its
+    // `instids` and `pluginconfig` components - a store states the whole
+    // row, so the crate's four documents are written beside the store's one.
     costs(
-        "one field shard, three categories",
+        "five documents, three categories",
         &calls,
-        "child_by_path=4",
+        "child_by_path=8",
         || {
             registry.write_into(&mut folder).unwrap();
         },

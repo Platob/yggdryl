@@ -327,13 +327,14 @@ impl JsFixRegistry {
 
     /// A registry holding the built-in definitions.
     ///
-    /// Every registry holds the twenty-six scalar fields and the sorted
-    /// `altids` Map group that `fixCrateFields` lists, and the `pluginconfig`
-    /// component. It also holds the standard `SendingTime` (52) and
-    /// `TransactTime` (60) clock fields, seeded where the dictionary defines
-    /// no field of its own at those tags. A dictionary loaded from a store,
-    /// built from fields or left alone holds them alike; scalar lookups and
-    /// `size` exclude groups and components, so a new registry's `size` is 28.
+    /// Every registry holds the thirty-four scalar fields, the sorted
+    /// `altids` Map group and the `instids` Struct that `fixCrateFields`
+    /// lists, and the `pluginconfig` component. It also holds the standard
+    /// `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
+    /// the dictionary defines no field of its own at those tags. A dictionary
+    /// loaded from a store, built from fields or left alone holds them alike;
+    /// scalar lookups and `size` exclude groups and components, so a new
+    /// registry's `size` is 36.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -424,17 +425,18 @@ impl JsFixRegistry {
     /// Write every populated shard under `<location>/fields/<shard>.json` and
     /// every definition under `<location>/<category>/<name>.json`, removing
     /// the shards and trees no field populates any more. The crate's own
-    /// fields - its tag block from 65000 - are never written: they are the
-    /// crate's rather than the store's, and every registry holds them
-    /// already.
+    /// definitions are written like every other - its tag block from 65000 is
+    /// one shard, and its `altids`, `instids` and `pluginconfig` are three
+    /// documents - so a store states the whole row; a reader takes the
+    /// definition it holds from construction over the document it finds.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
         let mut holder = folder_from_input(location)?;
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many scalar fields are held, the crate's own twenty-six among
-    /// them, 28 for a new registry with its two seeded clocks.
+    /// How many scalar fields are held, the crate's own thirty-four among
+    /// them, 36 for a new registry with its two seeded clocks.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -2064,9 +2066,10 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
 /// Built once per stream, over one dictionary or the process default, and fed
 /// every message in order. A nonempty `code` names its chain globally;
 /// otherwise the first identifier - stated `altids`, else the message type's
-/// declared identifiers - reaching a live chain under the effective
-/// `instuuid` scope supplies its code, and a new chain is named
-/// `<scope hex or ->/<first identifier>`. Occupied identifiers are never
+/// declared identifiers - reaching a live chain under the instrument the
+/// message names supplies its code, and a new chain is named
+/// `<scope hex or ->/<first identifier>`; the instrument is a digest of what
+/// the message says it is and no column carries it. Occupied identifiers are never
 /// stolen, and an empty code opens no chain. `msgphash` hashes the settled code.
 ///
 /// Every accepted message has `updatedat` truncated to its epoch grid bucket
@@ -2330,19 +2333,24 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The twenty-seven definitions this crate owns, in tag order: twenty-six
-/// scalar fields at 65001 to 65019 and 65021 to 65027, and the sorted
-/// `altids` Map group at 65020. Tag 65000 is retired and not reused.
+/// The thirty-six definitions this crate owns, in tag order: thirty-four
+/// scalar fields at 65001 to 65003, 65005 to 65015, 65017 to 65019, 65021 to
+/// 65035 and 65037 to 65038, the sorted `altids` Map group at 65020 and the
+/// `instids` Struct at 65036. Tags 65000, 65004 and 65016 are retired and
+/// not reused.
 ///
 /// The version read at, the ticker, `updatedat` and its partition, the
 /// parent identifiers, the sessions the message states, the bridge's message
 /// context, the plugin that logged the line and the one it came through
 /// before that, the two session names the line spells, the ISIN, MIC and
-/// order state a row derives, the `instuuid`, `msghash` and `msgphash` identities,
+/// order state a row derives, the `msghash` and `msgphash` identities,
 /// the direct identifiers enrichment records in `altids`, the previous
 /// message's `prevupdatedat` and `prevmsghash`, `createdat`, `code` and
-/// `snapshotat`, the `sourceurl` a line was read from and the
-/// `nofixentries` that counts its arrival record. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
+/// `snapshotat`, the `sourceurl` a line was read from, the `nofixentries`
+/// that counts its arrival record, `recordedat` and `expiredat`, the two
+/// lane currencies, the bridge's own session instance, the instrument's
+/// Bloomberg, CUSIP and SEDOL codes with the `instids` Struct that joins
+/// them, and the two session message identifiers. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
 /// `snapshotat` are non-null. Every registry already holds them in their
 /// category, so this is the listing a schema or a document walks rather than
 /// something a caller registers.

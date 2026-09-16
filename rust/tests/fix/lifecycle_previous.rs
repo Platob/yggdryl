@@ -6,9 +6,9 @@ use super::SoleMessage;
 use super::lifecycle_chains::{clock, row, try_row};
 use super::{identity_scalar, numbered_identity};
 use yggdryl::{
-    ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
-    UPDATEDAT_TAG_NAME, arrow, fix_schema,
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, PREVMSGHASH_TAG_NAME,
+    PREVUPDATEDAT_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+    arrow, fix_schema,
 };
 
 fn identifiers(entries: &[(&str, &str)]) -> (i32, Scalar) {
@@ -27,17 +27,13 @@ fn event(
     registry: &Arc<FixRegistry>,
     nanos: i64,
     code: Option<&str>,
-    scope: Option<u128>,
+    symbol: Option<&str>,
     entries: &[(&str, &str)],
 ) -> FixMsg {
     let mut cells = vec![(UPDATEDAT_TAG_NAME.0, clock(nanos)), identifiers(entries)];
     cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
-    cells.extend(scope.map(|value| {
-        (
-            INSTUUID_TAG_NAME.0,
-            identity_scalar(numbered_identity(value)),
-        )
-    }));
+    // The instrument the message names is its scope; no column states one.
+    cells.extend(symbol.map(|value| (55, Scalar::from(value))));
     row(registry, cells)
 }
 
@@ -147,11 +143,16 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
 }
 
 #[test]
-fn absent_nil_and_distinct_scopes_keep_separate_previous_pairs() {
+fn absent_and_distinct_instrument_scopes_keep_separate_previous_pairs() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = lifecycle(&registry);
     let mut firsts = Vec::new();
-    for (scope, time) in [(None, 10), (Some(0), 20), (Some(1), 30), (Some(2), 40)] {
+    for (scope, time) in [
+        (None, 10),
+        (Some("ALPHA"), 20),
+        (Some("BETA"), 30),
+        (Some("GAMMA"), 40),
+    ] {
         let first = life
             .fill(event(&registry, time, None, scope, &[("id", "SAME")]))
             .unwrap();
@@ -173,28 +174,46 @@ fn direct_code_and_scoped_identifier_join_read_only_the_selected_chains_history(
     let registry = Arc::new(FixRegistry::new());
     let mut life = lifecycle(&registry);
     let a = life
-        .fill(event(&registry, 10, Some("A"), Some(1), &[("id", "A")]))
+        .fill(event(
+            &registry,
+            10,
+            Some("A"),
+            Some("ALPHA"),
+            &[("id", "A")],
+        ))
         .unwrap();
     let b = life
-        .fill(event(&registry, 20, Some("B"), Some(2), &[("id", "B")]))
+        .fill(event(
+            &registry,
+            20,
+            Some("B"),
+            Some("BETA"),
+            &[("id", "B")],
+        ))
         .unwrap();
     let direct = life
         .fill(event(
             &registry,
             30,
             Some("A"),
-            Some(2),
+            Some("BETA"),
             &[("a", "B"), ("b", "ATTACHED")],
         ))
         .unwrap();
     assert_pair(&direct, Some(&a));
     let other = life
-        .fill(event(&registry, 40, None, Some(2), &[("id", "B")]))
+        .fill(event(&registry, 40, None, Some("BETA"), &[("id", "B")]))
         .unwrap();
     assert_eq!(other.msgphash(), b.msgphash());
     assert_pair(&other, Some(&b));
     let attached = life
-        .fill(event(&registry, 50, None, Some(2), &[("id", "ATTACHED")]))
+        .fill(event(
+            &registry,
+            50,
+            None,
+            Some("BETA"),
+            &[("id", "ATTACHED")],
+        ))
         .unwrap();
     assert_eq!(attached.msgphash(), a.msgphash());
     assert_pair(&attached, Some(&direct));
@@ -270,30 +289,60 @@ fn terminal_clear_and_reopening_forget_every_scopes_previous_pair() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = lifecycle(&registry);
     let first = life
-        .fill(event(&registry, 10, Some("A"), Some(1), &[("id", "A")]))
+        .fill(event(
+            &registry,
+            10,
+            Some("A"),
+            Some("ALPHA"),
+            &[("id", "A")],
+        ))
         .unwrap();
     let attached = life
-        .fill(event(&registry, 20, Some("A"), Some(2), &[("id", "B")]))
+        .fill(event(
+            &registry,
+            20,
+            Some("A"),
+            Some("BETA"),
+            &[("id", "B")],
+        ))
         .unwrap();
     assert_pair(&attached, Some(&first));
-    let mut terminal = event(&registry, 30, None, Some(2), &[("id", "B")]);
+    let mut terminal = event(&registry, 30, None, Some("BETA"), &[("id", "B")]);
     terminal.set(39, Scalar::from("2")).unwrap();
     let terminal = life.fill(terminal).unwrap();
     assert_eq!(terminal.msgphash(), first.msgphash());
     assert_pair(&terminal, Some(&attached));
     assert_eq!(life.alive(), 0);
     let reopened = life
-        .fill(event(&registry, 40, Some("A"), Some(1), &[("id", "A")]))
+        .fill(event(
+            &registry,
+            40,
+            Some("A"),
+            Some("ALPHA"),
+            &[("id", "A")],
+        ))
         .unwrap();
     assert_pair(&reopened, None);
     let attached = life
-        .fill(event(&registry, 50, Some("A"), Some(2), &[("id", "B")]))
+        .fill(event(
+            &registry,
+            50,
+            Some("A"),
+            Some("BETA"),
+            &[("id", "B")],
+        ))
         .unwrap();
     assert_pair(&attached, Some(&reopened));
     life.clear();
     assert_eq!(life.alive(), 0);
     let fresh = life
-        .fill(event(&registry, 60, Some("A"), Some(1), &[("id", "A")]))
+        .fill(event(
+            &registry,
+            60,
+            Some("A"),
+            Some("ALPHA"),
+            &[("id", "A")],
+        ))
         .unwrap();
     assert_pair(&fresh, None);
     let mut first_terminal = event(&registry, 70, Some("B"), None, &[("id", "C")]);

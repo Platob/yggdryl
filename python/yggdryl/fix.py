@@ -12,13 +12,14 @@ identifier, by tag, by name or by dotted path and persists them as JSON
 shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
-Every registry holds twenty-six crate-owned scalar fields, the ``altids`` Map
-group and the separate ``pluginconfig`` component/message from construction,
+Every registry holds thirty-four crate-owned scalar fields, the ``altids`` Map
+group, the ``instids`` Struct and the separate ``pluginconfig``
+component/message from construction,
 and :class:`FixRegistry` seeds the standard clocks ``SendingTime`` (52) and
 ``TransactTime`` (60) beside them as ordinary definitions a loaded dictionary
-may supply itself, so ``len(FixRegistry())`` is 28; ordinary size and
-iteration count only the scalars. A store neither writes the crate's
-definitions nor overrides them. A tag is a positive ``int``: ``fix.tag``,
+may supply itself, so ``len(FixRegistry())`` is 36; ordinary size and
+iteration count only the scalars. A store writes the crate's definitions like
+any other and never lets a stored copy override them. A tag is a positive ``int``: ``fix.tag``,
 ``fix.tags`` and ``fix.counter`` refuse 0, which only an unresolved arrival
 entry records. Resolution, folding, merging, sharding and validation are
 native; this module only names them.
@@ -119,10 +120,10 @@ tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``msghash``,
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: 37 definitions in tag order, thirty-five scalar fields at tags
-65001 to 65019 and 65021 to 65038, the nullable sorted-key
+specification: 36 definitions in tag order, thirty-four scalar fields at tags
+65001 to 65015, 65017 to 65019 and 65021 to 65038, the nullable sorted-key
 ``map<utf8, utf8>`` group ``altids`` at 65020 and the ``instids`` struct at
-65036; the retired 65000 and 65004 are not reused.
+65036; the retired 65000, 65004 and 65016 are not reused.
 The scalar fields are ``version``, ``symbolticker``, ``updatedat``,
 ``parentclordid`` and ``parentorderid``; what a bridge's own
 log states about a line - ``sendersessionid`` and ``targetsessionid``, the
@@ -133,7 +134,7 @@ names ``sendersessionname`` and ``targetsessionname`` the line spells, and the
 ``sessionmsgid`` and ``sessionmsgseqid`` that join the bracket's parts; the
 facts a row derives from what the message said - ``isincode``,
 ``bloombergcode``, ``cusipcode``, ``sedolcode``, ``miccode`` and
-``state``; the ``fixedbinary(16)`` ``instuuid``, ``msghash`` and ``msgphash``; the previous
+``state``; the ``fixedbinary(16)`` ``msghash`` and ``msgphash``; the previous
 message's ``prevupdatedat`` and ``prevmsghash``; ``createdat``, ``code``,
 ``snapshotat``, ``recordedat``, ``expiredat`` and the two lane currencies
 ``bidcurrency`` and ``offercurrency``; the ``url``-typed ``sourceurl`` a line
@@ -149,10 +150,12 @@ of this tag listing.
 :class:`FixLifecycle` names the chains. It reads a stream once, in order,
 through :meth:`FixLifecycle.fill`: a nonempty ``code`` selects its live chain
 globally; otherwise the first identifier - stated ``altids``, else the message
-type's declared identifiers - reaching a live chain under the message's
-``instuuid`` lends that chain's code, and a new chain is named
+type's declared identifiers - reaching a live chain under the instrument the
+message names lends that chain's code, and a new chain is named
 ``<scope hex or ->/<identifier>``, never taking an identifier another live
-chain holds. ``msgphash`` hashes that code. Every accepted message has
+chain holds. The instrument is the digest of what the message says it is -
+its market, its classification, its ISIN else its symbol, and its currency -
+and no column carries it. ``msgphash`` hashes that code. Every accepted message has
 ``updatedat`` floored to its epoch grid - :attr:`FixLifecycle.DEFAULT_INTERVAL_NS`,
 one second, unless ``interval_ns`` says otherwise - while ``snapshotat`` keeps
 the real instant; takes its live chain's first accepted ``createdat``; and fills

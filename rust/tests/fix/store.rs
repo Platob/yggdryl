@@ -15,6 +15,20 @@ fn scratch(label: &str) -> PathBuf {
     path
 }
 
+/// Where a snapshot states the definition named `name`.
+///
+/// A dump states every definition the registry holds, the crate's own among
+/// them, so a test reads back the one it wrote by name rather than by the
+/// position it happened to land in.
+fn definition_at(document: &Scalar, category: &str, name: &str) -> usize {
+    document.as_record().unwrap()[category]
+        .as_sequence()
+        .unwrap()
+        .iter()
+        .position(|value| value.as_record().unwrap()["name"].as_str() == Some(name))
+        .unwrap_or_else(|| panic!("{category} states {name}"))
+}
+
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
     field.as_fix_mut().set_tag(tag).unwrap();
@@ -68,13 +82,15 @@ fn catalog() -> FixRegistry {
 }
 
 #[test]
-fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
+fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
     let map = registry.get_group_by_tag(65_020).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
-    assert!(!snapshot.contains("altids"));
+    // The dump states it - a snapshot is the whole dictionary - and reading
+    // one back takes the held declaration over the document's.
+    assert!(snapshot.contains("altids"));
     assert_eq!(FixRegistry::from_json(&snapshot).unwrap(), registry);
 
     let document = Scalar::from_record([
@@ -92,7 +108,7 @@ fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
     let root = scratch("crate-map");
     let mut folder = Folder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert!(!root.join("groups/altids.json").exists());
+    assert!(root.join("groups/altids.json").exists());
     folder
         .child_by_path("groups/altids.json")
         .unwrap()
@@ -121,7 +137,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     let root = scratch("crate-map-reference");
     let mut folder = Folder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert!(!root.join("groups/altids.json").exists());
+    assert!(root.join("groups/altids.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -151,9 +167,10 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
 
         let json = registry.into_json().unwrap();
         let snapshot = yggdryl::from_json_scalar(&json).unwrap();
+        let at = definition_at(&snapshot, "components", "lookup");
         let component = Field::from_value(
             snapshot.as_record().unwrap()["components"]
-                .get(0)
+                .get(at)
                 .unwrap()
                 .clone(),
         )
@@ -247,9 +264,10 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
 
         let json = registry.into_json().unwrap();
         let document = yggdryl::from_json_scalar(&json).unwrap();
+        let at = definition_at(&document, "components", "mappedlookup");
         let mut stored = Field::from_value(
             document.as_record().unwrap()["components"]
-                .get(1)
+                .get(at)
                 .unwrap()
                 .clone(),
         )
@@ -281,10 +299,21 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
                 (
                     key.clone(),
                     if key == "components" {
-                        Scalar::from_sequence([
-                            value.get(0).unwrap().clone(),
-                            stored.clone().into_value(),
-                        ])
+                        Scalar::from_sequence(
+                            value
+                                .as_sequence()
+                                .unwrap()
+                                .iter()
+                                .enumerate()
+                                .map(|(index, held)| {
+                                    if index == at {
+                                        stored.clone().into_value()
+                                    } else {
+                                        held.clone()
+                                    }
+                                })
+                                .collect::<Vec<_>>(),
+                        )
                     } else {
                         value.clone()
                     },

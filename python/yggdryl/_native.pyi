@@ -4933,15 +4933,15 @@ class FixRegistry:
     raises ``ValueError`` while a message or the process default shares it.
 
     Every registry holds this crate's own definitions from construction.
-    ``fix_crate_fields`` lists twenty-six scalar fields - tags 65001 to
-    65019 and 65021 to 65027 - and the ``altids`` Map group at 65020; the
-    retired 65000 is not reused. ``FixRegistry()`` also seeds the standard
+    ``fix_crate_fields`` lists thirty-four scalar fields - tags 65001 to 65015, 65017 to 65019 and 65021 to 65038 - the
+    ``altids`` Map group at 65020 and the ``instids`` Struct at 65036; the
+    retired 65000, 65004 and 65016 are not reused. ``FixRegistry()`` also seeds the standard
     clocks ``SendingTime`` (52) and ``TransactTime`` (60), each a nanosecond
     UTC ``datetime64``, as ordinary definitions a loaded dictionary may
-    supply itself, so a new registry's ``len`` is 28. ``len`` counts only
+    supply itself, so a new registry's ``len`` is 36. ``len`` counts only
     scalar fields, beside those inserted or loaded. The ``pluginconfig``
-    component is also registered. A store never writes the crate's own
-    definitions. What a dictionary contributed is ``fix:branches`` on each
+    component is also registered. A store writes the crate's own definitions
+    like any other and reads a stored copy past. What a dictionary contributed is ``fix:branches`` on each
     field it touched, listed by ``dialects``; no lookup consults it.
     """
 
@@ -5261,8 +5261,9 @@ class FixLifecycle:
     in order through ``fill`` or ``snapshot``. A nonempty ``code`` names its
     live chain globally; otherwise the first identifier - stated ``altids``,
     else the message type's declared identifiers - reaching a live chain under
-    the message's ``instuuid`` lends that chain's code, and a new chain is
-    named ``<scope hex or ->/<identifier>``. ``msgphash`` hashes that code.
+    the instrument the message names lends that chain's code, and a new chain
+    is named ``<scope hex or ->/<identifier>``; the instrument is a digest of
+    what the message says it is and no column carries it. ``msgphash`` hashes that code.
     Every accepted message has ``updatedat`` floored to its grid instant
     while ``snapshotat`` keeps the real one, takes its live chain's first
     ``createdat``, and fills each absent ``prevupdatedat`` and ``prevmsghash``

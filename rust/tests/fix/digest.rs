@@ -232,7 +232,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "isincode",
             "miccode",
             "state",
-            "instuuid",
             "msghash",
             "msgphash",
             "targetsessionid",
@@ -275,7 +274,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("ISINCode"),
             Some("MICCode"),
             Some("State"),
-            Some("InstUuid"),
             Some("MsgHash"),
             Some("MsgPHash"),
             Some("TargetSessionId"),
@@ -302,8 +300,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     );
 
     // The columns a message answers from what it said are typed as the thing
-    // they hold, not as the text a venue spelled it in; the three lifecycle
-    // identities are sixteen fixed bytes, which is what a lake engine reads.
+    // they hold, not as the text a venue spelled it in; the three identity
+    // columns are sixteen fixed bytes, which is what a lake engine reads, and
+    // `msghash` opens the two that sit together.
     let typed = |name: &str| {
         held.iter()
             .find(|field| field.name() == name)
@@ -315,9 +314,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(typed("state"), &DataType::State);
     let identities = held
         .iter()
-        .position(|field| field.name() == "instuuid")
-        .expect("instuuid");
-    for identity in &held[identities..identities + 3] {
+        .position(|field| field.name() == "msghash")
+        .expect("msghash");
+    for identity in &held[identities..identities + 2] {
         assert_eq!(identity.dtype(), &super::identity_dtype());
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
@@ -374,13 +373,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // its name, and a dictionary member it is not.
     // Strictly increasing rather than contiguous: a retired slot is never
     // reused, so the block has holes where one was. 65000 held the original
-    // `msghash` (decision 26) and 65004 held `timepartition`, which went when
-    // how a layout is cut became the target's.
+    // `msghash` (decision 26), 65004 held `timepartition`, which went when
+    // how a layout is cut became the target's, and 65016 held `instuuid`,
+    // which went when the instrument became a scope rather than a column.
     let tags: Vec<i32> = held
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
         .collect();
-    for retired in [65_000, 65_004] {
+    for retired in [65_000, 65_004, 65_016] {
         assert!(!tags.contains(&retired), "{retired} stays retired");
     }
     let mut last = yggdryl::CRATE_TAG_MIN;
@@ -408,16 +408,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     );
     assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
     assert_eq!(
-        [
-            yggdryl::INSTUUID_TAG_NAME,
-            yggdryl::MSGHASH_TAG_NAME,
-            yggdryl::MSGPHASH_TAG_NAME,
-        ],
-        [
-            (65_016, "instuuid"),
-            (65_017, "msghash"),
-            (65_018, "msgphash")
-        ]
+        [yggdryl::MSGHASH_TAG_NAME, yggdryl::MSGPHASH_TAG_NAME],
+        [(65_017, "msghash"), (65_018, "msgphash")]
     );
     assert_eq!(
         [
@@ -443,8 +435,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 37);
-    assert_eq!(scalar_count, 35);
+    assert_eq!(held.len(), 36);
+    assert_eq!(scalar_count, 34);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
@@ -459,6 +451,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         "uuid",
         "puuid",
         "prevuuid",
+        "instuuid",
     ] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }
