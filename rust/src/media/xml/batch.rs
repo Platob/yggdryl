@@ -270,11 +270,19 @@ fn field_of(name: &str, rows: &[Scalar], options: &XmlOptions) -> crate::Result<
 
 /// Restate one decoded row in the shape the declared field asks for.
 ///
-/// XML spells a repeated child by repeating it, so a column that a schema
-/// calls a list arrives as one value when the row happened to carry one, and
-/// as a sequence when it carried more. Only the declaration knows which it is,
-/// and one reading of a single occurrence under a list column is unambiguous -
-/// it is a list of one - so this is best effort rather than a refusal.
+/// It does two things, and both are the declaration's doing:
+///
+/// **It projects.** A declared field names the columns of the result, so a
+/// document carrying more is the ordinary case rather than a refusal - the
+/// ones it does not name are dropped here, before the row meets a value
+/// contract that would call them unknown.
+///
+/// **It reads a repeat as the list it was declared to be.** XML spells a
+/// repeated child by repeating it, so a column a schema calls a list arrives
+/// as one value when the row happened to carry one and as a sequence when it
+/// carried more. Only the declaration knows which it is, and one occurrence
+/// under a list column is unambiguous - it is a list of one - so this is best
+/// effort rather than a refusal.
 ///
 /// Nothing else is coerced: a value the field cannot take still meets the
 /// value contract and is still refused there.

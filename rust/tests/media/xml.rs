@@ -135,6 +135,38 @@ fn rows_written_as_xml_read_back_as_the_rows_that_were_written() {
 }
 
 #[test]
+fn a_declared_field_reads_the_columns_it_names_and_leaves_the_rest() {
+    // A declaration is a projection as well as a typing: the columns it does
+    // not name are not columns of the result, and a row carrying them is the
+    // ordinary case rather than a refusal.
+    let handle = written(
+        "wide.xml",
+        "<rows><row id='1'><symbol>AAPL</symbol><px>9.50</px><qty>3</qty></row>\
+         <row id='2'><symbol>MSFT</symbol><px>1.25</px><qty>4</qty></row></rows>",
+    );
+    let declared = Field::from_str("row: struct<qty: int64> not null").unwrap();
+    let options = handle.record_options().unwrap().with_field(declared);
+
+    let batches: Vec<RecordBatch> = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(|batch| batch.unwrap())
+        .collect();
+    let batch = &batches[0];
+    assert_eq!(batch.num_columns(), 1);
+    assert_eq!(batch.schema().field(0).name(), "qty");
+    assert_eq!(
+        batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap()
+            .values(),
+        &[3, 4]
+    );
+}
+
+#[test]
 fn a_read_builds_one_batch_at_a_time_and_only_when_one_is_asked_for() {
     // A document has no index, so the parse reads all of it - but the Arrow
     // side is built a batch at a time, and a caller that wants one batch, or
