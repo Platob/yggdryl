@@ -632,7 +632,7 @@ no behavior of its own.
 - An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
 - A bare null into a `union` or a `run_end_encoded` -> refused: both spell absence inside a child, so the value is the pair or the values entry that carries it.
 - A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
-- Bare date into a datetime, twelve-hour clock, compact `YYYYMMDD` -> Arrow's kernel.
+- Twelve-hour clock, and a bare date into a zoned datetime -> Arrow's kernel; a bare date into a naive datetime is that day at midnight on both tiers, compact `YYYYMMDD` included.
 - Temporal to text -> the classic form, zoned instants included.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
 - A required `bits` target over source nulls -> the canonical default under `default`, refused by path under `strict`; the buffer is rebuilt only when a null is actually filled.

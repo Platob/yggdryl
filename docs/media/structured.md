@@ -203,6 +203,7 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 
 - `25:30:00` as a time of day -> `01:30:00`; hours fold modulo the day up to `99`.
 - `2026-08-17T24:00:00` as a datetime -> the 18th at midnight.
+- `2026-08-17`, or the compact `20260817`, as a datetime -> that day at midnight; a date states no clock, so a FIX settlement date reads into the column a transact time reads into. `20260818Z` and `2026-08-18+02:00` are the zoned readings; a zoned column still refuses a date that states no zone, and a `-` after a date stays FIX's clock separator rather than an offset sign.
 - `26:03:04`, `P1DT2H3M4S`, `PT93784S` as a duration -> one count; written back as `PT<seconds>S`.
 - Minutes and seconds in any clock spelling -> always under sixty; only hours fold, up to `99`.
 - `00:05:01,148` -> the same clock as `00:05:01.148`; ISO 8601 names the comma and the full stop alike and prefers the comma, and both are read. The duration spellings take it too, so `PT1,5S` and `25:30:00,5` read. A fraction is written back with the full stop RFC 3339 allows, at the unit's full width.

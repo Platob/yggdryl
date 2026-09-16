@@ -20,6 +20,13 @@
 //! `2026-08-17T25:30:00` is the 18th at `01:30`; and a duration keeps it plain,
 //! because `25:30:00` of elapsed time is twenty-five and a half hours and never
 //! half past one.
+//!
+//! A missing clock is a reading too: a date is a datetime at that day's
+//! midnight, `2026-08-17` and the compact `20260817` alike, which is what lets
+//! a FIX settlement date sit in the same column as a transact time instead of
+//! a second temporal type to cast through. It is read and never written - a
+//! datetime spells its clock - and a zoned reading still states its zone, so
+//! `20260818Z` is that day in UTC and `20260818` is a naive reading only.
 
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
@@ -388,6 +395,16 @@ pub(crate) fn parse_time(text: &str) -> Result<(i64, TimeUnit)> {
 /// would otherwise run into the date: a compact date is eight digits and a
 /// compact clock six, so `YYYYMMDDHHMMSS` reads without one, while the
 /// extended date must still be closed before the clock opens.
+///
+/// A date states no clock and reads as that day at midnight, extended and
+/// compact alike, because a settlement date sent as `20260818` is the same
+/// instant a bridge spells `2026-08-18T00:00:00`. What ends the date says so
+/// by itself - the text ends, or the byte a zone opens with begins, and the
+/// caller that owns the zone reads it next - so no reading is attempted twice
+/// and a clock that breaks still names the byte that broke it. `-` is not one
+/// of those bytes: after a date it is FIX's clock separator, so
+/// `20260818-10:15:00` is a clock and `20260818-08:00` is one that stops
+/// halfway, never an offset on a bare date.
 fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit, usize)> {
     let (days, after) = parse_date_at(text, 0)?;
     let clock_at = match text.as_bytes().get(after) {
@@ -395,6 +412,15 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
         // A compact date runs straight into its clock, which is the whole
         // point of writing it that way.
         Some(byte) if byte.is_ascii_digit() && after == 8 => after,
+        // Nothing, `Z`, an offset sign, or a bracketed zone name: the date
+        // states the whole reading and the rest is the caller's. Midnight is
+        // a clock with no fraction, so it reads at the resolution one does,
+        // and an `i32` day count times a day of seconds is nowhere near what
+        // 64 bits hold, so the multiplication a clock has to guard cannot
+        // overflow without one.
+        None | Some(b'Z' | b'z' | b'+' | b'[') => {
+            return Ok((i64::from(days) * DAY, TimeUnit::Second, after));
+        }
         _ => {
             return Err(iso_error(target, after, "expected T between date and time"));
         }
@@ -412,7 +438,8 @@ fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit,
 ///
 /// A clock past the end of its day carries into the following date, because a
 /// datetime names one point on the line rather than a place on the dial:
-/// `2026-08-17T24:00:00` is the 18th at midnight.
+/// `2026-08-17T24:00:00` is the 18th at midnight. A reading that states no
+/// clock is that day's own midnight, at second resolution.
 pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
     let (count, unit, end) = parse_datetime_at(text, "datetime")?;
     if end != text.len() {
@@ -429,10 +456,13 @@ pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
 /// the zone's bracketed name, which wins over the offset when both appear.
 ///
 /// The local reading carries an hour past the end of its day into the
-/// following date, as a naive datetime does.
+/// following date, and states no clock where it is a bare date, as a naive
+/// datetime does: `20260818Z` is the 18th at midnight in UTC. The zone stays
+/// required either way, because an instant a column stores must never carry a
+/// zone the text did not state.
 pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
     let (local, unit, mut end) = parse_datetime_at(text, "timestamp")?;
-    let per = per_second(unit).expect("the clock parsed at a resolution unit");
+    let per = per_second(unit).expect("the reading parsed at a resolution unit");
 
     let offset_start = end;
     let offset = match text.as_bytes().get(end) {

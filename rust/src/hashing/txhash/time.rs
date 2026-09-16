@@ -170,19 +170,15 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
 /// The crate's own ISO reader answers the count at the resolution the digits
 /// spell - seconds for `..:01Z`, nanoseconds for seven fractional digits -
 /// and that count is restated like every other intake: exactly into a finer
-/// unit, floored into a coarser one. A spelling carries an offset, or it does
-/// not, or it is a bare date, so exactly one reading can succeed; when none
-/// does, the timestamp reading's refusal is the one reported.
+/// unit, floored into a coarser one. A spelling carries an offset or it does
+/// not, so exactly one of the two readings can succeed; a bare date is the
+/// naive one - that day at midnight, the reader's own answer for a date - and
+/// needs no third. When neither reads, the timestamp reading's refusal is the
+/// one reported.
 fn unix_from_text(text: &str, unit: TimeUnit) -> Result<i64> {
     let (count, source) = match iso::parse_timestamp(text) {
         Ok((count, source, _)) => (count, source),
-        Err(zoned) => match iso::parse_datetime(text) {
-            Ok(read) => read,
-            Err(_) => match iso::parse_date(text) {
-                Ok(days) => (i64::from(days), TimeUnit::Day),
-                Err(_) => return Err(zoned),
-            },
-        },
+        Err(zoned) => iso::parse_datetime(text).map_err(|_| zoned)?,
     };
     restate_unix(count, source, unit)
 }

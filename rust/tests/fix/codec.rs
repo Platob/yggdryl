@@ -2211,6 +2211,61 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
         read("8=FIX.4.4", "20240102-10:15:30,000", 60),
         instant(1_704_190_530_000_000_000),
     );
+
+    // The same reader takes a date that states no clock, so the compact wire
+    // date is read whole rather than rewritten into a clock it does not have.
+    // SettlDate(64) is a `LocalMktDate` and states no zone either, so it is
+    // that day's midnight stating none, while TransactTime is a UTC column
+    // and is owed the `Z` its name states - the one thing FIX leaves out.
+    let local = |count: i64| {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::NAIVE)
+            .expect("a nanosecond count")
+    };
+    assert_eq!(
+        read("8=FIX.4.4", "20240102", 64),
+        local(1_704_153_600_000_000_000),
+    );
+    assert_eq!(
+        read("8=FIX.4.4", "20240102", 60),
+        instant(1_704_153_600_000_000_000),
+    );
+    // A day the calendar does not have is null, not a neighbouring one.
+    assert_eq!(read("8=FIX.4.4", "20240230", 64), Scalar::Null);
+}
+
+/// A date column reads the compact wire date through the shared reader.
+///
+/// No committed FIX field is declared a date - every FIX date lands on
+/// `datetime64` - so this is the hand-declared column, and it reads the FIX
+/// spelling because the reader reads it, not because the codec rewrites the
+/// text first. Eight bytes that are not eight digits are null, the lossily
+/// decoded ones included, where a rewriter would have to slice them.
+#[test]
+fn a_date_column_reads_the_compact_wire_date_and_nulls_what_is_not_one() {
+    let mut narrow = FixRegistry::new();
+    let mut settled = DataType::Date32.nullable_field("settldate");
+    settled.as_fix_mut().set_tag(64).unwrap();
+    narrow.insert(settled).unwrap();
+    let reader = super::fixed_codec(Arc::new(narrow));
+    let read = |line: &[u8]| {
+        reader
+            .parse_fix_line(line)
+            .expect("a readable message")
+            .by_tag(64)
+            .expect("the tag")
+            .clone()
+    };
+
+    assert_eq!(
+        read(b"8=FIX.4.4|35=D|64=20240102|10=0|"),
+        Scalar::date32(19_724)
+    );
+    assert_eq!(
+        read(b"8=FIX.4.4|35=D|64=2024-01-02|10=0|"),
+        Scalar::date32(19_724)
+    );
+    assert_eq!(read(b"8=FIX.4.4|35=D|64=ab\xFFxyz|10=0|"), Scalar::Null);
+    assert_eq!(read(b"8=FIX.4.4|35=D|64=20240230|10=0|"), Scalar::Null);
 }
 
 /// Critical clocks are typed at intake; no text-typed interior fallback remains.

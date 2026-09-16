@@ -520,8 +520,12 @@ fn unix_from_scalar_reads_every_instant_spelling() {
     assert_eq!(read(Scalar::from("1970-01-01T00:00:01")), 1_000_000);
     assert_eq!(read(Scalar::from("1970-01-01T00:00:01.5")), 1_500_000);
     assert_eq!(read(Scalar::from("1970-01-01T00:00:00.0000019")), 1);
-    // Date-only text is that day's midnight, as a date scalar is.
+    // Date-only text is that day's midnight, as a date scalar is - one
+    // reading of a datetime rather than a third reading beside it, so the
+    // compact spelling a wire writes answers the same count.
     assert_eq!(read(Scalar::from("1970-01-02")), 86_400_000_000);
+    assert_eq!(read(Scalar::from("19700102")), 86_400_000_000);
+    assert_eq!(read(Scalar::from("19700102Z")), 86_400_000_000);
     assert_eq!(
         unix_from_scalar(&Scalar::from(1_700_000_000_i64), TimeUnit::Second).unwrap(),
         1_700_000_000
