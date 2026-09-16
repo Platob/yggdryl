@@ -137,6 +137,35 @@ fn a_temporal_reads_the_compact_spelling_and_the_extended_one_alike() {
             .unwrap(),
     );
 
+    // A date states no clock, so a datetime column reads one as that day's
+    // midnight - which is how a settlement date sits in the column a transact
+    // time sits in, rather than in a second one to cast through.
+    let midnight = naive
+        .scalar(Scalar::from("2024-01-02T00:00:00"))
+        .expect("the extended midnight");
+    for held in ["2024-01-02", "20240102"] {
+        assert_eq!(
+            naive.scalar(Scalar::from(held)).unwrap(),
+            midnight,
+            "{held}"
+        );
+    }
+
+    // A zoned column still wants the zone stated, and reads the same midnight
+    // once it is; a date that states none is a naive reading and stays one.
+    let zoned_midnight = utc
+        .scalar(Scalar::from("2024-01-02T00:00:00Z"))
+        .expect("the extended midnight");
+    for held in ["2024-01-02Z", "20240102Z", "20240102+00:00"] {
+        assert_eq!(
+            utc.scalar(Scalar::from(held)).unwrap(),
+            zoned_midnight,
+            "{held}"
+        );
+    }
+    assert!(utc.scalar(Scalar::from("20240102")).is_err());
+    assert!(naive.scalar(Scalar::from("20240102Z")).is_err());
+
     // What is not a spelling of anything is still refused, at its position.
     for held in ["2024010210153", "202401021015300", "20241302101530"] {
         assert!(naive.scalar(Scalar::from(held)).is_err(), "{held}");

@@ -1508,6 +1508,44 @@ fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
 }
 
 #[test]
+fn an_mtime_capture_that_states_only_a_date_dates_the_line_at_midnight() {
+    use arrow_array::TimestampNanosecondArray;
+
+    // A log that dates its lines by the day states no clock, and a date is
+    // the instant that day opens: the capture reads midnight in the column's
+    // zone rather than failing the row for want of a clock it never had.
+    let source = named("dated.log", b"2020-01-02 id=7 first\n");
+    let batch = collect(&source, options(r"^(?<mtime>\S+) id=(?<id>\d+) "))
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<TimestampNanosecondArray>()
+            .unwrap()
+            .value(0),
+        1_577_923_200_000_000_000
+    );
+
+    // The compact spelling a wire writes is the same day and the same
+    // reading, where it used to be no reading at all.
+    let source = named("dated.log", b"20200102 id=7 first\n");
+    let batch = collect(&source, options(r"^(?<mtime>\d+) id=(?<id>\d+) "))
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<TimestampNanosecondArray>()
+            .unwrap()
+            .value(0),
+        1_577_923_200_000_000_000
+    );
+}
+
+#[test]
 fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
     use arrow_array::Array as _;
 

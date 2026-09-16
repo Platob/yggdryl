@@ -20,6 +20,7 @@ criterion_group!(
     datatype::floating::decimal_benchmarks,
     datatype::temporal::time_builder_benchmarks,
     datatype::temporal::time_unit_benchmarks,
+    datatype::temporal::temporal_text_benchmarks,
     datatype::value::value_benchmarks,
     datatype::uuid::uuid_benchmarks,
     datatype::version::version_benchmarks,

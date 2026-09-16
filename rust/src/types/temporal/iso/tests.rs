@@ -110,6 +110,112 @@ fn a_datetime_carries_an_hour_past_the_end_of_its_day() {
 }
 
 #[test]
+fn a_date_with_no_clock_reads_as_that_day_at_midnight() {
+    // A wire that spells a settlement date spells the day and stops, so the
+    // day is the instant it opens - the compact spelling FIX writes and the
+    // extended one a bridge quotes it with are one reading.
+    let midnight = parse_datetime("2026-08-18T00:00:00").unwrap();
+    assert_eq!(midnight, (1_787_011_200, TimeUnit::Second));
+    assert_eq!(parse_datetime("2026-08-18").unwrap(), midnight);
+    assert_eq!(parse_datetime("20260818").unwrap(), midnight);
+    assert_eq!(parse_datetime("19700101").unwrap(), (0, TimeUnit::Second));
+    assert_eq!(
+        parse_datetime("19691231").unwrap(),
+        (-86_400, TimeUnit::Second)
+    );
+
+    // The day is still the calendar's, and the date reader is the one that
+    // says so: February 30th is no date and therefore no datetime.
+    assert!(parse_datetime("20260230").is_err());
+    assert!(parse_datetime("2026-02-30").is_err());
+    assert!(parse_datetime("20261301").is_err());
+
+    // A zoned reading states its zone and then reads the same midnight, in
+    // either case of the `Z` that states UTC.
+    let (count, unit, zone) = parse_timestamp("20260818Z").unwrap();
+    assert_eq!((count, unit), midnight);
+    assert!(zone.is_utc());
+    assert_eq!(parse_timestamp("20260818z").unwrap().0, midnight.0);
+    let (count, _, zone) = parse_timestamp("2026-08-18+02:00[Europe/Paris]").unwrap();
+    assert_eq!(count, midnight.0 - 2 * 3_600);
+    assert_eq!(zone, Timezone::from_str("Europe/Paris").unwrap());
+    assert_eq!(
+        parse_timestamp("2026-08-18+02:00").unwrap().0,
+        midnight.0 - 2 * 3_600
+    );
+
+    // The zone is required in the text and nowhere else: a bare date is a
+    // naive reading, and a naive reading carries no zone.
+    assert!(parse_timestamp("20260818").is_err());
+    assert!(parse_timestamp("2026-08-18[Europe/Paris]").is_err());
+    assert!(parse_datetime("20260818Z").is_err());
+
+    // A date is read as a datetime and never written as one: the count spells
+    // its clock back.
+    assert_eq!(
+        format_datetime(midnight.0, TimeUnit::Second).as_deref(),
+        Some("2026-08-18T00:00:00")
+    );
+
+    // The other readers keep their own shapes. A date is a date, a clock is
+    // not a date, and neither reads the other's trailing text.
+    assert_eq!(parse_date("20260818").unwrap(), 20_683);
+    assert!(parse_date("2026-08-18T00:00:00").is_err());
+    assert!(parse_time("20260818").is_err());
+    assert!(parse_duration("20260818").is_err());
+}
+
+#[test]
+fn a_date_that_opens_a_clock_still_has_to_finish_it() {
+    let position = |text: &str| match parse_datetime(text).unwrap_err() {
+        Error::Parse {
+            target, position, ..
+        } => {
+            assert_eq!(target, "datetime");
+            position
+        }
+        other => panic!("expected a parse error, got {other}"),
+    };
+
+    // A separator opens a clock, so it is followed by one or by nothing at
+    // all: the byte the refusal names is the one the clock was owed at.
+    assert_eq!(position("2026-08-18T"), 11);
+    assert_eq!(position("20260818T"), 9);
+    assert_eq!(position("2026-08-18 "), 11);
+    // Trailing text that opens nothing names where the date ended instead.
+    assert_eq!(position("2026-08-18X"), 10);
+
+    // `-` after a date is FIX's clock separator, which is why a bare date
+    // takes `Z` or a `+` offset and never a `-` one: a clock that stops at
+    // its minutes is a broken clock rather than a western offset.
+    assert_eq!(
+        parse_datetime("20260818-10:15:00").unwrap(),
+        parse_datetime("2026-08-18T10:15:00").unwrap()
+    );
+    assert!(parse_timestamp("20260818-08:00").is_err());
+    assert!(parse_timestamp("2026-08-18-08:00").is_err());
+
+    // A digit run is a date at eight and a date and a clock at fourteen, and
+    // nothing at the widths between, where a field would be half written.
+    for held in [
+        "2026",
+        "202608",
+        "2026081",
+        "202608181",
+        "2026081810",
+        "202608181015",
+        "2026081810153",
+        "202608181015300",
+    ] {
+        assert!(parse_datetime(held).is_err(), "{held}");
+    }
+    assert_eq!(
+        parse_datetime("20260818101530").unwrap(),
+        parse_datetime("2026-08-18T10:15:30").unwrap()
+    );
+}
+
+#[test]
 fn fraction_separators_group_digits_without_changing_the_count() {
     // `_` groups digits; the count and the unit are exactly the ungrouped ones.
     assert_eq!(

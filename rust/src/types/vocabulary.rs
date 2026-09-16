@@ -49,9 +49,10 @@
 //! | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
 //! | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 //! | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
-//! | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
-//! | `UTCDateOnly` | String | `date32` | a calendar day |
-//! | `LocalMktDate` | String | `date32` | a calendar day |
+//! | `LocalMktTime` | String | `time64(ns)` | a time of day, one type with `UTCTimeOnly` |
+//! | `UTCDateOnly`, `utcdate` | String | `datetime64(ns,"UTC")` | that day at midnight, in UTC |
+//! | `LocalMktDate` | String | `datetime64(ns)` | that day at midnight, stating no zone |
+//! | `LocalMktDatetime` | String | `datetime64(ns)` | a local instant, stating no zone |
 //! | `TZTimeOnly` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant, on the epoch day |
 //! | `MultipleCharValue` | char | `utf8` | space-delimited members |
 //! | `MultipleStringValue` | String | `utf8` | space-delimited members |

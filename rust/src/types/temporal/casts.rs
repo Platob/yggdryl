@@ -132,8 +132,11 @@ pub(crate) fn holds_temporal(target: &DataType) -> bool {
 /// crate knows - its refusals included: a reading this crate takes but its
 /// declared unit or width cannot hold is null here as it is there, never
 /// Arrow's rounded one. Arrow's kernel answers only what this crate cannot
-/// read at all - a bare date entering a timestamp, a twelve-hour clock, a
-/// compact `YYYYMMDD` - so the column still reads everything it used to.
+/// read at all - a twelve-hour clock, or a bare date entering a zoned column,
+/// which states no zone this crate would invent for it - so the column still
+/// reads everything it used to. A bare date entering a naive datetime is this
+/// crate's own reading, the compact `YYYYMMDD` included, which closes the one
+/// spelling the two tiers did answer differently about.
 pub(crate) fn ingest_temporal_text(
     array: &ArrayRef,
     expected: &ArrowDataType,

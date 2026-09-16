@@ -2091,11 +2091,14 @@ const EPOCH_DAY: &str = "1970-01-01";
 
 /// The value one FIX wire spelling states, where FIX spells it its own way.
 ///
-/// A boolean is `Y` or `N`, and a temporal is a run of digits with no
-/// separators a general parser would recognize: `20260821-10:30:00.123456`,
-/// `20260821`, `10:30:00.000000`. These are facts about FIX rather than about
-/// the datatype, so they are read here and the generic value contract learns
-/// none of them.
+/// A boolean is `Y` or `N`. A temporal is a run of digits, and the crate's own
+/// ISO reader takes the shape of one as it stands - `20260821-10:30:00.123456`
+/// and the bare `20260821` are both readings there - so what is supplied here
+/// is only what FIX leaves out of the reading: the zone a UTC column carries,
+/// the date a `TZTimeOnly` omits, the seconds an `HH:MM` stops before, and the
+/// decimal point a bridge writing one long digit run never writes. Those are
+/// facts about FIX rather than about the datatype, so they are stated here and
+/// the generic value contract learns none of them.
 ///
 /// Three FIX datatypes land on `DateTime64` and this reads all three, because
 /// only their spelling differs: `UTCTimestamp` states a date and no zone,
@@ -2125,17 +2128,15 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             // them as instants would make the reading claim a zone the wire
             // never sent.
             let implied = if timezone.is_naive() { "" } else { "Z" };
-            // A date states no clock, so it reads as that day at midnight.
-            // This is what makes `UTCDateOnly` and `LocalMktDate` instants
-            // rather than a second temporal type to cast through.
+            // A date states no clock, so it reads as that day at midnight -
+            // which is what makes `UTCDateOnly` and `LocalMktDate` instants
+            // rather than a second temporal type to cast through. The reader
+            // takes the compact date as it stands, so the only thing left to
+            // write is the zone FIX leaves implied, and a naive column is
+            // owed none: its wire text is already the reading.
             if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) {
-                let rendered = format_smolstr!(
-                    "{}-{}-{}T00:00:00{implied}",
-                    &text[..4],
-                    &text[4..6],
-                    &text[6..8],
-                );
-                return Some(Scalar::from(rendered.as_str()));
+                return (!implied.is_empty())
+                    .then(|| Scalar::from(format_smolstr!("{text}{implied}").as_str()));
             }
             // A bridge writes a clock as one digit run - the date, the
             // time, and three, six or nine digits of fraction - and it is
@@ -2173,10 +2174,6 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             let seconds = if clock.len() == 5 { ":00" } else { "" };
             let zone = zone.unwrap_or(implied);
             let rendered = format_smolstr!("{date}T{clock}{seconds}{zone}");
-            Some(Scalar::from(rendered.as_str()))
-        }
-        DataType::Date32 | DataType::Date64 if text.len() == 8 => {
-            let rendered = format_smolstr!("{}-{}-{}", &text[..4], &text[4..6], &text[6..8]);
             Some(Scalar::from(rendered.as_str()))
         }
         _ => None,
