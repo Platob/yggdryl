@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddatebusinesscenter"
+          "fix:field": "paymentstubenddatebusinesscenter",
+          "fix:tag": "42697"
         }
       }
     ]

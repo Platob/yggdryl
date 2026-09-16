@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamttype"
+          "fix:field": "posamttype",
+          "fix:tag": "707"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamt"
+          "fix:field": "posamt",
+          "fix:tag": "708"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtstreamdesc"
+          "fix:field": "posamtstreamdesc",
+          "fix:tag": "2096"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "positioncurrency"
+          "fix:field": "positioncurrency",
+          "fix:tag": "1055"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "positioncurrencycodesource"
+          "fix:field": "positioncurrencycodesource",
+          "fix:tag": "2937"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "positionfxrate"
+          "fix:field": "positionfxrate",
+          "fix:tag": "2097"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "positionfxratecalc"
+          "fix:field": "positionfxratecalc",
+          "fix:tag": "2098"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtreason"
+          "fix:field": "posamtreason",
+          "fix:tag": "1585"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtmarketsegmentid"
+          "fix:field": "posamtmarketsegmentid",
+          "fix:tag": "2099"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtmarketid"
+          "fix:field": "posamtmarketid",
+          "fix:tag": "2100"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtprice"
+          "fix:field": "posamtprice",
+          "fix:tag": "2876"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posamtpricetype"
+          "fix:field": "posamtpricetype",
+          "fix:tag": "2877"
         }
       }
     ]

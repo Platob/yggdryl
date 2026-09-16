@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamassetattributetype"
+          "fix:field": "underlyingstreamassetattributetype",
+          "fix:tag": "41801"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamassetattributevalue"
+          "fix:field": "underlyingstreamassetattributevalue",
+          "fix:tag": "41802"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamassetattributelimit"
+          "fix:field": "underlyingstreamassetattributelimit",
+          "fix:tag": "41803"
         }
       }
     ]

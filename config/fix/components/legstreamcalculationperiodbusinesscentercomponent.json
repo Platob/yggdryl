@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperiodbusinesscenter"
+          "fix:field": "legstreamcalculationperiodbusinesscenter",
+          "fix:tag": "40266"
         }
       }
     ]

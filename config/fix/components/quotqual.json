@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotequalifier"
+          "fix:field": "quotequalifier",
+          "fix:tag": "695"
         }
       }
     ]

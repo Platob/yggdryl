@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradereportid"
+          "fix:field": "tradereportid",
+          "fix:tag": "571"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarytradereportid"
+          "fix:field": "secondarytradereportid",
+          "fix:tag": "818"
         }
       }
     ]

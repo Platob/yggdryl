@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdatebusinesscenter"
+          "fix:field": "legdividendfxtriggerdatebusinesscenter",
+          "fix:tag": "42365"
         }
       }
     ]

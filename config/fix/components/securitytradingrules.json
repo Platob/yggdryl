@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingsessionrules"
+          "fix:field": "notradingsessionrules",
+          "fix:tag": "1309"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedinstrattrib"
+          "fix:field": "nonestedinstrattrib",
+          "fix:tag": "1312"
         }
       },
       {

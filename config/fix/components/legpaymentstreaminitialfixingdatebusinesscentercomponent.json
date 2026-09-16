@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdatebusinesscenter"
+          "fix:field": "legpaymentstreaminitialfixingdatebusinesscenter",
+          "fix:tag": "40311"
         }
       }
     ]

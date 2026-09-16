@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "targetmarketsegmentid"
+          "fix:field": "targetmarketsegmentid",
+          "fix:tag": "1790"
         }
       }
     ]

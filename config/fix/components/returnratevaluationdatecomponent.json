@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdate"
+          "fix:field": "returnratevaluationdate",
+          "fix:tag": "42773"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdatetype"
+          "fix:field": "returnratevaluationdatetype",
+          "fix:tag": "42774"
         }
       }
     ]

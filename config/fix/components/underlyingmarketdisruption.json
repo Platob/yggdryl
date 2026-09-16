@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionprovision"
+          "fix:field": "underlyingmarketdisruptionprovision",
+          "fix:tag": "41859"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionevents"
+          "fix:field": "nounderlyingmarketdisruptionevents",
+          "fix:tag": "41864"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackprovision"
+          "fix:field": "underlyingmarketdisruptionfallbackprovision",
+          "fix:tag": "41860"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionfallbacks"
+          "fix:field": "nounderlyingmarketdisruptionfallbacks",
+          "fix:tag": "41866"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionfallbackreferenceprices"
+          "fix:field": "nounderlyingmarketdisruptionfallbackreferenceprices",
+          "fix:tag": "41868"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionmaximumdays"
+          "fix:field": "underlyingmarketdisruptionmaximumdays",
+          "fix:tag": "41861"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionmaterialitypercentage"
+          "fix:field": "underlyingmarketdisruptionmaterialitypercentage",
+          "fix:tag": "41862"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionminimumfuturescontracts"
+          "fix:field": "underlyingmarketdisruptionminimumfuturescontracts",
+          "fix:tag": "41863"
         }
       }
     ]

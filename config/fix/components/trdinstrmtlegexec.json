@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid"
+          "fix:field": "legrefid",
+          "fix:tag": "654"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecid"
+          "fix:field": "legexecid",
+          "fix:tag": "1893"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecrefid"
+          "fix:field": "legexecrefid",
+          "fix:tag": "1901"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legtradeid"
+          "fix:field": "legtradeid",
+          "fix:tag": "1894"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legtradereportid"
+          "fix:field": "legtradereportid",
+          "fix:tag": "1895"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty"
+          "fix:field": "legorderqty",
+          "fix:tag": "685"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpositioneffect"
+          "fix:field": "legpositioneffect",
+          "fix:tag": "564"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcoveredoruncovered"
+          "fix:field": "legcoveredoruncovered",
+          "fix:tag": "565"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested3partyids"
+          "fix:field": "nonested3partyids",
+          "fix:tag": "948"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastpx"
+          "fix:field": "leglastpx",
+          "fix:tag": "637"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricetype"
+          "fix:field": "legpricetype",
+          "fix:tag": "686"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrency"
+          "fix:field": "legsettlcurrency",
+          "fix:tag": "675"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrencycodesource"
+          "fix:field": "legsettlcurrencycodesource",
+          "fix:tag": "2900"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legshortsaleexemptionreason"
+          "fix:field": "legshortsaleexemptionreason",
+          "fix:tag": "1689"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastqty"
+          "fix:field": "leglastqty",
+          "fix:tag": "1418"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legqtytype"
+          "fix:field": "legqtytype",
+          "fix:tag": "1591"
         }
       }
     ]

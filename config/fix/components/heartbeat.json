@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testreqid"
+          "fix:field": "testreqid",
+          "fix:tag": "112"
         }
       },
       {

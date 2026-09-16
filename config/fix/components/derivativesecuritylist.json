@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreportid"
+          "fix:field": "securityreportid",
+          "fix:tag": "964"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreqid"
+          "fix:field": "securityreqid",
+          "fix:tag": "320"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponseid"
+          "fix:field": "securityresponseid",
+          "fix:tag": "322"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrequestresult"
+          "fix:field": "securityrequestresult",
+          "fix:tag": "560"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrejectreason"
+          "fix:field": "securityrejectreason",
+          "fix:tag": "1607"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate"
+          "fix:field": "clearingbusinessdate",
+          "fix:tag": "715"
         }
       },
       {
@@ -110,7 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime"
+          "fix:field": "lastupdatetime",
+          "fix:tag": "779"
         }
       },
       {
@@ -120,7 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorelatedsym"
+          "fix:field": "totnorelatedsym",
+          "fix:tag": "393"
         }
       },
       {
@@ -140,7 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -150,7 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {

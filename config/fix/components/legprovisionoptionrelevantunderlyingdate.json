@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateunadjusted"
+          "fix:field": "legprovisionoptionrelevantunderlyingdateunadjusted",
+          "fix:tag": "40508"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinessdayconvention"
+          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinessdayconvention",
+          "fix:tag": "40509"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters"
+          "fix:field": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters",
+          "fix:tag": "40938"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdaterelativeto"
+          "fix:field": "legprovisionoptionrelevantunderlyingdaterelativeto",
+          "fix:tag": "40511"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetperiod"
+          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetperiod",
+          "fix:tag": "40512"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetunit"
+          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetunit",
+          "fix:tag": "40513"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetdaytype"
+          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetdaytype",
+          "fix:tag": "40514"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateadjusted"
+          "fix:field": "legprovisionoptionrelevantunderlyingdateadjusted",
+          "fix:tag": "40515"
         }
       }
     ]

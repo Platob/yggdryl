@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securitystatusreqid"
+          "fix:field": "securitystatusreqid",
+          "fix:tag": "324"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistid"
+          "fix:field": "securitylistid",
+          "fix:tag": "1465"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid"
+          "fix:field": "marketid",
+          "fix:tag": "1301"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {

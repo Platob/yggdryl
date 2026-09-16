@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditydatasourceid"
+          "fix:field": "underlyingstreamcommoditydatasourceid",
+          "fix:tag": "41994"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditydatasourceidtype"
+          "fix:field": "underlyingstreamcommoditydatasourceidtype",
+          "fix:tag": "41995"
         }
       }
     ]

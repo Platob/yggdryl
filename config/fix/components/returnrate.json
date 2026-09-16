@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratepricesequence"
+          "fix:field": "returnratepricesequence",
+          "fix:tag": "42736"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratecommissionbasis"
+          "fix:field": "returnratecommissionbasis",
+          "fix:tag": "42737"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratecommissionamount"
+          "fix:field": "returnratecommissionamount",
+          "fix:tag": "42738"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratecommissioncurrency"
+          "fix:field": "returnratecommissioncurrency",
+          "fix:tag": "42739"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratetotalcommissionpertrade"
+          "fix:field": "returnratetotalcommissionpertrade",
+          "fix:tag": "42740"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratedeterminationmethod"
+          "fix:field": "returnratedeterminationmethod",
+          "fix:tag": "42741"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnrateprices"
+          "fix:field": "noreturnrateprices",
+          "fix:tag": "42765"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratefxconversions"
+          "fix:field": "noreturnratefxconversions",
+          "fix:tag": "42731"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnrateamountrelativeto"
+          "fix:field": "returnrateamountrelativeto",
+          "fix:tag": "42742"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotemeasuretype"
+          "fix:field": "returnratequotemeasuretype",
+          "fix:tag": "42743"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequoteunits"
+          "fix:field": "returnratequoteunits",
+          "fix:tag": "42744"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotemethod"
+          "fix:field": "returnratequotemethod",
+          "fix:tag": "42745"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotecurrency"
+          "fix:field": "returnratequotecurrency",
+          "fix:tag": "42746"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotecurrencytype"
+          "fix:field": "returnratequotecurrencytype",
+          "fix:tag": "42747"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotetimetype"
+          "fix:field": "returnratequotetimetype",
+          "fix:tag": "42748"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotetime"
+          "fix:field": "returnratequotetime",
+          "fix:tag": "42749"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotedate"
+          "fix:field": "returnratequotedate",
+          "fix:tag": "42750"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequoteexpirationtime"
+          "fix:field": "returnratequoteexpirationtime",
+          "fix:tag": "42751"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotebusinesscenter"
+          "fix:field": "returnratequotebusinesscenter",
+          "fix:tag": "42752"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequoteexchange"
+          "fix:field": "returnratequoteexchange",
+          "fix:tag": "42753"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnrateinformationsources"
+          "fix:field": "noreturnrateinformationsources",
+          "fix:tag": "42761"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratequotepricingmodel"
+          "fix:field": "returnratequotepricingmodel",
+          "fix:tag": "42754"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratecashflowtype"
+          "fix:field": "returnratecashflowtype",
+          "fix:tag": "42755"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratedates"
+          "fix:field": "noreturnratedates",
+          "fix:tag": "42709"
         }
       },
       {
@@ -290,7 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationtimetype"
+          "fix:field": "returnratevaluationtimetype",
+          "fix:tag": "42756"
         }
       },
       {
@@ -300,7 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationtime"
+          "fix:field": "returnratevaluationtime",
+          "fix:tag": "42757"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationtimebusinesscenter"
+          "fix:field": "returnratevaluationtimebusinesscenter",
+          "fix:tag": "42758"
         }
       },
       {
@@ -320,7 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationpriceoption"
+          "fix:field": "returnratevaluationpriceoption",
+          "fix:tag": "42759"
         }
       },
       {
@@ -330,7 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratefinalpricefallback"
+          "fix:field": "returnratefinalpricefallback",
+          "fix:tag": "42760"
         }
       }
     ]

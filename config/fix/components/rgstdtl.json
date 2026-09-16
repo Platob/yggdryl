@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registdtls"
+          "fix:field": "registdtls",
+          "fix:tag": "509"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registemail"
+          "fix:field": "registemail",
+          "fix:tag": "511"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mailingdtls"
+          "fix:field": "mailingdtls",
+          "fix:tag": "474"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mailinginst"
+          "fix:field": "mailinginst",
+          "fix:tag": "482"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids"
+          "fix:field": "nonestedpartyids",
+          "fix:tag": "539"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ownertype"
+          "fix:field": "ownertype",
+          "fix:tag": "522"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dateofbirth"
+          "fix:field": "dateofbirth",
+          "fix:tag": "486"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "investorcountryofresidence"
+          "fix:field": "investorcountryofresidence",
+          "fix:tag": "475"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businesscenter"
+          "fix:field": "businesscenter",
+          "fix:tag": "40471"
         }
       }
     ]

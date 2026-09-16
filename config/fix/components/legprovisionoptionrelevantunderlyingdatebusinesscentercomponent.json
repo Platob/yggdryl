@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinesscenter"
+          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinesscenter",
+          "fix:tag": "40510"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlstatusrequestid"
+          "fix:field": "settlstatusrequestid",
+          "fix:tag": "2965"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlstatusrequeststatus"
+          "fix:field": "settlstatusrequeststatus",
+          "fix:tag": "2966"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext"
+          "fix:field": "rejecttext",
+          "fix:tag": "1328"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen"
+          "fix:field": "encodedrejecttextlen",
+          "fix:tag": "1664"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext"
+          "fix:field": "encodedrejecttext",
+          "fix:tag": "1665"
         }
       },
       {

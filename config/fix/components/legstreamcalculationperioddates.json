@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddatesxid"
+          "fix:field": "legstreamcalculationperioddatesxid",
+          "fix:tag": "41641"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddatesxidref"
+          "fix:field": "legstreamcalculationperioddatesxidref",
+          "fix:tag": "41642"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperiodbusinessdayconvention"
+          "fix:field": "legstreamcalculationperiodbusinessdayconvention",
+          "fix:tag": "40265"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcalculationperiodbusinesscenters"
+          "fix:field": "nolegstreamcalculationperiodbusinesscenters",
+          "fix:tag": "40940"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcalculationperioddates"
+          "fix:field": "nolegstreamcalculationperioddates",
+          "fix:tag": "41638"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstperiodstartdateunadjusted"
+          "fix:field": "legstreamfirstperiodstartdateunadjusted",
+          "fix:tag": "40267"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstperiodstartdatebusinessdayconvention"
+          "fix:field": "legstreamfirstperiodstartdatebusinessdayconvention",
+          "fix:tag": "40268"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamfirstperiodstartdatebusinesscenters"
+          "fix:field": "nolegstreamfirstperiodstartdatebusinesscenters",
+          "fix:tag": "40941"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstperiodstartdateadjusted"
+          "fix:field": "legstreamfirstperiodstartdateadjusted",
+          "fix:tag": "40270"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstregularperiodstartdateunadjusted"
+          "fix:field": "legstreamfirstregularperiodstartdateunadjusted",
+          "fix:tag": "40271"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstcompoundingperiodenddateunadjusted"
+          "fix:field": "legstreamfirstcompoundingperiodenddateunadjusted",
+          "fix:tag": "40272"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamlastregularperiodenddateunadjusted"
+          "fix:field": "legstreamlastregularperiodenddateunadjusted",
+          "fix:tag": "40273"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationfrequencyperiod"
+          "fix:field": "legstreamcalculationfrequencyperiod",
+          "fix:tag": "40274"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationfrequencyunit"
+          "fix:field": "legstreamcalculationfrequencyunit",
+          "fix:tag": "40275"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationrollconvention"
+          "fix:field": "legstreamcalculationrollconvention",
+          "fix:tag": "40276"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationbalanceoffirstperiod"
+          "fix:field": "legstreamcalculationbalanceoffirstperiod",
+          "fix:tag": "41643"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationcorrectionperiod"
+          "fix:field": "legstreamcalculationcorrectionperiod",
+          "fix:tag": "41644"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationcorrectionunit"
+          "fix:field": "legstreamcalculationcorrectionunit",
+          "fix:tag": "41645"
         }
       }
     ]

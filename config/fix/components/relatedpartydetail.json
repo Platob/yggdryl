@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailid"
+          "fix:field": "relatedpartydetailid",
+          "fix:tag": "1563"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailidsource"
+          "fix:field": "relatedpartydetailidsource",
+          "fix:tag": "1564"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailrole"
+          "fix:field": "relatedpartydetailrole",
+          "fix:tag": "1565"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailrolequalifier"
+          "fix:field": "relatedpartydetailrolequalifier",
+          "fix:tag": "1675"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedpartydetailsubids"
+          "fix:field": "norelatedpartydetailsubids",
+          "fix:tag": "1566"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedpartydetailaltid"
+          "fix:field": "norelatedpartydetailaltid",
+          "fix:tag": "1569"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyrelationships"
+          "fix:field": "nopartyrelationships",
+          "fix:tag": "1514"
         }
       },
       {

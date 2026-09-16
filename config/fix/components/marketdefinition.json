@@ -30,7 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "marketreportid"
+          "fix:field": "marketreportid",
+          "fix:tag": "1394"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketreqid"
+          "fix:field": "marketreqid",
+          "fix:tag": "1393"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "marketid"
+          "fix:field": "marketid",
+          "fix:tag": "1301"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentdesc"
+          "fix:field": "marketsegmentdesc",
+          "fix:tag": "1396"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmktsegmdesclen"
+          "fix:field": "encodedmktsegmdesclen",
+          "fix:tag": "1397"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmktsegmdesc"
+          "fix:field": "encodedmktsegmdesc",
+          "fix:tag": "1398"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "parentmktsegmid"
+          "fix:field": "parentmktsegmid",
+          "fix:tag": "1325"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentstatus"
+          "fix:field": "marketsegmentstatus",
+          "fix:tag": "2542"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmenttype"
+          "fix:field": "marketsegmenttype",
+          "fix:tag": "2543"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentsubtype"
+          "fix:field": "marketsegmentsubtype",
+          "fix:tag": "2544"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes"
+          "fix:field": "noinstrumentscopes",
+          "fix:tag": "1656"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedmarketsegments"
+          "fix:field": "norelatedmarketsegments",
+          "fix:tag": "2545"
         }
       },
       {
@@ -180,7 +193,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -190,7 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -210,7 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noordtyperules"
+          "fix:field": "noordtyperules",
+          "fix:tag": "1237"
         }
       },
       {
@@ -230,7 +246,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notimeinforcerules"
+          "fix:field": "notimeinforcerules",
+          "fix:tag": "1239"
         }
       },
       {
@@ -250,7 +267,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noexecinstrules"
+          "fix:field": "noexecinstrules",
+          "fix:tag": "1232"
         }
       },
       {
@@ -270,7 +288,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noauctiontyperules"
+          "fix:field": "noauctiontyperules",
+          "fix:tag": "2548"
         }
       },
       {
@@ -290,7 +309,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomdfeedtypes"
+          "fix:field": "nomdfeedtypes",
+          "fix:tag": "1141"
         }
       },
       {
@@ -310,7 +330,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomatchrules"
+          "fix:field": "nomatchrules",
+          "fix:tag": "1235"
         }
       },
       {
@@ -330,7 +351,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noflexproducteligibilities"
+          "fix:field": "noflexproducteligibilities",
+          "fix:tag": "2560"
         }
       },
       {
@@ -350,7 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -370,7 +393,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomiscfees"
+          "fix:field": "nomiscfees",
+          "fix:tag": "136"
         }
       },
       {
@@ -390,7 +414,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivebusinessdate"
+          "fix:field": "effectivebusinessdate",
+          "fix:tag": "2400"
         }
       },
       {
@@ -400,7 +425,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -410,7 +436,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -420,7 +447,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -430,7 +458,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

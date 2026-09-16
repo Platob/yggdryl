@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddateunadjusted"
+          "fix:field": "legpaymentstubenddateunadjusted",
+          "fix:tag": "42488"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddatebusinessdayconvention"
+          "fix:field": "legpaymentstubenddatebusinessdayconvention",
+          "fix:tag": "42489"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstubenddatebusinesscenters"
+          "fix:field": "nolegpaymentstubenddatebusinesscenters",
+          "fix:tag": "42495"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddaterelativeto"
+          "fix:field": "legpaymentstubenddaterelativeto",
+          "fix:tag": "42490"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddateoffsetperiod"
+          "fix:field": "legpaymentstubenddateoffsetperiod",
+          "fix:tag": "42491"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddateoffsetunit"
+          "fix:field": "legpaymentstubenddateoffsetunit",
+          "fix:tag": "42492"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddateoffsetdaytype"
+          "fix:field": "legpaymentstubenddateoffsetdaytype",
+          "fix:tag": "42493"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubenddateadjusted"
+          "fix:field": "legpaymentstubenddateadjusted",
+          "fix:tag": "42494"
         }
       }
     ]

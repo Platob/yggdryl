@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdaterelativeto"
+          "fix:field": "dividendfxtriggerdaterelativeto",
+          "fix:tag": "42265"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdateoffsetperiod"
+          "fix:field": "dividendfxtriggerdateoffsetperiod",
+          "fix:tag": "42266"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdateoffsetunit"
+          "fix:field": "dividendfxtriggerdateoffsetunit",
+          "fix:tag": "42267"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdateoffsetdaytype"
+          "fix:field": "dividendfxtriggerdateoffsetdaytype",
+          "fix:tag": "42268"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdateunadjusted"
+          "fix:field": "dividendfxtriggerdateunadjusted",
+          "fix:tag": "42269"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdatebusinessdayconvention"
+          "fix:field": "dividendfxtriggerdatebusinessdayconvention",
+          "fix:tag": "42270"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodividendfxtriggerdatebusinesscenters"
+          "fix:field": "nodividendfxtriggerdatebusinesscenters",
+          "fix:tag": "42272"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdateadjusted"
+          "fix:field": "dividendfxtriggerdateadjusted",
+          "fix:tag": "42271"
         }
       }
     ]

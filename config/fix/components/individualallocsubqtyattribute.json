@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocsubqtytype"
+          "fix:field": "individualallocsubqtytype",
+          "fix:tag": "3100"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocsubqtyvalue"
+          "fix:field": "individualallocsubqtyvalue",
+          "fix:tag": "3101"
         }
       }
     ]

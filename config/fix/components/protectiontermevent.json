@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventtype"
+          "fix:field": "protectiontermeventtype",
+          "fix:tag": "40192"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventvalue"
+          "fix:field": "protectiontermeventvalue",
+          "fix:tag": "40193"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventcurrency"
+          "fix:field": "protectiontermeventcurrency",
+          "fix:tag": "40194"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventperiod"
+          "fix:field": "protectiontermeventperiod",
+          "fix:tag": "40195"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventunit"
+          "fix:field": "protectiontermeventunit",
+          "fix:tag": "40196"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventdaytype"
+          "fix:field": "protectiontermeventdaytype",
+          "fix:tag": "40197"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventratesource"
+          "fix:field": "protectiontermeventratesource",
+          "fix:tag": "40198"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noprotectiontermeventqualifiers"
+          "fix:field": "noprotectiontermeventqualifiers",
+          "fix:tag": "40199"
         }
       },
       {

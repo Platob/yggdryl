@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyid"
+          "fix:field": "derivativeinstrumentpartyid",
+          "fix:tag": "1293"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyidsource"
+          "fix:field": "derivativeinstrumentpartyidsource",
+          "fix:tag": "1294"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyrole"
+          "fix:field": "derivativeinstrumentpartyrole",
+          "fix:tag": "1295"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyrolequalifier"
+          "fix:field": "derivativeinstrumentpartyrolequalifier",
+          "fix:tag": "2377"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeinstrumentpartysubids"
+          "fix:field": "noderivativeinstrumentpartysubids",
+          "fix:tag": "1296"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorytradeid"
+          "fix:field": "regulatorytradeid",
+          "fix:tag": "1903"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorytradeidsource"
+          "fix:field": "regulatorytradeidsource",
+          "fix:tag": "1905"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorytradeidevent"
+          "fix:field": "regulatorytradeidevent",
+          "fix:tag": "1904"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorytradeidtype"
+          "fix:field": "regulatorytradeidtype",
+          "fix:tag": "1906"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorylegrefid"
+          "fix:field": "regulatorylegrefid",
+          "fix:tag": "2411"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "regulatorytradeidscope"
+          "fix:field": "regulatorytradeidscope",
+          "fix:tag": "2397"
         }
       }
     ]

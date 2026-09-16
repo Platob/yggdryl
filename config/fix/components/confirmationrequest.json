@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "confirmreqid"
+          "fix:field": "confirmreqid",
+          "fix:tag": "859"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "confirmtype"
+          "fix:field": "confirmtype",
+          "fix:tag": "773"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorders"
+          "fix:field": "noorders",
+          "fix:tag": "73"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocid"
+          "fix:field": "allocid",
+          "fix:tag": "70"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryallocid"
+          "fix:field": "secondaryallocid",
+          "fix:tag": "793"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocid"
+          "fix:field": "individualallocid",
+          "fix:tag": "467"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocaccount"
+          "fix:field": "allocaccount",
+          "fix:tag": "79"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocacctidsource"
+          "fix:field": "allocacctidsource",
+          "fix:tag": "661"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocaccounttype"
+          "fix:field": "allocaccounttype",
+          "fix:tag": "798"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

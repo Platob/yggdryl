@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequestid"
+          "fix:field": "algocertificaterequestid",
+          "fix:tag": "3014"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequesttranstype"
+          "fix:field": "algocertificaterequesttranstype",
+          "fix:tag": "3016"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequesttype"
+          "fix:field": "algocertificaterequesttype",
+          "fix:tag": "3077"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algocertificaterequestrefid"
+          "fix:field": "algocertificaterequestrefid",
+          "fix:tag": "3015"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algocertificateid"
+          "fix:field": "algocertificateid",
+          "fix:tag": "3012"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algocertificatedesc"
+          "fix:field": "algocertificatedesc",
+          "fix:tag": "3013"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algocertificatestatus"
+          "fix:field": "algocertificatestatus",
+          "fix:tag": "3022"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetpartyids"
+          "fix:field": "notargetpartyids",
+          "fix:tag": "1461"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariogroupid"
+          "fix:field": "testscenariogroupid",
+          "fix:tag": "3079"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestscenarios"
+          "fix:field": "notestscenarios",
+          "fix:tag": "3028"
         }
       },
       {
@@ -160,7 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivetime"
+          "fix:field": "effectivetime",
+          "fix:tag": "168"
         }
       },
       {
@@ -170,7 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "approvaltime"
+          "fix:field": "approvaltime",
+          "fix:tag": "3023"
         }
       },
       {
@@ -180,7 +193,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -190,7 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -200,7 +215,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -210,7 +226,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixsource"
+          "fix:field": "contractualmatrixsource",
+          "fix:tag": "40043"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixdate"
+          "fix:field": "contractualmatrixdate",
+          "fix:tag": "40044"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixterm"
+          "fix:field": "contractualmatrixterm",
+          "fix:tag": "40045"
         }
       }
     ]

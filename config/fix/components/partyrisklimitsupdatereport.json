@@ -30,7 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitreportid"
+          "fix:field": "risklimitreportid",
+          "fix:tag": "1667"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitrequestid"
+          "fix:field": "risklimitrequestid",
+          "fix:tag": "1666"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitrequesttype"
+          "fix:field": "risklimitrequesttype",
+          "fix:tag": "1760"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoparties"
+          "fix:field": "totnoparties",
+          "fix:tag": "1512"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids"
+          "fix:field": "norequestingpartyids",
+          "fix:tag": "1657"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyrisklimits"
+          "fix:field": "nopartyrisklimits",
+          "fix:tag": "1677"
         }
       },
       {
@@ -120,7 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -140,7 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -150,7 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

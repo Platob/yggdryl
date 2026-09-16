@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratefxcurrencysymbol"
+          "fix:field": "returnratefxcurrencysymbol",
+          "fix:tag": "42732"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratefxrate"
+          "fix:field": "returnratefxrate",
+          "fix:tag": "42733"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratefxratecalc"
+          "fix:field": "returnratefxratecalc",
+          "fix:tag": "42734"
         }
       }
     ]

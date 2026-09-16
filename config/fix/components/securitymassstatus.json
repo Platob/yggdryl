@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitystatusreqid"
+          "fix:field": "securitystatusreqid",
+          "fix:tag": "324"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistid"
+          "fix:field": "securitylistid",
+          "fix:tag": "1465"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid"
+          "fix:field": "marketid",
+          "fix:tag": "1301"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate"
+          "fix:field": "tradedate",
+          "fix:tag": "75"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "unsolicitedindicator"
+          "fix:field": "unsolicitedindicator",
+          "fix:tag": "325"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitymasstradingstatus"
+          "fix:field": "securitymasstradingstatus",
+          "fix:tag": "1679"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketindicator"
+          "fix:field": "fastmarketindicator",
+          "fix:tag": "2447"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitymasstradingevent"
+          "fix:field": "securitymasstradingevent",
+          "fix:tag": "1680"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "masshaltreason"
+          "fix:field": "masshaltreason",
+          "fix:tag": "1681"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdbooktype"
+          "fix:field": "mdbooktype",
+          "fix:tag": "1021"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepth"
+          "fix:field": "marketdepth",
+          "fix:tag": "264"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "adjustment"
+          "fix:field": "adjustment",
+          "fix:tag": "334"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {

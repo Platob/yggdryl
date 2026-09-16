@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction"
+          "fix:field": "listupdateaction",
+          "fix:tag": "1324"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetaildefinitionstatus"
+          "fix:field": "partydetaildefinitionstatus",
+          "fix:tag": "1879"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetaildefinitionresult"
+          "fix:field": "partydetaildefinitionresult",
+          "fix:tag": "1880"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext"
+          "fix:field": "rejecttext",
+          "fix:tag": "1328"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen"
+          "fix:field": "encodedrejecttextlen",
+          "fix:tag": "1664"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext"
+          "fix:field": "encodedrejecttext",
+          "fix:tag": "1665"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails"
+          "fix:field": "nopartydetails",
+          "fix:tag": "1671"
         }
       },
       {

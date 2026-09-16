@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventstarttime"
+          "fix:field": "legcomplexeventstarttime",
+          "fix:tag": "2204"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventendtime"
+          "fix:field": "legcomplexeventendtime",
+          "fix:tag": "2247"
         }
       }
     ]

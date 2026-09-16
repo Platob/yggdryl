@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateunadjusted"
+          "fix:field": "legcomplexeventdateunadjusted",
+          "fix:tag": "41389"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdaterelativeto"
+          "fix:field": "legcomplexeventdaterelativeto",
+          "fix:tag": "41390"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetperiod"
+          "fix:field": "legcomplexeventdateoffsetperiod",
+          "fix:tag": "41391"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetunit"
+          "fix:field": "legcomplexeventdateoffsetunit",
+          "fix:tag": "41392"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetdaytype"
+          "fix:field": "legcomplexeventdateoffsetdaytype",
+          "fix:tag": "41393"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdatebusinessdayconvention"
+          "fix:field": "legcomplexeventdatebusinessdayconvention",
+          "fix:tag": "41394"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventdatebusinesscenters"
+          "fix:field": "nolegcomplexeventdatebusinesscenters",
+          "fix:tag": "41387"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateadjusted"
+          "fix:field": "legcomplexeventdateadjusted",
+          "fix:tag": "41395"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfixingtime"
+          "fix:field": "legcomplexeventfixingtime",
+          "fix:tag": "41396"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfixingtimebusinesscenter"
+          "fix:field": "legcomplexeventfixingtimebusinesscenter",
+          "fix:tag": "41397"
         }
       }
     ]

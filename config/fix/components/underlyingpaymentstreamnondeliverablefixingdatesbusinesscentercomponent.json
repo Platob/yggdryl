@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter",
+          "fix:tag": "40650"
         }
       }
     ]

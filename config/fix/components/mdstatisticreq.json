@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticid"
+          "fix:field": "mdstatisticid",
+          "fix:tag": "2475"
         }
       },
       {

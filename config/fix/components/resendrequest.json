@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "beginseqno"
+          "fix:field": "beginseqno",
+          "fix:tag": "7"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "endseqno"
+          "fix:field": "endseqno",
+          "fix:tag": "16"
         }
       },
       {

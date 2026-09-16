@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondatebusinesscenter"
+          "fix:field": "settlmethodelectiondatebusinesscenter",
+          "fix:tag": "42776"
         }
       }
     ]

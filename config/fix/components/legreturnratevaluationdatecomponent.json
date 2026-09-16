@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratevaluationdate"
+          "fix:field": "legreturnratevaluationdate",
+          "fix:tag": "42572"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratevaluationdatetype"
+          "fix:field": "legreturnratevaluationdatetype",
+          "fix:tag": "42573"
         }
       }
     ]

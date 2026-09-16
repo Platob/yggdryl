@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradeid"
+          "fix:field": "relatedtradeid",
+          "fix:tag": "1856"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradeidsource"
+          "fix:field": "relatedtradeidsource",
+          "fix:tag": "1857"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedregulatorytradeidsource"
+          "fix:field": "relatedregulatorytradeidsource",
+          "fix:tag": "2103"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradedate"
+          "fix:field": "relatedtradedate",
+          "fix:tag": "1858"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtrademarketid"
+          "fix:field": "relatedtrademarketid",
+          "fix:tag": "1859"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradequantity"
+          "fix:field": "relatedtradequantity",
+          "fix:tag": "1860"
         }
       }
     ]

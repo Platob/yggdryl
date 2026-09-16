@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeqtytype"
+          "fix:field": "tradeqtytype",
+          "fix:tag": "1842"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeqty"
+          "fix:field": "tradeqty",
+          "fix:tag": "1843"
         }
       }
     ]

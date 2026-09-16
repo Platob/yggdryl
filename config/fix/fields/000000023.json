@@ -1,0 +1,5286 @@
+[
+  {
+    "name": "allocgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Total amount traded for this account (i.e. quantity * price) expressed in units of currency.",
+      "display": "AllocGrossTradeAmt",
+      "fix:tag": "2300"
+    }
+  },
+  {
+    "name": "lastqtychanged",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The positive or negative change in quantity when this report is a trade correction or continuation.",
+      "display": "LastQtyChanged",
+      "fix:tag": "2301"
+    }
+  },
+  {
+    "name": "tradeversion",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the version of a trade or contract. This is used by systems or trading platforms in conjunction with TradeID(1003) to uniquely identify the version of a trade or contract. If used the conditions for a change of version are subject to bilateral agreement. It is recommended to change the version only for significant updates to the business entity rather than for minor changes to trade details or systematic distribution of reports. Examples where the version would change are trade quantity modification, customer account assignment or trade novation.",
+      "display": "TradeVersion",
+      "fix:tag": "2302"
+    }
+  },
+  {
+    "name": "historicalreportindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates that the trade or event being reported occurred in the past and the trade is terminated or no longer active.",
+      "display": "HistoricalReportIndicator",
+      "fix:tag": "2303"
+    }
+  },
+  {
+    "name": "noassetattributes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of asset attribute entries in the group.",
+      "display": "NoAssetAttributes",
+      "fix:tag": "2304"
+    }
+  },
+  {
+    "name": "assetattributetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "display": "AssetAttributeType",
+      "fix:tag": "2305"
+    }
+  },
+  {
+    "name": "assetattributevalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the value of the asset attribute.",
+      "display": "AssetAttributeValue",
+      "fix:tag": "2306"
+    }
+  },
+  {
+    "name": "assetattributelimit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Limit or lower acceptable value of the attribute.",
+      "display": "AssetAttributeLimit",
+      "fix:tag": "2307"
+    }
+  },
+  {
+    "name": "nolegassetattributes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of asset attribute entries in the group.",
+      "display": "NoLegAssetAttributes",
+      "fix:tag": "2308"
+    }
+  },
+  {
+    "name": "legassetattributetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "display": "LegAssetAttributeType",
+      "fix:tag": "2309"
+    }
+  },
+  {
+    "name": "legassetattributevalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the value of the attribute.",
+      "display": "LegAssetAttributeValue",
+      "fix:tag": "2310"
+    }
+  },
+  {
+    "name": "legassetattributelimit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Limit or lower acceptable value of the attribute.",
+      "display": "LegAssetAttributeLimit",
+      "fix:tag": "2311"
+    }
+  },
+  {
+    "name": "nounderlyingassetattributes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of asset attribute entries in the group.",
+      "display": "NoUnderlyingAssetAttributes",
+      "fix:tag": "2312"
+    }
+  },
+  {
+    "name": "underlyingassetattributetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "display": "UnderlyingAssetAttributeType",
+      "fix:tag": "2313"
+    }
+  },
+  {
+    "name": "underlyingassetattributevalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the value of the attribute.",
+      "display": "UnderlyingAssetAttributeValue",
+      "fix:tag": "2314"
+    }
+  },
+  {
+    "name": "underlyingassetattributelimit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Limit or lower acceptable value of the attribute.",
+      "display": "UnderlyingAssetAttributeLimit",
+      "fix:tag": "2315"
+    }
+  },
+  {
+    "name": "risklimitreportstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of risk limit report.",
+      "display": "RiskLimitReportStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "2316"
+    }
+  },
+  {
+    "name": "risklimitreportrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The reason for rejecting the PartyRiskLimitsReport(35=CM) or PartyRiskLimitsUpdateReport(35=CR).",
+      "display": "RiskLimitReportRejectReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "UnkRiskLmtRprtID",
+          "doc": "Unknown RiskLimitReportID(1667)"
+        },
+        {
+          "value": "1",
+          "name": "UnkPty",
+          "doc": "Unknown party"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2317"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique identifier of the PartyRiskLimitCheckRequest(35=DF) message.",
+      "display": "RiskLimitCheckRequestID",
+      "fix:tag": "2318"
+    }
+  },
+  {
+    "name": "risklimitcheckid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique and static identifier, at the business entity level, of a risk limit check request.",
+      "display": "RiskLimitCheckID",
+      "fix:tag": "2319"
+    }
+  },
+  {
+    "name": "risklimitchecktranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the transaction type of the risk limit check request.",
+      "display": "RiskLimitCheckTransType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "New",
+          "doc": "New"
+        },
+        {
+          "value": "1",
+          "name": "Cancel",
+          "doc": "Cancel"
+        },
+        {
+          "value": "2",
+          "name": "Replace",
+          "doc": "Replace"
+        }
+      ],
+      "fix:tag": "2320"
+    }
+  },
+  {
+    "name": "risklimitchecktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of limit check message.",
+      "display": "RiskLimitCheckType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Submit",
+          "doc": "Submit"
+        },
+        {
+          "value": "1",
+          "name": "LimitConsumed",
+          "doc": "Limit consumed"
+        }
+      ],
+      "fix:tag": "2321"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestrefid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the message reference identifier of the risk limit check request message.",
+      "display": "RiskLimitCheckRequestRefID",
+      "fix:tag": "2322"
+    }
+  },
+  {
+    "name": "risklimitcheckrequesttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of limit amount check being requested.",
+      "display": "RiskLimitCheckRequestType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "AllOrNone",
+          "doc": "All or none (default if not specified)."
+        },
+        {
+          "value": "1",
+          "name": "Partial",
+          "doc": "Partial"
+        }
+      ],
+      "fix:tag": "2323"
+    }
+  },
+  {
+    "name": "risklimitcheckamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the amount being requested for approval.",
+      "display": "RiskLimitCheckAmount",
+      "fix:tag": "2324"
+    }
+  },
+  {
+    "name": "risklimitcheckrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the status of the risk limit check request.",
+      "display": "RiskLimitCheckRequestStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Approved",
+          "doc": "Approved"
+        },
+        {
+          "value": "1",
+          "name": "PartiallyApproved",
+          "doc": "Partially approved"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "3",
+          "name": "ApprovalPending",
+          "doc": "Approval pending"
+        },
+        {
+          "value": "4",
+          "name": "Cancelled",
+          "doc": "Cancelled"
+        }
+      ],
+      "fix:tag": "2325"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of the credit limit check request.",
+      "display": "RiskLimitCheckRequestResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party"
+        },
+        {
+          "value": "2",
+          "name": "ReqExceedsCreditLimit",
+          "doc": "Requested amount exceeds credit limit"
+        },
+        {
+          "value": "3",
+          "name": "ReqExceedsClipSizeLimit",
+          "doc": "Requested amount exceeds clip size limit"
+        },
+        {
+          "value": "4",
+          "name": "ReqExceedsMaxNotional",
+          "doc": "Request exceeds maximum notional order amount"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2326"
+    }
+  },
+  {
+    "name": "risklimitapprovedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The credit/risk limit amount approved.",
+      "display": "RiskLimitApprovedAmount",
+      "fix:tag": "2327"
+    }
+  },
+  {
+    "name": "partyactionrequestid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique identifier of the PartyActionRequest(35=DH) message.",
+      "display": "PartyActionRequestID",
+      "fix:tag": "2328"
+    }
+  },
+  {
+    "name": "partyactiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of action to take or was taken for a given party.",
+      "display": "PartyActionType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Suspend",
+          "doc": "Suspend"
+        },
+        {
+          "value": "1",
+          "name": "HaltTrading",
+          "doc": "Halt trading"
+        },
+        {
+          "value": "2",
+          "name": "Reinstate",
+          "doc": "Reinstate"
+        }
+      ],
+      "fix:tag": "2329"
+    }
+  },
+  {
+    "name": "appltestmessageindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate whether the message being sent is to test the receiving application's availability to process the message. When set to \"Y\" the message is a test message. If not specified, the message is by default not a test message.",
+      "display": "ApplTestMessageIndicator",
+      "fix:tag": "2330"
+    }
+  },
+  {
+    "name": "partyactionreportid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique identifier of the PartyActionReport(35=DI) message as assigned by the message sender.",
+      "display": "PartyActionReportID",
+      "fix:tag": "2331"
+    }
+  },
+  {
+    "name": "partyactionresponse",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the action taken as a result of the PartyActionType(2239) of the PartyActionRequest(35=DH) message.",
+      "display": "PartyActionResponse",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "Completed",
+          "doc": "Completed"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "2332"
+    }
+  },
+  {
+    "name": "partyactionrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the reason the PartyActionRequest(35=DH) was rejected.",
+      "display": "PartyActionRejectReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "InvalidParty",
+          "doc": "Invalid party or parties"
+        },
+        {
+          "value": "1",
+          "name": "UnkReqParty",
+          "doc": "Unknown requesting party"
+        },
+        {
+          "value": "98",
+          "name": "NotAuthorized",
+          "doc": "Not authorized"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2333"
+    }
+  },
+  {
+    "name": "refrisklimitcheckid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The reference identifier of the PartyRiskLimitCheckRequest(35=DF) message, or a similar out of band message, that contained the approval for the risk/credit limit check request.",
+      "display": "RefRiskLimitCheckID",
+      "fix:tag": "2334"
+    }
+  },
+  {
+    "name": "refrisklimitcheckidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies which type of identifier is specified in RefRiskLimitCheckID(2334) field.",
+      "display": "RefRiskLimitCheckIDType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RiskLimitRequestID",
+          "doc": "RiskLimitRequestID(1666)"
+        },
+        {
+          "value": "1",
+          "name": "RiskLimitCheckID",
+          "doc": "RiskLimitCheckID(2319)"
+        },
+        {
+          "value": "3",
+          "name": "OutOfBandID",
+          "doc": "Out of band identifier"
+        }
+      ],
+      "fix:tag": "2335"
+    }
+  },
+  {
+    "name": "risklimitvelocityperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The time interval for which the clip size limit applies. The velocity time unit is expressed in RiskLimitVelocityUnit(2337).",
+      "display": "RiskLimitVelocityPeriod",
+      "fix:tag": "2336"
+    }
+  },
+  {
+    "name": "risklimitvelocityunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unit of time in which RiskLimitVelocityPeriod(2336) is expressed.",
+      "display": "RiskLimitVelocityUnit",
+      "fix:codes": [
+        {
+          "value": "H",
+          "name": "Hour",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "doc": "Minute"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "doc": "Second"
+        },
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        },
+        {
+          "value": "Q",
+          "name": "Quarter",
+          "doc": "Quarter"
+        },
+        {
+          "value": "EOM",
+          "name": "EndOfMonth",
+          "doc": "End of Month"
+        },
+        {
+          "value": "F",
+          "name": "Flexible",
+          "doc": "Flexible"
+        }
+      ],
+      "fix:tag": "2337"
+    }
+  },
+  {
+    "name": "requestingpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Qualifies the value of RequestingPartyRole(1660).",
+      "display": "RequestingPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2338"
+    }
+  },
+  {
+    "name": "risklimitcheckmodeltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of credit limit check model workflow to apply for the specified party",
+      "display": "RiskLimitCheckModelType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "PlusOneModel",
+          "doc": "PlusOne model"
+        },
+        {
+          "value": "2",
+          "name": "PingModel",
+          "doc": "Ping model"
+        },
+        {
+          "value": "3",
+          "name": "PushModel",
+          "doc": "Push model"
+        }
+      ],
+      "fix:tag": "2339"
+    }
+  },
+  {
+    "name": "eventmonthyear",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "display": "EventMonthYear",
+      "fix:tag": "2340"
+    }
+  },
+  {
+    "name": "legeventmonthyear",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "display": "LegEventMonthYear",
+      "fix:tag": "2341"
+    }
+  },
+  {
+    "name": "underlyingeventmonthyear",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "display": "UnderlyingEventMonthYear",
+      "fix:tag": "2342"
+    }
+  },
+  {
+    "name": "risklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the status of the risk limit check performed on a trade.",
+      "display": "RiskLimitCheckStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "2",
+          "name": "ClaimRequired",
+          "doc": "Claim required"
+        },
+        {
+          "value": "3",
+          "name": "PreDefinedLimitCheckSucceeded",
+          "doc": "Pre-defined limit check succeeded"
+        },
+        {
+          "value": "4",
+          "name": "PreDefinedLimitCheckFailed",
+          "doc": "Pre-defined limit check failed"
+        },
+        {
+          "value": "5",
+          "name": "PreDefinedAutoAcceptRuleInvoked",
+          "doc": "Pre-defined auto-accept rule invoked"
+        },
+        {
+          "value": "6",
+          "name": "PreDefinedAutoRejectRuleInvoked",
+          "doc": "Pre-defined auto-reject rule invoked"
+        },
+        {
+          "value": "7",
+          "name": "AcceptedByClearingFirm",
+          "doc": "Accepted by clearing firm"
+        },
+        {
+          "value": "8",
+          "name": "RejectedByClearingFirm",
+          "doc": "Rejected by clearing firm"
+        },
+        {
+          "value": "9",
+          "name": "Pending",
+          "doc": "Pending"
+        },
+        {
+          "value": "10",
+          "name": "AcceptedByCreditHub",
+          "doc": "Accepted by credit hub"
+        },
+        {
+          "value": "11",
+          "name": "RejectedByCreditHub",
+          "doc": "Rejected by credit hub"
+        },
+        {
+          "value": "12",
+          "name": "PendingCreditHubCheck",
+          "doc": "Pending credit hub check"
+        },
+        {
+          "value": "13",
+          "name": "AcceptedByExecVenue",
+          "doc": "Accepted by execution venue"
+        },
+        {
+          "value": "14",
+          "name": "RejectedByExecVenue",
+          "doc": "Rejected by execution venue"
+        }
+      ],
+      "fix:tag": "2343"
+    }
+  },
+  {
+    "name": "siderisklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the status of the risk limit check performed on the side of a trade.",
+      "display": "SideRiskLimitCheckStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "2",
+          "name": "ClaimRequired",
+          "doc": "Claim required"
+        },
+        {
+          "value": "3",
+          "name": "PreDefinedLimitCheckSucceeded",
+          "doc": "Pre-defined limit check succeeded"
+        },
+        {
+          "value": "4",
+          "name": "PreDefinedLimitCheckFailed",
+          "doc": "Pre-defined limit check failed"
+        },
+        {
+          "value": "5",
+          "name": "PreDefinedAutoAcceptRuleInvoked",
+          "doc": "Pre-defined auto-accept rule invoked"
+        },
+        {
+          "value": "6",
+          "name": "PreDefinedAutoRejectRuleInvoked",
+          "doc": "Pre-defined auto-reject rule invoked"
+        },
+        {
+          "value": "7",
+          "name": "AcceptedByClearingFirm",
+          "doc": "Accepted by clearing firm"
+        },
+        {
+          "value": "8",
+          "name": "RejectedByClearingFirm",
+          "doc": "Rejected by clearing firm"
+        },
+        {
+          "value": "9",
+          "name": "Pending",
+          "doc": "Pending"
+        },
+        {
+          "value": "10",
+          "name": "AcceptedByCreditHub",
+          "doc": "Accepted by credit hub"
+        },
+        {
+          "value": "11",
+          "name": "RejectedByCreditHub",
+          "doc": "Rejected by credit hub"
+        },
+        {
+          "value": "12",
+          "name": "PendingCreditHubCheck",
+          "doc": "Pending credit hub check"
+        },
+        {
+          "value": "13",
+          "name": "AcceptedByExecVenue",
+          "doc": "Accepted by execution venue"
+        },
+        {
+          "value": "14",
+          "name": "RejectedByExecVenue",
+          "doc": "Rejected by execution venue"
+        }
+      ],
+      "fix:tag": "2344"
+    }
+  },
+  {
+    "name": "noentitlementtypes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entitlement types in the repeating group.",
+      "display": "NoEntitlementTypes",
+      "fix:tag": "2345"
+    }
+  },
+  {
+    "name": "legmidpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Leg Mid price/rate.",
+      "display": "LegMidPx",
+      "fix:tag": "2346"
+    }
+  },
+  {
+    "name": "regulatorytransactiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the regulatory mandate or rule that the transaction complies with.",
+      "display": "RegulatoryTransactionType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "SEFRequiredTransaction",
+          "doc": "Swap Execution Facility (SEF) required transaction"
+        },
+        {
+          "value": "2",
+          "name": "SEFPermittedTransaction",
+          "doc": "Swap Execution Facility (SEF) permitted transaction"
+        }
+      ],
+      "fix:tag": "2347"
+    }
+  },
+  {
+    "name": "legassetgroup",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
+      "display": "LegAssetGroup",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Financials",
+          "doc": "Financials"
+        },
+        {
+          "value": "2",
+          "name": "Commodities",
+          "doc": "Commodities"
+        },
+        {
+          "value": "3",
+          "name": "AlternativeInvestments",
+          "doc": "Alternative investments"
+        }
+      ],
+      "fix:tag": "2348"
+    }
+  },
+  {
+    "name": "priceprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the price decimal precision of the instrument.",
+      "display": "PricePrecision",
+      "fix:tag": "2349"
+    }
+  },
+  {
+    "name": "collateralportfolioid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of the collateral portfolio when reporting on a portfolio basis.",
+      "display": "CollateralPortfolioID",
+      "fix:tag": "2350"
+    }
+  },
+  {
+    "name": "encodedcompliancetextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedComplianceText(2352) field.",
+      "display": "EncodedComplianceTextLen",
+      "fix:tag": "2351"
+    }
+  },
+  {
+    "name": "encodedcompliancetext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the ComplianceText(2404) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ComplianceText(2404) field.",
+      "display": "EncodedComplianceText",
+      "fix:tag": "2352"
+    }
+  },
+  {
+    "name": "tradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "display": "TradingUnitPeriodMultiplier",
+      "fix:tag": "2353"
+    }
+  },
+  {
+    "name": "legtradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "display": "LegTradingUnitPeriodMultiplier",
+      "fix:tag": "2354"
+    }
+  },
+  {
+    "name": "partyrisklimitstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The status of risk limits for a party.",
+      "display": "PartyRiskLimitStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Disabled",
+          "doc": "Disabled"
+        },
+        {
+          "value": "1",
+          "name": "Enabled",
+          "doc": "Enabled"
+        }
+      ],
+      "fix:tag": "2355"
+    }
+  },
+  {
+    "name": "remunerationindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the trade price was adjusted for compensation (i.e. includes a mark-up, mark-down or commission) in the price paid.",
+      "display": "RemunerationIndicator",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NoRemunerationPaid",
+          "doc": "No remuneration paid"
+        },
+        {
+          "value": "1",
+          "name": "RemunerationPaid",
+          "doc": "Remuneration paid"
+        }
+      ],
+      "fix:tag": "2356"
+    }
+  },
+  {
+    "name": "legtotaltradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the total quantity traded over the life of the contract when LegLastQty(1418) is to be repeated periodically over the term of the contract. The value is the product of LegLastQty(1418) and LegTradingUnitPeriodMultiplier(2353).",
+      "display": "LegTotalTradeQty",
+      "fix:tag": "2357"
+    }
+  },
+  {
+    "name": "leglastmultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the quantity bought/sold when LastQty is expressed in contracts. Used in addition to LegLastQty(1418), it is the product of LegLastQty(1418) and LegContractMultiplier(614).",
+      "display": "LegLastMultipliedQty",
+      "fix:tag": "2358"
+    }
+  },
+  {
+    "name": "legtotalgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the full total monetary value of the traded contract. The value is the product of LegLastPx(637) and LegTotalTradeQty(2357) or LegTotalTradeMultipliedQty(2360), if priced in units instead of contracts.",
+      "display": "LegTotalGrossTradeAmt",
+      "fix:tag": "2359"
+    }
+  },
+  {
+    "name": "legtotaltrademultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the total trade quantity in units where LegContractMultiplier(614) is not 1. The value is the product of LegTotalTradeQty(2357) and LegContractMultiplier(614).",
+      "display": "LegTotalTradeMultipliedQty",
+      "fix:tag": "2360"
+    }
+  },
+  {
+    "name": "compressiongroupid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Use to identify a netting or compression group where trades in the group were netted or compressed. This includes both terminating trades and any remnant trades that result from the operation.",
+      "display": "CompressionGroupID",
+      "fix:tag": "2361"
+    }
+  },
+  {
+    "name": "selfmatchpreventionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies an order or trade that should not be matched to an opposite order or trade if both buy and sell orders for the same asset contain the same SelfMatchPreventionID(2362) and submitted by the same firm.",
+      "display": "SelfMatchPreventionID",
+      "fix:tag": "2362"
+    }
+  },
+  {
+    "name": "underlyingtradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "display": "UnderlyingTradingUnitPeriodMultiplier",
+      "fix:tag": "2363"
+    }
+  },
+  {
+    "name": "posreportaction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates action that triggered the Position Report.",
+      "display": "PosReportAction",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "New",
+          "doc": "New"
+        },
+        {
+          "value": "2",
+          "name": "Replace",
+          "doc": "Replace"
+        },
+        {
+          "value": "3",
+          "name": "Cancel",
+          "doc": "Cancel"
+        },
+        {
+          "value": "4",
+          "name": "Reverse",
+          "doc": "Reverse"
+        }
+      ],
+      "fix:tag": "2364"
+    }
+  },
+  {
+    "name": "settlforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX forward points added to SettlPrice(730). The value is expressed in decimal form and may be a negative.",
+      "display": "SettlForwardPoints",
+      "fix:tag": "2365"
+    }
+  },
+  {
+    "name": "settlpricefxratecalc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies whether LastPx(31) [TradeCaptureReport] or SettlPrice(730) [PositionReport] should be multiplied or divided.",
+      "display": "SettlPriceFxRateCalc",
+      "fix:codes": [
+        {
+          "value": "M",
+          "name": "Multiply",
+          "doc": "Multiply"
+        },
+        {
+          "value": "D",
+          "name": "Divide",
+          "doc": "Divide"
+        }
+      ],
+      "fix:tag": "2366"
+    }
+  },
+  {
+    "name": "totaltradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the total quantity traded over the life of the contract when LastQty(32) is repeated periodically over the term of the contract. The value is the product of LastQty(32) and TradingUnitPeriodMultiplier(2353).",
+      "display": "TotalTradeQty",
+      "fix:derivation": "lastqty * tradingunitperiodmultiplier",
+      "fix:tag": "2367"
+    }
+  },
+  {
+    "name": "lastmultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
+      "display": "LastMultipliedQty",
+      "fix:derivation": "lastqty * contractmultiplier",
+      "fix:tag": "2368"
+    }
+  },
+  {
+    "name": "totalgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
+      "display": "TotalGrossTradeAmt",
+      "fix:derivation": "lastpx * totaltradeqty",
+      "fix:tag": "2369"
+    }
+  },
+  {
+    "name": "totaltrademultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
+      "display": "TotalTradeMultipliedQty",
+      "fix:derivation": "totaltradeqty * contractmultiplier",
+      "fix:tag": "2370"
+    }
+  },
+  {
+    "name": "encodedtradecontinuationtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the TradeContinuationText(2374) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the TradeContinuationText(2374) field.",
+      "display": "EncodedTradeContinuationText",
+      "fix:tag": "2371"
+    }
+  },
+  {
+    "name": "encodedtradecontinuationtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedTradeContinuationText(2371) field.",
+      "display": "EncodedTradeContinuationTextLen",
+      "fix:tag": "2372"
+    }
+  },
+  {
+    "name": "intrafirmtradeindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the trade or position was entered into as an intra-group transaction, i.e. between two units of the same parent entity having majority ownership interest in both counterparties.",
+      "display": "IntraFirmTradeIndicator",
+      "fix:tag": "2373"
+    }
+  },
+  {
+    "name": "tradecontinuationtext",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Free form text to specify additional trade continuation information or data.",
+      "display": "TradeContinuationText",
+      "fix:tag": "2374"
+    }
+  },
+  {
+    "name": "taxonomytype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of identification taxonomy used to identify the security.",
+      "display": "TaxonomyType",
+      "fix:codes": [
+        {
+          "value": "I",
+          "name": "ISINOrAltInstrmtID",
+          "doc": "ISIN or Alternate instrument identifier plus CFI"
+        },
+        {
+          "value": "E",
+          "name": "InterimTaxonomy",
+          "doc": "Interim Taxonomy"
+        }
+      ],
+      "fix:tag": "2375"
+    }
+  },
+  {
+    "name": "partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of PartyRole(452).",
+      "display": "PartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2376"
+    }
+  },
+  {
+    "name": "derivativeinstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of DerivativeInstrumentPartyRole(1295).",
+      "display": "DerivativeInstrumentPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2377"
+    }
+  },
+  {
+    "name": "instrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of InstrumentPartyRole(1051).",
+      "display": "InstrumentPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2378"
+    }
+  },
+  {
+    "name": "leginstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of LegInstrumentPartyRole(2257).",
+      "display": "LegInstrumentPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2379"
+    }
+  },
+  {
+    "name": "legprovisionpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of LegProvisionPartyRole(40536).",
+      "display": "LegProvisionPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2380"
+    }
+  },
+  {
+    "name": "nested2partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of Nested2PartyRole(759).",
+      "display": "Nested2PartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2381"
+    }
+  },
+  {
+    "name": "nested3partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of Nested3PartyRole(951).",
+      "display": "Nested3PartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2382"
+    }
+  },
+  {
+    "name": "nested4partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of Nested4PartyRole(1417).",
+      "display": "Nested4PartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2383"
+    }
+  },
+  {
+    "name": "nestedpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of NestedPartyRole(538).",
+      "display": "NestedPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2384"
+    }
+  },
+  {
+    "name": "provisionpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of ProvisionPartyRole(40177).",
+      "display": "ProvisionPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2385"
+    }
+  },
+  {
+    "name": "requestedpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of RequestedPartyRole(1509).",
+      "display": "RequestedPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2386"
+    }
+  },
+  {
+    "name": "tradecontingency",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the contingency attribute for a trade in an asset class that may be contingent on the clearing of a corresponding paired trade (for example Exchange for Physical (EFP), Exchange for Swap (EFS), Exchange for Related (EFR) or Exchange for Option (EFO), collectively called EFRPs). Once the paired trade clears or fails to clear, the related trade (the trade which carries this attribute) ceases to exist.",
+      "display": "TradeContingency",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "DoesNotApply",
+          "doc": "Does not apply (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "ContingentTrade",
+          "doc": "Contingent trade"
+        },
+        {
+          "value": "2",
+          "name": "NonContingentTrade",
+          "doc": "Non-contingent trade"
+        }
+      ],
+      "fix:tag": "2387"
+    }
+  },
+  {
+    "name": "rootpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of RootPartyRole(1119).",
+      "display": "RootPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2388"
+    }
+  },
+  {
+    "name": "settlpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of SettlPartyRole(784).",
+      "display": "SettlPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2389"
+    }
+  },
+  {
+    "name": "tradeconfirmationreferenceid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A reference or control identifier or number used as a trade confirmation key.",
+      "display": "TradeConfirmationReferenceID",
+      "fix:tag": "2390"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of UnderlyingInstrumentPartyRole(1061).",
+      "display": "UnderlyingInstrumentPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "2391"
+    }
+  },
+  {
+    "name": "allocrefrisklimitcheckid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The reference identifier to the PartyRiskLimitCheckRequest(35=DF), or a similar out of band message, message that contained the approval or rejection for risk/credit limit check for this allocation.",
+      "display": "AllocRefRiskLimitCheckID",
+      "fix:tag": "2392"
+    }
+  },
+  {
+    "name": "allocrefrisklimitcheckidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies which type of identifier is specified in AllocRefRiskLimitCheckID(2392) field.",
+      "display": "AllocRefRiskLimitCheckIDType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RiskLimitRequestID",
+          "doc": "RiskLimitRequestID(1666)"
+        },
+        {
+          "value": "1",
+          "name": "RiskLimitCheckID",
+          "doc": "RiskLimitCheckID(2319)"
+        },
+        {
+          "value": "3",
+          "name": "OutOfBandID",
+          "doc": "Out of band identifier"
+        }
+      ],
+      "fix:tag": "2393"
+    }
+  },
+  {
+    "name": "limitutilizationamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The total amount of the limit that has been drawn down against the counterparty. This includes the amount for prior trades. It may or may not include the amount for the given trade, specified in LastLimitAmt(1632), depending upon whether the given trade is considered pending.",
+      "display": "LimitUtilizationAmt",
+      "fix:tag": "2394"
+    }
+  },
+  {
+    "name": "limitamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The limit for the counterparty. This represents the total limit amount, independent of any amount already utilized.",
+      "display": "LimitAmt",
+      "fix:tag": "2395"
+    }
+  },
+  {
+    "name": "limitrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the scope of the limit by role.",
+      "display": "LimitRole",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ExecutingFirm",
+          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+        },
+        {
+          "value": "2",
+          "name": "BrokerOfCredit",
+          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+        },
+        {
+          "value": "3",
+          "name": "ClientID",
+          "doc": "Client ID (formerly FIX 4.2 ClientID)"
+        },
+        {
+          "value": "4",
+          "name": "ClearingFirm",
+          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+        },
+        {
+          "value": "5",
+          "name": "InvestorID",
+          "doc": "Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "IntroducingFirm",
+          "doc": "Introducing Firm"
+        },
+        {
+          "value": "7",
+          "name": "EnteringFirm",
+          "doc": "Entering Firm"
+        },
+        {
+          "value": "8",
+          "name": "Locate",
+          "doc": "Locate / Lending Firm (for short-sales)"
+        },
+        {
+          "value": "9",
+          "name": "FundManagerClientID",
+          "doc": "Fund Manager Client ID (for CIV)"
+        },
+        {
+          "value": "10",
+          "name": "SettlementLocation",
+          "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
+        },
+        {
+          "value": "11",
+          "name": "OrderOriginationTrader",
+          "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
+        },
+        {
+          "value": "12",
+          "name": "ExecutingTrader",
+          "doc": "Executing Trader (associated with Executing Firm - actually executes)"
+        },
+        {
+          "value": "13",
+          "name": "OrderOriginationFirm",
+          "doc": "Order Origination Firm (e.g. buy-side firm)"
+        },
+        {
+          "value": "14",
+          "name": "GiveupClearingFirmDepr",
+          "doc": "Giveup Clearing Firm (firm to which trade is given up)"
+        },
+        {
+          "value": "15",
+          "name": "CorrespondantClearingFirm",
+          "doc": "Correspondant Clearing Firm"
+        },
+        {
+          "value": "16",
+          "name": "ExecutingSystem",
+          "doc": "Executing System"
+        },
+        {
+          "value": "17",
+          "name": "ContraFirm",
+          "doc": "Contra Firm"
+        },
+        {
+          "value": "18",
+          "name": "ContraClearingFirm",
+          "doc": "Contra Clearing Firm"
+        },
+        {
+          "value": "19",
+          "name": "SponsoringFirm",
+          "doc": "Sponsoring Firm"
+        },
+        {
+          "value": "20",
+          "name": "UnderlyingContraFirm",
+          "doc": "Underlying Contra Firm"
+        },
+        {
+          "value": "21",
+          "name": "ClearingOrganization",
+          "doc": "Clearing Organization"
+        },
+        {
+          "value": "22",
+          "name": "Exchange",
+          "doc": "Exchange"
+        },
+        {
+          "value": "24",
+          "name": "CustomerAccount",
+          "doc": "Customer Account"
+        },
+        {
+          "value": "25",
+          "name": "CorrespondentClearingOrganization",
+          "doc": "Correspondent Clearing Organization"
+        },
+        {
+          "value": "26",
+          "name": "CorrespondentBroker",
+          "doc": "Correspondent Broker"
+        },
+        {
+          "value": "27",
+          "name": "Buyer",
+          "doc": "Buyer/Seller (Receiver/Deliverer)"
+        },
+        {
+          "value": "28",
+          "name": "Custodian",
+          "doc": "Custodian"
+        },
+        {
+          "value": "29",
+          "name": "Intermediary",
+          "doc": "Intermediary"
+        },
+        {
+          "value": "30",
+          "name": "Agent",
+          "doc": "Agent"
+        },
+        {
+          "value": "31",
+          "name": "SubCustodian",
+          "doc": "Sub-custodian"
+        },
+        {
+          "value": "32",
+          "name": "Beneficiary",
+          "doc": "Beneficiary"
+        },
+        {
+          "value": "33",
+          "name": "InterestedParty",
+          "doc": "Interested party"
+        },
+        {
+          "value": "34",
+          "name": "RegulatoryBody",
+          "doc": "Regulatory body"
+        },
+        {
+          "value": "35",
+          "name": "LiquidityProvider",
+          "doc": "Liquidity provider"
+        },
+        {
+          "value": "36",
+          "name": "EnteringTrader",
+          "doc": "Entering trader"
+        },
+        {
+          "value": "37",
+          "name": "ContraTrader",
+          "doc": "Contra trader"
+        },
+        {
+          "value": "38",
+          "name": "PositionAccount",
+          "doc": "Position account"
+        },
+        {
+          "value": "39",
+          "name": "ContraInvestorID",
+          "doc": "Contra Investor ID"
+        },
+        {
+          "value": "40",
+          "name": "TransferToFirm",
+          "doc": "Transfer to Firm"
+        },
+        {
+          "value": "41",
+          "name": "ContraPositionAccount",
+          "doc": "Contra Position Account"
+        },
+        {
+          "value": "42",
+          "name": "ContraExchange",
+          "doc": "Contra Exchange"
+        },
+        {
+          "value": "43",
+          "name": "InternalCarryAccount",
+          "doc": "Internal Carry Account"
+        },
+        {
+          "value": "44",
+          "name": "OrderEntryOperatorID",
+          "doc": "Order Entry Operator ID"
+        },
+        {
+          "value": "45",
+          "name": "SecondaryAccountNumber",
+          "doc": "Secondary Account Number"
+        },
+        {
+          "value": "46",
+          "name": "ForeignFirm",
+          "doc": "Foreign Firm"
+        },
+        {
+          "value": "47",
+          "name": "ThirdPartyAllocationFirm",
+          "doc": "Third Party Allocation Firm"
+        },
+        {
+          "value": "48",
+          "name": "ClaimingAccount",
+          "doc": "Claiming Account"
+        },
+        {
+          "value": "49",
+          "name": "AssetManager",
+          "doc": "Asset Manager"
+        },
+        {
+          "value": "50",
+          "name": "PledgorAccount",
+          "doc": "Pledgor Account"
+        },
+        {
+          "value": "51",
+          "name": "PledgeeAccount",
+          "doc": "Pledgee Account"
+        },
+        {
+          "value": "52",
+          "name": "LargeTraderReportableAccount",
+          "doc": "Large Trader Reportable Account"
+        },
+        {
+          "value": "53",
+          "name": "TraderMnemonic",
+          "doc": "Trader mnemonic"
+        },
+        {
+          "value": "54",
+          "name": "SenderLocation",
+          "doc": "Sender Location"
+        },
+        {
+          "value": "55",
+          "name": "SessionID",
+          "doc": "Session ID"
+        },
+        {
+          "value": "56",
+          "name": "AcceptableCounterparty",
+          "doc": "Acceptable Counterparty"
+        },
+        {
+          "value": "57",
+          "name": "UnacceptableCounterparty",
+          "doc": "Unacceptable Counterparty"
+        },
+        {
+          "value": "58",
+          "name": "EnteringUnit",
+          "doc": "Entering Unit"
+        },
+        {
+          "value": "59",
+          "name": "ExecutingUnit",
+          "doc": "Executing Unit"
+        },
+        {
+          "value": "60",
+          "name": "IntroducingBroker",
+          "doc": "Introducing Broker"
+        },
+        {
+          "value": "61",
+          "name": "QuoteOriginator",
+          "doc": "Quote originator"
+        },
+        {
+          "value": "62",
+          "name": "ReportOriginator",
+          "doc": "Report originator"
+        },
+        {
+          "value": "63",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic internaliser (SI)"
+        },
+        {
+          "value": "64",
+          "name": "MultilateralTradingFacility",
+          "doc": "Multilateral Trading Facility (MTF)"
+        },
+        {
+          "value": "65",
+          "name": "RegulatedMarket",
+          "doc": "Regulated Market (RM)"
+        },
+        {
+          "value": "66",
+          "name": "MarketMaker",
+          "doc": "Market Maker"
+        },
+        {
+          "value": "67",
+          "name": "InvestmentFirm",
+          "doc": "Investment Firm"
+        },
+        {
+          "value": "68",
+          "name": "HostCompetentAuthority",
+          "doc": "Host Competent Authority (Host CA)"
+        },
+        {
+          "value": "69",
+          "name": "HomeCompetentAuthority",
+          "doc": "Home Competent Authority (Home CA)"
+        },
+        {
+          "value": "70",
+          "name": "CompetentAuthorityLiquidity",
+          "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
+        },
+        {
+          "value": "71",
+          "name": "CompetentAuthorityTransactionVenue",
+          "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
+        },
+        {
+          "value": "72",
+          "name": "ReportingIntermediary",
+          "doc": "Reporting intermediary"
+        },
+        {
+          "value": "73",
+          "name": "ExecutionVenue",
+          "doc": "Execution Venue"
+        },
+        {
+          "value": "74",
+          "name": "MarketDataEntryOriginator",
+          "doc": "Market data entry originator"
+        },
+        {
+          "value": "75",
+          "name": "LocationID",
+          "doc": "Location ID"
+        },
+        {
+          "value": "76",
+          "name": "DeskID",
+          "doc": "Desk ID"
+        },
+        {
+          "value": "77",
+          "name": "MarketDataMarket",
+          "doc": "Market data market"
+        },
+        {
+          "value": "78",
+          "name": "AllocationEntity",
+          "doc": "Allocation Entity"
+        },
+        {
+          "value": "79",
+          "name": "PrimeBroker",
+          "doc": "Prime Broker providing General Trade Services"
+        },
+        {
+          "value": "80",
+          "name": "StepOutFirm",
+          "doc": "Step-Out Firm (Prime Broker)"
+        },
+        {
+          "value": "81",
+          "name": "BrokerClearingID",
+          "doc": "Broker clearing identifier"
+        },
+        {
+          "value": "82",
+          "name": "CentralRegistrationDepository",
+          "doc": "Central Registration Depository (CRD)"
+        },
+        {
+          "value": "83",
+          "name": "ClearingAccount",
+          "doc": "Clearing Account"
+        },
+        {
+          "value": "84",
+          "name": "AcceptableSettlingCounterparty",
+          "doc": "Acceptable Settling Counterparty"
+        },
+        {
+          "value": "85",
+          "name": "UnacceptableSettlingCounterparty",
+          "doc": "Unacceptable Settling Counterparty"
+        },
+        {
+          "value": "86",
+          "name": "CLSMemberBank",
+          "doc": "CLS Member Bank"
+        },
+        {
+          "value": "87",
+          "name": "InConcertGroup",
+          "doc": "In Concert Group"
+        },
+        {
+          "value": "88",
+          "name": "InConcertControllingEntity",
+          "doc": "In Concert Controlling Entity"
+        },
+        {
+          "value": "89",
+          "name": "LargePositionsReportingAccount",
+          "doc": "Large Positions Reporting Account"
+        },
+        {
+          "value": "90",
+          "name": "SettlementFirm",
+          "doc": "Settlement Firm"
+        },
+        {
+          "value": "91",
+          "name": "SettlementAccount",
+          "doc": "Settlement account"
+        },
+        {
+          "value": "92",
+          "name": "ReportingMarketCenter",
+          "doc": "Reporting Market Center"
+        },
+        {
+          "value": "93",
+          "name": "RelatedReportingMarketCenter",
+          "doc": "Related Reporting Market Center"
+        },
+        {
+          "value": "94",
+          "name": "AwayMarket",
+          "doc": "Away Market"
+        },
+        {
+          "value": "95",
+          "name": "GiveupTradingFirm",
+          "doc": "Give-up (trading) firm"
+        },
+        {
+          "value": "96",
+          "name": "TakeupTradingFirm",
+          "doc": "Take-up (trading) firm"
+        },
+        {
+          "value": "97",
+          "name": "GiveupClearingFirm",
+          "doc": "Give-up clearing firm"
+        },
+        {
+          "value": "98",
+          "name": "TakeupClearingFirm",
+          "doc": "Take-up clearing firm"
+        },
+        {
+          "value": "99",
+          "name": "OriginatingMarket",
+          "doc": "Originating Market"
+        },
+        {
+          "value": "100",
+          "name": "MarginAccount",
+          "doc": "Margin account"
+        },
+        {
+          "value": "101",
+          "name": "CollateralAssetAccount",
+          "doc": "Collateral asset account"
+        },
+        {
+          "value": "102",
+          "name": "DataRepository",
+          "doc": "Data repository"
+        },
+        {
+          "value": "103",
+          "name": "CalculationAgent",
+          "doc": "Calculation agent"
+        },
+        {
+          "value": "104",
+          "name": "ExerciseNoticeSender",
+          "doc": "Sender of exercise notice"
+        },
+        {
+          "value": "105",
+          "name": "ExerciseNoticeReceiver",
+          "doc": "Receiver of exercise notice"
+        },
+        {
+          "value": "106",
+          "name": "RateReferenceBank",
+          "doc": "Rate reference bank"
+        },
+        {
+          "value": "107",
+          "name": "Correspondent",
+          "doc": "Correspondent"
+        },
+        {
+          "value": "109",
+          "name": "BeneficiaryBank",
+          "doc": "Beneficiary's bank or depository institution"
+        },
+        {
+          "value": "110",
+          "name": "Borrower",
+          "doc": "Borrower"
+        },
+        {
+          "value": "111",
+          "name": "PrimaryObligator",
+          "doc": "Primary obligator"
+        },
+        {
+          "value": "112",
+          "name": "Guarantor",
+          "doc": "Guarantor"
+        },
+        {
+          "value": "113",
+          "name": "ExcludedReferenceEntity",
+          "doc": "Excluded reference entity"
+        },
+        {
+          "value": "114",
+          "name": "DeterminingParty",
+          "doc": "Determining party"
+        },
+        {
+          "value": "115",
+          "name": "HedgingParty",
+          "doc": "Hedging party"
+        },
+        {
+          "value": "116",
+          "name": "ReportingEntity",
+          "doc": "Reporting entity"
+        },
+        {
+          "value": "117",
+          "name": "SalesPerson",
+          "doc": "Sales person"
+        },
+        {
+          "value": "118",
+          "name": "Operator",
+          "doc": "Operator"
+        },
+        {
+          "value": "119",
+          "name": "CSD",
+          "doc": "Central Securities Depository (CSD)"
+        },
+        {
+          "value": "120",
+          "name": "ICSD",
+          "doc": "International Central Securities Depository (ICSD)"
+        },
+        {
+          "value": "121",
+          "name": "TradingSubAccount",
+          "doc": "Trading sub-account"
+        },
+        {
+          "value": "122",
+          "name": "InvestmentDecisionMaker",
+          "doc": "Investment decision maker"
+        },
+        {
+          "value": "123",
+          "name": "PublishingIntermediary",
+          "doc": "Publishing intermediary"
+        },
+        {
+          "value": "124",
+          "name": "CSDParticipant",
+          "doc": "Central Securities Depository (CSD) Participant"
+        },
+        {
+          "value": "125",
+          "name": "Issuer",
+          "doc": "Issuer"
+        },
+        {
+          "value": "126",
+          "name": "ContraCustomerAccount",
+          "doc": "Contra Customer Account"
+        },
+        {
+          "value": "127",
+          "name": "ContraInvestmentDecisionMaker",
+          "doc": "Contra Investment Decision Maker"
+        },
+        {
+          "value": "128",
+          "name": "AuthorizingPerson",
+          "doc": "Authorizing person"
+        },
+        {
+          "value": "129",
+          "name": "PrimaryPlaceOfListing",
+          "doc": "Primary place of listing"
+        },
+        {
+          "value": "130",
+          "name": "SecondaryPlaceOfListing",
+          "doc": "Secondary place of listing"
+        },
+        {
+          "value": "131",
+          "name": "Algorithm",
+          "doc": "Algorithm"
+        }
+      ],
+      "fix:tag": "2396"
+    }
+  },
+  {
+    "name": "regulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the scope to which the RegulatoryTradeID(1903) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "display": "RegulatoryTradeIDScope",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ClearingMember",
+          "doc": "Clearing member"
+        },
+        {
+          "value": "2",
+          "name": "Client",
+          "doc": "Client"
+        }
+      ],
+      "fix:tag": "2397"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the scope to which the SideRegulatoryTradeID(1972) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "display": "SideRegulatoryTradeIDScope",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ClearingMember",
+          "doc": "Clearing member"
+        },
+        {
+          "value": "2",
+          "name": "Client",
+          "doc": "Client"
+        }
+      ],
+      "fix:tag": "2398"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the scope to which the AllocRegulatoryTradeID(1909) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "display": "AllocRegulatoryTradeIDScope",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ClearingMember",
+          "doc": "Clearing member"
+        },
+        {
+          "value": "2",
+          "name": "Client",
+          "doc": "Client"
+        }
+      ],
+      "fix:tag": "2399"
+    }
+  }
+]

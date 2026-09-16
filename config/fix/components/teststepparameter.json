@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametername"
+          "fix:field": "teststepparametername",
+          "fix:tag": "3046"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametertype"
+          "fix:field": "teststepparametertype",
+          "fix:tag": "3047"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametervalue"
+          "fix:field": "teststepparametervalue",
+          "fix:tag": "3048"
         }
       }
     ]

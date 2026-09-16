@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securityriskmetricsreportid"
+          "fix:field": "securityriskmetricsreportid",
+          "fix:tag": "2988"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskmetricssecuritygroup"
+          "fix:field": "riskmetricssecuritygroup",
+          "fix:tag": "2989"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskmetricssecuritysubgroup"
+          "fix:field": "riskmetricssecuritysubgroup",
+          "fix:tag": "2990"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingbidpx"
+          "fix:field": "underlyingbidpx",
+          "fix:tag": "2991"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingofferpx"
+          "fix:field": "underlyingofferpx",
+          "fix:tag": "2992"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "metricscalculationpricesource"
+          "fix:field": "metricscalculationpricesource",
+          "fix:tag": "2993"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskfreerate"
+          "fix:field": "riskfreerate",
+          "fix:tag": "1190"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "assetvaluationmodel"
+          "fix:field": "assetvaluationmodel",
+          "fix:tag": "2994"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosecurityriskmetrics"
+          "fix:field": "nosecurityriskmetrics",
+          "fix:tag": "2995"
         }
       },
       {

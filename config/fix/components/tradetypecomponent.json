@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradetype"
+          "fix:field": "tradetype",
+          "fix:tag": "3006"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradesubtype"
+          "fix:field": "tradesubtype",
+          "fix:tag": "3007"
         }
       }
     ]

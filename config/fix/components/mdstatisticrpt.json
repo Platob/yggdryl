@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticid"
+          "fix:field": "mdstatisticid",
+          "fix:tag": "2475"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatistictime"
+          "fix:field": "mdstatistictime",
+          "fix:tag": "2476"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticstatus"
+          "fix:field": "mdstatisticstatus",
+          "fix:tag": "2477"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvalue"
+          "fix:field": "mdstatisticvalue",
+          "fix:tag": "2478"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvaluetype"
+          "fix:field": "mdstatisticvaluetype",
+          "fix:tag": "2479"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvalueunit"
+          "fix:field": "mdstatisticvalueunit",
+          "fix:tag": "2480"
         }
       }
     ]

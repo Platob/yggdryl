@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ioiqualifier"
+          "fix:field": "ioiqualifier",
+          "fix:tag": "104"
         }
       }
     ]

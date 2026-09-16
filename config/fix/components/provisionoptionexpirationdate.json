@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateunadjusted"
+          "fix:field": "provisionoptionexpirationdateunadjusted",
+          "fix:tag": "40145"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdatebusinessdayconvention"
+          "fix:field": "provisionoptionexpirationdatebusinessdayconvention",
+          "fix:tag": "40146"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noprovisionoptionexpirationdatebusinesscenters"
+          "fix:field": "noprovisionoptionexpirationdatebusinesscenters",
+          "fix:tag": "40955"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdaterelativeto"
+          "fix:field": "provisionoptionexpirationdaterelativeto",
+          "fix:tag": "40148"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetperiod"
+          "fix:field": "provisionoptionexpirationdateoffsetperiod",
+          "fix:tag": "40149"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetunit"
+          "fix:field": "provisionoptionexpirationdateoffsetunit",
+          "fix:tag": "40150"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetdaytype"
+          "fix:field": "provisionoptionexpirationdateoffsetdaytype",
+          "fix:tag": "40151"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateadjusted"
+          "fix:field": "provisionoptionexpirationdateadjusted",
+          "fix:tag": "40152"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationtime"
+          "fix:field": "provisionoptionexpirationtime",
+          "fix:tag": "40153"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationtimebusinesscenter"
+          "fix:field": "provisionoptionexpirationtimebusinesscenter",
+          "fix:tag": "40154"
         }
       }
     ]

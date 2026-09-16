@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametername"
+          "fix:field": "strategyparametername",
+          "fix:tag": "958"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametertype"
+          "fix:field": "strategyparametertype",
+          "fix:tag": "959"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametervalue"
+          "fix:field": "strategyparametervalue",
+          "fix:tag": "960"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "routingtype"
+          "fix:field": "routingtype",
+          "fix:tag": "216"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "routingid"
+          "fix:field": "routingid",
+          "fix:tag": "217"
         }
       }
     ]

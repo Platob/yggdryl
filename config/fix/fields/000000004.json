@@ -1,0 +1,3567 @@
+[
+  {
+    "name": "biddescriptor",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "BidDescriptor value. Usage depends upon BidDescriptorTyp (399).",
+      "display": "BidDescriptor",
+      "fix:tag": "400"
+    }
+  },
+  {
+    "name": "sidevalueind",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to identify which \"SideValue\" the value refers to. SideValue1 and SideValue2 are used as opposed to Buy or Sell so that the basket can be quoted either way as Buy or Sell.",
+      "display": "SideValueInd",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "SideValue1",
+          "doc": "Side Value 1"
+        },
+        {
+          "value": "2",
+          "name": "SideValue2",
+          "doc": "Side Value 2"
+        }
+      ],
+      "fix:tag": "401"
+    }
+  },
+  {
+    "name": "liquiditypctlow",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Liquidity indicator or lower limit if TotalNumSecurities (393) > 1. Represented as a percentage.",
+      "display": "LiquidityPctLow",
+      "fix:tag": "402"
+    }
+  },
+  {
+    "name": "liquiditypcthigh",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper liquidity indicator if TotalNumSecurities (393) > 1. Represented as a percentage.",
+      "display": "LiquidityPctHigh",
+      "fix:tag": "403"
+    }
+  },
+  {
+    "name": "liquidityvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Value between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency",
+      "display": "LiquidityValue",
+      "fix:tag": "404"
+    }
+  },
+  {
+    "name": "efptrackingerror",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Eg Used in EFP trades 2% (EFP - Exchange for Physical ). Represented as a percentage.",
+      "display": "EFPTrackingError",
+      "fix:tag": "405"
+    }
+  },
+  {
+    "name": "fairvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in EFP trades",
+      "display": "FairValue",
+      "fix:tag": "406"
+    }
+  },
+  {
+    "name": "outsideindexpct",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in EFP trades. Represented as a percentage.",
+      "display": "OutsideIndexPct",
+      "fix:tag": "407"
+    }
+  },
+  {
+    "name": "valueoffutures",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in EFP trades",
+      "display": "ValueOfFutures",
+      "fix:tag": "408"
+    }
+  },
+  {
+    "name": "liquidityindtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to identify the type of liquidity indicator.",
+      "display": "LiquidityIndType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FiveDayMovingAverage",
+          "doc": "5-day moving average"
+        },
+        {
+          "value": "2",
+          "name": "TwentyDayMovingAverage",
+          "doc": "20-day moving average"
+        },
+        {
+          "value": "3",
+          "name": "NormalMarketSize",
+          "doc": "Normal market size"
+        },
+        {
+          "value": "4",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "409"
+    }
+  },
+  {
+    "name": "wtaverageliquidity",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Overall weighted average liquidity expressed as a % of average daily volume. Represented as a percentage.",
+      "display": "WtAverageLiquidity",
+      "fix:tag": "410"
+    }
+  },
+  {
+    "name": "exchangeforphysical",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether or not to exchange for phsyical.",
+      "display": "ExchangeForPhysical",
+      "fix:codes": [
+        {
+          "value": "N",
+          "name": "False",
+          "aliases": [
+            "No"
+          ],
+          "doc": "False"
+        },
+        {
+          "value": "Y",
+          "name": "True",
+          "aliases": [
+            "Yes"
+          ],
+          "doc": "True"
+        }
+      ],
+      "fix:tag": "411"
+    }
+  },
+  {
+    "name": "outmaincntryuindex",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Value of stocks in Currency",
+      "display": "OutMainCntryUIndex",
+      "fix:tag": "412"
+    }
+  },
+  {
+    "name": "crosspercent",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of program that crosses in Currency. Represented as a percentage.",
+      "display": "CrossPercent",
+      "fix:tag": "413"
+    }
+  },
+  {
+    "name": "progrptreqs",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to identify the desired frequency of progress reports.",
+      "display": "ProgRptReqs",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "BuySideRequests",
+          "doc": "Buy-side explicitly requests status using Statue Request (default), the sell-side firm can, however, send a DONE status List STatus Response in an unsolicited fashion"
+        },
+        {
+          "value": "2",
+          "name": "SellSideSends",
+          "doc": "Sell-side periodically sends status using List Status. Period optionally specified in ProgressPeriod."
+        },
+        {
+          "value": "3",
+          "name": "RealTimeExecutionReports",
+          "doc": "Real-time execution reports (to be discourage)"
+        }
+      ],
+      "fix:tag": "414"
+    }
+  },
+  {
+    "name": "progperiodinterval",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time in minutes between each ListStatus report sent by SellSide. Zero means don't send status.",
+      "display": "ProgPeriodInterval",
+      "fix:tag": "415"
+    }
+  },
+  {
+    "name": "inctaxind",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
+      "display": "IncTaxInd",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Net",
+          "doc": "Net"
+        },
+        {
+          "value": "2",
+          "name": "Gross",
+          "doc": "Gross"
+        }
+      ],
+      "fix:tag": "416"
+    }
+  },
+  {
+    "name": "numbidders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the total number of bidders on the list",
+      "display": "NumBidders",
+      "fix:tag": "417"
+    }
+  },
+  {
+    "name": "bidtradetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the type of trade.",
+      "display": "BidTradeType",
+      "fix:codes": [
+        {
+          "value": "A",
+          "name": "Agency",
+          "doc": "Agency"
+        },
+        {
+          "value": "G",
+          "name": "VWAPGuarantee",
+          "doc": "VWAP Guarantee"
+        },
+        {
+          "value": "J",
+          "name": "GuaranteedClose",
+          "doc": "Guaranteed Close"
+        },
+        {
+          "value": "R",
+          "name": "RiskTrade",
+          "doc": "Risk Trade"
+        }
+      ],
+      "fix:names": [
+        "tradetype"
+      ],
+      "fix:tag": "418"
+    }
+  },
+  {
+    "name": "basispxtype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the basis price type.",
+      "display": "BasisPxType",
+      "fix:codes": [
+        {
+          "value": "2",
+          "name": "ClosingPriceAtMorningSession",
+          "doc": "Closing price at morning session"
+        },
+        {
+          "value": "3",
+          "name": "ClosingPrice",
+          "doc": "Closing price"
+        },
+        {
+          "value": "4",
+          "name": "CurrentPrice",
+          "doc": "Current price"
+        },
+        {
+          "value": "5",
+          "name": "SQ",
+          "doc": "SQ"
+        },
+        {
+          "value": "6",
+          "name": "VWAPThroughADay",
+          "doc": "VWAP through a day"
+        },
+        {
+          "value": "7",
+          "name": "VWAPThroughAMorningSession",
+          "doc": "VWAP through a morning session"
+        },
+        {
+          "value": "8",
+          "name": "VWAPThroughAnAfternoonSession",
+          "doc": "VWAP through an afternoon session"
+        },
+        {
+          "value": "9",
+          "name": "VWAPThroughADayExcept",
+          "doc": "VWAP through a day except \"YORI\" (an opening auction)"
+        },
+        {
+          "value": "A",
+          "name": "VWAPThroughAMorningSessionExcept",
+          "doc": "VWAP through a morning session except \"YORI\" (an opening auction)"
+        },
+        {
+          "value": "B",
+          "name": "VWAPThroughAnAfternoonSessionExcept",
+          "doc": "VWAP through an afternoon session except \"YORI\" (an opening auction)"
+        },
+        {
+          "value": "C",
+          "name": "Strike",
+          "doc": "Strike"
+        },
+        {
+          "value": "D",
+          "name": "Open",
+          "doc": "Open"
+        },
+        {
+          "value": "Z",
+          "name": "Others",
+          "doc": "Others"
+        }
+      ],
+      "fix:tag": "419"
+    }
+  },
+  {
+    "name": "nobidcomponents",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the number of list entries.",
+      "display": "NoBidComponents",
+      "fix:tag": "420"
+    }
+  },
+  {
+    "name": "country",
+    "dtype": {
+      "type": "country"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "ISO Country Code in field",
+      "display": "Country",
+      "fix:tag": "421"
+    }
+  },
+  {
+    "name": "totnostrikes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Total number of strike price entries across all messages. Should be the sum of all NoStrikes (428) in each message that has repeating strike price entries related to the same ListID (66). Used to support fragmentation.",
+      "display": "TotNoStrikes",
+      "fix:tag": "422"
+    }
+  },
+  {
+    "name": "pricetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the price type.",
+      "display": "PriceType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Percentage",
+          "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
+        },
+        {
+          "value": "2",
+          "name": "PerUnit",
+          "doc": "Per unit (i.e. per share or contract)"
+        },
+        {
+          "value": "3",
+          "name": "FixedAmount",
+          "doc": "Fixed amount (absolute value)"
+        },
+        {
+          "value": "4",
+          "name": "Discount",
+          "doc": "Discount - percentage points below par"
+        },
+        {
+          "value": "5",
+          "name": "Premium",
+          "doc": "Premium - percentage points over par"
+        },
+        {
+          "value": "6",
+          "name": "Spread",
+          "doc": "Spread (basis points spread)"
+        },
+        {
+          "value": "7",
+          "name": "TEDPrice",
+          "doc": "TED Price"
+        },
+        {
+          "value": "8",
+          "name": "TEDYield",
+          "doc": "TED Yield"
+        },
+        {
+          "value": "9",
+          "name": "Yield",
+          "doc": "Yield"
+        },
+        {
+          "value": "10",
+          "name": "FixedCabinetTradePrice",
+          "doc": "Fixed cabinet trade price (primarily for listed futures and options)"
+        },
+        {
+          "value": "11",
+          "name": "VariableCabinetTradePrice",
+          "doc": "Variable cabinet trade price (primarily for listed futures and options)"
+        },
+        {
+          "value": "12",
+          "name": "PriceSpread",
+          "doc": "Price spread"
+        },
+        {
+          "value": "13",
+          "name": "ProductTicksInHalves",
+          "aliases": [
+            "ProductTicksInHalfs"
+          ],
+          "doc": "Product ticks in halves"
+        },
+        {
+          "value": "14",
+          "name": "ProductTicksInFourths",
+          "doc": "Product ticks in fourths"
+        },
+        {
+          "value": "15",
+          "name": "ProductTicksInEighths",
+          "aliases": [
+            "ProductTicksInEights"
+          ],
+          "doc": "Product ticks in eighths"
+        },
+        {
+          "value": "16",
+          "name": "ProductTicksInSixteenths",
+          "doc": "Product ticks in sixteenths"
+        },
+        {
+          "value": "17",
+          "name": "ProductTicksInThirtySeconds",
+          "doc": "Product ticks in thirty-seconds"
+        },
+        {
+          "value": "18",
+          "name": "ProductTicksInSixtyFourths",
+          "aliases": [
+            "ProductTicksInSixtyForths"
+          ],
+          "doc": "Product ticks in sixty-fourths"
+        },
+        {
+          "value": "19",
+          "name": "ProductTicksInOneTwentyEighths",
+          "aliases": [
+            "ProductTicksInOneTwentyEights"
+          ],
+          "doc": "Product ticks in one-twenty-eighths"
+        },
+        {
+          "value": "20",
+          "name": "NormalRateRepresentation",
+          "doc": "Normal rate representation (e.g. FX rate)"
+        },
+        {
+          "value": "21",
+          "name": "InverseRateRepresentation",
+          "doc": "Inverse rate representation (e.g. FX rate)"
+        },
+        {
+          "value": "22",
+          "name": "BasisPoints",
+          "doc": "Basis points"
+        },
+        {
+          "value": "23",
+          "name": "UpfrontPoints",
+          "doc": "Up front points"
+        },
+        {
+          "value": "24",
+          "name": "InterestRate",
+          "doc": "Interest rate"
+        },
+        {
+          "value": "25",
+          "name": "PercentageNotional",
+          "doc": "Percentage of notional"
+        }
+      ],
+      "fix:tag": "423"
+    }
+  },
+  {
+    "name": "dayorderqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For GT orders, the OrderQty (38) less all quantity (adjusted for stock splits) that traded on previous days. DayOrderQty (424) = OrderQty - (CumQty (14) - DayCumQty (425))",
+      "display": "DayOrderQty",
+      "fix:tag": "424"
+    }
+  },
+  {
+    "name": "daycumqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity on a GT order that has traded today.",
+      "display": "DayCumQty",
+      "fix:tag": "425"
+    }
+  },
+  {
+    "name": "dayavgpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The average price for quantity on a GT order that has traded today.",
+      "display": "DayAvgPx",
+      "fix:tag": "426"
+    }
+  },
+  {
+    "name": "gtbookinginst",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to identify whether to book out executions on a part-filled GT order on the day of execution or to accumulate.",
+      "display": "GTBookingInst",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BookOutAllTradesOnDayOfExecution",
+          "doc": "Book out all trades on day of execution"
+        },
+        {
+          "value": "1",
+          "name": "AccumulateUntilFilledOrExpired",
+          "doc": "Accumulate executions until order is filled or expires"
+        },
+        {
+          "value": "2",
+          "name": "AccumulateUntilVerballyNotifiedOtherwise",
+          "aliases": [
+            "AccumulateUntilVerballlyNotifiedOtherwise"
+          ],
+          "doc": "Accumulate until verbally notified otherwise"
+        }
+      ],
+      "fix:tag": "427"
+    }
+  },
+  {
+    "name": "nostrikes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of list strike price entries.",
+      "display": "NoStrikes",
+      "fix:tag": "428"
+    }
+  },
+  {
+    "name": "liststatustype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the status type.",
+      "display": "ListStatusType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Ack",
+          "doc": "Ack"
+        },
+        {
+          "value": "2",
+          "name": "Response",
+          "doc": "Response"
+        },
+        {
+          "value": "3",
+          "name": "Timed",
+          "doc": "Timed"
+        },
+        {
+          "value": "4",
+          "name": "ExecStarted",
+          "doc": "Exec Started"
+        },
+        {
+          "value": "5",
+          "name": "AllDone",
+          "doc": "All Done"
+        },
+        {
+          "value": "6",
+          "name": "Alert",
+          "doc": "Alert"
+        }
+      ],
+      "fix:tag": "429"
+    }
+  },
+  {
+    "name": "netgrossind",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
+      "display": "NetGrossInd",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Net",
+          "doc": "Net"
+        },
+        {
+          "value": "2",
+          "name": "Gross",
+          "doc": "Gross"
+        }
+      ],
+      "fix:tag": "430"
+    }
+  },
+  {
+    "name": "listorderstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the status of a list order.",
+      "display": "ListOrderStatus",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "InBiddingProcess",
+          "doc": "In bidding process"
+        },
+        {
+          "value": "2",
+          "name": "ReceivedForExecution",
+          "doc": "Received for execution"
+        },
+        {
+          "value": "3",
+          "name": "Executing",
+          "doc": "Executing"
+        },
+        {
+          "value": "4",
+          "name": "Cancelling",
+          "doc": "Cancelling"
+        },
+        {
+          "value": "5",
+          "name": "Alert",
+          "doc": "Alert"
+        },
+        {
+          "value": "6",
+          "name": "AllDone",
+          "doc": "All Done"
+        },
+        {
+          "value": "7",
+          "name": "Reject",
+          "doc": "Reject"
+        }
+      ],
+      "fix:tag": "431"
+    }
+  },
+  {
+    "name": "expiredate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Date of order expiration (last day the order can trade), always expressed in terms of the local market date. The time at which the order expires is determined by the local market's business practices",
+      "display": "ExpireDate",
+      "fix:tag": "432"
+    }
+  },
+  {
+    "name": "listexecinsttype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of ListExecInst (69).",
+      "display": "ListExecInstType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Immediate",
+          "doc": "Immediate"
+        },
+        {
+          "value": "2",
+          "name": "WaitForInstruction",
+          "doc": "Wait for Execut Instruction (i.e. a List Execut message or phone call before proceeding with execution of the list)"
+        },
+        {
+          "value": "3",
+          "name": "SellDriven",
+          "doc": "Exchange/switch CIV order - Sell driven"
+        },
+        {
+          "value": "4",
+          "name": "BuyDrivenCashTopUp",
+          "doc": "Exchange/switch CIV order - Buy driven, cash top-up (i.e. additional cash will be provided to fulfill the order)"
+        },
+        {
+          "value": "5",
+          "name": "BuyDrivenCashWithdraw",
+          "doc": "Exchange/switch CIV order - Buy driven, cash withdraw (i.e. additional cash will not be provided to fulfill the order)"
+        }
+      ],
+      "fix:tag": "433"
+    }
+  },
+  {
+    "name": "cxlrejresponseto",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of request that a Cancel Reject is in response to.",
+      "display": "CxlRejResponseTo",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "OrderCancelRequest",
+          "doc": "Order cancel request"
+        },
+        {
+          "value": "2",
+          "name": "OrderCancelReplaceRequest",
+          "aliases": [
+            "OrderCancel"
+          ],
+          "doc": "Order cancel/replace request"
+        }
+      ],
+      "fix:tag": "434"
+    }
+  },
+  {
+    "name": "underlyingcouponrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Underlying security's CouponRate.",
+      "display": "UnderlyingCouponRate",
+      "fix:tag": "435"
+    }
+  },
+  {
+    "name": "underlyingcontractmultiplier",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Underlying security's ContractMultiplier.",
+      "display": "UnderlyingContractMultiplier",
+      "fix:tag": "436"
+    }
+  },
+  {
+    "name": "contratradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity traded with the ContraBroker (375).",
+      "display": "ContraTradeQty",
+      "fix:tag": "437"
+    }
+  },
+  {
+    "name": "contratradetime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifes the time of the trade with the ContraBroker (375). (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+      "display": "ContraTradeTime",
+      "fix:tag": "438"
+    }
+  },
+  {
+    "name": "clearingfirm",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingFirm",
+      "fix:replacements": [
+        {
+          "plan": "select [{partyid: clearingfirm, partyrole: ('4')}] as parties",
+          "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)"
+        }
+      ],
+      "fix:tag": "439"
+    }
+  },
+  {
+    "name": "clearingaccount",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingAccount",
+      "fix:replacements": [
+        {
+          "plan": "select [{partyrole: ('4'), ptyssubgrp: [{partysubid: clearingaccount}]}] as parties",
+          "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)"
+        }
+      ],
+      "fix:tag": "440"
+    }
+  },
+  {
+    "name": "liquiditynumsecurities",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of Securites between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency.",
+      "display": "LiquidityNumSecurities",
+      "fix:tag": "441"
+    }
+  },
+  {
+    "name": "multilegreportingtype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate how the multi-legged security (e.g. option strategies, spreads, etc.) is being reported.",
+      "display": "MultiLegReportingType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "SingleSecurity",
+          "doc": "Single security (default if not specified)"
+        },
+        {
+          "value": "2",
+          "name": "IndividualLegOfAMultiLegSecurity",
+          "doc": "Individual leg of a multi-leg security"
+        },
+        {
+          "value": "3",
+          "name": "MultiLegSecurity",
+          "doc": "Multi-leg security"
+        }
+      ],
+      "fix:tag": "442"
+    }
+  },
+  {
+    "name": "striketime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The time at which current market prices are used to determine the value of a basket.",
+      "display": "StrikeTime",
+      "fix:tag": "443"
+    }
+  },
+  {
+    "name": "liststatustext",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Free format text string related to List Status.",
+      "display": "ListStatusText",
+      "fix:tag": "444"
+    }
+  },
+  {
+    "name": "encodedliststatustextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedListStatusText (446) field.",
+      "display": "EncodedListStatusTextLen",
+      "fix:tag": "445"
+    }
+  },
+  {
+    "name": "encodedliststatustext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the ListStatusText (444) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ListStatusText field.",
+      "display": "EncodedListStatusText",
+      "fix:tag": "446"
+    }
+  },
+  {
+    "name": "partyidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.",
+      "display": "PartyIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "KoreanInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Korean Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "UKNationalInsuranceOrPensionNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "UK National Insurance or Pension Number"
+        },
+        {
+          "value": "B",
+          "name": "BIC",
+          "group": "For all PartyRoles",
+          "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
+        },
+        {
+          "value": "I",
+          "name": "ISITCAcronym",
+          "group": "For PartyRole=\"Broker of Credit\"",
+          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
+        },
+        {
+          "value": "2",
+          "name": "TaiwaneseForeignInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
+        },
+        {
+          "value": "7",
+          "name": "USSocialSecurityNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Social Security Number"
+        },
+        {
+          "value": "C",
+          "name": "GeneralIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
+        },
+        {
+          "value": "3",
+          "name": "TaiwaneseTradingAcct",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Trading Acct"
+        },
+        {
+          "value": "8",
+          "name": "USEmployerOrTaxIDNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Employer or Tax ID Number"
+        },
+        {
+          "value": "D",
+          "name": "Proprietary",
+          "group": "For all PartyRoles",
+          "doc": "Proprietary / Custom code"
+        },
+        {
+          "value": "4",
+          "name": "MalaysianCentralDepository",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Malaysian Central Depository (MCD) number"
+        },
+        {
+          "value": "9",
+          "name": "AustralianBusinessNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Business Number"
+        },
+        {
+          "value": "E",
+          "name": "ISOCountryCode",
+          "group": "For all PartyRoles",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "5",
+          "name": "ChineseInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Chinese Investor ID"
+        },
+        {
+          "value": "A",
+          "name": "AustralianTaxFileNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Tax File Number"
+        },
+        {
+          "value": "F",
+          "name": "SettlementEntityLocation",
+          "group": "For all PartyRoles",
+          "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
+        },
+        {
+          "value": "G",
+          "name": "MIC",
+          "group": "For all PartyRoles",
+          "doc": "Market Identifier Code (ISO 10383) MIC"
+        },
+        {
+          "value": "J",
+          "name": "TaxID",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Tax ID"
+        },
+        {
+          "value": "H",
+          "name": "CSDParticipant",
+          "group": "For all PartyRoles",
+          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
+        },
+        {
+          "value": "K",
+          "name": "AustralianCompanyNumber",
+          "group": "For all PartyRoles",
+          "doc": "Australian Company Number"
+        },
+        {
+          "value": "L",
+          "name": "AustralianRegisteredBodyNumber",
+          "group": "For all PartyRoles",
+          "doc": "Australian Registered Body Number"
+        },
+        {
+          "value": "M",
+          "name": "CFTCReportingFirmIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "CFTC reporting firm identifier"
+        },
+        {
+          "value": "N",
+          "name": "LegalEntityIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Legal Entity Identifier (ISO 17442) LEI"
+        },
+        {
+          "value": "O",
+          "name": "InterimIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Interim identifier"
+        },
+        {
+          "value": "P",
+          "name": "ShortCodeIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Short code identifier"
+        },
+        {
+          "value": "Q",
+          "name": "NationalIDNaturalPerson",
+          "group": "For all PartyRoles",
+          "doc": "National ID of natural person"
+        },
+        {
+          "value": "R",
+          "name": "IndiaPermanentAccountNumber",
+          "group": "For all PartyRoles",
+          "doc": "India Permanent Account Number"
+        },
+        {
+          "value": "S",
+          "name": "FDID",
+          "group": "For all PartyRoles",
+          "doc": "Firm designated identifier"
+        },
+        {
+          "value": "T",
+          "name": "SPSAID",
+          "group": "For all PartyRoles",
+          "doc": "Special Segregated Account ID"
+        },
+        {
+          "value": "U",
+          "name": "MasterSPSAID",
+          "group": "For all PartyRoles",
+          "doc": "Master Special Segregated Account ID"
+        },
+        {
+          "value": "V",
+          "name": "KoreaShortSellingRegistrationNumber",
+          "group": "For all PartyRoles",
+          "doc": "Korea Short Selling Registration Number"
+        }
+      ],
+      "fix:tag": "447"
+    }
+  },
+  {
+    "name": "partyid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
+      "display": "PartyID",
+      "fix:tag": "448"
+    }
+  },
+  {
+    "name": "totalvolumetradeddate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalVolumeTradedDate",
+      "fix:tag": "449"
+    }
+  },
+  {
+    "name": "totalvolumetradedtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalVolumeTradedTime",
+      "fix:tag": "450"
+    }
+  },
+  {
+    "name": "netchgprevday",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Net change from previous day's closing price vs. last traded price.",
+      "display": "NetChgPrevDay",
+      "fix:tag": "451"
+    }
+  },
+  {
+    "name": "partyrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type or role of the PartyID (448) specified.",
+      "display": "PartyRole",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ExecutingFirm",
+          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+        },
+        {
+          "value": "2",
+          "name": "BrokerOfCredit",
+          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+        },
+        {
+          "value": "3",
+          "name": "ClientID",
+          "doc": "Client ID (formerly FIX 4.2 ClientID)"
+        },
+        {
+          "value": "4",
+          "name": "ClearingFirm",
+          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+        },
+        {
+          "value": "5",
+          "name": "InvestorID",
+          "doc": "Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "IntroducingFirm",
+          "doc": "Introducing Firm"
+        },
+        {
+          "value": "7",
+          "name": "EnteringFirm",
+          "doc": "Entering Firm"
+        },
+        {
+          "value": "8",
+          "name": "Locate",
+          "doc": "Locate / Lending Firm (for short-sales)"
+        },
+        {
+          "value": "9",
+          "name": "FundManagerClientID",
+          "doc": "Fund Manager Client ID (for CIV)"
+        },
+        {
+          "value": "10",
+          "name": "SettlementLocation",
+          "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
+        },
+        {
+          "value": "11",
+          "name": "OrderOriginationTrader",
+          "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
+        },
+        {
+          "value": "12",
+          "name": "ExecutingTrader",
+          "doc": "Executing Trader (associated with Executing Firm - actually executes)"
+        },
+        {
+          "value": "13",
+          "name": "OrderOriginationFirm",
+          "doc": "Order Origination Firm (e.g. buy-side firm)"
+        },
+        {
+          "value": "14",
+          "name": "GiveupClearingFirmDepr",
+          "doc": "Giveup Clearing Firm (firm to which trade is given up)"
+        },
+        {
+          "value": "15",
+          "name": "CorrespondantClearingFirm",
+          "doc": "Correspondant Clearing Firm"
+        },
+        {
+          "value": "16",
+          "name": "ExecutingSystem",
+          "doc": "Executing System"
+        },
+        {
+          "value": "17",
+          "name": "ContraFirm",
+          "doc": "Contra Firm"
+        },
+        {
+          "value": "18",
+          "name": "ContraClearingFirm",
+          "doc": "Contra Clearing Firm"
+        },
+        {
+          "value": "19",
+          "name": "SponsoringFirm",
+          "doc": "Sponsoring Firm"
+        },
+        {
+          "value": "20",
+          "name": "UnderlyingContraFirm",
+          "doc": "Underlying Contra Firm"
+        },
+        {
+          "value": "21",
+          "name": "ClearingOrganization",
+          "doc": "Clearing Organization"
+        },
+        {
+          "value": "22",
+          "name": "Exchange",
+          "doc": "Exchange"
+        },
+        {
+          "value": "24",
+          "name": "CustomerAccount",
+          "doc": "Customer Account"
+        },
+        {
+          "value": "25",
+          "name": "CorrespondentClearingOrganization",
+          "doc": "Correspondent Clearing Organization"
+        },
+        {
+          "value": "26",
+          "name": "CorrespondentBroker",
+          "doc": "Correspondent Broker"
+        },
+        {
+          "value": "27",
+          "name": "Buyer",
+          "doc": "Buyer/Seller (Receiver/Deliverer)"
+        },
+        {
+          "value": "28",
+          "name": "Custodian",
+          "doc": "Custodian"
+        },
+        {
+          "value": "29",
+          "name": "Intermediary",
+          "doc": "Intermediary"
+        },
+        {
+          "value": "30",
+          "name": "Agent",
+          "doc": "Agent"
+        },
+        {
+          "value": "31",
+          "name": "SubCustodian",
+          "doc": "Sub-custodian"
+        },
+        {
+          "value": "32",
+          "name": "Beneficiary",
+          "doc": "Beneficiary"
+        },
+        {
+          "value": "33",
+          "name": "InterestedParty",
+          "doc": "Interested party"
+        },
+        {
+          "value": "34",
+          "name": "RegulatoryBody",
+          "doc": "Regulatory body"
+        },
+        {
+          "value": "35",
+          "name": "LiquidityProvider",
+          "doc": "Liquidity provider"
+        },
+        {
+          "value": "36",
+          "name": "EnteringTrader",
+          "doc": "Entering trader"
+        },
+        {
+          "value": "37",
+          "name": "ContraTrader",
+          "doc": "Contra trader"
+        },
+        {
+          "value": "38",
+          "name": "PositionAccount",
+          "doc": "Position account"
+        },
+        {
+          "value": "39",
+          "name": "ContraInvestorID",
+          "doc": "Contra Investor ID"
+        },
+        {
+          "value": "40",
+          "name": "TransferToFirm",
+          "doc": "Transfer to Firm"
+        },
+        {
+          "value": "41",
+          "name": "ContraPositionAccount",
+          "doc": "Contra Position Account"
+        },
+        {
+          "value": "42",
+          "name": "ContraExchange",
+          "doc": "Contra Exchange"
+        },
+        {
+          "value": "43",
+          "name": "InternalCarryAccount",
+          "doc": "Internal Carry Account"
+        },
+        {
+          "value": "44",
+          "name": "OrderEntryOperatorID",
+          "doc": "Order Entry Operator ID"
+        },
+        {
+          "value": "45",
+          "name": "SecondaryAccountNumber",
+          "doc": "Secondary Account Number"
+        },
+        {
+          "value": "46",
+          "name": "ForeignFirm",
+          "doc": "Foreign Firm"
+        },
+        {
+          "value": "47",
+          "name": "ThirdPartyAllocationFirm",
+          "doc": "Third Party Allocation Firm"
+        },
+        {
+          "value": "48",
+          "name": "ClaimingAccount",
+          "doc": "Claiming Account"
+        },
+        {
+          "value": "49",
+          "name": "AssetManager",
+          "doc": "Asset Manager"
+        },
+        {
+          "value": "50",
+          "name": "PledgorAccount",
+          "doc": "Pledgor Account"
+        },
+        {
+          "value": "51",
+          "name": "PledgeeAccount",
+          "doc": "Pledgee Account"
+        },
+        {
+          "value": "52",
+          "name": "LargeTraderReportableAccount",
+          "doc": "Large Trader Reportable Account"
+        },
+        {
+          "value": "53",
+          "name": "TraderMnemonic",
+          "doc": "Trader mnemonic"
+        },
+        {
+          "value": "54",
+          "name": "SenderLocation",
+          "doc": "Sender Location"
+        },
+        {
+          "value": "55",
+          "name": "SessionID",
+          "doc": "Session ID"
+        },
+        {
+          "value": "56",
+          "name": "AcceptableCounterparty",
+          "doc": "Acceptable Counterparty"
+        },
+        {
+          "value": "57",
+          "name": "UnacceptableCounterparty",
+          "doc": "Unacceptable Counterparty"
+        },
+        {
+          "value": "58",
+          "name": "EnteringUnit",
+          "doc": "Entering Unit"
+        },
+        {
+          "value": "59",
+          "name": "ExecutingUnit",
+          "doc": "Executing Unit"
+        },
+        {
+          "value": "60",
+          "name": "IntroducingBroker",
+          "doc": "Introducing Broker"
+        },
+        {
+          "value": "61",
+          "name": "QuoteOriginator",
+          "doc": "Quote originator"
+        },
+        {
+          "value": "62",
+          "name": "ReportOriginator",
+          "doc": "Report originator"
+        },
+        {
+          "value": "63",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic internaliser (SI)"
+        },
+        {
+          "value": "64",
+          "name": "MultilateralTradingFacility",
+          "doc": "Multilateral Trading Facility (MTF)"
+        },
+        {
+          "value": "65",
+          "name": "RegulatedMarket",
+          "doc": "Regulated Market (RM)"
+        },
+        {
+          "value": "66",
+          "name": "MarketMaker",
+          "doc": "Market Maker"
+        },
+        {
+          "value": "67",
+          "name": "InvestmentFirm",
+          "doc": "Investment Firm"
+        },
+        {
+          "value": "68",
+          "name": "HostCompetentAuthority",
+          "doc": "Host Competent Authority (Host CA)"
+        },
+        {
+          "value": "69",
+          "name": "HomeCompetentAuthority",
+          "doc": "Home Competent Authority (Home CA)"
+        },
+        {
+          "value": "70",
+          "name": "CompetentAuthorityLiquidity",
+          "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
+        },
+        {
+          "value": "71",
+          "name": "CompetentAuthorityTransactionVenue",
+          "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
+        },
+        {
+          "value": "72",
+          "name": "ReportingIntermediary",
+          "doc": "Reporting intermediary"
+        },
+        {
+          "value": "73",
+          "name": "ExecutionVenue",
+          "doc": "Execution Venue"
+        },
+        {
+          "value": "74",
+          "name": "MarketDataEntryOriginator",
+          "doc": "Market data entry originator"
+        },
+        {
+          "value": "75",
+          "name": "LocationID",
+          "doc": "Location ID"
+        },
+        {
+          "value": "76",
+          "name": "DeskID",
+          "doc": "Desk ID"
+        },
+        {
+          "value": "77",
+          "name": "MarketDataMarket",
+          "doc": "Market data market"
+        },
+        {
+          "value": "78",
+          "name": "AllocationEntity",
+          "doc": "Allocation Entity"
+        },
+        {
+          "value": "79",
+          "name": "PrimeBroker",
+          "doc": "Prime Broker providing General Trade Services"
+        },
+        {
+          "value": "80",
+          "name": "StepOutFirm",
+          "doc": "Step-Out Firm (Prime Broker)"
+        },
+        {
+          "value": "81",
+          "name": "BrokerClearingID",
+          "doc": "Broker clearing identifier"
+        },
+        {
+          "value": "82",
+          "name": "CentralRegistrationDepository",
+          "doc": "Central Registration Depository (CRD)"
+        },
+        {
+          "value": "83",
+          "name": "ClearingAccount",
+          "doc": "Clearing Account"
+        },
+        {
+          "value": "84",
+          "name": "AcceptableSettlingCounterparty",
+          "doc": "Acceptable Settling Counterparty"
+        },
+        {
+          "value": "85",
+          "name": "UnacceptableSettlingCounterparty",
+          "doc": "Unacceptable Settling Counterparty"
+        },
+        {
+          "value": "86",
+          "name": "CLSMemberBank",
+          "doc": "CLS Member Bank"
+        },
+        {
+          "value": "87",
+          "name": "InConcertGroup",
+          "doc": "In Concert Group"
+        },
+        {
+          "value": "88",
+          "name": "InConcertControllingEntity",
+          "doc": "In Concert Controlling Entity"
+        },
+        {
+          "value": "89",
+          "name": "LargePositionsReportingAccount",
+          "doc": "Large Positions Reporting Account"
+        },
+        {
+          "value": "90",
+          "name": "SettlementFirm",
+          "doc": "Settlement Firm"
+        },
+        {
+          "value": "91",
+          "name": "SettlementAccount",
+          "doc": "Settlement account"
+        },
+        {
+          "value": "92",
+          "name": "ReportingMarketCenter",
+          "doc": "Reporting Market Center"
+        },
+        {
+          "value": "93",
+          "name": "RelatedReportingMarketCenter",
+          "doc": "Related Reporting Market Center"
+        },
+        {
+          "value": "94",
+          "name": "AwayMarket",
+          "doc": "Away Market"
+        },
+        {
+          "value": "95",
+          "name": "GiveupTradingFirm",
+          "doc": "Give-up (trading) firm"
+        },
+        {
+          "value": "96",
+          "name": "TakeupTradingFirm",
+          "doc": "Take-up (trading) firm"
+        },
+        {
+          "value": "97",
+          "name": "GiveupClearingFirm",
+          "doc": "Give-up clearing firm"
+        },
+        {
+          "value": "98",
+          "name": "TakeupClearingFirm",
+          "doc": "Take-up clearing firm"
+        },
+        {
+          "value": "99",
+          "name": "OriginatingMarket",
+          "doc": "Originating Market"
+        },
+        {
+          "value": "100",
+          "name": "MarginAccount",
+          "doc": "Margin account"
+        },
+        {
+          "value": "101",
+          "name": "CollateralAssetAccount",
+          "doc": "Collateral asset account"
+        },
+        {
+          "value": "102",
+          "name": "DataRepository",
+          "doc": "Data repository"
+        },
+        {
+          "value": "103",
+          "name": "CalculationAgent",
+          "doc": "Calculation agent"
+        },
+        {
+          "value": "104",
+          "name": "ExerciseNoticeSender",
+          "doc": "Sender of exercise notice"
+        },
+        {
+          "value": "105",
+          "name": "ExerciseNoticeReceiver",
+          "doc": "Receiver of exercise notice"
+        },
+        {
+          "value": "106",
+          "name": "RateReferenceBank",
+          "doc": "Rate reference bank"
+        },
+        {
+          "value": "107",
+          "name": "Correspondent",
+          "doc": "Correspondent"
+        },
+        {
+          "value": "109",
+          "name": "BeneficiaryBank",
+          "doc": "Beneficiary's bank or depository institution"
+        },
+        {
+          "value": "110",
+          "name": "Borrower",
+          "doc": "Borrower"
+        },
+        {
+          "value": "111",
+          "name": "PrimaryObligator",
+          "doc": "Primary obligator"
+        },
+        {
+          "value": "112",
+          "name": "Guarantor",
+          "doc": "Guarantor"
+        },
+        {
+          "value": "113",
+          "name": "ExcludedReferenceEntity",
+          "doc": "Excluded reference entity"
+        },
+        {
+          "value": "114",
+          "name": "DeterminingParty",
+          "doc": "Determining party"
+        },
+        {
+          "value": "115",
+          "name": "HedgingParty",
+          "doc": "Hedging party"
+        },
+        {
+          "value": "116",
+          "name": "ReportingEntity",
+          "doc": "Reporting entity"
+        },
+        {
+          "value": "117",
+          "name": "SalesPerson",
+          "doc": "Sales person"
+        },
+        {
+          "value": "118",
+          "name": "Operator",
+          "doc": "Operator"
+        },
+        {
+          "value": "119",
+          "name": "CSD",
+          "doc": "Central Securities Depository (CSD)"
+        },
+        {
+          "value": "120",
+          "name": "ICSD",
+          "doc": "International Central Securities Depository (ICSD)"
+        },
+        {
+          "value": "121",
+          "name": "TradingSubAccount",
+          "doc": "Trading sub-account"
+        },
+        {
+          "value": "122",
+          "name": "InvestmentDecisionMaker",
+          "doc": "Investment decision maker"
+        },
+        {
+          "value": "123",
+          "name": "PublishingIntermediary",
+          "doc": "Publishing intermediary"
+        },
+        {
+          "value": "124",
+          "name": "CSDParticipant",
+          "doc": "Central Securities Depository (CSD) Participant"
+        },
+        {
+          "value": "125",
+          "name": "Issuer",
+          "doc": "Issuer"
+        },
+        {
+          "value": "126",
+          "name": "ContraCustomerAccount",
+          "doc": "Contra Customer Account"
+        },
+        {
+          "value": "127",
+          "name": "ContraInvestmentDecisionMaker",
+          "doc": "Contra Investment Decision Maker"
+        },
+        {
+          "value": "128",
+          "name": "AuthorizingPerson",
+          "doc": "Authorizing person"
+        },
+        {
+          "value": "129",
+          "name": "PrimaryPlaceOfListing",
+          "doc": "Primary place of listing"
+        },
+        {
+          "value": "130",
+          "name": "SecondaryPlaceOfListing",
+          "doc": "Secondary place of listing"
+        },
+        {
+          "value": "131",
+          "name": "Algorithm",
+          "doc": "Algorithm"
+        }
+      ],
+      "fix:tag": "452"
+    }
+  },
+  {
+    "name": "nopartyids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
+      "display": "NoPartyIDs",
+      "fix:tag": "453"
+    }
+  },
+  {
+    "name": "nosecurityaltid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of SecurityAltID (455) entries.",
+      "display": "NoSecurityAltID",
+      "fix:tag": "454"
+    }
+  },
+  {
+    "name": "securityaltid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.",
+      "display": "SecurityAltID",
+      "fix:tag": "455"
+    }
+  },
+  {
+    "name": "securityaltidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies class or source of the SecurityAltID(455) value.",
+      "display": "SecurityAltIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "456"
+    }
+  },
+  {
+    "name": "nounderlyingsecurityaltid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of UnderlyingSecurityAltID (458) entries.",
+      "display": "NoUnderlyingSecurityAltID",
+      "fix:tag": "457"
+    }
+  },
+  {
+    "name": "underlyingsecurityaltid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Alternate Security identifier value for this underlying security of UnderlyingSecurityAltIDSource (459) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires UnderlyingSecurityAltIDSource.",
+      "display": "UnderlyingSecurityAltID",
+      "fix:tag": "458"
+    }
+  },
+  {
+    "name": "underlyingsecurityaltidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies class or source of the UnderlyingSecurityAltID(458) value.",
+      "display": "UnderlyingSecurityAltIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "459"
+    }
+  },
+  {
+    "name": "product",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields.",
+      "display": "Product",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "AGENCY",
+          "doc": "AGENCY"
+        },
+        {
+          "value": "2",
+          "name": "COMMODITY",
+          "doc": "COMMODITY"
+        },
+        {
+          "value": "3",
+          "name": "CORPORATE",
+          "doc": "CORPORATE"
+        },
+        {
+          "value": "4",
+          "name": "CURRENCY",
+          "doc": "CURRENCY"
+        },
+        {
+          "value": "5",
+          "name": "EQUITY",
+          "doc": "EQUITY"
+        },
+        {
+          "value": "6",
+          "name": "GOVERNMENT",
+          "doc": "GOVERNMENT"
+        },
+        {
+          "value": "7",
+          "name": "INDEX",
+          "doc": "INDEX"
+        },
+        {
+          "value": "8",
+          "name": "LOAN",
+          "doc": "LOAN"
+        },
+        {
+          "value": "9",
+          "name": "MONEYMARKET",
+          "doc": "MONEYMARKET"
+        },
+        {
+          "value": "10",
+          "name": "MORTGAGE",
+          "doc": "MORTGAGE"
+        },
+        {
+          "value": "11",
+          "name": "MUNICIPAL",
+          "doc": "MUNICIPAL"
+        },
+        {
+          "value": "12",
+          "name": "OTHER",
+          "doc": "OTHER"
+        },
+        {
+          "value": "13",
+          "name": "FINANCING",
+          "doc": "FINANCING"
+        }
+      ],
+      "fix:derivation": "case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end",
+      "fix:tag": "460"
+    }
+  },
+  {
+    "name": "cficode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
+      "display": "CFICode",
+      "fix:derivation": "case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end",
+      "fix:tag": "461"
+    }
+  },
+  {
+    "name": "underlyingproduct",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Underlying security's Product.",
+      "display": "UnderlyingProduct",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "AGENCY",
+          "doc": "AGENCY"
+        },
+        {
+          "value": "2",
+          "name": "COMMODITY",
+          "doc": "COMMODITY"
+        },
+        {
+          "value": "3",
+          "name": "CORPORATE",
+          "doc": "CORPORATE"
+        },
+        {
+          "value": "4",
+          "name": "CURRENCY",
+          "doc": "CURRENCY"
+        },
+        {
+          "value": "5",
+          "name": "EQUITY",
+          "doc": "EQUITY"
+        },
+        {
+          "value": "6",
+          "name": "GOVERNMENT",
+          "doc": "GOVERNMENT"
+        },
+        {
+          "value": "7",
+          "name": "INDEX",
+          "doc": "INDEX"
+        },
+        {
+          "value": "8",
+          "name": "LOAN",
+          "doc": "LOAN"
+        },
+        {
+          "value": "9",
+          "name": "MONEYMARKET",
+          "doc": "MONEYMARKET"
+        },
+        {
+          "value": "10",
+          "name": "MORTGAGE",
+          "doc": "MORTGAGE"
+        },
+        {
+          "value": "11",
+          "name": "MUNICIPAL",
+          "doc": "MUNICIPAL"
+        },
+        {
+          "value": "12",
+          "name": "OTHER",
+          "doc": "OTHER"
+        },
+        {
+          "value": "13",
+          "name": "FINANCING",
+          "doc": "FINANCING"
+        }
+      ],
+      "fix:tag": "462"
+    }
+  },
+  {
+    "name": "underlyingcficode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Underlying security's CFICode.",
+      "display": "UnderlyingCFICode",
+      "fix:tag": "463"
+    }
+  },
+  {
+    "name": "testmessageindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether or not this FIX Session is a \"test\" vs. \"production\" connection. Useful for preventing \"accidents\".",
+      "display": "TestMessageIndicator",
+      "fix:codes": [
+        {
+          "value": "N",
+          "name": "False",
+          "aliases": [
+            "No"
+          ],
+          "doc": "False (production)"
+        },
+        {
+          "value": "Y",
+          "name": "True",
+          "aliases": [
+            "Yes"
+          ],
+          "doc": "True (test)"
+        }
+      ],
+      "fix:tag": "464"
+    }
+  },
+  {
+    "name": "quantitytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "QuantityType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Shares"
+        },
+        {
+          "value": "2",
+          "name": "Bonds"
+        },
+        {
+          "value": "3",
+          "name": "Currentface"
+        },
+        {
+          "value": "4",
+          "name": "Originalface"
+        },
+        {
+          "value": "5",
+          "name": "Currency"
+        },
+        {
+          "value": "6",
+          "name": "Contracts"
+        },
+        {
+          "value": "7",
+          "name": "Other"
+        },
+        {
+          "value": "8",
+          "name": "Par"
+        }
+      ],
+      "fix:replacements": [
+        {
+          "plan": "select ('1') as qtytype where quantitytype = ('6')",
+          "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"
+        },
+        {
+          "plan": "select ('0') as qtytype where quantitytype = ('1')",
+          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+        },
+        {
+          "plan": "select ('0') as qtytype where quantitytype = ('5')",
+          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+        },
+        {
+          "plan": "select ('0') as qtytype where quantitytype = ('8')",
+          "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+        }
+      ],
+      "fix:tag": "465"
+    }
+  },
+  {
+    "name": "bookingrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Common reference passed to a post-trade booking process (e.g. industry matching utility).",
+      "display": "BookingRefID",
+      "fix:tag": "466"
+    }
+  },
+  {
+    "name": "individualallocid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for a specific NoAllocs (78) repeating group instance (e.g. for an AllocAccount).",
+      "display": "IndividualAllocID",
+      "fix:tag": "467"
+    }
+  },
+  {
+    "name": "roundingdirection",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies which direction to round For CIV - indicates whether or not the quantity of shares/units is to be rounded and in which direction where CashOrdQty (152) or (for CIV only) OrderPercent (516) are specified on an order.",
+      "display": "RoundingDirection",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RoundToNearest",
+          "doc": "Round to nearest"
+        },
+        {
+          "value": "1",
+          "name": "RoundDown",
+          "doc": "Round down"
+        },
+        {
+          "value": "2",
+          "name": "RoundUp",
+          "doc": "Round up"
+        }
+      ],
+      "fix:tag": "468"
+    }
+  },
+  {
+    "name": "roundingmodulus",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV - a float value indicating the value to which rounding is required.",
+      "display": "RoundingModulus",
+      "fix:tag": "469"
+    }
+  },
+  {
+    "name": "countryofissue",
+    "dtype": {
+      "type": "country"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
+      "display": "CountryOfIssue",
+      "fix:derivation": "case when substring(isincode, 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(isincode, 1, 2) end",
+      "fix:tag": "470"
+    }
+  },
+  {
+    "name": "stateorprovinceofissue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A two-character state or province abbreviation.",
+      "display": "StateOrProvinceOfIssue",
+      "fix:tag": "471"
+    }
+  },
+  {
+    "name": "localeofissue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the locale or region of issue.",
+      "display": "LocaleOfIssue",
+      "fix:tag": "472"
+    }
+  },
+  {
+    "name": "noregistdtls",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of registration details on a Registration Instructions message",
+      "display": "NoRegistDtls",
+      "fix:tag": "473"
+    }
+  },
+  {
+    "name": "mailingdtls",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Set of Correspondence address details, possibly including phone, fax, etc.",
+      "display": "MailingDtls",
+      "fix:tag": "474"
+    }
+  },
+  {
+    "name": "investorcountryofresidence",
+    "dtype": {
+      "type": "country"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The ISO 3166 Country code (2 character) identifying which country the beneficial investor is resident for tax purposes.",
+      "display": "InvestorCountryOfResidence",
+      "fix:tag": "475"
+    }
+  },
+  {
+    "name": "paymentref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "\"Settlement Payment Reference\" - A free format Payment reference to assist with reconciliation, e.g. a Client and/or Order ID number.",
+      "display": "PaymentRef",
+      "fix:tag": "476"
+    }
+  },
+  {
+    "name": "distribpaymentmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the payment method for a (fractional) distribution. Used for CIV.",
+      "display": "DistribPaymentMethod",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CREST",
+          "doc": "CREST"
+        },
+        {
+          "value": "2",
+          "name": "NSCC",
+          "doc": "NSCC"
+        },
+        {
+          "value": "3",
+          "name": "Euroclear",
+          "doc": "Euroclear"
+        },
+        {
+          "value": "4",
+          "name": "Clearstream",
+          "doc": "Clearstream"
+        },
+        {
+          "value": "5",
+          "name": "Cheque",
+          "doc": "Cheque"
+        },
+        {
+          "value": "6",
+          "name": "TelegraphicTransfer",
+          "doc": "Telegraphic Transfer"
+        },
+        {
+          "value": "7",
+          "name": "FedWire",
+          "doc": "Fed Wire"
+        },
+        {
+          "value": "8",
+          "name": "DirectCredit",
+          "doc": "Direct Credit (BECS, BACS)"
+        },
+        {
+          "value": "9",
+          "name": "ACHCredit",
+          "doc": "ACH Credit"
+        },
+        {
+          "value": "10",
+          "name": "BPAY",
+          "doc": "BPAY"
+        },
+        {
+          "value": "11",
+          "name": "HighValueClearingSystemHVACS",
+          "doc": "High Value Clearing System HVACS"
+        },
+        {
+          "value": "12",
+          "name": "ReinvestInFund",
+          "doc": "Reinvest In Fund"
+        },
+        {
+          "value": "999",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "477"
+    }
+  },
+  {
+    "name": "cashdistribcurr",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies currency to be used for Cash Distributions see \"Appendix 6-A Valid Currency Codes\".",
+      "display": "CashDistribCurr",
+      "fix:tag": "478"
+    }
+  },
+  {
+    "name": "commcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies currency to be used for Commission(12) if the commission currency is different from the deal currency.",
+      "display": "CommCurrency",
+      "fix:tag": "479"
+    }
+  },
+  {
+    "name": "cancellationrights",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV - A one character code identifying whether Cancellation rights/Cooling off period applies.",
+      "display": "CancellationRights",
+      "fix:codes": [
+        {
+          "value": "Y",
+          "name": "Yes",
+          "doc": "Yes"
+        },
+        {
+          "value": "N",
+          "name": "NoExecutionOnly",
+          "doc": "No - Execution Only"
+        },
+        {
+          "value": "M",
+          "name": "NoWaiverAgreement",
+          "doc": "No - Waiver agreement"
+        },
+        {
+          "value": "O",
+          "name": "NoInstitutional",
+          "doc": "No - Institutional"
+        }
+      ],
+      "fix:tag": "480"
+    }
+  },
+  {
+    "name": "moneylaunderingstatus",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A one character code identifying Money laundering status.",
+      "display": "MoneyLaunderingStatus",
+      "fix:codes": [
+        {
+          "value": "Y",
+          "name": "Passed",
+          "doc": "Passed"
+        },
+        {
+          "value": "N",
+          "name": "NotChecked",
+          "doc": "Not Checked"
+        },
+        {
+          "value": "1",
+          "name": "ExemptBelowLimit",
+          "doc": "Exempt - Below the Limit"
+        },
+        {
+          "value": "2",
+          "name": "ExemptMoneyType",
+          "doc": "Exempt - Client Money Type exemption"
+        },
+        {
+          "value": "3",
+          "name": "ExemptAuthorised",
+          "doc": "Exempt - Authorised Credit or financial institution"
+        }
+      ],
+      "fix:tag": "481"
+    }
+  },
+  {
+    "name": "mailinginst",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Free format text to specify mailing instruction requirements, e.g. \"no third party mailings\".",
+      "display": "MailingInst",
+      "fix:tag": "482"
+    }
+  },
+  {
+    "name": "transbkdtime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV A date and time stamp to indicate the time a CIV order was booked by the fund manager.",
+      "display": "TransBkdTime",
+      "fix:tag": "483"
+    }
+  },
+  {
+    "name": "execpricetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV - Identifies how the execution price LastPx (31) was calculated from the fund unit/share price(s) calculated at the fund valuation point.",
+      "display": "ExecPriceType",
+      "fix:codes": [
+        {
+          "value": "B",
+          "name": "BidPrice",
+          "doc": "Bid price"
+        },
+        {
+          "value": "C",
+          "name": "CreationPrice",
+          "doc": "Creation price"
+        },
+        {
+          "value": "D",
+          "name": "CreationPricePlusAdjustmentPercent",
+          "doc": "Creation price plus adjustment percent"
+        },
+        {
+          "value": "E",
+          "name": "CreationPricePlusAdjustmentAmount",
+          "doc": "Creation price plus adjustment amount"
+        },
+        {
+          "value": "O",
+          "name": "OfferPrice",
+          "doc": "Offer price"
+        },
+        {
+          "value": "P",
+          "name": "OfferPriceMinusAdjustmentPercent",
+          "doc": "Offer price minus adjustment percent"
+        },
+        {
+          "value": "Q",
+          "name": "OfferPriceMinusAdjustmentAmount",
+          "doc": "Offer price minus adjustment amount"
+        },
+        {
+          "value": "S",
+          "name": "SinglePrice",
+          "doc": "Single price"
+        }
+      ],
+      "fix:tag": "484"
+    }
+  },
+  {
+    "name": "execpriceadjustment",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV the amount or percentage by which the fund unit/share price was adjusted, as indicated by ExecPriceType (484)",
+      "display": "ExecPriceAdjustment",
+      "fix:tag": "485"
+    }
+  },
+  {
+    "name": "dateofbirth",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The date of birth applicable to the individual, e.g. required to open some types of tax-exempt account.",
+      "display": "DateOfBirth",
+      "fix:tag": "486"
+    }
+  },
+  {
+    "name": "tradereporttranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies Trade Report message transaction type",
+      "display": "TradeReportTransType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "New",
+          "doc": "New"
+        },
+        {
+          "value": "1",
+          "name": "Cancel",
+          "doc": "Cancel"
+        },
+        {
+          "value": "2",
+          "name": "Replace",
+          "doc": "Replace"
+        },
+        {
+          "value": "3",
+          "name": "Release",
+          "doc": "Release"
+        },
+        {
+          "value": "4",
+          "name": "Reverse",
+          "doc": "Reverse"
+        },
+        {
+          "value": "5",
+          "name": "CancelDueToBackOutOfTrade",
+          "doc": "Cancel Due To Back Out of Trade"
+        },
+        {
+          "value": "C",
+          "name": "CancelLegacy"
+        },
+        {
+          "value": "N",
+          "name": "NewLegacy"
+        },
+        {
+          "value": "R",
+          "name": "ReplaceLegacy"
+        }
+      ],
+      "fix:tag": "487"
+    }
+  },
+  {
+    "name": "cardholdername",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The name of the payment card holder as specified on the card being used for payment.",
+      "display": "CardHolderName",
+      "fix:tag": "488"
+    }
+  },
+  {
+    "name": "cardnumber",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of the payment card as specified on the card being used for payment.",
+      "display": "CardNumber",
+      "fix:tag": "489"
+    }
+  },
+  {
+    "name": "cardexpdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The expiry date of the payment card as specified on the card being used for payment.",
+      "display": "CardExpDate",
+      "fix:tag": "490"
+    }
+  },
+  {
+    "name": "cardissnum",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
+      "display": "CardIssNum",
+      "fix:names": [
+        "cardissno"
+      ],
+      "fix:tag": "491"
+    }
+  },
+  {
+    "name": "paymentmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the settlement payment method.",
+      "display": "PaymentMethod",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CREST",
+          "doc": "CREST"
+        },
+        {
+          "value": "2",
+          "name": "NSCC",
+          "doc": "NSCC"
+        },
+        {
+          "value": "3",
+          "name": "Euroclear",
+          "doc": "Euroclear"
+        },
+        {
+          "value": "4",
+          "name": "Clearstream",
+          "doc": "Clearstream"
+        },
+        {
+          "value": "5",
+          "name": "Cheque",
+          "doc": "Cheque"
+        },
+        {
+          "value": "6",
+          "name": "TelegraphicTransfer",
+          "doc": "Telegraphic Transfer"
+        },
+        {
+          "value": "7",
+          "name": "FedWire",
+          "doc": "Fed Wire"
+        },
+        {
+          "value": "8",
+          "name": "DebitCard",
+          "doc": "Debit Card"
+        },
+        {
+          "value": "9",
+          "name": "DirectDebit",
+          "doc": "Direct Debit (BECS)"
+        },
+        {
+          "value": "10",
+          "name": "DirectCredit",
+          "doc": "Direct Credit (BECS)"
+        },
+        {
+          "value": "11",
+          "name": "CreditCard",
+          "doc": "Credit Card"
+        },
+        {
+          "value": "12",
+          "name": "ACHDebit",
+          "doc": "ACH Debit"
+        },
+        {
+          "value": "13",
+          "name": "ACHCredit",
+          "doc": "ACH Credit"
+        },
+        {
+          "value": "14",
+          "name": "BPAY",
+          "doc": "BPAY"
+        },
+        {
+          "value": "15",
+          "name": "HighValueClearingSystem",
+          "doc": "High Value Clearing System (HVACS)"
+        },
+        {
+          "value": "16",
+          "name": "CHIPS",
+          "doc": "CHIPS"
+        },
+        {
+          "value": "17",
+          "name": "SWIFT",
+          "doc": "S.W.I.F.T."
+        },
+        {
+          "value": "18",
+          "name": "CHAPS",
+          "doc": "CHAPS"
+        },
+        {
+          "value": "19",
+          "name": "SIC",
+          "doc": "SIC"
+        },
+        {
+          "value": "20",
+          "name": "EuroSIC",
+          "doc": "euroSIC"
+        },
+        {
+          "value": "999",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "492"
+    }
+  },
+  {
+    "name": "registaccttype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For CIV - a fund manager-defined code identifying which of the fund manager's account types is required.",
+      "display": "RegistAcctType",
+      "fix:tag": "493"
+    }
+  },
+  {
+    "name": "designation",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Free format text defining the designation to be associated with a holding on the register. Used to identify assets of a specific underlying investor using a common registration, e.g. a broker's nominee or street name.",
+      "display": "Designation",
+      "fix:tag": "494"
+    }
+  },
+  {
+    "name": "taxadvantagetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of tax exempt account in which purchases shares/units are to be held. Used for CIV.",
+      "display": "TaxAdvantageType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None/Not Applicable (default)"
+        },
+        {
+          "value": "1",
+          "name": "MaxiISA",
+          "doc": "Maxi ISA (UK)"
+        },
+        {
+          "value": "2",
+          "name": "TESSA",
+          "doc": "TESSA (UK)"
+        },
+        {
+          "value": "3",
+          "name": "MiniCashISA",
+          "doc": "Mini Cash ISA (UK)"
+        },
+        {
+          "value": "4",
+          "name": "MiniStocksAndSharesISA",
+          "doc": "Mini Stocks And Shares ISA (UK)"
+        },
+        {
+          "value": "5",
+          "name": "MiniInsuranceISA",
+          "doc": "Mini Insurance ISA (UK)"
+        },
+        {
+          "value": "6",
+          "name": "CurrentYearPayment",
+          "doc": "Current Year Payment (US)"
+        },
+        {
+          "value": "7",
+          "name": "PriorYearPayment",
+          "doc": "Prior Year Payment (US)"
+        },
+        {
+          "value": "8",
+          "name": "AssetTransfer",
+          "doc": "Asset Transfer (US)"
+        },
+        {
+          "value": "9",
+          "name": "EmployeePriorYear",
+          "doc": "Employee - prior year (US)"
+        },
+        {
+          "value": "10",
+          "name": "EmployeeCurrentYear",
+          "doc": "Employee - current year (US)"
+        },
+        {
+          "value": "11",
+          "name": "EmployerPriorYear",
+          "doc": "Employer - prior year (US)"
+        },
+        {
+          "value": "12",
+          "name": "EmployerCurrentYear",
+          "doc": "Employer - current year (US)"
+        },
+        {
+          "value": "13",
+          "name": "NonFundPrototypeIRA",
+          "doc": "Non-fund prototype IRA (US)"
+        },
+        {
+          "value": "14",
+          "name": "NonFundQualifiedPlan",
+          "doc": "Non-fund qualified plan (US)"
+        },
+        {
+          "value": "15",
+          "name": "DefinedContributionPlan",
+          "doc": "Defined contribution plan (US)"
+        },
+        {
+          "value": "16",
+          "name": "IRA",
+          "doc": "Individual Retirement Account (US)"
+        },
+        {
+          "value": "17",
+          "name": "IRARollover",
+          "doc": "Individual Retirement Account - Rollover (US)"
+        },
+        {
+          "value": "18",
+          "name": "KEOGH",
+          "doc": "KEOGH (US)"
+        },
+        {
+          "value": "19",
+          "name": "ProfitSharingPlan",
+          "doc": "Profit Sharing Plan (US)"
+        },
+        {
+          "value": "20",
+          "name": "US401K",
+          "doc": "401(k) (US)"
+        },
+        {
+          "value": "21",
+          "name": "SelfDirectedIRA",
+          "doc": "Self-directed IRA (US)"
+        },
+        {
+          "value": "22",
+          "name": "US403b",
+          "doc": "403(b) (US)"
+        },
+        {
+          "value": "23",
+          "name": "US457",
+          "doc": "457 (US)"
+        },
+        {
+          "value": "24",
+          "name": "RothIRAPrototype",
+          "doc": "Roth IRA (Fund Prototype) (US)"
+        },
+        {
+          "value": "25",
+          "name": "RothIRANonPrototype",
+          "doc": "Roth IRA (Non-prototype) (US)"
+        },
+        {
+          "value": "26",
+          "name": "RothConversionIRAPrototype",
+          "doc": "Roth Conversion IRA (Fund Prototype) (US)"
+        },
+        {
+          "value": "27",
+          "name": "RothConversionIRANonPrototype",
+          "doc": "Roth Conversion IRA (Non-prototype) (US)"
+        },
+        {
+          "value": "28",
+          "name": "EducationIRAPrototype",
+          "doc": "Education IRA (Fund Prototype) (US)"
+        },
+        {
+          "value": "29",
+          "name": "EducationIRANonPrototype",
+          "doc": "Education IRA (Non-prototype) (US)"
+        },
+        {
+          "value": "999",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "495"
+    }
+  },
+  {
+    "name": "registrejreasontext",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Text indicating reason(s) why a Registration Instruction has been rejected.",
+      "display": "RegistRejReasonText",
+      "fix:tag": "496"
+    }
+  },
+  {
+    "name": "fundrenewwaiv",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A one character code identifying whether the Fund based renewal commission is to be waived.",
+      "display": "FundRenewWaiv",
+      "fix:codes": [
+        {
+          "value": "N",
+          "name": "No",
+          "doc": "No"
+        },
+        {
+          "value": "Y",
+          "name": "Yes",
+          "doc": "Yes"
+        }
+      ],
+      "fix:tag": "497"
+    }
+  },
+  {
+    "name": "cashdistribagentname",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Name of local agent bank if for cash distributions",
+      "display": "CashDistribAgentName",
+      "fix:tag": "498"
+    }
+  },
+  {
+    "name": "cashdistribagentcode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "BIC (Bank Identification Code--Swift managed) code of agent bank for cash distributions",
+      "display": "CashDistribAgentCode",
+      "fix:tag": "499"
+    }
+  }
+]

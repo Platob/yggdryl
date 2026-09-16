@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateunadjusted"
+          "fix:field": "paymentstubenddateunadjusted",
+          "fix:tag": "42689"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddatebusinessdayconvention"
+          "fix:field": "paymentstubenddatebusinessdayconvention",
+          "fix:tag": "42690"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstubenddatebusinesscenters"
+          "fix:field": "nopaymentstubenddatebusinesscenters",
+          "fix:tag": "42696"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddaterelativeto"
+          "fix:field": "paymentstubenddaterelativeto",
+          "fix:tag": "42691"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetperiod"
+          "fix:field": "paymentstubenddateoffsetperiod",
+          "fix:tag": "42692"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetunit"
+          "fix:field": "paymentstubenddateoffsetunit",
+          "fix:tag": "42693"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetdaytype"
+          "fix:field": "paymentstubenddateoffsetdaytype",
+          "fix:tag": "42694"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateadjusted"
+          "fix:field": "paymentstubenddateadjusted",
+          "fix:tag": "42695"
         }
       }
     ]

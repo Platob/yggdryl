@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificatereportid"
+          "fix:field": "algocertificatereportid",
+          "fix:tag": "3018"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificatereportstatus"
+          "fix:field": "algocertificatereportstatus",
+          "fix:tag": "3021"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algocertificatereporttype"
+          "fix:field": "algocertificatereporttype",
+          "fix:tag": "3078"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext"
+          "fix:field": "rejecttext",
+          "fix:tag": "1328"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen"
+          "fix:field": "encodedrejecttextlen",
+          "fix:tag": "1664"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext"
+          "fix:field": "encodedrejecttext",
+          "fix:tag": "1665"
         }
       },
       {

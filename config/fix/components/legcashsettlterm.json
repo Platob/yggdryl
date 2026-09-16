@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlcurrency"
+          "fix:field": "legcashsettlcurrency",
+          "fix:tag": "41345"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcassettlvaluationfirstbusinessdayoffset"
+          "fix:field": "legcassettlvaluationfirstbusinessdayoffset",
+          "fix:tag": "41346"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationsubsequentbusinessdaysoffset"
+          "fix:field": "legcashsettlvaluationsubsequentbusinessdaysoffset",
+          "fix:tag": "41347"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlnumofvaluationdates"
+          "fix:field": "legcashsettlnumofvaluationdates",
+          "fix:tag": "41348"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationtime"
+          "fix:field": "legcashsettlvaluationtime",
+          "fix:tag": "41349"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlbusinesscenter"
+          "fix:field": "legcashsettlbusinesscenter",
+          "fix:tag": "41350"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquotemethod"
+          "fix:field": "legcashsettlquotemethod",
+          "fix:tag": "41351"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquoteamount"
+          "fix:field": "legcashsettlquoteamount",
+          "fix:tag": "41352"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquotecurrency"
+          "fix:field": "legcashsettlquotecurrency",
+          "fix:tag": "41353"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlminimumquoteamount"
+          "fix:field": "legcashsettlminimumquoteamount",
+          "fix:tag": "41354"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlminimumquotecurrency"
+          "fix:field": "legcashsettlminimumquotecurrency",
+          "fix:tag": "41355"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcashsettldealers"
+          "fix:field": "nolegcashsettldealers",
+          "fix:tag": "41342"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlpricesource"
+          "fix:field": "legcashsettlpricesource",
+          "fix:tag": "42308"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlpricedefault"
+          "fix:field": "legcashsettlpricedefault",
+          "fix:tag": "42309"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlbusinessdays"
+          "fix:field": "legcashsettlbusinessdays",
+          "fix:tag": "41356"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlamount"
+          "fix:field": "legcashsettlamount",
+          "fix:tag": "41357"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlrecoveryfactor"
+          "fix:field": "legcashsettlrecoveryfactor",
+          "fix:tag": "41358"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlfixedtermindicator"
+          "fix:field": "legcashsettlfixedtermindicator",
+          "fix:tag": "41359"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlaccruedinterestindicator"
+          "fix:field": "legcashsettlaccruedinterestindicator",
+          "fix:tag": "41360"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationmethod"
+          "fix:field": "legcashsettlvaluationmethod",
+          "fix:tag": "41361"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettltermxid"
+          "fix:field": "legcashsettltermxid",
+          "fix:tag": "41362"
         }
       }
     ]

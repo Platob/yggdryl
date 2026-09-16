@@ -396,10 +396,25 @@ impl FixRegistry {
         Ok(registry)
     }
 
-    /// Returns the field one identity names.
+    /// Returns the field one identity names: a scalar field by its
+    /// canonical identity, else a component or a group by the identity its
+    /// derived tag and name make.
     pub fn get_field_by_id(&self, id: FixId) -> Option<&Field> {
         self.canonical_position_by_id(id)
             .and_then(|position| self.fields.get(position))
+            .or_else(|| {
+                self.catalog
+                    .all()
+                    .map(|entry| entry.field.as_field())
+                    .find(|field| {
+                        field
+                            .as_fix()
+                            .id()
+                            .ok()
+                            .flatten()
+                            .is_some_and(|held| held == id)
+                    })
+            })
     }
 
     /// Returns the field an identity names, raising absence.
@@ -416,6 +431,34 @@ impl FixRegistry {
     pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field> {
         self.position_by_tag(tag)
             .and_then(|position| self.fields.get(position))
+            .or_else(|| {
+                // A component or a group answers to the derived tag that is
+                // its identity in the catalog.
+                super::FixId::is_definition_tag(tag)
+                    .then(|| {
+                        self.catalog
+                            .all()
+                            .map(|entry| entry.field.as_field())
+                            .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+                    })
+                    .flatten()
+            })
+    }
+
+    /// Returns the repeating group the counter `tag` opens; two groups on
+    /// one counter name nothing.
+    ///
+    /// `tag` is the counter's, not the group's own: [`Self::get_field_by_tag`]
+    /// answers the counter itself off the same key, and the group it heads
+    /// is a definition of its own, reached here or by its name.
+    pub fn get_field_by_counter(&self, tag: i32) -> Option<&Field> {
+        self.get_group_by_tag(tag)
+    }
+
+    /// Returns the repeating group the counter `tag` opens, raising absence
+    /// or ambiguity.
+    pub fn field_by_counter(&self, tag: i32) -> Result<&Field> {
+        self.group_by_tag(tag)
     }
 
     /// Returns the field a tag names, raising absence.
@@ -430,6 +473,22 @@ impl FixRegistry {
     /// so an alias can never take a name away from the field that claims it
     /// canonically.
     pub fn get_field_by_name(&self, name: &str) -> Option<&Field> {
+        self.position_by_name(name)
+            .and_then(|position| self.fields.get(position))
+            .or_else(|| self.get_definition(crate::FixCategory::Components, name))
+            .or_else(|| self.get_definition(crate::FixCategory::Groups, name))
+    }
+
+    /// The scalar field a canonical or alternate tag names, and nothing
+    /// else: the catalog's own reading of its scalars, which a definition
+    /// check asks so a definition never answers for itself.
+    pub(super) fn get_scalar_by_tag(&self, tag: i32) -> Option<&Field> {
+        self.position_by_tag(tag)
+            .and_then(|position| self.fields.get(position))
+    }
+
+    /// The scalar field a canonical name or alias names, and nothing else.
+    pub(super) fn get_scalar_by_name(&self, name: &str) -> Option<&Field> {
         self.position_by_name(name)
             .and_then(|position| self.fields.get(position))
     }
@@ -574,6 +633,11 @@ impl FixRegistry {
     /// arrival's name as an alias: a bare wire tag keeps answering the
     /// holder, and the arrival is reached by its name or its identity.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
+        // A nested field is a component or a group, by its shape, and lands
+        // among the named definitions.
+        if let Some(category) = Self::definition_category_of(&field)? {
+            return self.insert_definition(category, field);
+        }
         if self.position_of_identity(&field)?.is_some() {
             let mut staged = self.clone();
             let prior = staged.insert_resolved(field)?;
@@ -667,6 +731,10 @@ impl FixRegistry {
     /// Merges a definition into the field with the same canonical identity.
     /// A name folding to the stored one retains the stored canonical spelling.
     pub fn update(&mut self, field: Field) -> Result<()> {
+        if let Some(category) = Self::definition_category_of(&field)? {
+            self.update_definition(category, field)?;
+            return Ok(());
+        }
         let mut staged = self.clone();
         staged.update_resolved(field)?;
         staged.validate_catalog()?;
@@ -806,7 +874,7 @@ impl FixRegistry {
     /// incoming one folded into a stored one. The rules, in order:
     ///
     /// 1. A nested field is a named definition and goes to
-    ///    [`Self::add_definition`] under the category its shape names: a
+    ///    [`Self::insert`] under the category its shape names: a
     ///    `List` or `LargeList` of non-null Struct occurrences is a group, a
     ///    Struct declaring `fix:msgtype` is a message, any other Struct is a
     ///    component. Any other nested datatype is refused as a scalar field
@@ -869,8 +937,8 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::insert`], [`Self::update`] and
-    /// [`Self::add_definition`] return: absence for a scalar carrying no
+    /// Returns what [`Self::insert`] and [`Self::update`] return: absence
+    /// for a scalar carrying no
     /// `fix:tag`, a conflict for an alias or alternate tag another field
     /// holds, and [`Error::InvalidRecord`] for a datatype
     /// that disagrees with the stored definition. An incoming `float32` field
@@ -891,8 +959,8 @@ impl FixRegistry {
     ///
     /// The bulk form of exactly those rules: a scalar merges into the field
     /// its identity or its name reaches and is inserted otherwise, a nested
-    /// field is a named definition and folds through
-    /// [`Self::add_definition`], and one of this crate's own tags is skipped.
+    /// field is a named definition and folds through [`Self::insert`], and
+    /// one of this crate's own tags is skipped.
     /// Answers the count added and the count merged, in that order, and
     /// records the same pair through `log` at debug level; a skipped field
     /// counts as neither.
@@ -902,7 +970,7 @@ impl FixRegistry {
     /// last and wins.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
@@ -917,9 +985,7 @@ impl FixRegistry {
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
-    /// // `Instrument`, beside the crate's own `instids`, which is a
-    /// // component for the same reason.
-    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
+    /// assert_eq!(registry.field_by_name("Instrument")?.field_len(), 1);
     /// # Ok(())
     /// # }
     /// ```
@@ -947,7 +1013,7 @@ impl FixRegistry {
     /// The one place two dictionaries combine. Every field folds exactly as
     /// [`Self::add_field`] folds one - a stored identity or a stored name
     /// merges, anything else inserts - every named definition folds as
-    /// [`Self::add_definition`] folds one, its members appended to the stored
+    /// [`Self::insert`] folds one, its members appended to the stored
     /// definition of its name rather than replacing them. The dialects that
     /// contributed a field travel with it and union onto the stored one, so
     /// a merged registry says which dictionaries spoke each field.
@@ -959,16 +1025,13 @@ impl FixRegistry {
     /// Answers the count added and the count merged, over the fields.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
-    /// held.create_definition(
-    ///     FixCategory::Components,
-    ///     DataType::from_fields([symbol.clone()])?.required_field("Instrument"),
-    /// )?;
+    /// held.insert(DataType::from_fields([symbol.clone()])?.required_field("Instrument"))?;
     ///
     /// // The other dictionary holds the same field under its own tag, with a
     /// // second name, and knows one more member of the component.
@@ -977,17 +1040,14 @@ impl FixRegistry {
     /// ticker.as_fix_mut().set_names(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
     /// let venue = DataType::utf8().nullable_field("VenueSymbol");
-    /// other.create_definition(
-    ///     FixCategory::Components,
-    ///     DataType::from_fields([symbol, venue])?.required_field("Instrument"),
-    /// )?;
+    /// other.insert(DataType::from_fields([symbol, venue])?.required_field("Instrument"))?;
     ///
     /// // Symbol and the two standard clock seeds merge.
     /// assert_eq!(held.merge_with(&other)?, (0, 3));
     /// let stored = held.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
     /// assert_eq!(stored.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
-    /// let instrument = held.definition(FixCategory::Components, "Instrument")?;
+    /// let instrument = held.field_by_name("Instrument")?;
     /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
     /// # Ok(())
     /// # }
@@ -995,7 +1055,7 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::add_field`] and [`Self::add_definition`] return.
+    /// Returns what [`Self::add_field`] and [`Self::insert`] return.
     /// One mutation: the fields and the definitions are staged together and
     /// adopted together, so a refusal anywhere leaves this dictionary exactly
     /// as it was.
@@ -1024,7 +1084,10 @@ impl FixRegistry {
         // removal swaps the last field into the hole, and a store round trip
         // writes in `iter` order and loads in file order, so two dictionaries
         // that compare equal could merge to two different answers.
-        let counts = self.fold(other.iter().cloned())?;
+        // The scalars alone: the definitions fold through the catalog merge
+        // below, under their own rules, and counting them here would count
+        // one fold twice.
+        let counts = self.fold(other.scalars().cloned())?;
         self.merge_catalog(other)?;
         Ok(counts)
     }
@@ -1216,11 +1279,23 @@ impl FixRegistry {
 
     /// Removes an unreferenced field a tag, identifier, name, or alias reaches.
     ///
-    /// Returns no removed value for an absent or referenced field. Use
-    /// [`Self::remove_definition`] for a typed reference refusal.
+    /// Returns no removed value for an absent or referenced field: a
+    /// definition another one references stays, as its members stay.
     pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field> {
+        let key = key.into();
         let mut staged = self.clone();
-        let removed = staged.remove_resolved(key)?;
+        let removed = match staged.remove_resolved(key) {
+            Some(removed) => removed,
+            // A name no scalar answers to may name a component or a group.
+            None => {
+                let FixKey::Name(name) = key else {
+                    return None;
+                };
+                return [crate::FixCategory::Components, crate::FixCategory::Groups]
+                    .into_iter()
+                    .find_map(|category| self.remove_definition(category, name).ok().flatten());
+            }
+        };
         staged.validate_catalog().ok()?;
         staged.refresh_msgtype_aliases();
         *self = staged;
@@ -1303,17 +1378,34 @@ impl FixRegistry {
         self.positions_by_id = ordered;
     }
 
-    /// Iterates fields in tag-major identity order.
+    /// Iterates every field: the scalar fields in tag-major identity order,
+    /// then the components and the groups in the catalog's name order.
     pub fn iter(&self) -> FixFieldIter<'_> {
         FixFieldIter {
             positions: self.positions_by_id.iter(),
             fields: &self.fields,
+            rest: self
+                .catalog
+                .all()
+                .map(|entry| entry.field.as_field())
+                .collect::<Vec<_>>()
+                .into_iter(),
         }
     }
 
-    /// Returns the number of registered fields.
+    /// Iterates the scalar fields alone, in tag-major identity order.
+    pub(super) fn scalars(&self) -> FixFieldIter<'_> {
+        FixFieldIter {
+            positions: self.positions_by_id.iter(),
+            fields: &self.fields,
+            rest: Vec::new().into_iter(),
+        }
+    }
+
+    /// Returns the number of fields, the components and the groups among
+    /// them.
     pub fn len(&self) -> usize {
-        self.fields.len()
+        self.fields.len() + self.catalog.all().count()
     }
 
     /// Returns whether no field is registered.
@@ -1677,6 +1769,8 @@ impl<'registry> IntoIterator for &'registry FixRegistry {
 pub struct FixFieldIter<'registry> {
     positions: std::slice::Iter<'registry, usize>,
     fields: &'registry [Field],
+    /// The components and the groups, behind the scalars.
+    rest: std::vec::IntoIter<&'registry Field>,
 }
 
 impl<'registry> Iterator for FixFieldIter<'registry> {
@@ -1686,24 +1780,22 @@ impl<'registry> Iterator for FixFieldIter<'registry> {
         self.positions
             .next()
             .and_then(|position| self.fields.get(*position))
+            .or_else(|| self.rest.next())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.positions.size_hint()
-    }
-
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        self.positions
-            .nth(n)
-            .and_then(|position| self.fields.get(*position))
+        let held = self.positions.len() + self.rest.len();
+        (held, Some(held))
     }
 }
 
 impl DoubleEndedIterator for FixFieldIter<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.positions
-            .next_back()
-            .and_then(|position| self.fields.get(*position))
+        self.rest.next_back().or_else(|| {
+            self.positions
+                .next_back()
+                .and_then(|position| self.fields.get(*position))
+        })
     }
 }
 

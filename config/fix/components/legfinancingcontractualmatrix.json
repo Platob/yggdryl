@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixsource"
+          "fix:field": "legcontractualmatrixsource",
+          "fix:tag": "42204"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixdate"
+          "fix:field": "legcontractualmatrixdate",
+          "fix:tag": "42205"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixterm"
+          "fix:field": "legcontractualmatrixterm",
+          "fix:tag": "42206"
         }
       }
     ]

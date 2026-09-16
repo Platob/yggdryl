@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlstart"
+          "fix:field": "underlyingdeliveryschedulesettlstart",
+          "fix:tag": "41774"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlend"
+          "fix:field": "underlyingdeliveryschedulesettlend",
+          "fix:tag": "41775"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettltimetype"
+          "fix:field": "underlyingdeliveryschedulesettltimetype",
+          "fix:tag": "41776"
         }
       }
     ]

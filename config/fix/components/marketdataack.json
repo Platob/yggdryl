@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdmsgid"
+          "fix:field": "mdmsgid",
+          "fix:tag": "3110"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "reportstatus"
+          "fix:field": "reportstatus",
+          "fix:tag": "3113"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomdentries"
+          "fix:field": "nomdentries",
+          "fix:tag": "268"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolinesoftext"
+          "fix:field": "nolinesoftext",
+          "fix:tag": "33"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext"
+          "fix:field": "rejecttext",
+          "fix:tag": "1328"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen"
+          "fix:field": "encodedrejecttextlen",
+          "fix:tag": "1664"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext"
+          "fix:field": "encodedrejecttext",
+          "fix:tag": "1665"
         }
       },
       {

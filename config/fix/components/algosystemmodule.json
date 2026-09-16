@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmodulename"
+          "fix:field": "algosystemmodulename",
+          "fix:tag": "3026"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmoduleversion"
+          "fix:field": "algosystemmoduleversion",
+          "fix:tag": "3027"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmodulelastupdatetime"
+          "fix:field": "algosystemmodulelastupdatetime",
+          "fix:tag": "3080"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateunadjusted"
+          "fix:field": "legpaymentstreamcompoundingenddateunadjusted",
+          "fix:tag": "42421"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddaterelativeto"
+          "fix:field": "legpaymentstreamcompoundingenddaterelativeto",
+          "fix:tag": "42422"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetperiod"
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetperiod",
+          "fix:tag": "42423"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetunit"
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetunit",
+          "fix:tag": "42424"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetdaytype"
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetdaytype",
+          "fix:tag": "42425"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateadjusted"
+          "fix:field": "legpaymentstreamcompoundingenddateadjusted",
+          "fix:tag": "42426"
         }
       }
     ]

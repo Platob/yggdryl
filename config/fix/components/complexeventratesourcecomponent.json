@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventratesource"
+          "fix:field": "complexeventratesource",
+          "fix:tag": "41014"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventratesourcetype"
+          "fix:field": "complexeventratesourcetype",
+          "fix:tag": "41015"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventreferencepage"
+          "fix:field": "complexeventreferencepage",
+          "fix:tag": "41016"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventreferencepageheading"
+          "fix:field": "complexeventreferencepageheading",
+          "fix:tag": "41017"
         }
       }
     ]

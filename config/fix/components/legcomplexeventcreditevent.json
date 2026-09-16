@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventtype"
+          "fix:field": "legcomplexeventcrediteventtype",
+          "fix:tag": "41367"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventvalue"
+          "fix:field": "legcomplexeventcrediteventvalue",
+          "fix:tag": "41368"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventcurrency"
+          "fix:field": "legcomplexeventcrediteventcurrency",
+          "fix:tag": "41369"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventperiod"
+          "fix:field": "legcomplexeventcrediteventperiod",
+          "fix:tag": "41370"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventunit"
+          "fix:field": "legcomplexeventcrediteventunit",
+          "fix:tag": "41371"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventdaytype"
+          "fix:field": "legcomplexeventcrediteventdaytype",
+          "fix:tag": "41372"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventratesource"
+          "fix:field": "legcomplexeventcrediteventratesource",
+          "fix:tag": "41373"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventcrediteventqualifiers"
+          "fix:field": "nolegcomplexeventcrediteventqualifiers",
+          "fix:tag": "41374"
         }
       },
       {

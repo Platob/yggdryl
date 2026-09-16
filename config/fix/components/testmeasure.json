@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasurename"
+          "fix:field": "testmeasurename",
+          "fix:tag": "3053"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasuredesc"
+          "fix:field": "testmeasuredesc",
+          "fix:tag": "3054"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasuretype"
+          "fix:field": "testmeasuretype",
+          "fix:tag": "3055"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasureprecision"
+          "fix:field": "testmeasureprecision",
+          "fix:tag": "3056"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasureresult"
+          "fix:field": "testmeasureresult",
+          "fix:tag": "3057"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testthresholdtype"
+          "fix:field": "testthresholdtype",
+          "fix:tag": "3058"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testwarninglevelvalue"
+          "fix:field": "testwarninglevelvalue",
+          "fix:tag": "3059"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testfaillevelvalue"
+          "fix:field": "testfaillevelvalue",
+          "fix:tag": "3060"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testpeaklevelvalue"
+          "fix:field": "testpeaklevelvalue",
+          "fix:tag": "3061"
         }
       }
     ]

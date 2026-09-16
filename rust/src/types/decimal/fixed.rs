@@ -137,13 +137,11 @@ impl Decimal {
         if !value.is_finite() {
             return None;
         }
-        let scaled = (value * 1e18).round();
-        if scaled.abs() >= 1e38 {
-            return None;
-        }
-        // The bound above proves the cast is in range.
-        #[allow(clippy::cast_possible_truncation)]
-        Self::from_units(scaled as i128)
+        // The shortest text that reads back as the same float is the number
+        // the float was meant to be: `3000000`, never the
+        // `2999999.999999999949668352` that scaling the binary fraction by a
+        // power of ten answers.
+        Self::parse(&format!("{value}")).ok()
     }
 
     /// The float nearest this value.

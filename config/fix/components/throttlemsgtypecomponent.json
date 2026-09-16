@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttlemsgtype"
+          "fix:field": "throttlemsgtype",
+          "fix:tag": "1619"
         }
       }
     ]

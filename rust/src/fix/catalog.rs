@@ -132,15 +132,6 @@ impl Catalog {
             .map(|position| self.entries[*position].field.as_field())
     }
 
-    fn at(&self, category: FixCategory, index: usize) -> Option<&Field> {
-        let start = self
-            .order
-            .partition_point(|position| self.entries[*position].category < category);
-        let position = *self.order.get(start.checked_add(index)?)?;
-        let entry = &self.entries[position];
-        (entry.category == category).then_some(entry.field.as_field())
-    }
-
     fn index_counters(&mut self) {
         self.counters.clear();
         for (position, entry) in self
@@ -605,65 +596,40 @@ impl FixRegistry {
             .ok_or_else(|| Error::absent("one FIX message type", format_args!("{spelling:?}")))
     }
 
-    /// Iterates the components carrying `fix:msgtype`, in name order.
-    pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType> {
-        self.catalog
-            .messages
-            .iter()
-            .filter_map(|position| self.catalog.entries[*position].field.message())
-    }
-
-    /// Borrows a message singleton by its position in [`Self::msgtypes`].
-    pub fn msgtype_at(&self, index: usize) -> Option<&MsgType> {
-        let position = *self.catalog.messages.get(index)?;
-        self.catalog.entries[position].field.message()
-    }
-
     pub(super) fn refresh_msgtype_aliases(&mut self) {
         let field = self.get_field_by_tag(35).cloned();
         self.catalog.index_message_aliases(field.as_ref());
     }
 
     /// Resolves one category's folded name.
-    pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field> {
+    pub(super) fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field> {
         if category == FixCategory::Fields {
-            return self.get_field_by_name(name);
+            return self.get_scalar_by_name(name);
         }
         let position = self.catalog.position(category, name)?;
         Some(self.catalog.entries[position].field.as_field())
     }
 
     /// Resolves a category name, reporting absence with its category.
-    pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
+    pub(super) fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
         self.get_definition(category, name)
             .ok_or_else(|| Error::absent(category.as_str(), name))
     }
 
     /// Iterates one category deterministically without collecting definitions.
-    pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
-        self.iter()
+    pub(super) fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
+        self.scalars()
             .take(if category == FixCategory::Fields {
-                self.len()
+                usize::MAX
             } else {
                 0
             })
             .chain(self.catalog.iter(category))
     }
 
-    /// Borrows one definition by its category's deterministic iteration position.
-    ///
-    /// Positions stay stable while the registry is unchanged. Field positions
-    /// follow tag order; named positions follow canonical name order.
-    pub fn definition_at(&self, category: FixCategory, index: usize) -> Option<&Field> {
-        if category == FixCategory::Fields {
-            return self.iter().nth(index);
-        }
-        self.catalog.at(category, index)
-    }
-
     /// Inserts or replaces a category definition, validating references before mutation.
     /// Case-insensitive input names retain the stored canonical spelling.
-    pub fn insert_definition(
+    pub(super) fn insert_definition(
         &mut self,
         category: FixCategory,
         mut field: Field,
@@ -747,7 +713,7 @@ impl FixRegistry {
     }
 
     /// Creates a definition, refusing an existing name or wire identity atomically.
-    pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
+    pub(super) fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
         let existing = if category == FixCategory::Fields {
             // Creation reserves canonical identities only. Another field's
             // alias may name this spelling until its canonical owner arrives.
@@ -773,7 +739,11 @@ impl FixRegistry {
     }
 
     /// Replaces an existing definition and returns its previous value.
-    pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field> {
+    pub(super) fn update_definition(
+        &mut self,
+        category: FixCategory,
+        field: Field,
+    ) -> Result<Field> {
         let stored = self.definition(category, field.name())?;
         if category == FixCategory::Fields && stored.as_fix().id()? != field.as_fix().id()? {
             return Err(Error::conflict(
@@ -820,7 +790,7 @@ impl FixRegistry {
     /// appended members without holding a copy of anything.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut party_id = DataType::utf8().nullable_field("PartyID");
@@ -828,23 +798,23 @@ impl FixRegistry {
     /// let mut registry = FixRegistry::from_fields([party_id.clone()])?;
     /// party_id.as_fix_mut().set_field_ref("PartyID")?;
     /// let party = DataType::from_fields([party_id])?.required_field("Party");
-    /// registry.create_definition(FixCategory::Components, party)?;
+    /// registry.insert(party)?;
     /// // A message restates the component through a reference to it.
-    /// let mut party = registry.definition(FixCategory::Components, "Party")?.clone();
+    /// let mut party = registry.field_by_name("Party")?.clone();
     /// party.as_fix_mut().set_component("Party")?;
     /// let mut order = DataType::from_fields([party])?.required_field("Order");
     /// order.as_fix_mut().set_msgtype("D")?;
-    /// registry.create_definition(FixCategory::Components, order)?;
+    /// registry.insert(order)?;
     ///
     /// // Extending the component is one call, and the message sees the member.
-    /// let mut extended = registry.definition(FixCategory::Components, "Party")?.clone();
+    /// let mut extended = registry.field_by_name("Party")?.clone();
     /// let note = DataType::utf8().nullable_field("PartyNote");
     /// let members = extended.fields().iter().cloned().chain([note]);
     /// extended.set_dtype(DataType::from_fields(members)?)?;
-    /// assert!(!registry.add_definition(FixCategory::Components, extended)?, "merged");
+    /// assert!(!registry.add_field(extended)?, "merged");
     /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
     /// assert_eq!(registry.field_by_path(&member)?.dtype(), &DataType::utf8());
-    /// assert_eq!(registry.definition(FixCategory::Components, "Party")?.field_len(), 2);
+    /// assert_eq!(registry.field_by_name("Party")?.field_len(), 2);
     /// # Ok(())
     /// # }
     /// ```
@@ -858,7 +828,7 @@ impl FixRegistry {
     /// a second message code, counter or component, and whatever resolving
     /// or validating the merged catalog raises. One staged mutation: a refusal
     /// leaves the registry untouched.
-    pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
+    pub(super) fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
         if category == FixCategory::Fields {
             return self.add_field(field);
         }
@@ -870,9 +840,9 @@ impl FixRegistry {
 
     /// The fold of one named definition, without the staging.
     ///
-    /// [`Self::add_definition`] is this plus the copy that makes it one
-    /// mutation, and a fold already holding a staged dictionary calls this so
-    /// the copy is paid once.
+    /// [`Self::insert`] over a nested field is this plus the copy that makes
+    /// it one mutation, and a fold already holding a staged dictionary calls
+    /// this so the copy is paid once.
     pub(super) fn fold_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
         validate_name(&field)?;
         check_shape(category, &field)?;
@@ -1065,7 +1035,7 @@ impl FixRegistry {
     }
 
     /// Removes a definition only when every remaining reference stays valid.
-    pub fn remove_definition(
+    pub(super) fn remove_definition(
         &mut self,
         category: FixCategory,
         name: &str,
@@ -1098,7 +1068,7 @@ impl FixRegistry {
     /// definition and the field counting it is a scalar, so this is the one
     /// lookup that crosses the two. [`Self::get_field_by_tag`] answers the
     /// counter itself off the same key.
-    pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
+    pub(super) fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         Some(self.catalog.entries[position].field.as_field())
     }
@@ -1115,7 +1085,7 @@ impl FixRegistry {
 
     /// The unique group the counter `tag` names opens, reporting absence or
     /// ambiguity.
-    pub fn group_by_tag(&self, tag: i32) -> Result<&Field> {
+    pub(super) fn group_by_tag(&self, tag: i32) -> Result<&Field> {
         self.get_group_by_tag(tag)
             .ok_or_else(|| Error::absent("one unambiguous FIX group", tag))
     }
@@ -1196,7 +1166,7 @@ impl FixRegistry {
                 });
             }
             if let Some(scalar) = self
-                .get_field_by_name(field.name())
+                .get_scalar_by_name(field.name())
                 .filter(|scalar| folds_equal(scalar.name(), field.name()))
             {
                 return Err(Error::conflict(
@@ -1209,7 +1179,7 @@ impl FixRegistry {
                     ),
                 ));
             }
-            if let Some(scalar) = self.get_field_by_tag(tag) {
+            if let Some(scalar) = self.get_scalar_by_tag(tag) {
                 return Err(Error::conflict(
                     "a Map group counter free of scalar fields",
                     "scalar field",
@@ -1265,9 +1235,9 @@ impl FixRegistry {
                 // derived one, which is what the block above `CRATE_TAG_MAX`
                 // is for. This crate's own definitions are the exception: a
                 // crate tag is reserved, unique and already the identity the
-                // fixed row reaches the column by, so `instids` answers to
-                // 65036 the way `altids` answers to 65020 rather than to a
-                // second identity nothing else spells.
+                // fixed row reaches the column by, so `identifiers` answers
+                // to 65020 rather than to a second identity nothing else
+                // spells.
                 if !map_group && !FixId::is_definition_tag(tag) && !super::is_crate_tag(tag) {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
@@ -1409,7 +1379,7 @@ impl FixRegistry {
     }
 
     pub(super) fn validate_catalog(&self) -> Result<()> {
-        for field in self.iter() {
+        for field in self.scalars() {
             self.validate_definition(FixCategory::Fields, field)?;
         }
         // Per-definition first, then the property no single definition can
@@ -1440,7 +1410,7 @@ impl FixRegistry {
     }
 
     /// Folds every named definition of `other` into this catalog, the way
-    /// [`Self::add_definition`] folds one.
+    /// [`Self::insert`] folds one.
     ///
     /// Settled on documents and resolved once at the end, so a definition
     /// that arrives referencing another that arrives beside it resolves

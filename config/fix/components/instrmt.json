@@ -40,7 +40,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments"
+          "fix:field": "norelatedinstruments",
+          "fix:tag": "1647"
         }
       },
       {

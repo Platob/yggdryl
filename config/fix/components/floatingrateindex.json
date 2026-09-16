@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexid"
+          "fix:field": "floatingrateindexid",
+          "fix:tag": "2731"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexidsource"
+          "fix:field": "floatingrateindexidsource",
+          "fix:tag": "2732"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurveunit"
+          "fix:field": "floatingrateindexcurveunit",
+          "fix:tag": "2730"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurveperiod"
+          "fix:field": "floatingrateindexcurveperiod",
+          "fix:tag": "2728"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurvespread"
+          "fix:field": "floatingrateindexcurvespread",
+          "fix:tag": "2729"
         }
       }
     ]

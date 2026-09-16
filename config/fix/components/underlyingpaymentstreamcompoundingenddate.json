@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddateunadjusted"
+          "fix:field": "underlyingpaymentstreamcompoundingenddateunadjusted",
+          "fix:tag": "42917"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddaterelativeto"
+          "fix:field": "underlyingpaymentstreamcompoundingenddaterelativeto",
+          "fix:tag": "42918"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetperiod"
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetperiod",
+          "fix:tag": "42919"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetunit"
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetunit",
+          "fix:tag": "42920"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetdaytype"
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetdaytype",
+          "fix:tag": "42921"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingenddateadjusted"
+          "fix:field": "underlyingpaymentstreamcompoundingenddateadjusted",
+          "fix:tag": "42922"
         }
       }
     ]

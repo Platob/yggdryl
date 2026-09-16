@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdfeedtype"
+          "fix:field": "mdfeedtype",
+          "fix:tag": "1022"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsubfeedtype"
+          "fix:field": "mdsubfeedtype",
+          "fix:tag": "1683"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepth"
+          "fix:field": "marketdepth",
+          "fix:tag": "264"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepthtimeinterval"
+          "fix:field": "marketdepthtimeinterval",
+          "fix:tag": "2563"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepthtimeintervalunit"
+          "fix:field": "marketdepthtimeintervalunit",
+          "fix:tag": "2564"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdrecoverytimeinterval"
+          "fix:field": "mdrecoverytimeinterval",
+          "fix:tag": "2565"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdrecoverytimeintervalunit"
+          "fix:field": "mdrecoverytimeintervalunit",
+          "fix:tag": "2566"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdbooktype"
+          "fix:field": "mdbooktype",
+          "fix:tag": "1021"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsubbooktype"
+          "fix:field": "mdsubbooktype",
+          "fix:tag": "1173"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "primaryservicelocationid"
+          "fix:field": "primaryservicelocationid",
+          "fix:tag": "2567"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryservicelocationid"
+          "fix:field": "secondaryservicelocationid",
+          "fix:tag": "2568"
         }
       }
     ]

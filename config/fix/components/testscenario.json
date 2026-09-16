@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioid"
+          "fix:field": "testscenarioid",
+          "fix:tag": "3029"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariostatus"
+          "fix:field": "testscenariostatus",
+          "fix:tag": "3030"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariostarttime"
+          "fix:field": "testscenariostarttime",
+          "fix:tag": "3031"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioendtime"
+          "fix:field": "testscenarioendtime",
+          "fix:tag": "3032"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestscenarioparameters"
+          "fix:field": "notestscenarioparameters",
+          "fix:tag": "3130"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids"
+          "fix:field": "nonestedpartyids",
+          "fix:tag": "539"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes"
+          "fix:field": "noinstrumentscopes",
+          "fix:tag": "1656"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigintype"
+          "fix:field": "mdorigintype",
+          "fix:tag": "1024"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigindesc"
+          "fix:field": "mdorigindesc",
+          "fix:tag": "3033"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigintime"
+          "fix:field": "mdorigintime",
+          "fix:tag": "3034"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepgroupid"
+          "fix:field": "teststepgroupid",
+          "fix:tag": "3035"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noteststeps"
+          "fix:field": "noteststeps",
+          "fix:tag": "3036"
         }
       },
       {
@@ -170,7 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestsystemmodules"
+          "fix:field": "notestsystemmodules",
+          "fix:tag": "3049"
         }
       },
       {
@@ -190,7 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestmeasures"
+          "fix:field": "notestmeasures",
+          "fix:tag": "3052"
         }
       },
       {
@@ -210,7 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestorders"
+          "fix:field": "notestorders",
+          "fix:tag": "3082"
         }
       },
       {

@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequestid"
+          "fix:field": "userrequestid",
+          "fix:tag": "923"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "username"
+          "fix:field": "username",
+          "fix:tag": "553"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "userstatus"
+          "fix:field": "userstatus",
+          "fix:tag": "926"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nothrottles"
+          "fix:field": "nothrottles",
+          "fix:tag": "1610"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "userstatustext"
+          "fix:field": "userstatustext",
+          "fix:tag": "927"
         }
       },
       {

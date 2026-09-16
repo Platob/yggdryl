@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratefallbackratesource"
+          "fix:field": "settlratefallbackratesource",
+          "fix:tag": "40373"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratefallbackreferencepage"
+          "fix:field": "settlratefallbackreferencepage",
+          "fix:tag": "40655"
         }
       }
     ]

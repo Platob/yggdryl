@@ -40,7 +40,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -60,7 +61,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -80,7 +82,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments"
+          "fix:field": "norelatedinstruments",
+          "fix:tag": "1647"
         }
       },
       {
@@ -110,7 +113,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -120,7 +124,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -130,7 +135,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotetype"
+          "fix:field": "quotetype",
+          "fix:tag": "537"
         }
       },
       {
@@ -140,7 +146,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settltype"
+          "fix:field": "settltype",
+          "fix:tag": "63"
         }
       },
       {
@@ -150,7 +157,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate"
+          "fix:field": "settldate",
+          "fix:tag": "64"
         }
       },
       {
@@ -160,7 +168,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrysize"
+          "fix:field": "mdentrysize",
+          "fix:tag": "271"
         }
       },
       {
@@ -170,7 +179,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstreamid"
+          "fix:field": "mdstreamid",
+          "fix:tag": "1500"
         }
       }
     ]

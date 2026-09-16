@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateunadjusted"
+          "fix:field": "legpaymentstubstartdateunadjusted",
+          "fix:tag": "42497"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdatebusinessdayconvention"
+          "fix:field": "legpaymentstubstartdatebusinessdayconvention",
+          "fix:tag": "42498"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstubstartdatebusinesscenters"
+          "fix:field": "nolegpaymentstubstartdatebusinesscenters",
+          "fix:tag": "42504"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdaterelativeto"
+          "fix:field": "legpaymentstubstartdaterelativeto",
+          "fix:tag": "42499"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetperiod"
+          "fix:field": "legpaymentstubstartdateoffsetperiod",
+          "fix:tag": "42500"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetunit"
+          "fix:field": "legpaymentstubstartdateoffsetunit",
+          "fix:tag": "42501"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetdaytype"
+          "fix:field": "legpaymentstubstartdateoffsetdaytype",
+          "fix:tag": "42502"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateadjusted"
+          "fix:field": "legpaymentstubstartdateadjusted",
+          "fix:tag": "42503"
         }
       }
     ]

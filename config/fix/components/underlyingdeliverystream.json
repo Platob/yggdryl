@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtype"
+          "fix:field": "underlyingdeliverystreamtype",
+          "fix:tag": "41777"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdeliverystreamcommoditysources"
+          "fix:field": "nounderlyingdeliverystreamcommoditysources",
+          "fix:tag": "41808"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreampipeline"
+          "fix:field": "underlyingdeliverystreampipeline",
+          "fix:tag": "41778"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamentrypoint"
+          "fix:field": "underlyingdeliverystreamentrypoint",
+          "fix:tag": "41779"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamwithdrawalpoint"
+          "fix:field": "underlyingdeliverystreamwithdrawalpoint",
+          "fix:tag": "41780"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliverypoint"
+          "fix:field": "underlyingdeliverystreamdeliverypoint",
+          "fix:tag": "41781"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliverypointsource"
+          "fix:field": "underlyingdeliverystreamdeliverypointsource",
+          "fix:tag": "42196"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliverypointdesc"
+          "fix:field": "underlyingdeliverystreamdeliverypointdesc",
+          "fix:tag": "42197"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliveryrestriction"
+          "fix:field": "underlyingdeliverystreamdeliveryrestriction",
+          "fix:tag": "41782"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliverycontingency"
+          "fix:field": "underlyingdeliverystreamdeliverycontingency",
+          "fix:tag": "41783"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliverycontingentpartyside"
+          "fix:field": "underlyingdeliverystreamdeliverycontingentpartyside",
+          "fix:tag": "41784"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamdeliveratsourceindicator"
+          "fix:field": "underlyingdeliverystreamdeliveratsourceindicator",
+          "fix:tag": "41785"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamriskapportionment"
+          "fix:field": "underlyingdeliverystreamriskapportionment",
+          "fix:tag": "41786"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamriskapportionmentsource"
+          "fix:field": "underlyingdeliverystreamriskapportionmentsource",
+          "fix:tag": "41587"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdeliverystreamcycles"
+          "fix:field": "nounderlyingdeliverystreamcycles",
+          "fix:tag": "41804"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtitletransferlocation"
+          "fix:field": "underlyingdeliverystreamtitletransferlocation",
+          "fix:tag": "41787"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtitletransfercondition"
+          "fix:field": "underlyingdeliverystreamtitletransfercondition",
+          "fix:tag": "41788"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamimporterofrecord"
+          "fix:field": "underlyingdeliverystreamimporterofrecord",
+          "fix:tag": "41789"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamnegativetolerance"
+          "fix:field": "underlyingdeliverystreamnegativetolerance",
+          "fix:tag": "41790"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreampositivetolerance"
+          "fix:field": "underlyingdeliverystreampositivetolerance",
+          "fix:tag": "41791"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtoleranceunitofmeasure"
+          "fix:field": "underlyingdeliverystreamtoleranceunitofmeasure",
+          "fix:tag": "41792"
         }
       },
       {
@@ -240,7 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtolerancetype"
+          "fix:field": "underlyingdeliverystreamtolerancetype",
+          "fix:tag": "41793"
         }
       },
       {
@@ -250,7 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtoleranceoptionside"
+          "fix:field": "underlyingdeliverystreamtoleranceoptionside",
+          "fix:tag": "41794"
         }
       },
       {
@@ -260,7 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtotalpositivetolerance"
+          "fix:field": "underlyingdeliverystreamtotalpositivetolerance",
+          "fix:tag": "41795"
         }
       },
       {
@@ -270,7 +294,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtotalnegativetolerance"
+          "fix:field": "underlyingdeliverystreamtotalnegativetolerance",
+          "fix:tag": "41796"
         }
       },
       {
@@ -280,7 +305,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamnotionalconversionfactor"
+          "fix:field": "underlyingdeliverystreamnotionalconversionfactor",
+          "fix:tag": "41797"
         }
       },
       {
@@ -290,7 +316,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamtransportequipment"
+          "fix:field": "underlyingdeliverystreamtransportequipment",
+          "fix:tag": "41798"
         }
       },
       {
@@ -300,7 +327,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamelectingpartyside"
+          "fix:field": "underlyingdeliverystreamelectingpartyside",
+          "fix:tag": "41799"
         }
       },
       {
@@ -310,7 +338,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamrouteorcharter"
+          "fix:field": "underlyingdeliverystreamrouteorcharter",
+          "fix:tag": "43096"
         }
       }
     ]

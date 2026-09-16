@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepid"
+          "fix:field": "teststepid",
+          "fix:tag": "3037"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepdesc"
+          "fix:field": "teststepdesc",
+          "fix:tag": "3038"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstarttime"
+          "fix:field": "teststepstarttime",
+          "fix:tag": "3039"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstartoffsetperiod"
+          "fix:field": "teststepstartoffsetperiod",
+          "fix:tag": "3040"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstartoffsetunit"
+          "fix:field": "teststepstartoffsetunit",
+          "fix:tag": "3041"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependtime"
+          "fix:field": "teststependtime",
+          "fix:tag": "3042"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependoffsetperiod"
+          "fix:field": "teststependoffsetperiod",
+          "fix:tag": "3043"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependoffsetunit"
+          "fix:field": "teststependoffsetunit",
+          "fix:tag": "3044"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noteststepparameters"
+          "fix:field": "noteststepparameters",
+          "fix:tag": "3045"
         }
       },
       {

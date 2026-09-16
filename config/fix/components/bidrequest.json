@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid"
+          "fix:field": "bidid",
+          "fix:tag": "390"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clientbidid"
+          "fix:field": "clientbidid",
+          "fix:tag": "391"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidrequesttranstype"
+          "fix:field": "bidrequesttranstype",
+          "fix:tag": "374"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listname"
+          "fix:field": "listname",
+          "fix:tag": "392"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnorelatedsym"
+          "fix:field": "totnorelatedsym",
+          "fix:tag": "393"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidtype"
+          "fix:field": "bidtype",
+          "fix:tag": "394"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numtickets"
+          "fix:field": "numtickets",
+          "fix:tag": "395"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalue1"
+          "fix:field": "sidevalue1",
+          "fix:tag": "396"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalue2"
+          "fix:field": "sidevalue2",
+          "fix:tag": "397"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobiddescriptors"
+          "fix:field": "nobiddescriptors",
+          "fix:tag": "398"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobidcomponents"
+          "fix:field": "nobidcomponents",
+          "fix:tag": "420"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquidityindtype"
+          "fix:field": "liquidityindtype",
+          "fix:tag": "409"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "wtaverageliquidity"
+          "fix:field": "wtaverageliquidity",
+          "fix:tag": "410"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exchangeforphysical"
+          "fix:field": "exchangeforphysical",
+          "fix:tag": "411"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "outmaincntryuindex"
+          "fix:field": "outmaincntryuindex",
+          "fix:tag": "412"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "crosspercent"
+          "fix:field": "crosspercent",
+          "fix:tag": "413"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progrptreqs"
+          "fix:field": "progrptreqs",
+          "fix:tag": "414"
         }
       },
       {
@@ -230,7 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progperiodinterval"
+          "fix:field": "progperiodinterval",
+          "fix:tag": "415"
         }
       },
       {
@@ -240,7 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "inctaxind"
+          "fix:field": "inctaxind",
+          "fix:tag": "416"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "forexreq"
+          "fix:field": "forexreq",
+          "fix:tag": "121"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numbidders"
+          "fix:field": "numbidders",
+          "fix:tag": "417"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate"
+          "fix:field": "tradedate",
+          "fix:tag": "75"
         }
       },
       {
@@ -280,7 +304,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidtradetype"
+          "fix:field": "bidtradetype",
+          "fix:tag": "418"
         }
       },
       {
@@ -290,7 +315,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "basispxtype"
+          "fix:field": "basispxtype",
+          "fix:tag": "419"
         }
       },
       {
@@ -300,7 +326,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "striketime"
+          "fix:field": "striketime",
+          "fix:tag": "443"
         }
       },
       {
@@ -310,7 +337,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -320,7 +348,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -330,7 +359,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventperioddate"
+          "fix:field": "complexeventperioddate",
+          "fix:tag": "41008"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventperiodtime"
+          "fix:field": "complexeventperiodtime",
+          "fix:tag": "41009"
         }
       }
     ]

@@ -1,0 +1,2575 @@
+[
+  {
+    "name": "paymentstubindex2caprate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The cap rate, if any, which applies to the second floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
+      "display": "PaymentStubIndex2CapRate",
+      "fix:tag": "40900"
+    }
+  },
+  {
+    "name": "paymentstubindex2floorrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The floor rate, if any, which applies to the second floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
+      "display": "PaymentStubIndex2FloorRate",
+      "fix:tag": "40901"
+    }
+  },
+  {
+    "name": "nolegsettlratefallbacks",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
+      "display": "NoLegSettlRateFallbacks",
+      "fix:tag": "40902"
+    }
+  },
+  {
+    "name": "legsettlratepostponementmaximumdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
+      "display": "LegSettlRatePostponementMaximumDays",
+      "fix:tag": "40903"
+    }
+  },
+  {
+    "name": "underlyingsettlratefallbackratesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the source of rate information.",
+      "display": "UnderlyingSettlRateFallbackRateSource",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "doc": "Telerate"
+        },
+        {
+          "value": "3",
+          "name": "ISDARateOption",
+          "doc": "ISDA Settlement Rate Option"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "40904"
+    }
+  },
+  {
+    "name": "legsettlratepostponementsurvey",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether to request a settlement rate quote from the market.",
+      "display": "LegSettlRatePostponementSurvey",
+      "fix:tag": "40905"
+    }
+  },
+  {
+    "name": "legsettlratepostponementcalculationagent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify the settlement rate postponement calculation agent.",
+      "display": "LegSettlRatePostponementCalculationAgent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ExercisingParty",
+          "doc": "Exercising party"
+        },
+        {
+          "value": "1",
+          "name": "NonExercisingParty",
+          "doc": "Non-exercising party"
+        },
+        {
+          "value": "2",
+          "name": "MasterAgreeent",
+          "doc": "As specified in the master agreement"
+        },
+        {
+          "value": "3",
+          "name": "Supplement",
+          "doc": "As specified in the standard terms supplement"
+        }
+      ],
+      "fix:tag": "40906"
+    }
+  },
+  {
+    "name": "streameffectivedateunadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted effective date.",
+      "display": "StreamEffectiveDateUnadjusted",
+      "fix:tag": "40907"
+    }
+  },
+  {
+    "name": "streameffectivedatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used to adjust the instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamEffectiveDateBusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "40908"
+    }
+  },
+  {
+    "name": "streameffectivedatebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the instrument's stream's effective, or relative effective, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "StreamEffectiveDateBusinessCenter",
+      "fix:tag": "40909"
+    }
+  },
+  {
+    "name": "streameffectivedaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "StreamEffectiveDateRelativeTo",
+      "fix:tag": "40910"
+    }
+  },
+  {
+    "name": "streameffectivedateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative effective date offset.",
+      "display": "StreamEffectiveDateOffsetPeriod",
+      "fix:tag": "40911"
+    }
+  },
+  {
+    "name": "streameffectivedateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative effective date offset.",
+      "display": "StreamEffectiveDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "40912"
+    }
+  },
+  {
+    "name": "streameffectivedateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative effective date offset.",
+      "display": "StreamEffectiveDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "40913"
+    }
+  },
+  {
+    "name": "streameffectivedateadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The adjusted effective date.",
+      "display": "StreamEffectiveDateAdjusted",
+      "fix:tag": "40914"
+    }
+  },
+  {
+    "name": "underlyingsettlratefallbackreferencepage",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the reference \"page\" from the rate source. When UnderlyingSettlRateFallbackRateSource(40904) = 3(ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
+      "display": "UnderlyingSettlRateFallbackReferencePage",
+      "fix:tag": "40915"
+    }
+  },
+  {
+    "name": "cashsettlvaluationsubsequentbusinessdaysoffset",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of business days between successive valuation dates when multiple valuation dates are applicable for cash settlement.",
+      "display": "CashSettlValuationSubsequentBusinessDaysOffset",
+      "fix:tag": "40916"
+    }
+  },
+  {
+    "name": "cashsettlnumofvaluationdates",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Where multiple valuation dates are specified as being applicable for cash settlement, this specifies the number of applicable valuation dates.",
+      "display": "CashSettlNumOfValuationDates",
+      "fix:tag": "40917"
+    }
+  },
+  {
+    "name": "underlyingprovisionpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further qualify the value of UnderlyingProvisionPartyRole(42176).",
+      "display": "UnderlyingProvisionPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "40918"
+    }
+  },
+  {
+    "name": "paymentpricetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of price for PaymentPrice(40218).",
+      "display": "PaymentPriceType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Percentage",
+          "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
+        },
+        {
+          "value": "2",
+          "name": "PerUnit",
+          "doc": "Per unit (i.e. per share or contract)"
+        },
+        {
+          "value": "3",
+          "name": "FixedAmount",
+          "doc": "Fixed amount (absolute value)"
+        },
+        {
+          "value": "4",
+          "name": "Discount",
+          "doc": "Discount - percentage points below par"
+        },
+        {
+          "value": "5",
+          "name": "Premium",
+          "doc": "Premium - percentage points over par"
+        },
+        {
+          "value": "6",
+          "name": "Spread",
+          "doc": "Spread (basis points spread)"
+        },
+        {
+          "value": "7",
+          "name": "TEDPrice",
+          "doc": "TED Price"
+        },
+        {
+          "value": "8",
+          "name": "TEDYield",
+          "doc": "TED Yield"
+        },
+        {
+          "value": "9",
+          "name": "Yield",
+          "doc": "Yield"
+        },
+        {
+          "value": "10",
+          "name": "FixedCabinetTradePrice",
+          "doc": "Fixed cabinet trade price (primarily for listed futures and options)"
+        },
+        {
+          "value": "11",
+          "name": "VariableCabinetTradePrice",
+          "doc": "Variable cabinet trade price (primarily for listed futures and options)"
+        },
+        {
+          "value": "12",
+          "name": "PriceSpread",
+          "doc": "Price spread"
+        },
+        {
+          "value": "13",
+          "name": "ProductTicksInHalves",
+          "doc": "Product ticks in halves"
+        },
+        {
+          "value": "14",
+          "name": "ProductTicksInFourths",
+          "doc": "Product ticks in fourths"
+        },
+        {
+          "value": "15",
+          "name": "ProductTicksInEighths",
+          "doc": "Product ticks in eighths"
+        },
+        {
+          "value": "16",
+          "name": "ProductTicksInSixteenths",
+          "doc": "Product ticks in sixteenths"
+        },
+        {
+          "value": "17",
+          "name": "ProductTicksInThirtySeconds",
+          "doc": "Product ticks in thirty-seconds"
+        },
+        {
+          "value": "18",
+          "name": "ProductTicksInSixtyFourths",
+          "doc": "Product ticks in sixty-fourths"
+        },
+        {
+          "value": "19",
+          "name": "ProductTicksInOneTwentyEighths",
+          "doc": "Product ticks in one-twenty-eighths"
+        },
+        {
+          "value": "20",
+          "name": "NormalRateRepresentation",
+          "doc": "Normal rate representation (e.g. FX rate)"
+        },
+        {
+          "value": "21",
+          "name": "InverseRateRepresentation",
+          "doc": "Inverse rate representation (e.g. FX rate)"
+        },
+        {
+          "value": "22",
+          "name": "BasisPoints",
+          "doc": "Basis points"
+        },
+        {
+          "value": "23",
+          "name": "UpfrontPoints",
+          "doc": "Up front points"
+        },
+        {
+          "value": "24",
+          "name": "InterestRate",
+          "doc": "Interest rate"
+        },
+        {
+          "value": "25",
+          "name": "PercentageNotional",
+          "doc": "Percentage of notional"
+        }
+      ],
+      "fix:tag": "40919"
+    }
+  },
+  {
+    "name": "paymentstreampaymentdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative payment date offset.",
+      "display": "PaymentStreamPaymentDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "40920"
+    }
+  },
+  {
+    "name": "businessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument unless specifically overridden.",
+      "display": "BusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "40921"
+    }
+  },
+  {
+    "name": "daterollconvention",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument unless specifically overridden. Additional values may be used by mutual agreement of the counterparties.",
+      "display": "DateRollConvention",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FirstDay",
+          "doc": "1st day of the month"
+        },
+        {
+          "value": "2",
+          "name": "SecondDay",
+          "doc": "2nd day of the month"
+        },
+        {
+          "value": "3",
+          "name": "ThirdDay",
+          "doc": "3rd day of the month"
+        },
+        {
+          "value": "4",
+          "name": "FourthDay",
+          "doc": "4th day of the month"
+        },
+        {
+          "value": "5",
+          "name": "FifthDay",
+          "doc": "5th day of the month"
+        },
+        {
+          "value": "6",
+          "name": "SixthDay",
+          "doc": "6thd day of the month"
+        },
+        {
+          "value": "7",
+          "name": "SeventhDay",
+          "doc": "7th day of the month"
+        },
+        {
+          "value": "8",
+          "name": "EighthDay",
+          "doc": "8th day of the month"
+        },
+        {
+          "value": "9",
+          "name": "NinthDay",
+          "doc": "9th day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "doc": "30th day of the month"
+        },
+        {
+          "value": "EOM",
+          "name": "EOM",
+          "doc": "The end of the month."
+        },
+        {
+          "value": "FRN",
+          "name": "FRN",
+          "doc": "The floating rate note convention or Eurodollar convention."
+        },
+        {
+          "value": "IMM",
+          "name": "IMM",
+          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+        },
+        {
+          "value": "IMMCAD",
+          "name": "IMMCAD",
+          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+        },
+        {
+          "value": "IMMNZD",
+          "name": "IMMNZD",
+          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+        },
+        {
+          "value": "SFE",
+          "name": "SFE",
+          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+        },
+        {
+          "value": "NONE",
+          "name": "NONE",
+          "doc": "No adjustment"
+        },
+        {
+          "value": "TBILL",
+          "name": "TBILL",
+          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+        },
+        {
+          "value": "MON",
+          "name": "MON",
+          "doc": "Monday"
+        },
+        {
+          "value": "TUE",
+          "name": "TUE",
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "WED",
+          "doc": "Wednesday"
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "doc": "Thursday"
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "doc": "Friday"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "doc": "Sunday"
+        }
+      ],
+      "fix:tag": "40922"
+    }
+  },
+  {
+    "name": "nolegbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegBusinessCenters",
+      "fix:tag": "40923"
+    }
+  },
+  {
+    "name": "legbusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A business center whose calendar is used for date adjustment, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "LegBusinessCenter",
+      "fix:tag": "40924"
+    }
+  },
+  {
+    "name": "legbusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
+      "display": "LegBusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "40925"
+    }
+  },
+  {
+    "name": "legdaterollconvention",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
+      "display": "LegDateRollConvention",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FirstDay",
+          "doc": "1st day of the month"
+        },
+        {
+          "value": "2",
+          "name": "SecondDay",
+          "doc": "2nd day of the month"
+        },
+        {
+          "value": "3",
+          "name": "ThirdDay",
+          "doc": "3rd day of the month"
+        },
+        {
+          "value": "4",
+          "name": "FourthDay",
+          "doc": "4th day of the month"
+        },
+        {
+          "value": "5",
+          "name": "FifthDay",
+          "doc": "5th day of the month"
+        },
+        {
+          "value": "6",
+          "name": "SixthDay",
+          "doc": "6thd day of the month"
+        },
+        {
+          "value": "7",
+          "name": "SeventhDay",
+          "doc": "7th day of the month"
+        },
+        {
+          "value": "8",
+          "name": "EighthDay",
+          "doc": "8th day of the month"
+        },
+        {
+          "value": "9",
+          "name": "NinthDay",
+          "doc": "9th day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "doc": "30th day of the month"
+        },
+        {
+          "value": "EOM",
+          "name": "EOM",
+          "doc": "The end of the month."
+        },
+        {
+          "value": "FRN",
+          "name": "FRN",
+          "doc": "The floating rate note convention or Eurodollar convention."
+        },
+        {
+          "value": "IMM",
+          "name": "IMM",
+          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+        },
+        {
+          "value": "IMMCAD",
+          "name": "IMMCAD",
+          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+        },
+        {
+          "value": "IMMNZD",
+          "name": "IMMNZD",
+          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+        },
+        {
+          "value": "SFE",
+          "name": "SFE",
+          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+        },
+        {
+          "value": "NONE",
+          "name": "NONE",
+          "doc": "No adjustment"
+        },
+        {
+          "value": "TBILL",
+          "name": "TBILL",
+          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+        },
+        {
+          "value": "MON",
+          "name": "MON",
+          "doc": "Monday"
+        },
+        {
+          "value": "TUE",
+          "name": "TUE",
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "WED",
+          "doc": "Wednesday"
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "doc": "Thursday"
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "doc": "Friday"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "doc": "Sunday"
+        }
+      ],
+      "fix:tag": "40926"
+    }
+  },
+  {
+    "name": "nolegpaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentScheduleFixingDateBusinessCenters",
+      "fix:tag": "40927"
+    }
+  },
+  {
+    "name": "nolegpaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:tag": "40928"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStreamNonDeliverableFixingDateBusinessCenters",
+      "fix:tag": "40929"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStreamPaymentDateBusinessCenters",
+      "fix:tag": "40930"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStreamResetDateBusinessCenters",
+      "fix:tag": "40931"
+    }
+  },
+  {
+    "name": "nolegpaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:tag": "40932"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStreamFixingDateBusinessCenters",
+      "fix:tag": "40933"
+    }
+  },
+  {
+    "name": "nolegprovisioncashsettlpaymentdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionCashSettlPaymentDateBusinessCenters",
+      "fix:tag": "40934"
+    }
+  },
+  {
+    "name": "nolegprovisioncashsettlvaluedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionCashSettlValueDateBusinessCenters",
+      "fix:tag": "40935"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionOptionExerciseBusinessCenters",
+      "fix:tag": "40936"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionOptionExpirationDateBusinessCenters",
+      "fix:tag": "40937"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters",
+      "fix:tag": "40938"
+    }
+  },
+  {
+    "name": "nolegprovisiondatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegProvisionDateBusinessCenters",
+      "fix:tag": "40939"
+    }
+  },
+  {
+    "name": "nolegstreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegStreamCalculationPeriodBusinessCenters",
+      "fix:tag": "40940"
+    }
+  },
+  {
+    "name": "nolegstreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegStreamFirstPeriodStartDateBusinessCenters",
+      "fix:tag": "40941"
+    }
+  },
+  {
+    "name": "nolegstreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegStreamEffectiveDateBusinessCenters",
+      "fix:tag": "40942"
+    }
+  },
+  {
+    "name": "nolegstreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegStreamTerminationDateBusinessCenters",
+      "fix:tag": "40943"
+    }
+  },
+  {
+    "name": "nopaymentbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentBusinessCenters",
+      "fix:tag": "40944"
+    }
+  },
+  {
+    "name": "nopaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:tag": "40945"
+    }
+  },
+  {
+    "name": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamNonDeliverableFixingDatesBusinessCenters",
+      "fix:tag": "40946"
+    }
+  },
+  {
+    "name": "nopaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamPaymentDateBusinessCenters",
+      "fix:tag": "40947"
+    }
+  },
+  {
+    "name": "nopaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamResetDateBusinessCenters",
+      "fix:tag": "40948"
+    }
+  },
+  {
+    "name": "nopaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:tag": "40949"
+    }
+  },
+  {
+    "name": "nopaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamFixingDateBusinessCenters",
+      "fix:tag": "40950"
+    }
+  },
+  {
+    "name": "noprotectiontermeventnewssources",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of event news sources in the repeating group.",
+      "display": "NoProtectionTermEventNewsSources",
+      "fix:tag": "40951"
+    }
+  },
+  {
+    "name": "noprovisioncashsettlpaymentdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionCashSettlPaymentDateBusinessCenters",
+      "fix:tag": "40952"
+    }
+  },
+  {
+    "name": "noprovisioncashsettlvaluedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionCashSettlValueDateBusinessCenters",
+      "fix:tag": "40953"
+    }
+  },
+  {
+    "name": "noprovisionoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionOptionExerciseBusinessCenters",
+      "fix:tag": "40954"
+    }
+  },
+  {
+    "name": "noprovisionoptionexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionOptionExpirationDateBusinessCenters",
+      "fix:tag": "40955"
+    }
+  },
+  {
+    "name": "noprovisionoptionrelevantunderlyingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionOptionRelevantUnderlyingDateBusinessCenters",
+      "fix:tag": "40956"
+    }
+  },
+  {
+    "name": "noprovisiondatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoProvisionDateBusinessCenters",
+      "fix:tag": "40957"
+    }
+  },
+  {
+    "name": "nostreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoStreamCalculationPeriodBusinessCenters",
+      "fix:tag": "40958"
+    }
+  },
+  {
+    "name": "nostreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoStreamFirstPeriodStartDateBusinessCenters",
+      "fix:tag": "40959"
+    }
+  },
+  {
+    "name": "nostreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoStreamEffectiveDateBusinessCenters",
+      "fix:tag": "40960"
+    }
+  },
+  {
+    "name": "nostreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoStreamTerminationDateBusinessCenters",
+      "fix:tag": "40961"
+    }
+  },
+  {
+    "name": "nounderlyingbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingBusinessCenters",
+      "fix:tag": "40962"
+    }
+  },
+  {
+    "name": "underlyingbusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A business center whose calendar is used for date adjustment, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingBusinessCenter",
+      "fix:tag": "40963"
+    }
+  },
+  {
+    "name": "underlyingbusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
+      "display": "UnderlyingBusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "40964"
+    }
+  },
+  {
+    "name": "underlyingdaterollconvention",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
+      "display": "UnderlyingDateRollConvention",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FirstDay",
+          "doc": "1st day of the month"
+        },
+        {
+          "value": "2",
+          "name": "SecondDay",
+          "doc": "2nd day of the month"
+        },
+        {
+          "value": "3",
+          "name": "ThirdDay",
+          "doc": "3rd day of the month"
+        },
+        {
+          "value": "4",
+          "name": "FourthDay",
+          "doc": "4th day of the month"
+        },
+        {
+          "value": "5",
+          "name": "FifthDay",
+          "doc": "5th day of the month"
+        },
+        {
+          "value": "6",
+          "name": "SixthDay",
+          "doc": "6thd day of the month"
+        },
+        {
+          "value": "7",
+          "name": "SeventhDay",
+          "doc": "7th day of the month"
+        },
+        {
+          "value": "8",
+          "name": "EighthDay",
+          "doc": "8th day of the month"
+        },
+        {
+          "value": "9",
+          "name": "NinthDay",
+          "doc": "9th day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "doc": "30th day of the month"
+        },
+        {
+          "value": "EOM",
+          "name": "EOM",
+          "doc": "The end of the month."
+        },
+        {
+          "value": "FRN",
+          "name": "FRN",
+          "doc": "The floating rate note convention or Eurodollar convention."
+        },
+        {
+          "value": "IMM",
+          "name": "IMM",
+          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+        },
+        {
+          "value": "IMMCAD",
+          "name": "IMMCAD",
+          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+        },
+        {
+          "value": "IMMNZD",
+          "name": "IMMNZD",
+          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+        },
+        {
+          "value": "SFE",
+          "name": "SFE",
+          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+        },
+        {
+          "value": "NONE",
+          "name": "NONE",
+          "doc": "No adjustment"
+        },
+        {
+          "value": "TBILL",
+          "name": "TBILL",
+          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+        },
+        {
+          "value": "MON",
+          "name": "MON",
+          "doc": "Monday"
+        },
+        {
+          "value": "TUE",
+          "name": "TUE",
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "WED",
+          "doc": "Wednesday"
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "doc": "Thursday"
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "doc": "Friday"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "doc": "Sunday"
+        }
+      ],
+      "fix:tag": "40965"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentScheduleFixingDateBusinessCenters",
+      "fix:tag": "40966"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:tag": "40967"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters",
+      "fix:tag": "40968"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamPaymentDateBusinessCenters",
+      "fix:tag": "40969"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamResetDateBusinessCenters",
+      "fix:tag": "40970"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:tag": "40971"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamFixingDateBusinessCenters",
+      "fix:tag": "40972"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingStreamCalculationPeriodBusinessCenters",
+      "fix:tag": "40973"
+    }
+  },
+  {
+    "name": "nounderlyingstreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingStreamFirstPeriodStartDateBusinessCenters",
+      "fix:tag": "40974"
+    }
+  },
+  {
+    "name": "nounderlyingstreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingStreamEffectiveDateBusinessCenters",
+      "fix:tag": "40975"
+    }
+  },
+  {
+    "name": "nounderlyingstreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingStreamTerminationDateBusinessCenters",
+      "fix:tag": "40976"
+    }
+  },
+  {
+    "name": "nopaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentScheduleFixingDateBusinessCenters",
+      "fix:tag": "40977"
+    }
+  },
+  {
+    "name": "encodedlegstreamtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedLegStreamText(40979) field.",
+      "display": "EncodedLegStreamTextLen",
+      "fix:tag": "40978"
+    }
+  },
+  {
+    "name": "encodedlegstreamtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the LegStreamText(40248) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegStreamText(40248) field.",
+      "display": "EncodedLegStreamText",
+      "fix:tag": "40979"
+    }
+  },
+  {
+    "name": "encodedlegprovisiontextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedLegProvisionText(40472) field.",
+      "display": "EncodedLegProvisionTextLen",
+      "fix:tag": "40980"
+    }
+  },
+  {
+    "name": "encodedlegprovisiontext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the LegProvisionText(40472) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegProvisionText(40472) field.",
+      "display": "EncodedLegProvisionText",
+      "fix:tag": "40981"
+    }
+  },
+  {
+    "name": "encodedstreamtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedStreamText(40983) field.",
+      "display": "EncodedStreamTextLen",
+      "fix:tag": "40982"
+    }
+  },
+  {
+    "name": "encodedstreamtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the StreamText(40056) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the StreamText(40056) field.",
+      "display": "EncodedStreamText",
+      "fix:tag": "40983"
+    }
+  },
+  {
+    "name": "encodedpaymenttextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedPaymentText(40985) field.",
+      "display": "EncodedPaymentTextLen",
+      "fix:tag": "40984"
+    }
+  },
+  {
+    "name": "encodedpaymenttext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the PaymentText(40229) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the PaymentText(40229) field.",
+      "display": "EncodedPaymentText",
+      "fix:tag": "40985"
+    }
+  },
+  {
+    "name": "encodedprovisiontextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedProvisionText(40987) field.",
+      "display": "EncodedProvisionTextLen",
+      "fix:tag": "40986"
+    }
+  },
+  {
+    "name": "encodedprovisiontext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the ProvisionText(40113) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ProvisionText(40113) field.",
+      "display": "EncodedProvisionText",
+      "fix:tag": "40987"
+    }
+  },
+  {
+    "name": "encodedunderlyingstreamtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingStreamText(40989) field.",
+      "display": "EncodedUnderlyingStreamTextLen",
+      "fix:tag": "40988"
+    }
+  },
+  {
+    "name": "encodedunderlyingstreamtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the UnderlyingStreamText(40547) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingStreamText(40547) field.",
+      "display": "EncodedUnderlyingStreamText",
+      "fix:tag": "40989"
+    }
+  },
+  {
+    "name": "legmarketdisruptionfallbackvalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Applicable value for LegMarketDisruptionFallbackType(41470).",
+      "display": "LegMarketDisruptionFallbackValue",
+      "fix:tag": "40990"
+    }
+  },
+  {
+    "name": "marketdisruptionvalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Applicable value for MarketDisruptionEvent(41093).",
+      "display": "MarketDisruptionValue",
+      "fix:tag": "40991"
+    }
+  },
+  {
+    "name": "marketdisruptionfallbackvalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Applicable value for MarketDisruptionFallbackType(41095).",
+      "display": "MarketDisruptionFallbackValue",
+      "fix:tag": "40992"
+    }
+  },
+  {
+    "name": "paymentsubtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to further clarify the value of PaymentType(40213).",
+      "display": "PaymentSubType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Initial",
+          "doc": "Initial (principal exchange)"
+        },
+        {
+          "value": "1",
+          "name": "Intermediate",
+          "doc": "Intermediate (principal exchange)"
+        },
+        {
+          "value": "2",
+          "name": "Final",
+          "doc": "Final (principal exchange)"
+        },
+        {
+          "value": "3",
+          "name": "Prepaid",
+          "doc": "Prepaid (premium forward)"
+        },
+        {
+          "value": "4",
+          "name": "Postpaid",
+          "doc": "Postpaid (premium forward)"
+        },
+        {
+          "value": "5",
+          "name": "Variable",
+          "doc": "Variable (premium forward)"
+        },
+        {
+          "value": "6",
+          "name": "Fixed",
+          "doc": "Fixed (premium forward)"
+        },
+        {
+          "value": "7",
+          "name": "Swap",
+          "doc": "Swap (premium)"
+        },
+        {
+          "value": "8",
+          "name": "Conditional",
+          "doc": "Conditional (principal exchange on exercise)"
+        },
+        {
+          "value": "9",
+          "name": "FixedRate",
+          "doc": "Fixed rate"
+        },
+        {
+          "value": "10",
+          "name": "FloatingRate",
+          "doc": "Floating rate"
+        }
+      ],
+      "fix:tag": "40993"
+    }
+  },
+  {
+    "name": "nocomplexeventaveragingobservations",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of averaging observations in the repeating group.",
+      "display": "NoComplexEventAveragingObservations",
+      "fix:tag": "40994"
+    }
+  },
+  {
+    "name": "complexeventaveragingobservationnumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Cross reference to the ordinal observation as specified either in the ComplexEventScheduleGrp or ComplexEventPeriodDateGrp components.",
+      "display": "ComplexEventAveragingObservationNumber",
+      "fix:tag": "40995"
+    }
+  },
+  {
+    "name": "complexeventaveragingweight",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The weight factor to be applied to the observation.",
+      "display": "ComplexEventAveragingWeight",
+      "fix:tag": "40996"
+    }
+  },
+  {
+    "name": "nocomplexeventcreditevents",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of credit events specified in the repeating group.",
+      "display": "NoComplexEventCreditEvents",
+      "fix:tag": "40997"
+    }
+  },
+  {
+    "name": "complexeventcrediteventtype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of credit event. See https://fixtrading.org/packages/credit-event-type for code list of applicable event types.",
+      "display": "ComplexEventCreditEventType",
+      "fix:tag": "40998"
+    }
+  },
+  {
+    "name": "complexeventcrediteventvalue",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The credit event value appropriate to ComplexEventCreditEventType(40998). See https://fixtrading.org/packages/credit-event-type for applicable event type values.",
+      "display": "ComplexEventCreditEventValue",
+      "fix:tag": "40999"
+    }
+  }
+]

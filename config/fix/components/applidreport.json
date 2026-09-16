@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplid"
+          "fix:field": "refapplid",
+          "fix:tag": "1355"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applnewseqnum"
+          "fix:field": "applnewseqnum",
+          "fix:tag": "1399"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refappllastseqnum"
+          "fix:field": "refappllastseqnum",
+          "fix:tag": "1357"
         }
       }
     ]

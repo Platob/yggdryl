@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddate"
+          "fix:field": "underlyingstreamcalculationperioddate",
+          "fix:tag": "41955"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddatetype"
+          "fix:field": "underlyingstreamcalculationperioddatetype",
+          "fix:tag": "41956"
         }
       }
     ]

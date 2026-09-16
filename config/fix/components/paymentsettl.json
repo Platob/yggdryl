@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlamount"
+          "fix:field": "paymentsettlamount",
+          "fix:tag": "40231"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlcurrency"
+          "fix:field": "paymentsettlcurrency",
+          "fix:tag": "40232"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentsettlpartyids"
+          "fix:field": "nopaymentsettlpartyids",
+          "fix:tag": "40233"
         }
       },
       {

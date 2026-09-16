@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchalgorithm"
+          "fix:field": "matchalgorithm",
+          "fix:tag": "1142"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchtype"
+          "fix:field": "matchtype",
+          "fix:tag": "574"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchruleproductcomplex"
+          "fix:field": "matchruleproductcomplex",
+          "fix:tag": "2569"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "customerpriority"
+          "fix:field": "customerpriority",
+          "fix:tag": "2570"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondateunadjusted"
+          "fix:field": "underlyingsettlmethodelectiondateunadjusted",
+          "fix:tag": "43076"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondatebusinessdayconvention"
+          "fix:field": "underlyingsettlmethodelectiondatebusinessdayconvention",
+          "fix:tag": "43077"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingsettlmethodelectiondatebusinesscenters"
+          "fix:field": "nounderlyingsettlmethodelectiondatebusinesscenters",
+          "fix:tag": "43074"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondaterelativeto"
+          "fix:field": "underlyingsettlmethodelectiondaterelativeto",
+          "fix:tag": "43078"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondateoffsetperiod"
+          "fix:field": "underlyingsettlmethodelectiondateoffsetperiod",
+          "fix:tag": "43079"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondateoffsetunit"
+          "fix:field": "underlyingsettlmethodelectiondateoffsetunit",
+          "fix:tag": "43080"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondateoffsetdaytype"
+          "fix:field": "underlyingsettlmethodelectiondateoffsetdaytype",
+          "fix:tag": "43081"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondateadjusted"
+          "fix:field": "underlyingsettlmethodelectiondateadjusted",
+          "fix:tag": "43082"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massstatusreqid"
+          "fix:field": "massstatusreqid",
+          "fix:tag": "584"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massstatusreqtype"
+          "fix:field": "massstatusreqtype",
+          "fix:tag": "585"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetpartyids"
+          "fix:field": "notargetpartyids",
+          "fix:tag": "1461"
         }
       },
       {
@@ -80,7 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account"
+          "fix:field": "account",
+          "fix:tag": "1"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource"
+          "fix:field": "acctidsource",
+          "fix:tag": "660"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -140,7 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side"
+          "fix:field": "side",
+          "fix:tag": "54"
         }
       },
       {

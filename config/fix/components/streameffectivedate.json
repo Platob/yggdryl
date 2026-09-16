@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedateunadjusted"
+          "fix:field": "streameffectivedateunadjusted",
+          "fix:tag": "40907"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedatebusinessdayconvention"
+          "fix:field": "streameffectivedatebusinessdayconvention",
+          "fix:tag": "40908"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreameffectivedatebusinesscenters"
+          "fix:field": "nostreameffectivedatebusinesscenters",
+          "fix:tag": "40960"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedaterelativeto"
+          "fix:field": "streameffectivedaterelativeto",
+          "fix:tag": "40910"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedateoffsetperiod"
+          "fix:field": "streameffectivedateoffsetperiod",
+          "fix:tag": "40911"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedateoffsetunit"
+          "fix:field": "streameffectivedateoffsetunit",
+          "fix:tag": "40912"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedateoffsetdaytype"
+          "fix:field": "streameffectivedateoffsetdaytype",
+          "fix:tag": "40913"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streameffectivedateadjusted"
+          "fix:field": "streameffectivedateadjusted",
+          "fix:tag": "40914"
         }
       }
     ]

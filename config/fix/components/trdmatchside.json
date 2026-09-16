@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side"
+          "fix:field": "side",
+          "fix:tag": "54"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideexecid"
+          "fix:field": "sideexecid",
+          "fix:tag": "1427"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideexecrefid"
+          "fix:field": "sideexecrefid",
+          "fix:tag": "1900"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetradeid"
+          "fix:field": "sidetradeid",
+          "fix:tag": "1506"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetradereportid"
+          "fix:field": "sidetradereportid",
+          "fix:tag": "1005"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderdelay"
+          "fix:field": "orderdelay",
+          "fix:tag": "1428"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderdelayunit"
+          "fix:field": "orderdelayunit",
+          "fix:tag": "1429"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidelastqty"
+          "fix:field": "sidelastqty",
+          "fix:tag": "1009"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideclearingtradeprice"
+          "fix:field": "sideclearingtradeprice",
+          "fix:tag": "1597"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidepricedifferential"
+          "fix:field": "sidepricedifferential",
+          "fix:tag": "1599"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideclearingtradepricetype"
+          "fix:field": "sideclearingtradepricetype",
+          "fix:tag": "1598"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidefillstationcd"
+          "fix:field": "sidefillstationcd",
+          "fix:tag": "1006"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidereasoncd"
+          "fix:field": "sidereasoncd",
+          "fix:tag": "1007"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetrdsubtype"
+          "fix:field": "sidetrdsubtype",
+          "fix:tag": "1008"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "netgrossind"
+          "fix:field": "netgrossind",
+          "fix:tag": "430"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecurrency"
+          "fix:field": "sidecurrency",
+          "fix:tag": "1154"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecurrencycodesource"
+          "fix:field": "sidecurrencycodesource",
+          "fix:tag": "2901"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidesettlcurrency"
+          "fix:field": "sidesettlcurrency",
+          "fix:tag": "1155"
         }
       },
       {
@@ -190,7 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidesettlcurrencycodesource"
+          "fix:field": "sidesettlcurrencycodesource",
+          "fix:tag": "2902"
         }
       },
       {
@@ -200,7 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -220,7 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeinputsource"
+          "fix:field": "tradeinputsource",
+          "fix:tag": "578"
         }
       },
       {
@@ -230,7 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeinputdevice"
+          "fix:field": "tradeinputdevice",
+          "fix:tag": "579"
         }
       },
       {
@@ -240,7 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid"
+          "fix:field": "complianceid",
+          "fix:tag": "376"
         }
       },
       {
@@ -250,7 +273,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext"
+          "fix:field": "compliancetext",
+          "fix:tag": "2404"
         }
       },
       {
@@ -260,7 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetextlen"
+          "fix:field": "encodedcompliancetextlen",
+          "fix:tag": "2351"
         }
       },
       {
@@ -270,7 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetext"
+          "fix:field": "encodedcompliancetext",
+          "fix:tag": "2352"
         }
       },
       {
@@ -280,7 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "solicitedflag"
+          "fix:field": "solicitedflag",
+          "fix:tag": "377"
         }
       },
       {
@@ -290,7 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "custordercapacity"
+          "fix:field": "custordercapacity",
+          "fix:tag": "582"
         }
       },
       {
@@ -300,7 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "timebracket"
+          "fix:field": "timebracket",
+          "fix:tag": "943"
         }
       },
       {
@@ -310,7 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "positioneffect"
+          "fix:field": "positioneffect",
+          "fix:tag": "77"
         }
       },
       {
@@ -320,7 +350,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exchangerule"
+          "fix:field": "exchangerule",
+          "fix:tag": "825"
         }
       },
       {
@@ -330,7 +361,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeallocindicator"
+          "fix:field": "tradeallocindicator",
+          "fix:tag": "826"
         }
       },
       {
@@ -340,7 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "preallocmethod"
+          "fix:field": "preallocmethod",
+          "fix:tag": "591"
         }
       },
       {
@@ -350,7 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocid"
+          "fix:field": "allocid",
+          "fix:tag": "70"
         }
       },
       {
@@ -360,7 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noallocs"
+          "fix:field": "noallocs",
+          "fix:tag": "78"
         }
       },
       {
@@ -380,7 +415,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidegrosstradeamt"
+          "fix:field": "sidegrosstradeamt",
+          "fix:tag": "1072"
         }
       },
       {
@@ -390,7 +426,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggressorindicator"
+          "fix:field": "aggressorindicator",
+          "fix:tag": "1057"
         }
       },
       {
@@ -400,7 +437,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exchangespecialinstructions"
+          "fix:field": "exchangespecialinstructions",
+          "fix:tag": "1139"
         }
       },
       {
@@ -410,7 +448,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideshortsaleexemptionreason"
+          "fix:field": "sideshortsaleexemptionreason",
+          "fix:tag": "1690"
         }
       },
       {
@@ -420,7 +459,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercategory"
+          "fix:field": "ordercategory",
+          "fix:tag": "1115"
         }
       },
       {
@@ -430,7 +470,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpxindicator"
+          "fix:field": "avgpxindicator",
+          "fix:tag": "819"
         }
       },
       {
@@ -440,7 +481,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpxgroupid"
+          "fix:field": "avgpxgroupid",
+          "fix:tag": "1731"
         }
       },
       {
@@ -450,7 +492,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidemarketsegmentid"
+          "fix:field": "sidemarketsegmentid",
+          "fix:tag": "1898"
         }
       },
       {
@@ -460,7 +503,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevenuetype"
+          "fix:field": "sidevenuetype",
+          "fix:tag": "1899"
         }
       },
       {
@@ -470,7 +514,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingfeeindicator"
+          "fix:field": "clearingfeeindicator",
+          "fix:tag": "635"
         }
       },
       {
@@ -490,7 +535,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegexecs"
+          "fix:field": "nolegexecs",
+          "fix:tag": "1892"
         }
       },
       {
@@ -510,7 +556,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "custorderhandlinginst"
+          "fix:field": "custorderhandlinginst",
+          "fix:tag": "1031"
         }
       },
       {
@@ -520,7 +567,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderhandlinginstsource"
+          "fix:field": "orderhandlinginstsource",
+          "fix:tag": "1032"
         }
       },
       {
@@ -530,7 +578,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -540,7 +589,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -550,7 +600,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       }
     ]

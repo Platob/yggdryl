@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearinginstruction"
+          "fix:field": "clearinginstruction",
+          "fix:tag": "577"
         }
       }
     ]

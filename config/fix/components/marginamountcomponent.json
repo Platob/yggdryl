@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamt"
+          "fix:field": "marginamt",
+          "fix:tag": "1645"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamttype"
+          "fix:field": "marginamttype",
+          "fix:tag": "1644"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtccy"
+          "fix:field": "marginamtccy",
+          "fix:tag": "1646"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtfxrate"
+          "fix:field": "marginamtfxrate",
+          "fix:tag": "2088"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtfxratecalc"
+          "fix:field": "marginamtfxratecalc",
+          "fix:tag": "2089"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamountmarketsegmentid"
+          "fix:field": "marginamountmarketsegmentid",
+          "fix:tag": "1714"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamountmarketid"
+          "fix:field": "marginamountmarketid",
+          "fix:tag": "1715"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "margindirection"
+          "fix:field": "margindirection",
+          "fix:tag": "2851"
         }
       }
     ]

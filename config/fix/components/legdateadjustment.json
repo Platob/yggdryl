@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbusinessdayconvention"
+          "fix:field": "legbusinessdayconvention",
+          "fix:tag": "40925"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegbusinesscenters"
+          "fix:field": "nolegbusinesscenters",
+          "fix:tag": "40923"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdaterollconvention"
+          "fix:field": "legdaterollconvention",
+          "fix:tag": "40926"
         }
       }
     ]

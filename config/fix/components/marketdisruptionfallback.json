@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbacktype"
+          "fix:field": "marketdisruptionfallbacktype",
+          "fix:tag": "41095"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackvalue"
+          "fix:field": "marketdisruptionfallbackvalue",
+          "fix:tag": "40992"
         }
       }
     ]

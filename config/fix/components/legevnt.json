@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtype"
+          "fix:field": "legeventtype",
+          "fix:tag": "2060"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventdate"
+          "fix:field": "legeventdate",
+          "fix:tag": "2061"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtime"
+          "fix:field": "legeventtime",
+          "fix:tag": "2062"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtimeunit"
+          "fix:field": "legeventtimeunit",
+          "fix:tag": "2063"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtimeperiod"
+          "fix:field": "legeventtimeperiod",
+          "fix:tag": "2064"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventmonthyear"
+          "fix:field": "legeventmonthyear",
+          "fix:tag": "2341"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventpx"
+          "fix:field": "legeventpx",
+          "fix:tag": "2065"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtext"
+          "fix:field": "legeventtext",
+          "fix:tag": "2066"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegeventtextlen"
+          "fix:field": "encodedlegeventtextlen",
+          "fix:tag": "2074"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegeventtext"
+          "fix:field": "encodedlegeventtext",
+          "fix:tag": "2075"
         }
       }
     ]

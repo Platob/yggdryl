@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "starttickpricerange"
+          "fix:field": "starttickpricerange",
+          "fix:tag": "1206"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endtickpricerange"
+          "fix:field": "endtickpricerange",
+          "fix:tag": "1207"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickincrement"
+          "fix:field": "tickincrement",
+          "fix:tag": "1208"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickruletype"
+          "fix:field": "tickruletype",
+          "fix:tag": "1209"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickruleproductcomplex"
+          "fix:field": "tickruleproductcomplex",
+          "fix:tag": "2571"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpriceincrement"
+          "fix:field": "settlpriceincrement",
+          "fix:tag": "1830"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpricesecondaryincrement"
+          "fix:field": "settlpricesecondaryincrement",
+          "fix:tag": "1831"
         }
       }
     ]

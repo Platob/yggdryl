@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventtype"
+          "fix:field": "underlyingprotectiontermeventtype",
+          "fix:tag": "42078"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventvalue"
+          "fix:field": "underlyingprotectiontermeventvalue",
+          "fix:tag": "42079"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventcurrency"
+          "fix:field": "underlyingprotectiontermeventcurrency",
+          "fix:tag": "42080"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventperiod"
+          "fix:field": "underlyingprotectiontermeventperiod",
+          "fix:tag": "42081"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventunit"
+          "fix:field": "underlyingprotectiontermeventunit",
+          "fix:tag": "42082"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventdaytype"
+          "fix:field": "underlyingprotectiontermeventdaytype",
+          "fix:tag": "42083"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventratesource"
+          "fix:field": "underlyingprotectiontermeventratesource",
+          "fix:tag": "42084"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingprotectiontermeventqualifiers"
+          "fix:field": "nounderlyingprotectiontermeventqualifiers",
+          "fix:tag": "42085"
         }
       },
       {

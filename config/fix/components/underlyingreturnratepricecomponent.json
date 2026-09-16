@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratepricebasis"
+          "fix:field": "underlyingreturnratepricebasis",
+          "fix:tag": "43065"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnrateprice"
+          "fix:field": "underlyingreturnrateprice",
+          "fix:tag": "43066"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratepricecurrency"
+          "fix:field": "underlyingreturnratepricecurrency",
+          "fix:tag": "43067"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratepricetype"
+          "fix:field": "underlyingreturnratepricetype",
+          "fix:tag": "43068"
         }
       }
     ]

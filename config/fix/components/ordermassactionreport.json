@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid"
+          "fix:field": "clordid",
+          "fix:tag": "11"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid"
+          "fix:field": "secondaryclordid",
+          "fix:tag": "526"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massactionreportid"
+          "fix:field": "massactionreportid",
+          "fix:tag": "1369"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massactiontype"
+          "fix:field": "massactiontype",
+          "fix:tag": "1373"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massactionscope"
+          "fix:field": "massactionscope",
+          "fix:tag": "1374"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "massactionreason"
+          "fix:field": "massactionreason",
+          "fix:tag": "2675"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massactionresponse"
+          "fix:field": "massactionresponse",
+          "fix:tag": "1375"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "massactionrejectreason"
+          "fix:field": "massactionrejectreason",
+          "fix:tag": "1376"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totalaffectedorders"
+          "fix:field": "totalaffectedorders",
+          "fix:tag": "533"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totalnotaffectedorders"
+          "fix:field": "totalnotaffectedorders",
+          "fix:tag": "2678"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noaffectedorders"
+          "fix:field": "noaffectedorders",
+          "fix:tag": "534"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonotaffectedorders"
+          "fix:field": "nonotaffectedorders",
+          "fix:tag": "1370"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noaffectedmarketsegments"
+          "fix:field": "noaffectedmarketsegments",
+          "fix:tag": "1791"
         }
       },
       {
@@ -190,7 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonotaffectedmarketsegments"
+          "fix:field": "nonotaffectedmarketsegments",
+          "fix:tag": "1793"
         }
       },
       {
@@ -210,7 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid"
+          "fix:field": "marketid",
+          "fix:tag": "1301"
         }
       },
       {
@@ -220,7 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -230,7 +247,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetmarketsegments"
+          "fix:field": "notargetmarketsegments",
+          "fix:tag": "1789"
         }
       },
       {
@@ -250,7 +268,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -260,7 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -270,7 +290,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -290,7 +311,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetpartyids"
+          "fix:field": "notargetpartyids",
+          "fix:tag": "1461"
         }
       },
       {
@@ -330,7 +352,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side"
+          "fix:field": "side",
+          "fix:tag": "54"
         }
       },
       {
@@ -340,7 +363,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price"
+          "fix:field": "price",
+          "fix:tag": "44"
         }
       },
       {
@@ -350,7 +374,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -360,7 +385,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid"
+          "fix:field": "complianceid",
+          "fix:tag": "376"
         }
       },
       {
@@ -370,7 +396,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext"
+          "fix:field": "compliancetext",
+          "fix:tag": "2404"
         }
       },
       {
@@ -380,7 +407,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetextlen"
+          "fix:field": "encodedcompliancetextlen",
+          "fix:tag": "2351"
         }
       },
       {
@@ -390,7 +418,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetext"
+          "fix:field": "encodedcompliancetext",
+          "fix:tag": "2352"
         }
       },
       {
@@ -400,7 +429,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -410,7 +440,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -420,7 +451,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamtype"
+          "fix:field": "underlyingpaymentstreamtype",
+          "fix:tag": "40568"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreammarketrate"
+          "fix:field": "underlyingpaymentstreammarketrate",
+          "fix:tag": "40569"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamdelayindicator"
+          "fix:field": "underlyingpaymentstreamdelayindicator",
+          "fix:tag": "40570"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcashsettlindicator"
+          "fix:field": "underlyingpaymentstreamcashsettlindicator",
+          "fix:tag": "42895"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamsettlcurrency"
+          "fix:field": "underlyingpaymentstreamsettlcurrency",
+          "fix:tag": "40571"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamdaycount"
+          "fix:field": "underlyingpaymentstreamdaycount",
+          "fix:tag": "40572"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamotherdaycount"
+          "fix:field": "underlyingpaymentstreamotherdaycount",
+          "fix:tag": "43107"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamaccrualdays"
+          "fix:field": "underlyingpaymentstreamaccrualdays",
+          "fix:tag": "40573"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamdiscounttype"
+          "fix:field": "underlyingpaymentstreamdiscounttype",
+          "fix:tag": "40574"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamdiscountrate"
+          "fix:field": "underlyingpaymentstreamdiscountrate",
+          "fix:tag": "40575"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamdiscountratedaycount"
+          "fix:field": "underlyingpaymentstreamdiscountratedaycount",
+          "fix:tag": "40576"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingmethod"
+          "fix:field": "underlyingpaymentstreamcompoundingmethod",
+          "fix:tag": "40577"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingxidref"
+          "fix:field": "underlyingpaymentstreamcompoundingxidref",
+          "fix:tag": "42896"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingspread"
+          "fix:field": "underlyingpaymentstreamcompoundingspread",
+          "fix:tag": "42897"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreaminterpolationmethod"
+          "fix:field": "underlyingpaymentstreaminterpolationmethod",
+          "fix:tag": "42898"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreaminterpolationperiod"
+          "fix:field": "underlyingpaymentstreaminterpolationperiod",
+          "fix:tag": "42899"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreaminitialprincipalexchangeindicator"
+          "fix:field": "underlyingpaymentstreaminitialprincipalexchangeindicator",
+          "fix:tag": "40578"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreaminterimprincipalexchangeindicator"
+          "fix:field": "underlyingpaymentstreaminterimprincipalexchangeindicator",
+          "fix:tag": "40579"
         }
       },
       {
@@ -190,7 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalprincipalexchangeindicator"
+          "fix:field": "underlyingpaymentstreamfinalprincipalexchangeindicator",
+          "fix:tag": "40580"
         }
       },
       {
@@ -200,7 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamflatrateindicator"
+          "fix:field": "underlyingpaymentstreamflatrateindicator",
+          "fix:tag": "41897"
         }
       },
       {
@@ -210,7 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamflatrateamount"
+          "fix:field": "underlyingpaymentstreamflatrateamount",
+          "fix:tag": "41898"
         }
       },
       {
@@ -220,7 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamflatratecurrency"
+          "fix:field": "underlyingpaymentstreamflatratecurrency",
+          "fix:tag": "41899"
         }
       },
       {
@@ -230,7 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreammaximumpaymentamount"
+          "fix:field": "underlyingpaymentstreammaximumpaymentamount",
+          "fix:tag": "41900"
         }
       },
       {
@@ -240,7 +263,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreammaximumpaymentcurrency"
+          "fix:field": "underlyingpaymentstreammaximumpaymentcurrency",
+          "fix:tag": "41901"
         }
       },
       {
@@ -250,7 +274,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreammaximumtransactionamount"
+          "fix:field": "underlyingpaymentstreammaximumtransactionamount",
+          "fix:tag": "41902"
         }
       },
       {
@@ -260,7 +285,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreammaximumtransactioncurrency"
+          "fix:field": "underlyingpaymentstreammaximumtransactioncurrency",
+          "fix:tag": "41903"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfixedrate"
+          "fix:field": "underlyingpaymentstreamcompoundingfixedrate",
+          "fix:tag": "42900"
         }
       },
       {

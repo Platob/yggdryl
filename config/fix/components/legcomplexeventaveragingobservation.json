@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventaveragingobservationnumber"
+          "fix:field": "legcomplexeventaveragingobservationnumber",
+          "fix:tag": "41364"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventaveragingweight"
+          "fix:field": "legcomplexeventaveragingweight",
+          "fix:tag": "41365"
         }
       }
     ]

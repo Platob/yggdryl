@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstipulationtype"
+          "fix:field": "legstipulationtype",
+          "fix:tag": "688"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstipulationvalue"
+          "fix:field": "legstipulationvalue",
+          "fix:tag": "689"
         }
       }
     ]

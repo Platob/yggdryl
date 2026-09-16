@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretioninst"
+          "fix:field": "discretioninst",
+          "fix:tag": "388"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionoffsetvalue"
+          "fix:field": "discretionoffsetvalue",
+          "fix:tag": "389"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionmovetype"
+          "fix:field": "discretionmovetype",
+          "fix:tag": "841"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionoffsettype"
+          "fix:field": "discretionoffsettype",
+          "fix:tag": "842"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionlimittype"
+          "fix:field": "discretionlimittype",
+          "fix:tag": "843"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionrounddirection"
+          "fix:field": "discretionrounddirection",
+          "fix:tag": "844"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionscope"
+          "fix:field": "discretionscope",
+          "fix:tag": "846"
         }
       }
     ]

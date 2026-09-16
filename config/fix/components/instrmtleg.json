@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegratesources"
+          "fix:field": "nolegratesources",
+          "fix:tag": "3116"
         }
       },
       {

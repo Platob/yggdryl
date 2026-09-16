@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailaltid"
+          "fix:field": "partydetailaltid",
+          "fix:tag": "1517"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailaltidsource"
+          "fix:field": "partydetailaltidsource",
+          "fix:tag": "1518"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetailaltsubids"
+          "fix:field": "nopartydetailaltsubids",
+          "fix:tag": "1519"
         }
       },
       {

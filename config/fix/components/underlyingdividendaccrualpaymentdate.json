@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdaterelativeto"
+          "fix:field": "underlyingdividendaccrualpaymentdaterelativeto",
+          "fix:tag": "42819"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdateoffsetperiod"
+          "fix:field": "underlyingdividendaccrualpaymentdateoffsetperiod",
+          "fix:tag": "42820"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdateoffsetunit"
+          "fix:field": "underlyingdividendaccrualpaymentdateoffsetunit",
+          "fix:tag": "42821"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdateoffsetdaytype"
+          "fix:field": "underlyingdividendaccrualpaymentdateoffsetdaytype",
+          "fix:tag": "42822"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdateunadjusted"
+          "fix:field": "underlyingdividendaccrualpaymentdateunadjusted",
+          "fix:tag": "42823"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdatebusinessdayconvention"
+          "fix:field": "underlyingdividendaccrualpaymentdatebusinessdayconvention",
+          "fix:tag": "42824"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdividendaccrualpaymentdatebusinesscenters"
+          "fix:field": "nounderlyingdividendaccrualpaymentdatebusinesscenters",
+          "fix:tag": "42799"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdateadjusted"
+          "fix:field": "underlyingdividendaccrualpaymentdateadjusted",
+          "fix:tag": "42825"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstiptype"
+          "fix:field": "underlyingstiptype",
+          "fix:tag": "888"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstipvalue"
+          "fix:field": "underlyingstipvalue",
+          "fix:tag": "889"
         }
       }
     ]

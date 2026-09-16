@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedinstrattribtype"
+          "fix:field": "nestedinstrattribtype",
+          "fix:tag": "1210"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedinstrattribvalue"
+          "fix:field": "nestedinstrattribvalue",
+          "fix:tag": "1211"
         }
       }
     ]

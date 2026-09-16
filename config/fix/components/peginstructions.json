@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegoffsetvalue"
+          "fix:field": "pegoffsetvalue",
+          "fix:tag": "211"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegpricetype"
+          "fix:field": "pegpricetype",
+          "fix:tag": "1094"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegmovetype"
+          "fix:field": "pegmovetype",
+          "fix:tag": "835"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegoffsettype"
+          "fix:field": "pegoffsettype",
+          "fix:tag": "836"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "peglimittype"
+          "fix:field": "peglimittype",
+          "fix:tag": "837"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegrounddirection"
+          "fix:field": "pegrounddirection",
+          "fix:tag": "838"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegscope"
+          "fix:field": "pegscope",
+          "fix:tag": "840"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecurityidsource"
+          "fix:field": "pegsecurityidsource",
+          "fix:tag": "1096"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecurityid"
+          "fix:field": "pegsecurityid",
+          "fix:tag": "1097"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsymbol"
+          "fix:field": "pegsymbol",
+          "fix:tag": "1098"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecuritydesc"
+          "fix:field": "pegsecuritydesc",
+          "fix:tag": "1099"
         }
       }
     ]

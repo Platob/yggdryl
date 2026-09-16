@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributetype"
+          "fix:field": "legassetattributetype",
+          "fix:tag": "2309"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributevalue"
+          "fix:field": "legassetattributevalue",
+          "fix:tag": "2310"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributelimit"
+          "fix:field": "legassetattributelimit",
+          "fix:tag": "2311"
         }
       }
     ]

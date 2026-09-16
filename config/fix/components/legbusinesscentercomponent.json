@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbusinesscenter"
+          "fix:field": "legbusinesscenter",
+          "fix:tag": "40924"
         }
       }
     ]

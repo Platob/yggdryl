@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytype"
+          "fix:field": "securitytype",
+          "fix:tag": "167"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitysubtype"
+          "fix:field": "securitysubtype",
+          "fix:tag": "762"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "product"
+          "fix:field": "product",
+          "fix:tag": "460"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cficode"
+          "fix:field": "cficode",
+          "fix:tag": "461"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "upicode"
+          "fix:field": "upicode",
+          "fix:tag": "2891"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       }
     ]

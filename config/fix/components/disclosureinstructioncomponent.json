@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "disclosuretype"
+          "fix:field": "disclosuretype",
+          "fix:tag": "1813"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "disclosureinstruction"
+          "fix:field": "disclosureinstruction",
+          "fix:tag": "1814"
         }
       }
     ]

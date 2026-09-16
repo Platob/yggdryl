@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamt"
+          "fix:field": "legposamt",
+          "fix:tag": "1587"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamttype"
+          "fix:field": "legposamttype",
+          "fix:tag": "1588"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposcurrency"
+          "fix:field": "legposcurrency",
+          "fix:tag": "1589"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposcurrencycodesource"
+          "fix:field": "legposcurrencycodesource",
+          "fix:tag": "2938"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamtreason"
+          "fix:field": "legposamtreason",
+          "fix:tag": "1590"
         }
       }
     ]

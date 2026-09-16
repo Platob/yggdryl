@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid"
+          "fix:field": "legrefid",
+          "fix:tag": "654"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty"
+          "fix:field": "legorderqty",
+          "fix:tag": "685"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype"
+          "fix:field": "legswaptype",
+          "fix:tag": "690"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations"
+          "fix:field": "nolegstipulations",
+          "fix:tag": "683"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocid"
+          "fix:field": "legallocid",
+          "fix:tag": "1366"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegallocs"
+          "fix:field": "nolegallocs",
+          "fix:tag": "670"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legclearingaccounttype"
+          "fix:field": "legclearingaccounttype",
+          "fix:tag": "1817"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpositioneffect"
+          "fix:field": "legpositioneffect",
+          "fix:tag": "564"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcoveredoruncovered"
+          "fix:field": "legcoveredoruncovered",
+          "fix:tag": "565"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested3partyids"
+          "fix:field": "nonested3partyids",
+          "fix:tag": "948"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype"
+          "fix:field": "legsettltype",
+          "fix:tag": "587"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettldate"
+          "fix:field": "legsettldate",
+          "fix:tag": "588"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrency"
+          "fix:field": "legsettlcurrency",
+          "fix:tag": "675"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrencycodesource"
+          "fix:field": "legsettlcurrencycodesource",
+          "fix:tag": "2900"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legvolatility"
+          "fix:field": "legvolatility",
+          "fix:tag": "1379"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendyield"
+          "fix:field": "legdividendyield",
+          "fix:tag": "1381"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcurrencyratio"
+          "fix:field": "legcurrencyratio",
+          "fix:tag": "1383"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecinst"
+          "fix:field": "legexecinst",
+          "fix:tag": "1384"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legshortsaleexemptionreason"
+          "fix:field": "legshortsaleexemptionreason",
+          "fix:tag": "1689"
         }
       }
     ]

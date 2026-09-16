@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldtype"
+          "fix:field": "yieldtype",
+          "fix:tag": "235"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yield"
+          "fix:field": "yield",
+          "fix:tag": "236"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldcalcdate"
+          "fix:field": "yieldcalcdate",
+          "fix:tag": "701"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptiondate"
+          "fix:field": "yieldredemptiondate",
+          "fix:tag": "696"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptionprice"
+          "fix:field": "yieldredemptionprice",
+          "fix:tag": "697"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptionpricetype"
+          "fix:field": "yieldredemptionpricetype",
+          "fix:tag": "698"
         }
       }
     ]

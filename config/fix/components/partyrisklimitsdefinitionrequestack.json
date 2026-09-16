@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitrequestid"
+          "fix:field": "risklimitrequestid",
+          "fix:tag": "1666"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitrequestresult"
+          "fix:field": "risklimitrequestresult",
+          "fix:tag": "1761"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitrequeststatus"
+          "fix:field": "risklimitrequeststatus",
+          "fix:tag": "1762"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids"
+          "fix:field": "norequestingpartyids",
+          "fix:tag": "1657"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyrisklimits"
+          "fix:field": "nopartyrisklimits",
+          "fix:tag": "1677"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingnondeliverablefixingdate"
+          "fix:field": "underlyingnondeliverablefixingdate",
+          "fix:tag": "40657"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingnondeliverablefixingdatetype"
+          "fix:field": "underlyingnondeliverablefixingdatetype",
+          "fix:tag": "40658"
         }
       }
     ]

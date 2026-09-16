@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholedate"
+          "fix:field": "legmakewholedate",
+          "fix:tag": "42392"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholeamount"
+          "fix:field": "legmakewholeamount",
+          "fix:tag": "42393"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkcurvename"
+          "fix:field": "legmakewholebenchmarkcurvename",
+          "fix:tag": "42394"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkcurvepoint"
+          "fix:field": "legmakewholebenchmarkcurvepoint",
+          "fix:tag": "42395"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholerecallspread"
+          "fix:field": "legmakewholerecallspread",
+          "fix:tag": "42396"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkquote"
+          "fix:field": "legmakewholebenchmarkquote",
+          "fix:tag": "42397"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholeinterpolationmethod"
+          "fix:field": "legmakewholeinterpolationmethod",
+          "fix:tag": "42398"
         }
       }
     ]

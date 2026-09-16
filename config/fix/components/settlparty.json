@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyid"
+          "fix:field": "settlpartyid",
+          "fix:tag": "782"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyidsource"
+          "fix:field": "settlpartyidsource",
+          "fix:tag": "783"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyrole"
+          "fix:field": "settlpartyrole",
+          "fix:tag": "784"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyrolequalifier"
+          "fix:field": "settlpartyrolequalifier",
+          "fix:tag": "2389"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlpartysubids"
+          "fix:field": "nosettlpartysubids",
+          "fix:tag": "801"
         }
       },
       {

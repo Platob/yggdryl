@@ -1,64 +1,68 @@
-//! A FIX message: a value plus the registry that types it.
+//! A FIX message: its typed facts, its row, and the registry that types it.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::anomaly::FixAnomalies;
 use super::build::stated;
-use super::entry::FixEntry;
+use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
+use super::identity::{self, FixCapture, FixHeader, Typed};
 use super::{FixId, FixKey, FixRegistry};
-use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Version};
+use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
+use crate::hashing::xxhash;
+use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 
-/// A FIX message value, resolved against one registry.
+/// A FIX message: a market event with a FIX body around it.
 ///
-/// The schema is a core Struct [`Field`] - a non-null Struct field is the
-/// only row schema - and the value is that row: a [`crate::types::nested::Record`] input
-/// canonicalizes to the ordered [`crate::types::nested::Sequence`] the root declares,
-/// exactly as every other row does. The registry link is an [`Arc`], cloned
-/// from [`FixRegistry::global`] when the caller names none, so a message
-/// carries the dictionary it was resolved against and a later lookup cannot
-/// silently use a different one.
-///
-/// A message speaks no dialect of its own: the registry is one namespace,
-/// and a bare tag or name resolves in it directly - a message transcribed
-/// against a venue dictionary names its own fields by the venue's spellings
-/// while still carrying `MsgType` and every other specification field, and
-/// one namespace answers all of them. Which dictionaries a field belongs to
-/// is the field's own `fix:branches`, a membership a reader may ask about
-/// and nothing here resolves through.
+/// Three typed holders and one row. The [`MarketEventData`] is the event
+/// the message is - its identity, when it happened, where it stands and the
+/// market's facts - and the message answers [`Element`], [`Event`] and
+/// [`MarketElement`] through it, so a walk over messages reads them as it
+/// reads any event. The [`FixHeader`] is the standard header, typed: the
+/// version, the type, who sent it to whom, the sequence number and the
+/// sending time. The [`FixCapture`] is what the capture said about the
+/// line. The row is everything else the message states - the body's
+/// fields, its repeating groups, the keys no dictionary explains - as a
+/// core Struct [`Field`] and its value, each child typed by the registry's
+/// field for it, and none of the typed facts is in it: every fact is held
+/// once. The registry link is an [`Arc`], cloned from
+/// [`FixRegistry::global`] when the caller names none, so a message carries
+/// the dictionary it was resolved against.
 ///
 /// A value is reached by tag, by identifier, by name, or by path, each
-/// answering `Option<&Scalar>` with a failing twin; resolution goes through
-/// the linked registry, never through a private copy of its rules. An unknown
+/// answering the value it finds - a typed fact for a tag the holders own,
+/// a row child otherwise - with a failing twin; resolution goes through the
+/// linked registry, never through a private copy of its rules. An unknown
 /// tag is retained rather than dropped: it is looked for under its rendered
 /// decimal name, which is where a transcriber keeps a tag no dictionary
-/// explains.
-/// A repeating-group counter remains an int32 value reached by its tag;
-/// the separate collection is reached by name, such as `Parties`.
+/// explains. A repeating-group counter remains an int32 value reached by its
+/// tag; the separate collection is reached by name, such as `Parties`.
 ///
-/// Every message stores non-null `updatedat`, `createdat`, `msghash`, `msgphash`,
-/// `code`, `snapshotat` and `SendingTime(52)`. Initial intake settles clocks;
-/// replay never reads now. The four direct accessors borrow their stored
-/// values without lookup or allocation. `msghash` and `msgphash` are sixteen fixed
-/// bytes each, never RFC identifiers: `msgphash` is the big-endian XXH3-128 of
-/// the exact code bytes, and `msghash` the signed updatedat nanoseconds with
-/// the sign bit flipped in bytes 0..8 beside all 64 bits of the named
-/// content's XXH64 in bytes 8..16. These non-cryptographic identities are
-/// separate from the immutable arrival record's [`Self::digest`].
+/// The message's identity is settled from what it states: the code is the
+/// XXH3-64 of the event's facts, the header and the named content of the
+/// row, the identity the UUIDv7 the instant and the code derive, and the
+/// cross identity the UUIDv8 the cross code's digest derives - the first
+/// chain identifier the message spells, `OrderID` before `ClOrdID`. Every
+/// write settles it again, so a written code or identity is overwritten by
+/// the settled one. [`Self::entries`] is the row read as a tree, for a
+/// consumer that walks one shape, and [`Self::into_bytes`] re-emits the
+/// message from it.
 ///
 /// Serialization is inherited, not written: `field.clone().into_json()`
-/// renders the schema, [`into_json_scalar`](crate::into_json_scalar) the
-/// value, and [`from_json_scalar_with_field`](crate::from_json_scalar_with_field)
-/// reads a value back typed, ordered and canonicalized against that field.
+/// renders the row's schema, [`into_json_scalar`](crate::into_json_scalar)
+/// its value, and [`from_json_scalar_with_field`](crate::from_json_scalar_with_field)
+/// reads a value back typed, ordered and canonicalized against that field;
+/// [`Self::into_row`] is the whole message as one fixed row.
 ///
 /// ```
 /// use std::sync::Arc;
 ///
-/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar};
+/// use yggdryl::graph::{Element, Event};
+/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut symbol = DataType::utf8().required_field("Symbol");
@@ -77,64 +81,60 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// ])?;
 /// let msg = FixMsg::with_registry(registry, root.clone(), value)?;
 ///
-/// assert_eq!(msg.by_tag(55)?, &Scalar::from("AAPL"));
-/// assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
-/// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is kept");
-/// assert_eq!(msg.updatedat(), msg.by_name("updatedat")?);
-/// assert_eq!(msg.createdat(), msg.by_name("createdat")?);
-/// assert_eq!(msg.msghash(), msg.by_name("msghash")?);
-/// assert_eq!(msg.msgphash(), msg.by_name("msgphash")?);
+/// assert_eq!(msg.by_tag(55)?, Scalar::from("AAPL"));
+/// assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
+/// assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is kept");
+/// // The identity is settled from what the message states.
+/// assert_ne!(msg.get_hashcode(), 0);
+/// assert_eq!(msg.get_curruuid(), msg.time_uuid()?);
+/// assert_eq!(msg.get_unix(), msg.header().sendingtime());
 ///
-/// // Both halves serialize through the paths every field and value share.
+/// // The row serializes through the paths every field and value share.
 /// let root = msg.as_field();
 /// let schema = root.clone().into_json()?;
-/// let text = into_json_scalar(msg.as_value())?;
-/// let read = from_json_scalar_with_field(&text, root)?;
-/// assert_eq!(&read, msg.as_value());
 /// assert!(schema.contains("fix:tag"));
 /// # Ok(())
 /// # }
 /// ```
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
-    /// What arrived, beside what it was interpreted as.
+    /// The event the message is: what the three graph traits answer.
     ///
-    /// Not the row restated: the row is the interpretation and this is the
-    /// wire record. Neither derives from the other, which is what makes
-    /// lossless re-emission possible at all. Empty for a message built from a
-    /// schema and a value, in which case the emit falls back to the row and
-    /// says so.
-    entries: Vec<FixEntry>,
+    /// Boxed, because the event is forty facts and a message is moved
+    /// through every stream by value.
+    event: Box<MarketEventData>,
+    /// The standard header, typed.
+    header: Box<FixHeader>,
+    /// What the capture said about the line, typed.
+    capture: Box<FixCapture>,
+    /// `Text(58)`, where the message carries one.
+    text: Option<SmolStr>,
+    /// What a bridge stated under its own namespaces - `TECH.CLIENTID`,
+    /// `AMON.…` - each under the key as the bridge spelled it, folded, in
+    /// sorted order.
+    metadata: BTreeMap<SmolStr, SmolStr>,
     /// Each root child's tag beside its position, in tag order.
     ///
     /// Resolved once, because reading a tag out of a child's metadata is a
     /// formatted key and a map lookup, and scanning the children per lookup
-    /// pays it once per child. Every facet
-    /// a lift answers is a tag lookup, so a row of twenty facets over a
-    /// message of twenty children was four hundred of them.
-    ///
-    /// Derived from the shared field/registry column plan, replaced with the row.
+    /// pays it once per child.
     tags: Vec<(i32, usize)>,
     /// The first child of each name, built on the first tag no child
     /// declares and kept.
     ///
     /// [`Self::get_by_tag`] has two fallbacks past the index above - the
     /// child named as the dictionary names the tag, and the child named by
-    /// the tag's decimal spelling - and both end in a child found by name. A
-    /// fixed row asks for eighty columns a message mostly lacks, so the misses
-    /// are the common case, and each costs one dictionary probe and one
-    /// lookup here rather than a scan of the children. Derived from the
-    /// field alone, and derived lazily, so a message nobody projects pays
-    /// nothing for it.
+    /// the tag's decimal spelling - and both end in a child found by name.
+    /// Derived from the field alone, and derived lazily, so a message nobody
+    /// projects pays nothing for it.
     named: OnceLock<HashMap<SmolStr, usize>>,
     /// Group positions keyed by their `fix:counter`, separate from tag values.
     groups: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
-    updatedat: Scalar,
-    createdat: Scalar,
-    msghash: Scalar,
-    msgphash: Scalar,
+    /// The row read as a tree, derived on the first ask and dropped by
+    /// every write.
+    entries: OnceLock<Vec<FixEntry>>,
 }
 
 /// One child a write lands: replaced at `at`, appended when there is none,
@@ -143,6 +143,13 @@ pub(super) struct Write {
     pub(super) at: Option<usize>,
     pub(super) field: Field,
     pub(super) value: Scalar,
+}
+
+/// One write a key resolved to: a typed fact the holders own, or a row
+/// child.
+enum Staged {
+    Typed(i32, Scalar),
+    Row(Write),
 }
 
 /// Adds one staged write to the batch, the later of two writes to one child
@@ -167,10 +174,6 @@ pub(super) struct Indexed {
     counter: Option<i32>,
     index: usize,
     /// Whether the write put a differently named child in a child's place.
-    ///
-    /// The name table is derived from the children's names, so only this
-    /// makes it wrong: a replacement under the same name leaves every entry
-    /// where it was, and an append only adds one.
     pub(super) renamed: bool,
     /// Whether the write added a child rather than replacing one.
     pub(super) appended: bool,
@@ -187,10 +190,6 @@ pub(super) fn stage_writes(
     let held = row.as_sequence().unwrap_or_default();
     let mut values = Vec::with_capacity(held.len() + writes.len());
     values.extend_from_slice(held);
-    // What each write does to the indexes, applied once the row is
-    // proven rather than on a copy: the tag and counter the replaced
-    // child held, then the ones the written child carries, at the
-    // position it landed.
     let mut indexed: Vec<Indexed> = Vec::with_capacity(writes.len());
     for Write { at, field, value } in writes {
         let (index, replaced) = match at {
@@ -270,47 +269,16 @@ fn group_positions(field: &Field) -> Vec<(i32, usize)> {
     held
 }
 
-/// Emits entries pre-order: each pair, then everything that arrived under it.
+/// The message types carrying an order rather than a report of one.
 ///
-/// Wire order is arrival order, and a member arrived after the counter that
-/// heads it - so the pre-order walk is the wire, exactly.
-fn emit_bytes(entries: &[FixEntry], separator: u8, bytes: &mut Vec<u8>) {
-    for entry in entries {
-        bytes.extend_from_slice(entry.key().as_bytes());
-        bytes.push(b'=');
-        bytes.extend_from_slice(entry.value().as_bytes());
-        bytes.push(separator);
-        emit_bytes(entry.children(), separator, bytes);
-    }
-}
+/// Consulted by the lane fill alone, which is about what a party is
+/// *willing* to do: a buy order at a price is a party willing to pay it,
+/// so a bid lane it never wrote is still true of it. A fill is a report and
+/// projects nothing.
+const ORDERS: [&str; 6] = ["D", "E", "F", "G", "AB", "AC"];
 
-/// The same walk as text, refusing a control byte at every depth.
-fn emit_text(entries: &[FixEntry], separator: char, text: &mut String) -> Result<()> {
-    for entry in entries {
-        let key = entry.key();
-        let refused = |reason: &'static str| Error::InvalidRecord {
-            path: SmolStr::new(key.as_str().unwrap_or_default()),
-            reason: reason.into(),
-        };
-        // Bytes that are not text have no rendering: a `data` field carrying
-        // them re-emits exactly through `into_bytes` and not at all through
-        // this one.
-        let (Some(key), Some(value)) = (key.as_str(), entry.value().as_str()) else {
-            return Err(refused(
-                "expected a printable value, got bytes that are not text",
-            ));
-        };
-        if value.chars().any(char::is_control) {
-            return Err(refused("expected a printable value, got a control byte"));
-        }
-        text.push_str(key);
-        text.push('=');
-        text.push_str(value);
-        text.push(separator);
-        emit_text(entry.children(), separator, text)?;
-    }
-    Ok(())
-}
+/// The header tags a wire carries, in the standard header's order.
+const WIRE_HEADER_TAGS: [i32; 7] = [8, 35, 49, 56, 34, 43, 52];
 
 impl FixMsg {
     /// The deterministic hash of this message's schema and row.
@@ -334,7 +302,9 @@ impl FixMsg {
     ///
     /// The value is validated through [`Field::validate_value`] and stored
     /// as [`Field::canonicalize_value`] rewrites it, so a record becomes the
-    /// ordered sequence the root declares.
+    /// ordered sequence the root declares. A child stating a typed fact -
+    /// a header tag, a crate column, the event's own tags - fills the
+    /// holder that owns it and leaves the row.
     ///
     /// # Errors
     ///
@@ -342,212 +312,432 @@ impl FixMsg {
     /// value violates it, naming the path of the first value that does not
     /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
-        let plan = super::schema::column_plan(&field, &registry)?;
-        let mut members = field.fields().to_vec();
-        let mut changed = false;
-        for (child, column) in members.iter_mut().zip(plan.iter()) {
-            if column.tag.is_some_and(super::identity::is_mandatory) && !child.is_nullable() {
-                child.set_nullable(true);
-                changed = true;
-            }
-        }
-        let field = if changed {
-            Field::new_with_metadata(
-                field.name(),
-                DataType::from_fields(members)?,
-                field.is_nullable(),
-                field.metadata.clone(),
-            )
-        } else {
-            field
-        };
         let value = field.canonicalize_value(value)?;
-        let (field, value, hard) = super::identity::fresh(&registry, field, value, None, &plan)?;
-        let plan = super::schema::column_plan_of(&field, &registry)?;
-        let tags = tag_positions(&plan);
-        Ok(Self::resolved(
-            registry,
-            field,
-            value,
-            Vec::new(),
-            tags,
-            hard,
-        ))
-    }
-
-    /// Builds a message a reader already resolved, entries and all.
-    ///
-    /// The value is checked and canonicalized exactly as
-    /// [`Self::with_registry`] checks one; the reader's own build takes
-    /// [`Self::from_built`], because what it built needs neither.
-    ///
-    /// # Errors
-    ///
-    /// Returns the refusal [`Self::with_registry`] raises.
-    #[cfg(test)]
-    pub(super) fn from_parts(
-        registry: Arc<FixRegistry>,
-        field: Field,
-        value: Scalar,
-        entries: Vec<FixEntry>,
-    ) -> Result<Self> {
-        let mut built = Self::with_registry(registry, field, value)?;
-        built.entries = entries;
-        Ok(built)
+        Self::assemble(registry, field, value, None)
     }
 
     /// Builds the message the one builder finished, checking nothing twice.
     ///
     /// Every value in the row went through the contract of the field it
-    /// lands under, so the row is canonical by construction, and the builder
-    /// resolved each child's tag on the way in - re-checking either would be
-    /// a second reading of what `scalar` already answered.
+    /// lands under, so the row is canonical by construction. The sending
+    /// clock is what the message stated, else `fallback_sending_time`, else
+    /// now: initial intake settles clocks, and replay never reads now.
     pub(super) fn from_built(
         registry: Arc<FixRegistry>,
         built: super::build::Built,
         fallback_sending_time: Option<&Scalar>,
     ) -> Result<Self> {
-        let super::build::Built {
-            field,
-            value,
-            entries,
-            ..
-        } = built;
-        let initial = super::schema::column_plan(&field, &registry)?;
-        let (field, value, hard) =
-            super::identity::fresh(&registry, field, value, fallback_sending_time, &initial)?;
-        let plan = super::schema::column_plan_of(&field, &registry)?;
-        let tags = tag_positions(&plan);
-        Ok(Self::resolved(registry, field, value, entries, tags, hard))
+        let super::build::Built { field, value, .. } = built;
+        Self::assemble(registry, field, value, fallback_sending_time)
     }
 
-    /// One message from parts already proven: the group index is read off
-    /// the root, and nothing else is derived yet.
-    fn resolved(
+    /// One message from a root and its canonical row: the typed facts are
+    /// lifted out of the children that state them, the rest is the row,
+    /// the clocks are settled and the identity derived.
+    fn assemble(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
-        entries: Vec<FixEntry>,
-        tags: Vec<(i32, usize)>,
-        hard: super::identity::Hard,
-    ) -> Self {
+        fallback_sending_time: Option<&Scalar>,
+    ) -> Result<Self> {
+        let plan = super::schema::column_plan_of(&field, &registry)?;
+        let held = value.as_sequence().ok_or_else(|| {
+            identity::refused(field.name(), "a canonical Struct row", value.kind())
+        })?;
+        let mut event = Box::new(MarketEventData::default());
+        let mut header = Box::new(FixHeader::unknown());
+        let mut capture = Box::new(FixCapture::default());
+        let mut text = None;
+        let mut metadata = BTreeMap::new();
+        let mut members = Vec::with_capacity(field.fields().len());
+        let mut values = Vec::with_capacity(held.len());
+        let mut stated_sending = false;
+        let mut stated_unix = false;
+        let mut stated_creation = false;
+        let mut transact = None;
+        let mut origin = None;
+        for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(held) {
+            match column.tag {
+                Some(tag) if identity::is_typed_tag(tag) => {
+                    if value.is_null() {
+                        continue;
+                    }
+                    if tag == identity::TEXT_TAG {
+                        text = value.as_str().map(SmolStr::new);
+                    } else if tag == super::METADATA_TAG_NAME.0 {
+                        metadata = metadata_of(value);
+                    } else {
+                        identity::record(&mut event, &mut header, &mut capture, tag, value);
+                    }
+                    stated_sending |= tag == 52;
+                    stated_unix |= tag == super::UNIX_TAG_NAME.0;
+                    stated_creation |= tag == super::CREATUNIX_TAG_NAME.0;
+                }
+                // A key spelled under a namespace - `TECH.CLIENTID` - is a
+                // bridge's own statement and goes to the metadata, under
+                // the key as the bridge spelled it, folded.
+                None if child.name().contains('.') => {
+                    if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
+                        metadata.insert(SmolStr::new(child.name()), SmolStr::new(held));
+                    }
+                }
+                Some(60) => {
+                    transact = value.temporal_count_at(crate::TimeUnit::Nanosecond);
+                    members.push(child.clone());
+                    values.push(value.clone());
+                }
+                Some(122) => {
+                    origin = value.temporal_count_at(crate::TimeUnit::Nanosecond);
+                    members.push(child.clone());
+                    values.push(value.clone());
+                }
+                _ => {
+                    members.push(child.clone());
+                    values.push(value.clone());
+                }
+            }
+        }
+        if !stated_sending {
+            let sending = match fallback_sending_time.filter(|value| !value.is_null()) {
+                Some(value) => value.clone(),
+                None => identity::now()?,
+            };
+            identity::validate_value("sendingtime", &super::schema::CLOCK_DATATYPE, &sending)?;
+            if let Some(unix) = sending.temporal_count_at(crate::TimeUnit::Nanosecond) {
+                header.set_sendingtime(unix);
+            }
+        }
+        // The instant the message happened: what it states, else when the
+        // transaction it reports happened, else when it was sent. A
+        // `TransactTime` stating a day and no clock - which a bridge writes
+        // as `20260814` - names no instant, so the sending clock stands in.
+        if !stated_unix {
+            const DAY: i64 = 86_400_000_000_000;
+            let transact = transact.filter(|unix| unix.rem_euclid(DAY) != 0);
+            event.set_unix(transact.unwrap_or_else(|| header.sendingtime()));
+        }
+        // What a message says about its own creation, strongest first: a
+        // stated creation, then `OrigSendingTime(122)`, then the instant it
+        // happened. 122 is in the middle because of what it means: a resend
+        // carries the instant the original was sent, and that original is
+        // when this message came into being, so a replayed message dated
+        // only by the resend would otherwise be created at the moment it
+        // was replayed.
+        if !stated_creation {
+            event.set_creatunix(Some(origin.unwrap_or_else(|| event.get_unix())));
+        }
+        let field = Field::new_with_metadata(
+            field.name(),
+            DataType::from_fields(members)?,
+            field.is_nullable(),
+            field.metadata.clone(),
+        );
+        let plan = super::schema::column_plan_of(&field, &registry)?;
+        let tags = tag_positions(&plan);
         let groups = group_positions(&field);
-        Self {
+        let mut message = Self {
             registry,
-            entries,
+            event,
+            header,
+            capture,
+            text,
+            metadata,
             tags,
             named: OnceLock::new(),
             groups,
             field,
+            value: Scalar::from_sequence(values),
+            entries: OnceLock::new(),
+        };
+        message.settle();
+        Ok(message)
+    }
+
+    /// Replaces the row with another statement of the same content, as a
+    /// restatement leaves it: the typed facts a restated child states fill
+    /// their holders, the indexes are reread, and the identity settled.
+    pub(super) fn replace_content(&mut self, field: Field, values: Vec<Scalar>) -> Result<()> {
+        let plan = super::schema::column_plan_of(&field, &self.registry)?;
+        let mut members = Vec::with_capacity(field.fields().len());
+        let mut kept = Vec::with_capacity(values.len());
+        for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(values) {
+            match column.tag {
+                Some(tag) if identity::is_typed_tag(tag) => {
+                    if !value.is_null() {
+                        self.record(tag, &value);
+                    }
+                }
+                None if child.name().contains('.') => {
+                    if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
+                        self.metadata
+                            .insert(SmolStr::new(child.name()), SmolStr::new(held));
+                    }
+                }
+                _ => {
+                    members.push(child.clone());
+                    kept.push(value);
+                }
+            }
+        }
+        self.field = Field::new_with_metadata(
+            field.name(),
+            DataType::from_fields(members)?,
+            field.is_nullable(),
+            field.metadata.clone(),
+        );
+        self.value = Scalar::from_sequence(kept);
+        let plan = super::schema::column_plan_of(&self.field, &self.registry)?;
+        self.tags = tag_positions(&plan);
+        self.groups = group_positions(&self.field);
+        self.named = OnceLock::new();
+        self.entries = OnceLock::new();
+        self.settle();
+        Ok(())
+    }
+
+    /// Records one typed fact on the holder that owns it; a null clears it.
+    fn record(&mut self, tag: i32, value: &Scalar) -> bool {
+        if tag == identity::TEXT_TAG {
+            self.text = value.as_str().map(SmolStr::new);
+            return true;
+        }
+        if tag == super::METADATA_TAG_NAME.0 {
+            self.metadata = metadata_of(value);
+            return true;
+        }
+        identity::record(
+            &mut self.event,
+            &mut self.header,
+            &mut self.capture,
+            tag,
             value,
-            updatedat: hard.updatedat,
-            createdat: hard.createdat,
-            msghash: hard.msghash,
-            msgphash: hard.msgphash,
+        )
+    }
+
+    /// What the message states under one typed tag.
+    fn typed_fact(&self, tag: i32) -> Option<Scalar> {
+        if tag == identity::TEXT_TAG {
+            return self.text.as_deref().map(Scalar::from);
+        }
+        if tag == super::METADATA_TAG_NAME.0 {
+            if self.metadata.is_empty() {
+                return None;
+            }
+            return Scalar::from_mapping(
+                self.metadata
+                    .iter()
+                    .map(|(key, value)| (Scalar::from(key.as_str()), Scalar::from(value.as_str()))),
+            )
+            .ok();
+        }
+        Typed {
+            event: &self.event,
+            header: &self.header,
+            capture: &self.capture,
+        }
+        .fact(tag)
+    }
+
+    /// Settles the identity from what the message states: the cross code
+    /// where it names none yet, the cross codes in step with it, the code
+    /// the content digests to, and the identity the instant and the code
+    /// derive.
+    pub(super) fn settle(&mut self) {
+        if self.event.get_crosscode().is_empty() {
+            let code = identity::CROSS_TAGS.iter().find_map(|tag| {
+                self.get_by_tag(*tag)
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .filter(|code| !code.is_empty())
+            });
+            if let Some(code) = code {
+                self.event.set_crosscode(code);
+            }
+        }
+        self.event.sync_cross();
+        let hashcode = self.hashcode();
+        self.event.finalized(hashcode);
+    }
+
+    /// The code the message digests to: the event's own facts through
+    /// [`MarketEvent::digest_market_event`], then the header and the named
+    /// content behind them - every header fact and every row child that
+    /// holds a value, by name - and never the capture, because where a
+    /// line was read from is a fact about the capture and not about the
+    /// message.
+    fn hashcode(&self) -> u64 {
+        let mut state = self.event.digest_market_event();
+        let mut cells: Vec<(&str, Scalar)> = Vec::with_capacity(self.field.fields().len() + 8);
+        if let Some(text) = self.text.as_deref() {
+            cells.push(("text", Scalar::from(text)));
+        }
+        for (key, value) in &self.metadata {
+            cells.push((key.as_str(), Scalar::from(value.as_str())));
+        }
+        for (tag, name) in [
+            (8, "beginstring"),
+            (35, "msgtype"),
+            (49, "sendercompid"),
+            (56, "targetcompid"),
+            (34, "msgseqnum"),
+            (43, "possdupflag"),
+        ] {
+            if let Some(fact) = self.header.fact(tag) {
+                cells.push((name, fact));
+            }
+        }
+        if let Some(values) = self.value.as_sequence() {
+            for (child, value) in self.field.fields().iter().zip(values) {
+                if !value.is_null() && child.name() != super::schema::FIXENTRIES_COLUMN {
+                    cells.push((child.name(), value.clone()));
+                }
+            }
+        }
+        cells.sort_by(|left, right| left.0.cmp(right.0));
+        let borrowed: Vec<(&str, &Scalar)> =
+            cells.iter().map(|(name, value)| (*name, value)).collect();
+        xxhash::write_named_bytes(&mut state, borrowed.into_iter(), 0);
+        state.as_u64()
+    }
+
+    /// Fills the lane the side implies where the message is an order: a
+    /// party willing to pay the price for the quantity, or to be paid it.
+    pub(super) fn fill_order_lanes(&mut self) {
+        if ORDERS.contains(&self.header.msgtype()) {
+            self.event.fill_lanes();
         }
     }
 
-    /// Borrow the settled message or snapshot grid instant without a lookup.
-    pub const fn updatedat(&self) -> &Scalar {
-        &self.updatedat
+    /// The event this message is: every fact the three graph traits answer,
+    /// held as fields.
+    #[must_use]
+    pub const fn event(&self) -> &MarketEventData {
+        &self.event
     }
 
-    /// Borrow the settled creation instant without a lookup.
-    pub const fn createdat(&self) -> &Scalar {
-        &self.createdat
+    /// The standard header, typed.
+    #[must_use]
+    pub const fn header(&self) -> &FixHeader {
+        &self.header
     }
 
-    /// Borrow the time/content identity, sixteen bytes, without a lookup.
-    pub const fn msghash(&self) -> &Scalar {
-        &self.msghash
+    /// `Text(58)`: the free text the message carries, where it carries one.
+    #[must_use]
+    pub fn text(&self) -> Option<&str> {
+        self.text.as_deref()
     }
 
-    /// Borrow the code-only chain identity, sixteen bytes, without a lookup.
-    pub const fn msgphash(&self) -> &Scalar {
-        &self.msgphash
+    /// What a bridge stated under its own namespaces - a `TECH.CLIENTID`, an
+    /// `AMON.…` key - each under the key as the bridge spelled it, folded,
+    /// in sorted order; empty where it stated none.
+    #[must_use]
+    pub const fn metadata(&self) -> &BTreeMap<SmolStr, SmolStr> {
+        &self.metadata
     }
 
-    /// A resolved replay or restatement never defaults a clock.
-    pub(super) fn settled_parts(
-        registry: Arc<FixRegistry>,
-        field: Field,
-        value: Scalar,
-        entries: Vec<FixEntry>,
-        assertions: super::identity::Assertions,
-    ) -> Result<Self> {
-        let plan = super::schema::column_plan_of(&field, &registry)?;
-        plan.identity.require_bundle(&field)?;
-        let mut values = value
-            .as_sequence()
-            .ok_or_else(|| {
-                super::identity::refused(field.name(), "a canonical Struct row", value.kind())
-            })?
-            .to_vec();
-        let hard = plan.identity.finalize(&field, &mut values, assertions)?;
-        let tags = tag_positions(&plan);
-        Ok(Self::resolved(
-            registry,
-            field,
-            Scalar::from_sequence(values),
-            entries,
-            tags,
-            hard,
-        ))
+    /// What the capture said about the line, typed.
+    #[must_use]
+    pub const fn capture(&self) -> &FixCapture {
+        &self.capture
     }
 
-    /// Returns what arrived and was read as sent, in arrival order,
-    /// untranslated.
+    /// The row read as a tree: one entry per child it states, a group's
+    /// occurrences and a component's members nested under the entry that
+    /// heads them; nothing for a child stating null.
+    ///
+    /// Derived on the first ask and kept until a write, so a consumer
+    /// walking the message twice pays once and a stream that never asks
+    /// pays nothing. The typed facts are not entries: the header, the event
+    /// and the capture are the holders' to answer.
     #[must_use]
     pub fn entries(&self) -> &[FixEntry] {
-        &self.entries
+        self.entries.get_or_init(|| self.derive_entries())
     }
 
-    /// Takes the arrival record, consuming the message.
-    ///
-    /// What a rebuild needs: the entries are what arrived and are carried
-    /// through unchanged, so moving them costs nothing where cloning a whole
-    /// capture's worth would.
-    pub(super) fn into_entries(self) -> Vec<FixEntry> {
-        self.entries
+    fn derive_entries(&self) -> Vec<FixEntry> {
+        let Some(values) = self.value.as_sequence() else {
+            return Vec::new();
+        };
+        // A group's count is the group entry's own value, so the counter
+        // child beside the group states nothing the entries do not already.
+        let counted = |child: &Field| {
+            !child.dtype().is_nested()
+                && child
+                    .as_fix()
+                    .tag()
+                    .ok()
+                    .flatten()
+                    .is_some_and(|tag| self.index_of_group(tag).is_some())
+        };
+        self.field
+            .fields()
+            .iter()
+            .zip(values)
+            .filter(|(child, _)| !counted(child))
+            .filter_map(|(child, value)| entry_of(child, value))
+            .collect()
     }
 
-    /// Replaces the arrival record with one a row already held.
-    ///
-    /// The row's own reading of what arrived, not a rebuild from the
-    /// children: the entries and the row stay two facts, and this only puts
-    /// back the one a projection carried alongside the other.
-    pub(super) fn set_entries(&mut self, entries: Vec<FixEntry>) {
-        self.entries = entries;
+    /// Every entry the wire carries, in wire order: the standard header
+    /// from the typed header, the event's own FIX tags, then the row.
+    fn wire_entries(&self) -> Vec<FixEntry> {
+        let mut entries = Vec::with_capacity(self.field.fields().len() + 14);
+        let name_of = |tag: i32| {
+            self.registry.get_field_by_tag(tag).map_or_else(
+                || format_smolstr!("{tag}"),
+                |field| SmolStr::new(field.name()),
+            )
+        };
+        for tag in WIRE_HEADER_TAGS.into_iter().chain([
+            15,
+            54,
+            super::cfi::CFICODE_TAG,
+            132,
+            133,
+            134,
+            135,
+        ]) {
+            if tag == 52 && !self.header.stated_sendingtime() {
+                continue;
+            }
+            let Some(fact) = self.typed_fact(tag) else {
+                continue;
+            };
+            let text = match self.registry.get_field_by_tag(tag) {
+                Some(field) => wire_text_under(field, &fact),
+                None => wire_text(&fact),
+            };
+            if let Some(text) = text {
+                entries.push(FixEntry::new(tag, name_of(tag), Some(text)));
+            }
+        }
+        entries.extend_from_slice(self.entries());
+        entries
     }
 
-    /// Writes one value into the row, typed by the field the key reaches.
+    /// Writes one value into the message, typed by the field the key reaches.
     ///
-    /// Row only: the entries are what arrived and are not changed by what
-    /// the row now says about it, so [`Self::into_bytes`] still re-emits the
-    /// received line byte for byte. The key resolves as every lookup does -
-    /// through the registry's one namespace - and a field the
-    /// dictionary knows types the value through [`Field::scalar`] under the
-    /// dictionary's own field, so a written child is indistinguishable from
-    /// a stated one and carries the same `fix:tag` a reader resolves it by.
-    /// A `Null` is stored as a stated null except for mandatory holders,
-    /// which refuse it. Content writes recompute identities before publication;
-    /// explicitly written identities must match the complete candidate state.
-    ///
-    /// An existing child is replaced where it stands, its field updated to
-    /// the resolved one, and an absent one is appended rather than inserted
-    /// in tag order: the positions every reader already holding the row
-    /// addresses it by do not move, and a written field is found by tag.
-    /// The tag and group indexes follow the one child that changed rather
-    /// than being reread. A name the dictionary does not know still reaches
-    /// a child spelled that way - exactly, or under the fold every name
-    /// resolves by - and keeps that child's field; a bare tag it does not
-    /// know appends a nullable `utf8` child named by its decimal, which is
-    /// what the builder does with an unknown tag. A name that reaches
-    /// neither a field nor a child is refused, and the message is unchanged.
+    /// The key resolves as every lookup does - through the registry's one
+    /// namespace. A key reaching a typed fact - a header tag, a crate
+    /// column, one of the event's own tags - records it on the holder that
+    /// owns it, and a `Null` clears it. Any other key lands in the row: a
+    /// field the dictionary knows types the value through [`Field::scalar`]
+    /// under the dictionary's own field, so a written child is
+    /// indistinguishable from a stated one and carries the same `fix:tag` a
+    /// reader resolves it by; a `Null` is stored as a stated null. An
+    /// existing child is replaced where it stands and an absent one is
+    /// appended, so the positions every reader already holding the row
+    /// addresses it by do not move. A name the dictionary does not know
+    /// still reaches a child spelled that way - exactly, or under the fold
+    /// every name resolves by - and keeps that child's field; a bare tag it
+    /// does not know appends a nullable `utf8` child named by its decimal,
+    /// which is what the builder does with an unknown tag. A name that
+    /// reaches neither a field nor a child is refused, and the message is
+    /// unchanged. Every write settles the identity again.
     ///
     /// ```
     /// use std::sync::Arc;
     ///
+    /// use yggdryl::graph::MarketElement;
     /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -564,21 +754,26 @@ impl FixMsg {
     ///
     /// // Appended under the dictionary's field, typed by it and found by tag.
     /// msg.set(38, Scalar::from(100_i64))?;
-    /// assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
+    /// assert_eq!(msg.by_tag(38)?, Scalar::from(100_i64));
     /// assert_eq!(msg.as_field().fields().last().unwrap().name(), "orderqty");
     ///
     /// // Replaced in place: the child keeps its position, the value changes.
     /// msg.set("Symbol", Scalar::from("MSFT"))?;
     /// assert_eq!(msg.as_field().fields()[0].name(), "symbol");
-    /// assert_eq!(msg.by_tag(55)?, &Scalar::from("MSFT"));
+    /// assert_eq!(msg.by_tag(55)?, Scalar::from("MSFT"));
+    ///
+    /// // A typed fact lands on its holder and never in the row.
+    /// msg.set(yggdryl::PX_TAG_NAME.0, Scalar::from("82.5"))?;
+    /// assert_eq!(msg.get_px().to_string(), "82.5");
+    /// assert_eq!(msg.as_field().fields().len(), 2);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
     /// msg.set(9999, Scalar::from("custom"))?;
-    /// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"));
+    /// assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"));
     ///
     /// // A name nothing reaches is refused, and the row stands as it was.
     /// assert!(msg.set("nosuchfield", Scalar::from("x")).is_err());
-    /// assert_eq!(msg.as_field().fields().len(), 10);
+    /// assert_eq!(msg.as_field().fields().len(), 3);
     /// # Ok(())
     /// # }
     /// ```
@@ -594,44 +789,14 @@ impl FixMsg {
         self.set_many(std::iter::once((key, value)))
     }
 
-    /// Writes several values into the row with one rebuild.
+    /// Writes several values into the message with one rebuild.
     ///
     /// Each key resolves and each value types exactly as [`Self::set`]
     /// resolves and types one, against the row as it stands before any of
-    /// them lands; the row is then rebuilt once, where a write per value
-    /// rebuilds it per value. A stream stamping three identities on every
-    /// message is what this is for. Two writes reaching one child, or two
-    /// appending one field, land as the later one, so the result is what the
-    /// same writes made one at a time. Failure leaves the message unchanged,
+    /// them lands; the row is then rebuilt once and the identity settled
+    /// once. Two writes reaching one child, or two appending one field,
+    /// land as the later one. Failure leaves the message unchanged,
     /// whichever write refused.
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let mut qty = DataType::Int64.nullable_field("orderqty");
-    /// qty.as_fix_mut().set_tag(38)?;
-    /// let mut symbol = DataType::utf8().nullable_field("symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
-    /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
-    /// let root = DataType::from_fields([DataType::utf8().required_field("symbol")])?
-    ///     .required_field("D");
-    /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
-    /// let mut msg = FixMsg::with_registry(registry, root, value)?;
-    ///
-    /// msg.set_many([
-    ///     (55, Scalar::from("MSFT")),
-    ///     (38, Scalar::from(100_i64)),
-    ///     (38, Scalar::from(200_i64)),
-    /// ])?;
-    /// assert_eq!(msg.by_tag(55)?, &Scalar::from("MSFT"));
-    /// assert_eq!(msg.by_tag(38)?, &Scalar::from(200_i64), "the later write lands");
-    /// assert_eq!(msg.as_field().fields().len(), 9, "two business fields and the seven-field replay bundle");
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Errors
     ///
@@ -656,14 +821,15 @@ impl FixMsg {
         K: Into<FixKey<'key>>,
     {
         let mut writes: Vec<Write> = Vec::new();
+        let mut typed: Vec<(i32, Scalar)> = Vec::new();
         for (key, value) in values {
             let key = key.into();
-            stage(&mut writes, self.staged(&key, value, &check)?);
+            match self.staged(&key, value, &check)? {
+                Staged::Typed(tag, value) => typed.push((tag, value)),
+                Staged::Row(write) => stage(&mut writes, write),
+            }
         }
-        if writes.is_empty() {
-            return Ok(());
-        }
-        self.write_all(writes)
+        self.land(typed, writes)
     }
 
     /// Writes every value the field it reaches can hold, with one rebuild,
@@ -672,11 +838,10 @@ impl FixMsg {
     /// The lenient twin of [`Self::set_many`], for a pass whose answers are
     /// best effort: a value the target refuses - an identifier whose check
     /// digit does not close, a spelling its code set does not read - is
-    /// silence rather than a refusal, exactly as one refused `set` is to the
-    /// [enriching pass](super::FixCodec::enrich_message), and every other
-    /// value lands as `set_many` lands it. Nothing else is lenient: the
-    /// rebuild's refusal, which no single value causes, is still returned
-    /// and leaves the message unchanged.
+    /// silence rather than a refusal, and every other value lands as
+    /// `set_many` lands it. Nothing else is lenient: the rebuild's refusal,
+    /// which no single value causes, is still returned and leaves the
+    /// message unchanged.
     ///
     /// # Errors
     ///
@@ -688,17 +853,36 @@ impl FixMsg {
         K: Into<FixKey<'key>>,
     {
         let mut writes: Vec<Write> = Vec::new();
+        let mut typed: Vec<(i32, Scalar)> = Vec::new();
         for (key, value) in values {
             let key = key.into();
-            if let Ok(write) = self.staged(&key, value, &|_, _| Ok(())) {
-                stage(&mut writes, write);
+            match self.staged(&key, value, &|_, _| Ok(())) {
+                Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
+                Ok(Staged::Row(write)) => stage(&mut writes, write),
+                Err(_) => {}
             }
         }
-        let landed = writes.len();
+        let landed = typed.len() + writes.len();
         if landed > 0 {
-            self.write_all(writes)?;
+            self.land(typed, writes)?;
         }
         Ok(landed)
+    }
+
+    /// Lands staged writes: the typed facts on their holders, the row
+    /// writes in one rebuild, then the identity settled once.
+    fn land(&mut self, typed: Vec<(i32, Scalar)>, writes: Vec<Write>) -> Result<()> {
+        if typed.is_empty() && writes.is_empty() {
+            return Ok(());
+        }
+        if !writes.is_empty() {
+            self.write_all(writes)?;
+        }
+        for (tag, value) in typed {
+            self.record(tag, &value);
+        }
+        self.settle();
+        Ok(())
     }
 
     /// One value resolved and typed for the child its key reaches, exactly
@@ -708,20 +892,17 @@ impl FixMsg {
         key: &FixKey<'key>,
         value: Scalar,
         check: &impl Fn(&FixKey<'key>, &Field) -> Result<()>,
-    ) -> Result<Write> {
+    ) -> Result<Staged> {
         let (at, mut field) = self.target(key)?;
         check(key, &field)?;
-        if field
-            .as_fix()
-            .tag()?
-            .is_some_and(super::identity::is_mandatory)
-            && value.is_null()
-        {
-            return Err(super::identity::refused(
-                field.name(),
-                "a non-null mandatory value",
-                "null",
-            ));
+        let tag = field.as_fix().tag()?;
+        if let Some(tag) = tag.filter(|tag| identity::is_typed_tag(*tag)) {
+            let value = if value.is_null() {
+                Scalar::Null
+            } else {
+                field.scalar(value)?
+            };
+            return Ok(Staged::Typed(tag, value));
         }
         let value = if value.is_null() {
             field.set_nullable(true);
@@ -729,7 +910,7 @@ impl FixMsg {
         } else {
             field.scalar(value)?
         };
-        Ok(Write { at, field, value })
+        Ok(Staged::Row(Write { at, field, value }))
     }
 
     /// [`Self::set`], consuming the message.
@@ -742,15 +923,12 @@ impl FixMsg {
         Ok(self)
     }
 
-    /// Removes the child a key reaches, answering the value it held.
+    /// Removes what a key reaches, answering the value it held.
     ///
-    /// Row only, exactly as [`Self::set`] is: the entries are untouched.
-    /// The key resolves as a lookup does - a tag reaches the child carrying
-    /// it, else the one named as the dictionary names it or by the tag's
-    /// decimal; a name reaches the child its canonical spelling, an exact
-    /// match or the fold picks - and one that reaches nothing answers `None`
-    /// and changes nothing. The children after the removed one move up, so
-    /// the tag and group indexes are reread.
+    /// A key reaching a typed fact clears it on its holder; one reaching a
+    /// row child removes the child, and the children after it move up, so
+    /// the tag and group indexes are reread. A key that reaches nothing
+    /// answers `None` and changes nothing.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -771,32 +949,35 @@ impl FixMsg {
     ///
     /// assert_eq!(msg.remove(55)?, Some(Scalar::from("AAPL")));
     /// assert_eq!(msg.get_by_tag(55), None);
-    /// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "the neighbour is still reached");
+    /// assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "the neighbour is still reached");
     /// assert_eq!(msg.remove("nosuchfield")?, None);
     /// # Ok(())
     /// # }
     /// ```
+    ///
     /// # Errors
-    /// Refuses removal of a mandatory field; any refusal leaves the message unchanged.
+    ///
+    /// Returns the schema grammar's refusal when the remaining children do
+    /// not make a root, which leaves the message unchanged.
     pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>> {
-        let Some(at) = self.index_of_key(&key.into()) else {
+        let key = key.into();
+        if let Some(tag) = self.typed_tag_of(&key) {
+            let held = self.typed_fact(tag);
+            if held.is_some() {
+                self.record(tag, &Scalar::Null);
+                self.settle();
+            }
+            return Ok(held);
+        }
+        let Some(at) = self.index_of_key(&key) else {
             return Ok(None);
         };
-        if super::identity::resolve_tag(&self.field.fields()[at], &self.registry)?
-            .is_some_and(super::identity::is_held)
-        {
-            return Err(super::identity::refused(
-                self.field.fields()[at].name(),
-                "a retained mandatory field",
-                "removal",
-            ));
-        }
         let mut members = self.field.fields().to_vec();
         let mut values = self
             .value
             .as_sequence()
             .ok_or_else(|| {
-                super::identity::refused(self.field.name(), "a canonical row", self.value.kind())
+                identity::refused(self.field.name(), "a canonical row", self.value.kind())
             })?
             .to_vec();
         if at >= members.len() || at >= values.len() {
@@ -804,40 +985,40 @@ impl FixMsg {
         }
         members.remove(at);
         let removed = values.remove(at);
-        // Everything that can refuse is asked before anything is written, so
-        // a refusal leaves the message as it was.
         let dtype = DataType::from_fields(members)?;
         let field = self.rerooted(dtype);
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
-        let hard =
-            plan.identity
-                .finalize(&field, &mut values, super::identity::Assertions::default())?;
         self.field = field;
         self.value = Scalar::from_sequence(values);
         self.tags = tag_positions(&plan);
         self.groups = group_positions(&self.field);
         self.named = OnceLock::new();
-        self.publish_hard(hard);
+        self.entries = OnceLock::new();
+        self.settle();
         Ok(Some(removed))
+    }
+
+    /// The typed tag a key reaches, where it reaches one.
+    fn typed_tag_of(&self, key: &FixKey<'_>) -> Option<i32> {
+        let tag = match *key {
+            FixKey::Tag(tag) => tag,
+            FixKey::Id(id) => {
+                self.registry
+                    .identity_of(self.registry.get_field_by_id(id)?)?
+                    .0
+            }
+            FixKey::Name(name) => {
+                let known = self.known_by_name(name)?;
+                self.registry.identity_of(known)?.0
+            }
+        };
+        identity::is_typed_tag(tag).then_some(tag)
     }
 
     /// The child a key reaches and the field it is written under: an
     /// existing child's position where one is reached, and the field the
     /// registry resolves the key to, else the reached child's own.
-    ///
-    /// The field is owned because a written child is the registry's field
-    /// as this message states it, and the row's own child otherwise.
     fn target(&self, key: &FixKey<'_>) -> Result<(Option<usize>, Field)> {
-        if let Some(at) = self.index_of_key(key) {
-            let field = &self.field.fields()[at];
-            if let Some(tag) = super::identity::resolve_tag(field, &self.registry)?
-                .filter(|tag| super::identity::is_held(*tag))
-            {
-                let mut field = field.clone();
-                field.as_fix_mut().set_tag(tag)?;
-                return Ok((Some(at), field));
-            }
-        }
         match *key {
             FixKey::Tag(tag) => {
                 let at = self.reached_by_tag(tag);
@@ -894,61 +1075,32 @@ impl FixMsg {
         }
     }
 
-    /// The position of the child a key reaches, as a lookup reaches it.
+    /// The position of the row child a key reaches, as a lookup reaches it.
     fn index_of_key(&self, key: &FixKey<'_>) -> Option<usize> {
         match *key {
             FixKey::Tag(tag) => self.reached_by_tag(tag),
             FixKey::Id(id) => {
                 let known = self.registry.get_field_by_id(id)?;
-                self.field
-                    .index_of(known.name())
-                    .or_else(|| self.mandatory_index(known))
+                self.field.index_of(known.name())
             }
-            FixKey::Name(name) => self.child_index(&self.field, name).or_else(|| {
-                self.known_by_name(name)
-                    .and_then(|known| self.mandatory_index(known))
-            }),
+            FixKey::Name(name) => self.child_index(&self.field, name),
         }
     }
 
-    fn mandatory_index(&self, known: &Field) -> Option<usize> {
-        let (tag, _) = self.registry.identity_of(known)?;
-        super::identity::is_held(tag)
-            .then(|| self.index_of_tag(tag))
-            .flatten()
-    }
-
-    /// Lands the planned writes: each replaced at its position, appended
-    /// when it has none.
+    /// Lands the planned row writes: each replaced at its position,
+    /// appended when it has none.
     ///
     /// The whole row is rebuilt once, because a Struct's children and a
     /// row's values are both one shared allocation; everything that can
     /// refuse is asked before anything is stored, so a refusal leaves the
     /// message as it was. The tag and group indexes follow the children that
-    /// changed: the entry a replaced child held is retired and the one the
-    /// written child carries admitted, and nothing else is reread. The name
-    /// table is derived from the children, so it is carried through a write
-    /// that leaves it true - an append, or a replacement under the child's
-    /// own name - and dropped only where a rename makes it wrong.
+    /// changed, and the name table is carried through a write that leaves
+    /// it true - an append, or a replacement under the child's own name -
+    /// and dropped only where a rename makes it wrong.
     fn write_all(&mut self, writes: Vec<Write>) -> Result<()> {
-        let mut assertions = super::identity::Assertions::default();
-        for write in &writes {
-            let tag = write.field.as_fix().tag()?;
-            assertions.msghash |= tag == Some(super::MSGHASH_TAG_NAME.0);
-            assertions.persistent |= tag == Some(super::MSGPHASH_TAG_NAME.0);
-        }
-        let (field, mut values, indexed) = stage_writes(&self.field, &self.value, writes)?;
-        let plan = super::schema::column_plan_of(&field, &self.registry)?;
-        plan.identity.require_bundle(&field)?;
-        let hard = plan.identity.finalize(&field, &mut values, assertions)?;
+        let (field, values, indexed) = stage_writes(&self.field, &self.value, writes)?;
         self.field = field;
         self.value = Scalar::from_sequence(values);
-        // The name table is derived from the children, and most writes leave
-        // it true: a replacement under the child's own name moves nothing,
-        // and an append only adds an entry. Enrich is the case that matters -
-        // it alternates a miss, which builds this table over every column of
-        // a wide row, with a write that would have thrown it away - and every
-        // one of its writes is an append or a same-name replacement.
         let mut named = self.named.take();
         for change in indexed {
             if change.renamed {
@@ -968,25 +1120,12 @@ impl FixMsg {
         if let Some(named) = named {
             let _ = self.named.set(named);
         }
-        self.publish_hard(hard);
+        self.entries = OnceLock::new();
         Ok(())
-    }
-
-    fn publish_hard(&mut self, hard: super::identity::Hard) {
-        self.updatedat = hard.updatedat;
-        self.createdat = hard.createdat;
-        self.msghash = hard.msghash;
-        self.msgphash = hard.msgphash;
     }
 
     /// The root over other children: its name, nullability and metadata,
     /// the Struct `dtype` under them.
-    ///
-    /// `DataType::from_fields` already refused a duplicate name and checked
-    /// every child, and that is the whole of what the root's setter would
-    /// check again before comparing the old children with the new one by
-    /// one - so the root is rebuilt around the proven datatype instead, which
-    /// is a per-message cost on every stream that stamps or fills a row.
     fn rerooted(&self, dtype: DataType) -> Field {
         Field::new_with_metadata(
             self.field.name(),
@@ -996,27 +1135,16 @@ impl FixMsg {
         )
     }
 
-    /// Returns what this message says about itself that does not add up.
-    ///
-    /// Derived by comparing the row against the entries, never stored, so
-    /// there is nothing to keep in step and a caller who never asks pays
-    /// nothing. A message built from a schema and a value has no entries and
-    /// so reports nothing: there is no arrival record to disagree with.
-    #[must_use]
-    pub fn anomalies(&self) -> FixAnomalies<'_> {
-        FixAnomalies::new(self)
-    }
-
     /// Re-emits this message on the wire, separated by `separator`.
     ///
-    /// The bytes come from the entries rather than from the row, because the
-    /// row is a lossy interpretation by construction: a translated `4` cannot
-    /// say whether the wire carried `4` or its symbolic spelling. A message
-    /// built from a schema and a value carries no entries and emits nothing.
+    /// The standard header from the typed header, the event's own FIX tags,
+    /// then the row in its order, each entry stating a value as one pair
+    /// and an occurrence or a component as the pairs under it. What is
+    /// emitted is the message as it now stands, derived values included.
     #[must_use]
     pub fn into_bytes(&self, separator: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
-        emit_bytes(&self.entries, separator, &mut bytes);
+        emit_bytes(&self.wire_entries(), separator, &mut bytes);
         bytes
     }
 
@@ -1024,39 +1152,19 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] when a value is not printable, which
-    /// is why the byte emit exists: a message carrying a `data` field cannot
-    /// round-trip through text.
+    /// Returns [`Error::InvalidRecord`] when a value holds a control byte.
     pub fn into_text(&self, separator: char) -> Result<String> {
         let mut text = String::new();
-        emit_text(&self.entries, separator, &mut text)?;
+        emit_text(&self.wire_entries(), separator, &mut text)?;
         Ok(text)
     }
 
-    /// The version this message was read at.
-    ///
-    /// The crate's own `version` child where a read stamped one - the codec's
-    /// target, which is what every field and every code in the row resolved
-    /// against - and `BeginString(8)` otherwise, which is what a message
-    /// converted from a schema and a value says about itself.
-    ///
-    /// Derived rather than stored either way, so a converted one cannot lie.
-    /// The two answers differ exactly where a session mislabels itself or
-    /// carries a row written to a later FIX than it speaks, which is what the
-    /// crate keeps a column for.
+    /// The deterministic digest of what the wire carries: every entry of
+    /// [`Self::into_bytes`], pre-order, so two messages that re-emit alike
+    /// digest alike whatever separator either was read with.
     #[must_use]
-    pub fn version(&self) -> Option<Version> {
-        if let Some(held) = self
-            .get_by_tag(super::VERSION_TAG_NAME.0)
-            .and_then(Scalar::as_str)
-            .and_then(|held| held.parse().ok())
-        {
-            return Some(held);
-        }
-        let begin = self.get_by_tag(8).and_then(Scalar::as_str)?;
-        begin
-            .strip_prefix("FIX.")
-            .and_then(|rest| rest.parse().ok())
+    pub fn digest(&self) -> u128 {
+        super::digest::digest_of(&self.wire_entries())
     }
 
     /// Returns the registry this message resolves against.
@@ -1064,7 +1172,8 @@ impl FixMsg {
         &self.registry
     }
 
-    /// Returns the root Struct field: the message's resolved schema.
+    /// Returns the root Struct field: the row's schema, which holds every
+    /// child the message states beyond its typed facts.
     pub const fn as_field(&self) -> &Field {
         &self.field
     }
@@ -1074,70 +1183,61 @@ impl FixMsg {
         &self.value
     }
 
-    /// Returns the value of the root child an identifier names.
+    /// Returns the value the root child an identifier names.
     ///
     /// An identifier is exact: it names one field, and the child is the one
     /// that field's name reaches.
-    pub fn get_by_id(&self, id: FixId) -> Option<&Scalar> {
-        let index = self.index_of_key(&FixKey::Id(id))?;
-        self.value.get(index)
+    pub fn get_by_id(&self, id: FixId) -> Option<Scalar> {
+        let known = self.registry.get_field_by_id(id)?;
+        if let Some((tag, _)) = self.registry.identity_of(known) {
+            if identity::is_typed_tag(tag) {
+                return self.typed_fact(tag);
+            }
+        }
+        self.value.get(self.field.index_of(known.name())?).cloned()
     }
 
-    /// Returns the value of the root child an identifier names, raising
+    /// Returns the value the root child an identifier names, raising
     /// absence.
     ///
     /// # Errors
     ///
     /// Returns a typed absence naming the identifier.
-    pub fn by_id(&self, id: FixId) -> Result<&Scalar> {
+    pub fn by_id(&self, id: FixId) -> Result<Scalar> {
         self.get_by_id(id).ok_or_else(|| absent(FixKey::Id(id)))
     }
 
-    /// Returns the value of the root child a tag names.
+    /// Returns the value a tag names.
     ///
-    /// The registry resolves the tag to its canonical name, and that name
-    /// picks the root child, so a venue field and `MsgType` are both
-    /// reachable from a venue message. A tag the dictionary does not answer
-    /// is looked for under its decimal rendering, so an unknown tag a
-    /// transcriber retained is still reachable.
-    pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        self.clock_by_tag(tag)
-            .or_else(|| self.value.get(self.reached_by_tag(tag)?))
-    }
-
-    /// The value a tag names by the index alone: one of the four values the
-    /// message computes about itself, else the child declaring the tag, and
-    /// never the two fallbacks of [`Self::get_by_tag`], which end in a name
-    /// table built on the first miss. The [enriching pass](super::enrich)
-    /// gathers its working row through this, a column per tag it reads, so
-    /// the columns a message lacks - most of them - cost a binary search
-    /// each and never the table.
-    pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        self.clock_by_tag(tag)
-            .or_else(|| self.value.get(self.index_of_tag(tag)?))
-    }
-
-    /// The four values the message holds beside its row rather than in it,
-    /// where `tag` names one of them.
-    fn clock_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        if tag == super::UPDATEDAT_TAG_NAME.0 {
-            Some(self.updatedat())
-        } else if tag == super::CREATEDAT_TAG_NAME.0 {
-            Some(self.createdat())
-        } else if tag == super::MSGHASH_TAG_NAME.0 {
-            Some(self.msghash())
-        } else if tag == super::MSGPHASH_TAG_NAME.0 {
-            Some(self.msgphash())
-        } else {
-            None
+    /// A tag the typed holders own - a header tag, a crate column, one of
+    /// the event's own tags - answers the fact the holder states, or nothing
+    /// where it states none. Any other tag reaches the row: the registry
+    /// resolves it to its canonical name, and that name picks the root
+    /// child; a tag the dictionary does not answer is looked for under its
+    /// decimal rendering, so an unknown tag a transcriber retained is still
+    /// reachable.
+    pub fn get_by_tag(&self, tag: i32) -> Option<Scalar> {
+        if identity::is_typed_tag(tag) {
+            return self.typed_fact(tag);
         }
+        self.value.get(self.reached_by_tag(tag)?).cloned()
+    }
+
+    /// The value a tag names by the index alone: a typed fact, else the
+    /// child declaring the tag, and never the two fallbacks of
+    /// [`Self::get_by_tag`], which end in a name table built on the first
+    /// miss. The [enriching pass](super::enrich) gathers its working row
+    /// through this, a column per tag it reads.
+    pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<Scalar> {
+        if identity::is_typed_tag(tag) {
+            return self.typed_fact(tag);
+        }
+        self.value.get(self.index_of_tag(tag)?).cloned()
     }
 
     /// The child a tag reaches: the one carrying the tag, by one hash-free
     /// binary search over the index resolved at construction, else the one
-    /// either fallback names. A field a dictionary never explained carries
-    /// no tag and falls through to the fallbacks, where the dictionary is
-    /// one probe.
+    /// either fallback names.
     fn reached_by_tag(&self, tag: i32) -> Option<usize> {
         if let Some(index) = self.index_of_tag(tag) {
             return Some(index);
@@ -1158,18 +1258,12 @@ impl FixMsg {
         });
         match self.known_by_tag(tag) {
             Some(known) => named.get(known.name()).copied(),
-            // Eleven bytes hold every `i32`, sign included, so the rendering
-            // stays inline and a miss allocates nothing.
             None => named.get(format_smolstr!("{tag}").as_str()).copied(),
         }
     }
 
     /// The root child carrying one tag, by that child's own declaration.
     pub(super) fn index_of_tag(&self, tag: i32) -> Option<usize> {
-        // The first child carrying the tag, in the row's own order: a row
-        // may hold two children on one tag where the dictionary holds two
-        // fields on it, and the index is sorted by tag then position, so the
-        // partition point is the earliest.
         let at = self.tags.partition_point(|(held, _)| *held < tag);
         self.tags
             .get(at)
@@ -1203,30 +1297,39 @@ impl FixMsg {
         Some(self.groups[index].1)
     }
 
-    /// Returns the value of the root child a tag names, raising absence.
+    /// Returns the value a tag names, raising absence.
     ///
     /// # Errors
     ///
     /// Returns a typed absence naming the tag.
-    pub fn by_tag(&self, tag: i32) -> Result<&Scalar> {
+    pub fn by_tag(&self, tag: i32) -> Result<Scalar> {
         self.get_by_tag(tag).ok_or_else(|| absent(FixKey::Tag(tag)))
     }
 
-    /// Returns the value of the root child a name reaches.
+    /// Returns the value a name reaches.
     ///
-    /// The name folds through the registry to its canonical spelling, and
-    /// an exact root-child match is the fallback when the registry does not
-    /// know it.
-    pub fn get_by_name(&self, name: &str) -> Option<&Scalar> {
-        self.value.get(self.index_of_key(&FixKey::Name(name))?)
+    /// The name folds through the registry to its canonical spelling - a
+    /// typed fact answers from its holder - and an exact root-child match is
+    /// the fallback when the registry does not know it.
+    pub fn get_by_name(&self, name: &str) -> Option<Scalar> {
+        if let Some(known) = self.known_by_name(name) {
+            if let Some((tag, _)) = self.registry.identity_of(known) {
+                if identity::is_typed_tag(tag) {
+                    return self.typed_fact(tag);
+                }
+            }
+        }
+        self.value
+            .get(self.child_index(&self.field, name)?)
+            .cloned()
     }
 
-    /// Returns the value of the root child a name reaches, raising absence.
+    /// Returns the value a name reaches, raising absence.
     ///
     /// # Errors
     ///
     /// Returns a typed absence naming the name.
-    pub fn by_name(&self, name: &str) -> Result<&Scalar> {
+    pub fn by_name(&self, name: &str) -> Result<Scalar> {
         self.get_by_name(name)
             .ok_or_else(|| absent(FixKey::Name(name)))
     }
@@ -1238,22 +1341,36 @@ impl FixMsg {
     /// resolves the path once. A named segment resolves as
     /// [`Self::get_by_name`] does - the registry's canonical spelling first,
     /// then an exact match - and an indexed segment takes one occurrence of
-    /// the List a
-    /// repeating group is, which is what reaching a member needs:
-    /// `Parties[0].PartyID`.
+    /// the List a repeating group is, which is what reaching a member
+    /// needs: `Parties[0].PartyID`.
     ///
     /// A bare decimal is a name and not a position, exactly as it is one
     /// layer down where a text line's entry keyed `55` is reached by the path
     /// `55`. A path of one named segment is [`Self::get_by_name`].
-    pub fn get_by_path(&self, path: &FieldPath) -> Option<&Scalar> {
+    pub fn get_by_path(&self, path: &FieldPath) -> Option<Scalar> {
         let mut segments = path.segments().iter();
         let first = segments.next()?;
         let name = first.as_name()?;
-        let index = self.index_of_key(&FixKey::Name(name))?;
-        let mut field = self.field.fields().get(index)?;
-        let mut value = self.value.get(index)?;
+        let (mut field, mut value) = match self.known_by_name(name) {
+            Some(known)
+                if self
+                    .registry
+                    .identity_of(known)
+                    .is_some_and(|(tag, _)| identity::is_typed_tag(tag)) =>
+            {
+                let (tag, _) = self.registry.identity_of(known)?;
+                (known.clone(), self.typed_fact(tag)?)
+            }
+            _ => {
+                let index = self.child_index(&self.field, name)?;
+                (
+                    self.field.fields().get(index)?.clone(),
+                    self.value.get(index)?.clone(),
+                )
+            }
+        };
         for segment in segments {
-            (field, value) = self.descend(field, value, segment)?;
+            (field, value) = self.descend(&field, &value, segment)?;
         }
         Some(value)
     }
@@ -1263,7 +1380,7 @@ impl FixMsg {
     /// # Errors
     ///
     /// Returns a typed absence naming the path.
-    pub fn by_path(&self, path: &FieldPath) -> Result<&Scalar> {
+    pub fn by_path(&self, path: &FieldPath) -> Result<Scalar> {
         self.get_by_path(path)
             .ok_or_else(|| absent(format_args!("path {path}")))
     }
@@ -1273,10 +1390,8 @@ impl FixMsg {
     /// Matches the key once and redirects: a tag to [`Self::get_by_tag`], an
     /// identifier to [`Self::get_by_id`], a name to [`Self::get_by_name`] -
     /// and, only where that reached nothing and the key spells more than one
-    /// segment, to [`Self::get_by_path`] with the path that key states. The
-    /// reading a caller writes down is resolved here, which is why the door
-    /// that takes one already resolved is the one a loop should use.
-    pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar> {
+    /// segment, to [`Self::get_by_path`] with the path that key states.
+    pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<Scalar> {
         match key.into() {
             FixKey::Tag(tag) => self.get_by_tag(tag),
             FixKey::Id(id) => self.get_by_id(id),
@@ -1291,7 +1406,7 @@ impl FixMsg {
     ///
     /// Returns the error [`Self::by_tag`], [`Self::by_id`] or
     /// [`Self::by_path`] raises, whichever the key selects.
-    pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar> {
+    pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<Scalar> {
         match key.into() {
             FixKey::Tag(tag) => self.by_tag(tag),
             FixKey::Id(id) => self.by_id(id),
@@ -1299,8 +1414,6 @@ impl FixMsg {
                 if let Some(value) = self.get_by_name(name) {
                     return Ok(value);
                 }
-                // Where the key spells a path, the path door is the reading
-                // that was attempted, so its absence is the one to raise.
                 match FieldPath::from_str(name) {
                     Ok(path) if path.segments().len() > 1 => self.by_path(&path),
                     _ => Err(absent(FixKey::Name(name))),
@@ -1333,20 +1446,12 @@ impl FixMsg {
 
     /// The position of the root child `name` spells, with no dictionary
     /// consulted: an exact match, else the one child the fold reaches.
-    ///
-    /// Where a column that carries no tag is matched to a child: a capture's
-    /// own column is named by nobody's dictionary, so the spelling alone
-    /// decides.
     pub(super) fn index_of_name(&self, name: &str) -> Option<usize> {
         named_index(&self.field, name)
     }
 
     /// One key read as a name, and as the path it spells where it spells one.
-    ///
-    /// A name costs no parse, which is what nearly every key is. A key
-    /// holding more than one segment is a reading a caller wrote down, and
-    /// reading it is this door's job rather than a second door's.
-    fn named_or_path(&self, key: &str) -> Option<&Scalar> {
+    fn named_or_path(&self, key: &str) -> Option<Scalar> {
         if let Some(value) = self.get_by_name(key) {
             return Some(value);
         }
@@ -1357,28 +1462,25 @@ impl FixMsg {
     }
 
     /// The position one named segment reaches under `parent`.
-    ///
-    /// Where a segment's name is resolved, and the only place FIX's own
-    /// naming enters a path: the grammar states which child is wanted and
-    /// this states which child that is. An indexed segment names no child, so
-    /// it reaches nothing here - a position is answered by [`Self::descend`],
-    /// which knows whether it is standing on a list.
     fn segment_index(&self, parent: &Field, segment: &FieldSegment) -> Option<usize> {
         self.child_index(parent, segment.as_name()?)
     }
 
     /// One step of a path: into a Struct child by name, or into one
     /// occupancy of the List a repeating group is.
-    fn descend<'value>(
+    fn descend(
         &self,
-        field: &'value Field,
-        value: &'value Scalar,
+        field: &Field,
+        value: &Scalar,
         segment: &FieldSegment,
-    ) -> Option<(&'value Field, &'value Scalar)> {
+    ) -> Option<(Field, Scalar)> {
         match field.dtype() {
             DataType::Struct(_) => {
                 let index = self.segment_index(field, segment)?;
-                Some((field.fields().get(index)?, value.get(index)?))
+                Some((
+                    field.fields().get(index)?.clone(),
+                    value.get(index)?.clone(),
+                ))
             }
             DataType::List(item)
             | DataType::LargeList(item)
@@ -1388,26 +1490,107 @@ impl FixMsg {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
-                // A negative index counts back from the end, as the grammar
-                // states it: the last occurrence is `[-1]` whatever a message
-                // happened to carry.
                 let held = value.as_sequence()?;
                 let at = if *position < 0 {
                     held.len().checked_sub(position.unsigned_abs() as usize)?
                 } else {
                     usize::try_from(*position).ok()?
                 };
-                Some((item.as_ref(), value.get(at)?))
+                Some((item.as_ref().clone(), value.get(at)?.clone()))
             }
             DataType::Map(map) => {
                 let FieldSegment::Key(key) = segment else {
                     return None;
                 };
-                Some((map.entries().fields().get(1)?, value.get_key(key.value())?))
+                Some((
+                    map.entries().fields().get(1)?.clone(),
+                    value.get_key(key.value())?.clone(),
+                ))
             }
             _ => None,
         }
     }
+}
+
+/// One row child as the entry it is: a scalar as one stated entry, a
+/// repeating group as its counter entry with an entry per occurrence and
+/// the occurrence's members under each, a component as an entry heading
+/// its members; nothing for a child stating null.
+fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
+    if value.is_null() {
+        return None;
+    }
+    let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
+    let counter = field.as_fix().counter().ok().flatten();
+    match field.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => {
+            let occurrences = value.as_sequence()?;
+            let nested: Vec<FixEntry> = occurrences
+                .iter()
+                .filter_map(|occurrence| match item.dtype() {
+                    DataType::Struct(_) => {
+                        let members = occurrence
+                            .as_sequence()?
+                            .iter()
+                            .zip(item.fields())
+                            .filter_map(|(value, member)| entry_of(member, value))
+                            .collect();
+                        let own = item.as_fix().tag().ok().flatten().unwrap_or(0);
+                        Some(FixEntry::new(own, item.name(), None).with_entries(members))
+                    }
+                    _ => entry_of(item, occurrence),
+                })
+                .collect();
+            match counter {
+                Some(counter) => Some(
+                    FixEntry::new(
+                        counter,
+                        field.name(),
+                        Some(format_smolstr!("{}", occurrences.len())),
+                    )
+                    .with_entries(nested),
+                ),
+                None => Some(FixEntry::new(tag, field.name(), None).with_entries(nested)),
+            }
+        }
+        DataType::Struct(_) => {
+            let members = value
+                .as_sequence()?
+                .iter()
+                .zip(field.fields())
+                .filter_map(|(value, member)| entry_of(member, value))
+                .collect();
+            Some(FixEntry::new(tag, field.name(), None).with_entries(members))
+        }
+        DataType::Map(_) => {
+            let members = value
+                .as_mapping()?
+                .iter()
+                .filter_map(|(key, value)| Some(FixEntry::new(0, key.as_str()?, wire_text(value))))
+                .collect();
+            Some(FixEntry::new(tag, field.name(), None).with_entries(members))
+        }
+        _ => Some(FixEntry::new(
+            tag,
+            field.name(),
+            wire_text_under(field, value),
+        )),
+    }
+}
+
+/// The metadata a Map value states: every text key under its text value.
+fn metadata_of(value: &Scalar) -> BTreeMap<SmolStr, SmolStr> {
+    value
+        .as_mapping()
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(key, value)| {
+                    Some((SmolStr::new(key.as_str()?), SmolStr::new(value.as_str()?)))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Report that nothing in the message is reached by `what`.
@@ -1418,9 +1601,6 @@ fn absent(what: impl fmt::Display) -> Error {
 /// The position of the child `name` spells under `parent`: an exact match,
 /// else the one child the fold reaches - two children one fold reaches name
 /// neither.
-///
-/// One pass answers both readings: a write that appends misses every child
-/// under both, and a message stamped per row pays that pass once per stamp.
 fn named_index(parent: &Field, name: &str) -> Option<usize> {
     let mut folded = None;
     let mut ambiguous = false;
@@ -1462,23 +1642,23 @@ impl From<FixMsg> for Result<FixMsg> {
 }
 
 impl Clone for FixMsg {
-    /// The message, without the name table: a cache derived from the
-    /// children, rebuilt by the clone on its own first miss rather than
-    /// copied - a stream clones a message far more often than it projects
-    /// one.
+    /// The message, without its caches: the name table and the entries are
+    /// derived from the row, rebuilt by the clone on its own first ask
+    /// rather than copied.
     fn clone(&self) -> Self {
         Self {
             registry: Arc::clone(&self.registry),
-            entries: self.entries.clone(),
+            event: self.event.clone(),
+            header: self.header.clone(),
+            capture: self.capture.clone(),
+            text: self.text.clone(),
+            metadata: self.metadata.clone(),
             tags: self.tags.clone(),
             named: OnceLock::new(),
             groups: self.groups.clone(),
             field: self.field.clone(),
             value: self.value.clone(),
-            updatedat: self.updatedat.clone(),
-            createdat: self.createdat.clone(),
-            msghash: self.msghash.clone(),
-            msgphash: self.msgphash.clone(),
+            entries: OnceLock::new(),
         }
     }
 }
@@ -1487,6 +1667,9 @@ impl fmt::Debug for FixMsg {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("FixMsg")
+            .field("header", &self.header)
+            .field("event", &self.event)
+            .field("capture", &self.capture)
             .field("field", &self.field)
             .field("value", &self.value)
             .finish_non_exhaustive()
@@ -1494,11 +1677,16 @@ impl fmt::Debug for FixMsg {
 }
 
 impl PartialEq for FixMsg {
-    /// Two messages are equal when they carry the same schema and value
-    /// against the same registry - the same `Arc`, or registries that hold
-    /// the same fields.
+    /// Two messages are equal when they state the same facts and the same
+    /// row against the same registry - the same `Arc`, or registries that
+    /// hold the same fields.
     fn eq(&self, other: &Self) -> bool {
-        self.field == other.field
+        self.event == other.event
+            && self.header == other.header
+            && self.capture == other.capture
+            && self.text == other.text
+            && self.metadata == other.metadata
+            && self.field == other.field
             && self.value == other.value
             && (Arc::ptr_eq(&self.registry, &other.registry) || self.registry == other.registry)
     }
@@ -1507,10 +1695,319 @@ impl PartialEq for FixMsg {
 impl Eq for FixMsg {}
 
 impl Hash for FixMsg {
-    /// Hashes the schema and the value; the registry is part of equality but
-    /// not of the hash, which keeps equal messages hashing alike.
+    /// Hashes the settled code, the row's schema and its value; the
+    /// registry is part of equality but not of the hash, which keeps equal
+    /// messages hashing alike.
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.event.get_hashcode().hash(state);
         self.field.hash(state);
         self.value.hash(state);
+    }
+}
+
+impl Element for FixMsg {
+    fn get_curruuid(&self) -> Uuid {
+        self.event.get_curruuid()
+    }
+
+    fn set_curruuid(&mut self, uuid: Uuid) {
+        self.event.set_curruuid(uuid);
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.event.get_crossuuid()
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.event.set_crossuuid(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        self.event.get_crosscode()
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.event.set_crosscode(crosscode);
+    }
+
+    fn get_hashcode(&self) -> u64 {
+        self.event.get_hashcode()
+    }
+
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.event.set_hashcode(hashcode);
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.event.get_crosshashcode()
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.event.set_crosshashcode(crosshashcode);
+    }
+
+    fn get_identifiers(&self) -> &BTreeMap<String, String> {
+        self.event.get_identifiers()
+    }
+
+    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
+        self.event.set_identifiers(identifiers);
+    }
+
+    fn get_parentuuids(&self) -> &[Uuid] {
+        self.event.get_parentuuids()
+    }
+
+    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
+        self.event.set_parentuuids(parents);
+    }
+
+    /// A message's order is its instant.
+    fn is_after(&self, other: &Self) -> bool {
+        self.event.is_after(&other.event)
+    }
+
+    /// The identity settled again from what the message now states.
+    fn finalize(&mut self) {
+        self.settle();
+    }
+
+    /// The timed reading, and the predecessor adopted as a parent: a
+    /// message descends from the one it follows.
+    fn with_previous(self, previous: &Self) -> Option<Self> {
+        let parent = previous.get_curruuid();
+        let adopted = !self.get_parentuuids().contains(&parent);
+        let mut this = self.following(previous)?;
+        if adopted {
+            let mut parents = this.get_parentuuids().to_vec();
+            parents.push(parent);
+            this.set_parentuuids(parents);
+            this.finalize();
+        }
+        Some(this)
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        self.merging_market_event(other)
+    }
+}
+
+impl Event for FixMsg {
+    fn get_unix(&self) -> i64 {
+        self.event.get_unix()
+    }
+
+    fn set_unix(&mut self, unix: i64) {
+        self.event.set_unix(unix);
+    }
+
+    fn get_state(&self) -> &State {
+        self.event.get_state()
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.event.set_state(state);
+    }
+
+    fn get_seqnum(&self) -> u64 {
+        self.event.get_seqnum()
+    }
+
+    fn set_seqnum(&mut self, seqnum: u64) {
+        self.event.set_seqnum(seqnum);
+    }
+
+    fn get_creatunix(&self) -> Option<i64> {
+        self.event.get_creatunix()
+    }
+
+    fn set_creatunix(&mut self, unix: Option<i64>) {
+        self.event.set_creatunix(unix);
+    }
+
+    fn get_expirunix(&self) -> Option<i64> {
+        self.event.get_expirunix()
+    }
+
+    fn set_expirunix(&mut self, unix: Option<i64>) {
+        self.event.set_expirunix(unix);
+    }
+
+    fn get_prevunix(&self) -> Option<i64> {
+        self.event.get_prevunix()
+    }
+
+    fn set_prevunix(&mut self, unix: Option<i64>) {
+        self.event.set_prevunix(unix);
+    }
+
+    fn get_prevuuid(&self) -> Option<Uuid> {
+        self.event.get_prevuuid()
+    }
+
+    fn set_prevuuid(&mut self, uuid: Option<Uuid>) {
+        self.event.set_prevuuid(uuid);
+    }
+
+    fn get_snapunix(&self) -> Option<i64> {
+        self.event.get_snapunix()
+    }
+
+    fn set_snapunix(&mut self, unix: Option<i64>) {
+        self.event.set_snapunix(unix);
+    }
+}
+
+impl MarketElement for FixMsg {
+    fn get_px(&self) -> Decimal {
+        self.event.get_px()
+    }
+
+    fn set_px(&mut self, px: Decimal) {
+        self.event.set_px(px);
+    }
+
+    fn get_currency(&self) -> &Currency {
+        self.event.get_currency()
+    }
+
+    fn set_currency(&mut self, currency: Currency) {
+        self.event.set_currency(currency);
+    }
+
+    fn get_qty(&self) -> Decimal {
+        self.event.get_qty()
+    }
+
+    fn set_qty(&mut self, qty: Decimal) {
+        self.event.set_qty(qty);
+    }
+
+    fn get_unit(&self) -> &str {
+        self.event.get_unit()
+    }
+
+    fn set_unit(&mut self, unit: String) {
+        self.event.set_unit(unit);
+    }
+
+    fn get_side(&self) -> &Side {
+        self.event.get_side()
+    }
+
+    fn set_side(&mut self, side: Side) {
+        self.event.set_side(side);
+    }
+
+    fn get_isincode(&self) -> Option<&Isin> {
+        self.event.get_isincode()
+    }
+
+    fn set_isincode(&mut self, isincode: Option<Isin>) {
+        self.event.set_isincode(isincode);
+    }
+
+    fn get_cusipcode(&self) -> Option<&Cusip> {
+        self.event.get_cusipcode()
+    }
+
+    fn set_cusipcode(&mut self, cusipcode: Option<Cusip>) {
+        self.event.set_cusipcode(cusipcode);
+    }
+
+    fn get_sedolcode(&self) -> Option<&Sedol> {
+        self.event.get_sedolcode()
+    }
+
+    fn set_sedolcode(&mut self, sedolcode: Option<Sedol>) {
+        self.event.set_sedolcode(sedolcode);
+    }
+
+    fn get_bloombergcode(&self) -> Option<&Bloomberg> {
+        self.event.get_bloombergcode()
+    }
+
+    fn set_bloombergcode(&mut self, bloombergcode: Option<Bloomberg>) {
+        self.event.set_bloombergcode(bloombergcode);
+    }
+
+    fn get_cficode(&self) -> Option<&Cfi> {
+        self.event.get_cficode()
+    }
+
+    fn set_cficode(&mut self, cficode: Option<Cfi>) {
+        self.event.set_cficode(cficode);
+    }
+
+    fn get_miccode(&self) -> Option<&Mic> {
+        self.event.get_miccode()
+    }
+
+    fn set_miccode(&mut self, miccode: Option<Mic>) {
+        self.event.set_miccode(miccode);
+    }
+
+    fn get_bidpx(&self) -> Option<Decimal> {
+        self.event.get_bidpx()
+    }
+
+    fn set_bidpx(&mut self, px: Option<Decimal>) {
+        self.event.set_bidpx(px);
+    }
+
+    fn get_bidcurrency(&self) -> Option<&Currency> {
+        self.event.get_bidcurrency()
+    }
+
+    fn set_bidcurrency(&mut self, currency: Option<Currency>) {
+        self.event.set_bidcurrency(currency);
+    }
+
+    fn get_bidqty(&self) -> Option<Decimal> {
+        self.event.get_bidqty()
+    }
+
+    fn set_bidqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_bidqty(qty);
+    }
+
+    fn get_bidunit(&self) -> Option<&str> {
+        self.event.get_bidunit()
+    }
+
+    fn set_bidunit(&mut self, unit: Option<String>) {
+        self.event.set_bidunit(unit);
+    }
+
+    fn get_askpx(&self) -> Option<Decimal> {
+        self.event.get_askpx()
+    }
+
+    fn set_askpx(&mut self, px: Option<Decimal>) {
+        self.event.set_askpx(px);
+    }
+
+    fn get_askcurrency(&self) -> Option<&Currency> {
+        self.event.get_askcurrency()
+    }
+
+    fn set_askcurrency(&mut self, currency: Option<Currency>) {
+        self.event.set_askcurrency(currency);
+    }
+
+    fn get_askqty(&self) -> Option<Decimal> {
+        self.event.get_askqty()
+    }
+
+    fn set_askqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_askqty(qty);
+    }
+
+    fn get_askunit(&self) -> Option<&str> {
+        self.event.get_askunit()
+    }
+
+    fn set_askunit(&mut self, unit: Option<String>) {
+        self.event.set_askunit(unit);
     }
 }

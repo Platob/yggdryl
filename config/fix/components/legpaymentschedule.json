@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduletype"
+          "fix:field": "legpaymentscheduletype",
+          "fix:tag": "40375"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulexid"
+          "fix:field": "legpaymentschedulexid",
+          "fix:tag": "41533"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulexidref"
+          "fix:field": "legpaymentschedulexidref",
+          "fix:tag": "41534"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestubtype"
+          "fix:field": "legpaymentschedulestubtype",
+          "fix:tag": "40376"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestartdateunadjusted"
+          "fix:field": "legpaymentschedulestartdateunadjusted",
+          "fix:tag": "40377"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleenddateunadjusted"
+          "fix:field": "legpaymentscheduleenddateunadjusted",
+          "fix:tag": "40378"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulepayside"
+          "fix:field": "legpaymentschedulepayside",
+          "fix:tag": "40379"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulereceiveside"
+          "fix:field": "legpaymentschedulereceiveside",
+          "fix:tag": "40380"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulenotional"
+          "fix:field": "legpaymentschedulenotional",
+          "fix:tag": "40381"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulecurrency"
+          "fix:field": "legpaymentschedulecurrency",
+          "fix:tag": "40382"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulerate"
+          "fix:field": "legpaymentschedulerate",
+          "fix:tag": "40383"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratemultiplier"
+          "fix:field": "legpaymentscheduleratemultiplier",
+          "fix:tag": "40384"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratespread"
+          "fix:field": "legpaymentscheduleratespread",
+          "fix:tag": "40385"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratecurrency"
+          "fix:field": "legpaymentscheduleratecurrency",
+          "fix:tag": "41535"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulerateunitofmeasure"
+          "fix:field": "legpaymentschedulerateunitofmeasure",
+          "fix:tag": "41536"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulerateconversionfactor"
+          "fix:field": "legpaymentschedulerateconversionfactor",
+          "fix:tag": "41537"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratespreadtype"
+          "fix:field": "legpaymentscheduleratespreadtype",
+          "fix:tag": "41538"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratespreadpositiontype"
+          "fix:field": "legpaymentscheduleratespreadpositiontype",
+          "fix:tag": "40386"
         }
       },
       {
@@ -190,7 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratetreatment"
+          "fix:field": "legpaymentscheduleratetreatment",
+          "fix:tag": "40387"
         }
       },
       {
@@ -200,7 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixedamount"
+          "fix:field": "legpaymentschedulefixedamount",
+          "fix:tag": "40388"
         }
       },
       {
@@ -210,7 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixedcurrency"
+          "fix:field": "legpaymentschedulefixedcurrency",
+          "fix:tag": "40389"
         }
       },
       {
@@ -220,7 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulesettlperiodprice"
+          "fix:field": "legpaymentschedulesettlperiodprice",
+          "fix:tag": "41539"
         }
       },
       {
@@ -230,7 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulesettlperiodpricecurrency"
+          "fix:field": "legpaymentschedulesettlperiodpricecurrency",
+          "fix:tag": "41540"
         }
       },
       {
@@ -240,7 +263,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulesettlperiodpriceunitofmeasure"
+          "fix:field": "legpaymentschedulesettlperiodpriceunitofmeasure",
+          "fix:tag": "41541"
         }
       },
       {
@@ -250,7 +274,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestepunitofmeasure"
+          "fix:field": "legpaymentschedulestepunitofmeasure",
+          "fix:tag": "41542"
         }
       },
       {
@@ -260,7 +285,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestepfrequencyperiod"
+          "fix:field": "legpaymentschedulestepfrequencyperiod",
+          "fix:tag": "40390"
         }
       },
       {
@@ -270,7 +296,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestepfrequencyunit"
+          "fix:field": "legpaymentschedulestepfrequencyunit",
+          "fix:tag": "40391"
         }
       },
       {
@@ -280,7 +307,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestepoffsetvalue"
+          "fix:field": "legpaymentschedulestepoffsetvalue",
+          "fix:tag": "40392"
         }
       },
       {
@@ -290,7 +318,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulesteprate"
+          "fix:field": "legpaymentschedulesteprate",
+          "fix:tag": "40393"
         }
       },
       {
@@ -300,7 +329,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulestepoffsetrate"
+          "fix:field": "legpaymentschedulestepoffsetrate",
+          "fix:tag": "40394"
         }
       },
       {
@@ -310,7 +340,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulesteprelativeto"
+          "fix:field": "legpaymentschedulesteprelativeto",
+          "fix:tag": "40395"
         }
       },
       {
@@ -320,7 +351,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentscheduleratesources"
+          "fix:field": "nolegpaymentscheduleratesources",
+          "fix:tag": "40414"
         }
       },
       {
@@ -340,7 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdateunadjusted"
+          "fix:field": "legpaymentschedulefixingdateunadjusted",
+          "fix:tag": "40396"
         }
       },
       {
@@ -350,7 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleweight"
+          "fix:field": "legpaymentscheduleweight",
+          "fix:tag": "40397"
         }
       },
       {
@@ -360,7 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdaterelativeto"
+          "fix:field": "legpaymentschedulefixingdaterelativeto",
+          "fix:tag": "40398"
         }
       },
       {
@@ -370,7 +405,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdatebusinessdayconvention"
+          "fix:field": "legpaymentschedulefixingdatebusinessdayconvention",
+          "fix:tag": "40399"
         }
       },
       {
@@ -380,7 +416,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentschedulefixingdatebusinesscenters"
+          "fix:field": "nolegpaymentschedulefixingdatebusinesscenters",
+          "fix:tag": "40927"
         }
       },
       {
@@ -400,7 +437,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdateoffsetperiod"
+          "fix:field": "legpaymentschedulefixingdateoffsetperiod",
+          "fix:tag": "40401"
         }
       },
       {
@@ -410,7 +448,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdateoffsetunit"
+          "fix:field": "legpaymentschedulefixingdateoffsetunit",
+          "fix:tag": "40402"
         }
       },
       {
@@ -420,7 +459,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdateoffsetdaytype"
+          "fix:field": "legpaymentschedulefixingdateoffsetdaytype",
+          "fix:tag": "40403"
         }
       },
       {
@@ -430,7 +470,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdaydistribution"
+          "fix:field": "legpaymentschedulefixingdaydistribution",
+          "fix:tag": "41543"
         }
       },
       {
@@ -440,7 +481,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdaycount"
+          "fix:field": "legpaymentschedulefixingdaycount",
+          "fix:tag": "41544"
         }
       },
       {
@@ -450,7 +492,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdateadjusted"
+          "fix:field": "legpaymentschedulefixingdateadjusted",
+          "fix:tag": "40404"
         }
       },
       {
@@ -460,7 +503,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentschedulefixingdays"
+          "fix:field": "nolegpaymentschedulefixingdays",
+          "fix:tag": "41530"
         }
       },
       {
@@ -480,7 +524,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixinglagperiod"
+          "fix:field": "legpaymentschedulefixinglagperiod",
+          "fix:tag": "41545"
         }
       },
       {
@@ -490,7 +535,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixinglagunit"
+          "fix:field": "legpaymentschedulefixinglagunit",
+          "fix:tag": "41546"
         }
       },
       {
@@ -500,7 +546,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingfirstobservationdateoffsetperiod"
+          "fix:field": "legpaymentschedulefixingfirstobservationdateoffsetperiod",
+          "fix:tag": "41547"
         }
       },
       {
@@ -510,7 +557,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingfirstobservationdateoffsetunit"
+          "fix:field": "legpaymentschedulefixingfirstobservationdateoffsetunit",
+          "fix:tag": "41548"
         }
       },
       {
@@ -520,7 +568,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingtime"
+          "fix:field": "legpaymentschedulefixingtime",
+          "fix:tag": "40405"
         }
       },
       {
@@ -530,7 +579,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingtimebusinesscenter"
+          "fix:field": "legpaymentschedulefixingtimebusinesscenter",
+          "fix:tag": "40406"
         }
       },
       {
@@ -540,7 +590,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangepaymentdaterelativeto"
+          "fix:field": "legpaymentscheduleinterimexchangepaymentdaterelativeto",
+          "fix:tag": "40407"
         }
       },
       {
@@ -550,7 +601,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesbusinessdayconvention"
+          "fix:field": "legpaymentscheduleinterimexchangedatesbusinessdayconvention",
+          "fix:tag": "40408"
         }
       },
       {
@@ -560,7 +612,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentscheduleinterimexchangedatebusinesscenters"
+          "fix:field": "nolegpaymentscheduleinterimexchangedatebusinesscenters",
+          "fix:tag": "40928"
         }
       },
       {
@@ -580,7 +633,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetperiod"
+          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetperiod",
+          "fix:tag": "40410"
         }
       },
       {
@@ -590,7 +644,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetunit"
+          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetunit",
+          "fix:tag": "40411"
         }
       },
       {
@@ -600,7 +655,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetdaytype"
+          "fix:field": "legpaymentscheduleinterimexchangedatesoffsetdaytype",
+          "fix:tag": "40412"
         }
       },
       {
@@ -610,7 +666,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedateadjusted"
+          "fix:field": "legpaymentscheduleinterimexchangedateadjusted",
+          "fix:tag": "40413"
         }
       }
     ]

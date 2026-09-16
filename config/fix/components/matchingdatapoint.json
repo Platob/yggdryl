@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointindicator"
+          "fix:field": "matchingdatapointindicator",
+          "fix:tag": "2782"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointvalue"
+          "fix:field": "matchingdatapointvalue",
+          "fix:tag": "2783"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointtype"
+          "fix:field": "matchingdatapointtype",
+          "fix:tag": "2784"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointname"
+          "fix:field": "matchingdatapointname",
+          "fix:tag": "2785"
         }
       }
     ]

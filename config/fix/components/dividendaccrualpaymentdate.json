@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdaterelativeto"
+          "fix:field": "dividendaccrualpaymentdaterelativeto",
+          "fix:tag": "42238"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetperiod"
+          "fix:field": "dividendaccrualpaymentdateoffsetperiod",
+          "fix:tag": "42239"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetunit"
+          "fix:field": "dividendaccrualpaymentdateoffsetunit",
+          "fix:tag": "42240"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetdaytype"
+          "fix:field": "dividendaccrualpaymentdateoffsetdaytype",
+          "fix:tag": "42241"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateunadjusted"
+          "fix:field": "dividendaccrualpaymentdateunadjusted",
+          "fix:tag": "42242"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymeentdatebusinessdayconvention"
+          "fix:field": "dividendaccrualpaymeentdatebusinessdayconvention",
+          "fix:tag": "42243"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodividendaccrualpaymentdatebusinesscenters"
+          "fix:field": "nodividendaccrualpaymentdatebusinesscenters",
+          "fix:tag": "42236"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateadjusted"
+          "fix:field": "dividendaccrualpaymentdateadjusted",
+          "fix:tag": "42244"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventtype"
+          "fix:field": "legprotectiontermeventtype",
+          "fix:tag": "41626"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventvalue"
+          "fix:field": "legprotectiontermeventvalue",
+          "fix:tag": "41627"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventcurrency"
+          "fix:field": "legprotectiontermeventcurrency",
+          "fix:tag": "41628"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventperiod"
+          "fix:field": "legprotectiontermeventperiod",
+          "fix:tag": "41629"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventunit"
+          "fix:field": "legprotectiontermeventunit",
+          "fix:tag": "41630"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventdaytype"
+          "fix:field": "legprotectiontermeventdaytype",
+          "fix:tag": "41631"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventratesource"
+          "fix:field": "legprotectiontermeventratesource",
+          "fix:tag": "41632"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprotectiontermeventqualifiers"
+          "fix:field": "nolegprotectiontermeventqualifiers",
+          "fix:tag": "41633"
         }
       },
       {

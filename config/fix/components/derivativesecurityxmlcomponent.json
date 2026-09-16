@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxmllen"
+          "fix:field": "derivativesecurityxmllen",
+          "fix:tag": "1282"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxml"
+          "fix:field": "derivativesecurityxml",
+          "fix:tag": "1283"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxmlschema"
+          "fix:field": "derivativesecurityxmlschema",
+          "fix:tag": "1284"
         }
       }
     ]

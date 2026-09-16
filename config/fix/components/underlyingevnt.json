@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtype"
+          "fix:field": "underlyingeventtype",
+          "fix:tag": "1982"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventdate"
+          "fix:field": "underlyingeventdate",
+          "fix:tag": "1983"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtime"
+          "fix:field": "underlyingeventtime",
+          "fix:tag": "1984"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtimeunit"
+          "fix:field": "underlyingeventtimeunit",
+          "fix:tag": "1985"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtimeperiod"
+          "fix:field": "underlyingeventtimeperiod",
+          "fix:tag": "1986"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventmonthyear"
+          "fix:field": "underlyingeventmonthyear",
+          "fix:tag": "2342"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventpx"
+          "fix:field": "underlyingeventpx",
+          "fix:tag": "1987"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtext"
+          "fix:field": "underlyingeventtext",
+          "fix:tag": "2071"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingeventtextlen"
+          "fix:field": "encodedunderlyingeventtextlen",
+          "fix:tag": "2072"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingeventtext"
+          "fix:field": "encodedunderlyingeventtext",
+          "fix:tag": "2073"
         }
       }
     ]

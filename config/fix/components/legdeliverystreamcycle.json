@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamcycledesc"
+          "fix:field": "legdeliverystreamcycledesc",
+          "fix:tag": "41457"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdeliverystreamcycledesclen"
+          "fix:field": "encodedlegdeliverystreamcycledesclen",
+          "fix:tag": "41458"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdeliverystreamcycledesc"
+          "fix:field": "encodedlegdeliverystreamcycledesc",
+          "fix:tag": "41459"
         }
       }
     ]

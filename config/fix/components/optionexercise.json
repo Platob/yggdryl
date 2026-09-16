@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exercisedesc"
+          "fix:field": "exercisedesc",
+          "fix:tag": "41106"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedexercisedesclen"
+          "fix:field": "encodedexercisedesclen",
+          "fix:tag": "41107"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedexercisedesc"
+          "fix:field": "encodedexercisedesc",
+          "fix:tag": "41108"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "automaticexerciseindicator"
+          "fix:field": "automaticexerciseindicator",
+          "fix:tag": "41109"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "automaticexercisethresholdrate"
+          "fix:field": "automaticexercisethresholdrate",
+          "fix:tag": "41110"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exerciseconfirmationmethod"
+          "fix:field": "exerciseconfirmationmethod",
+          "fix:tag": "41111"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "manualnoticebusinesscenter"
+          "fix:field": "manualnoticebusinesscenter",
+          "fix:tag": "41112"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fallbackexerciseindicator"
+          "fix:field": "fallbackexerciseindicator",
+          "fix:tag": "41113"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitedrighttoconfirmindicator"
+          "fix:field": "limitedrighttoconfirmindicator",
+          "fix:tag": "41114"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exercisesplitticketindicator"
+          "fix:field": "exercisesplitticketindicator",
+          "fix:tag": "41115"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectingpartyside"
+          "fix:field": "settlmethodelectingpartyside",
+          "fix:tag": "42590"
         }
       },
       {

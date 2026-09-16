@@ -20,18 +20,20 @@
 //!
 //! # Three verbs, each an iterator, each with an Arrow twin
 //!
-//! `parse_*` turns what a capture holds into messages: one line of bytes
-//! ([`FixCodec::parse_line`]), a stream of them ([`FixCodec::parse_lines`]),
-//! one decoded line or a stream of them ([`FixCodec::parse_text_line`],
-//! [`FixCodec::parse_text_lines`]), and a stream of Arrow batches of
-//! capture rows ([`FixCodec::parse_text_arrow_reader`]). `enrich_*` fills
-//! what a message implies ([`FixCodec::enrich_message`],
-//! [`FixCodec::enrich_messages`], [`FixCodec::enrich_messages_arrow_reader`]).
-//! The two converters between the message and the Arrow shape -
-//! [`FixCodec::messages`] and [`FixCodec::arrow_reader`] - are what the Arrow
-//! twins compose, and are public so a caller composes the same way. A stage
-//! is a call, never a flag: nothing here takes an `enrich` argument, and
-//! nothing enriches on the way out of a parse.
+//! `parse_*` turns what a capture holds into messages, each already filled
+//! with what it implies: one line of bytes ([`FixCodec::parse_line`]), a
+//! stream of them ([`FixCodec::parse_lines`]), one decoded line or a stream
+//! of them ([`FixCodec::parse_text_line`], [`FixCodec::parse_text_lines`]),
+//! and a stream of Arrow batches of capture rows
+//! ([`FixCodec::parse_text_arrow_reader`]). [`FixCodec::lifecycle`] walks a
+//! stream of messages as the chains they belong to, stating what each one
+//! follows ([`FixCodec::lifecycle_arrow_reader`] over batches). `format_*`
+//! answers messages under the field a consumer reads by. The two converters
+//! between the message and the Arrow shape - [`FixCodec::messages`] and
+//! [`FixCodec::arrow_reader`] - are what the Arrow twins compose, and are
+//! public so a caller composes the same way. A stage is a call, never a
+//! flag: nothing here takes a `lifecycle` argument, and a parse walks no
+//! chain.
 //!
 //! # A row is a log line
 //!
@@ -105,13 +107,39 @@ enum Segment {
 
 /// What the twin judgment made of one `#` key.
 enum Hashed {
-    /// A second spelling of a bare pair stating the same bytes: one pair.
+    /// A second spelling of a bare pair: one pair, the bare one.
     Duplicate,
     /// The row's sole spelling: the key the line wrote after its mark.
     Bare,
-    /// Beside a bare twin of its key or of its stem, stating other bytes
-    /// or numbering other occurrences: the key as it arrived, mark and all.
-    Verbatim,
+    /// A marked occurrence of a group the row also states bare: one more
+    /// occurrence of that group, numbered past the bare ones.
+    Reindexed(usize),
+}
+
+/// The key one arriving pair builds under, its `#` judged.
+enum Judged {
+    /// A range of the line: the key as written, or the key after its mark.
+    Ranged(TextBytes),
+    /// A key the judgement rendered, which names no range of the line: a
+    /// marked occurrence numbered past the bare ones.
+    Rendered(Vec<u8>),
+}
+
+impl Judged {
+    fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Ranged(key) => key.as_bytes(),
+            Self::Rendered(key) => key,
+        }
+    }
+
+    /// The pair this key builds, over `value`.
+    fn pair(self, value: TextBytes) -> FixPair {
+        match self {
+            Self::Ranged(key) => FixPair::own(key, value),
+            Self::Rendered(key) => FixPair::read(key, value),
+        }
+    }
 }
 
 /// How deep a packed value nests before the reader stops nesting it.
@@ -702,23 +730,15 @@ impl FixCodec {
     }
 
     /// Whether one raw value is a stated absence rather than a value.
-    fn is_absent(&self, key: &[u8], value: &[u8]) -> bool {
+    fn is_absent(&self, value: &[u8]) -> bool {
         let trimmed = line::trim_ascii(value);
-        if trimmed.is_empty()
-            && !value.is_empty()
-            && super::build::preserves_value(&self.registry, &self.memo, key)
-        {
-            return false;
-        }
         self.null_values
             .iter()
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
     fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, Option<usize>) {
-        TextEntries::from_bytes_direct_located(page, |key| {
-            super::build::preserves_value(&self.registry, &self.memo, key)
-        })
+        TextEntries::from_bytes_direct_located(page)
     }
 
     /// Parses one log line into an iterator of the messages it carries,
@@ -1170,7 +1190,7 @@ impl FixCodec {
                 .into_iter()
                 .zip(&arrived)
                 .filter_map(|(judged, held)| {
-                    judged.map(|(key, _)| FixPair::own(key, held.value.as_ref().clone()))
+                    judged.map(|key| key.pair(held.value.as_ref().clone()))
                 })
                 .collect()
         } else {
@@ -1201,10 +1221,9 @@ impl FixCodec {
     /// | the row states | reads as |
     /// | --- | --- |
     /// | `#ORDERID=123` alone | `OrderID` 123: the mark drops |
-    /// | `ORDERID=123\|#ORDERID=123` | `OrderID` 123 once: the marked pair is a second spelling of the same bytes and is dropped, row and entries alike |
-    /// | `ORDERID=123\|#ORDERID=345` | `OrderID` 123 beside `#ORDERID` 345: two keys, so the marked one stays verbatim - its own child, its own entry - whichever arrived first |
-    /// | `NOPARTYIDS=2\|…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | the bare group is the dictionary's; every marked key of that group stays verbatim and whole, occurrence and count alike, because a group is one thing however many occurrences it states |
-    /// | `NOPARTYIDS=1\|NOPARTYIDS[0]=…\|#NOPARTYIDS=1\|#NOPARTYIDS[0]=…` | the marked count restates the bare one, but a marked group goes only whole: while any marked key of it stays, every one does, count included; a marked group restating the bare group pair for pair goes pair for pair |
+    /// | `ORDERID=123\|#ORDERID=123` | `OrderID` 123 once: the marked pair restates the bare one and is dropped |
+    /// | `ORDERID=123\|#ORDERID=345` | `OrderID` 123: the bare pair is the wire's word and the marked restatement is dropped |
+    /// | `NOPARTYIDS=2\|NOPARTYIDS[0]=…\|NOPARTYIDS[1]=…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | one `Parties` group: the bare occurrences, then the marked ones numbered past them; an occurrence restating another is dropped and the group counts what is left, sorted |
     ///
     /// The twin is a spelling, never an identity: a tag and a marked name -
     /// `55=AAPL|#SYMBOL=AAPL` - state two values, exactly as a tag and a bare
@@ -1254,31 +1273,23 @@ impl FixCodec {
         // the bridge marked names the message exactly as a bare one does,
         // and one kept verbatim beside a bare type does not. A row with no
         // `#` at all judges nothing.
-        let kept: Vec<(TextBytes, &Arrived<'_>, bool)> = self
+        let kept: Vec<(Judged, &Arrived<'_>)> = self
             .judged_keys(arrived)
             .into_iter()
             .zip(arrived)
-            .filter_map(|(judged, held)| judged.map(|(key, whole)| (key, held, whole)))
+            .filter_map(|(judged, held)| judged.map(|key| (key, held)))
             .collect();
         let mut resolved: Vec<FixPair> = Vec::with_capacity(kept.len());
         let msgtype = msgtype_of(
             kept.iter()
-                .map(|(key, held, _)| (key.as_bytes(), held.value())),
+                .map(|(key, held)| (key.as_bytes(), held.value())),
         );
         let message: Declared<'registry> = msgtype
             .as_deref()
             .and_then(|code| self.declared_message(code));
         // The judged key is the one the pair is built under, so it moves
         // into the pair rather than being counted once more on the way.
-        for (key, held, whole) in kept {
-            if whole {
-                // Verbatim means whole: the twinned `#` key is its own key
-                // and the packed value is its value, so no group rendering
-                // rewrites either - a group name opening with `#` resolves
-                // in no dictionary anyway.
-                resolved.push(FixPair::own(key, held.value.as_ref().clone()));
-                continue;
-            }
+        for (key, held) in kept {
             match group_index(key.as_bytes()) {
                 Some((group, occurrence)) if memchr::memchr(b'=', held.value()).is_some() => {
                     let declared = self.group_members(group, message);
@@ -1302,80 +1313,36 @@ impl FixCodec {
                     // record of the pair the bridge actually wrote; the rest
                     // are that same arrival, read further.
                     if let Some(first) = resolved.get_mut(opened) {
-                        first.reads(key, held.value.as_ref().clone());
+                        first.reads();
                     }
                 }
-                _ => resolved.push(FixPair::own(key, held.value.as_ref().clone())),
+                _ => resolved.push(key.pair(held.value.as_ref().clone())),
             }
         }
         (message, resolved)
     }
 
-    /// Every arriving key with its `#` judged: the key to build under and
-    /// whether it is kept whole, or `None` for a marked pair that only
-    /// restates a bare one.
+    /// Every arriving key with its `#` judged: the key to build under, or
+    /// `None` for a marked pair that restates a bare one.
     ///
     /// Each `#` key is judged against the row's bare spellings, gathered
     /// once: a bridge row is mostly `#` keys, so the probed list stays short.
-    /// A row with no `#` at all judges nothing. Then a marked group goes only
-    /// whole. Its count and its occurrences are
-    /// judged pair by pair, and a count restating the bare one beside
-    /// occurrences the bare group never numbered would leave those
-    /// occurrences without their count - so where any marked key of a group
-    /// stays verbatim, every marked key of that group does.
-    fn judged_keys(&self, arrived: &[Arrived<'_>]) -> Vec<Option<(TextBytes, bool)>> {
+    /// A row with no `#` at all judges nothing.
+    fn judged_keys(&self, arrived: &[Arrived<'_>]) -> Vec<Option<Judged>> {
         // A row that marked nothing judges nothing. The twin probe is one pass
         // over the row's bare spellings per marked key, so a wide frame that
         // marked none would otherwise pay a quadratic walk to learn that.
         if !arrived.iter().any(|held| held.marked) {
             return arrived
                 .iter()
-                .map(|held| Some((held.key.clone(), false)))
+                .map(|held| Some(Judged::Ranged(held.key.clone())))
                 .collect();
         }
         let bare = self.bare_spellings(arrived);
-        let mut judged: Vec<Option<(TextBytes, bool)>> = arrived
+        arrived
             .iter()
             .map(|held| self.hashed_key(held, arrived, &bare))
-            .collect();
-        fn marked<'held>(held: &'held Arrived<'_>) -> Option<&'held [u8]> {
-            held.marked.then(|| line::trim_ascii(held.key()))
-        }
-        // The stems of the marked groups kept verbatim: a stem some marked
-        // key of the row indexes, and some marked key of which was kept.
-        let whole: Vec<&[u8]> = arrived
-            .iter()
-            .zip(&judged)
-            .filter(|(_, judged)| matches!(judged, Some((_, true))))
-            .filter_map(|(held, _)| marked(held).map(stem_of))
-            .filter(|stem| {
-                arrived.iter().any(|held| {
-                    marked(held).is_some_and(|stripped| {
-                        group_index(stripped).is_some() && folds_twin(stem_of(stripped), stem)
-                    })
-                })
-            })
-            .collect();
-        if whole.is_empty() {
-            return judged;
-        }
-        let promoted: Vec<Option<TextBytes>> = arrived
-            .iter()
-            .zip(&judged)
-            .map(|(held, judged)| {
-                let restated = judged.is_none()
-                    && marked(held).is_some_and(|stripped| {
-                        whole.iter().any(|stem| folds_twin(stem, stem_of(stripped)))
-                    });
-                restated.then(|| held.written())
-            })
-            .collect();
-        for (key, judged) in promoted.into_iter().zip(&mut judged) {
-            if let Some(key) = key {
-                *judged = Some((key, true));
-            }
-        }
-        judged
+            .collect()
     }
 
     /// The row's bare spellings: every pair the line did not mark whose value
@@ -1383,13 +1350,13 @@ impl FixCodec {
     fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<(&'row [u8], &'row [u8])> {
         arrived
             .iter()
-            .filter(|held| !held.marked && !self.is_absent(held.key(), held.value()))
+            .filter(|held| !held.marked && !self.is_absent(held.value()))
             .map(|held| (held.key(), held.value()))
             .collect()
     }
 
-    /// The key one arriving pair builds under, its `#` judged, and whether it
-    /// is kept whole; `None` for a marked pair that only restates a bare one.
+    /// The key one arriving pair builds under, its `#` judged; `None` for a
+    /// marked pair that restates a bare one.
     ///
     /// A twin that itself opens with `#` - a `##` key's bare - is not among
     /// the bare spellings, so that one probe falls back to the whole row, read
@@ -1399,29 +1366,37 @@ impl FixCodec {
         held: &Arrived<'_>,
         arrived: &[Arrived<'_>],
         bare: &[(&[u8], &[u8])],
-    ) -> Option<(TextBytes, bool)> {
+    ) -> Option<Judged> {
         if !held.marked {
-            return Some((held.key.clone(), false));
+            return Some(Judged::Ranged(held.key.clone()));
         }
         let stripped = line::trim_ascii(held.key());
         let judged = if stripped.first() == Some(&b'#') {
             let written: Vec<(TextBytes, TextBytes)> = arrived
                 .iter()
-                .filter(|held| !self.is_absent(held.key(), held.value()))
+                .filter(|held| !self.is_absent(held.value()))
                 .map(|held| (held.written(), held.value.as_ref().clone()))
                 .collect();
             let row: Vec<(&[u8], &[u8])> = written
                 .iter()
                 .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
                 .collect();
-            judge_hashed(stripped, held.value(), &row)
+            judge_hashed(stripped, &row)
         } else {
-            judge_hashed(stripped, held.value(), bare)
+            judge_hashed(stripped, bare)
         };
         match judged {
             Hashed::Duplicate => None,
-            Hashed::Bare => Some((held.key.clone(), false)),
-            Hashed::Verbatim => Some((held.written(), true)),
+            Hashed::Bare => Some(Judged::Ranged(held.key.clone())),
+            Hashed::Reindexed(offset) => {
+                let (stem, index) = group_index(stripped)?;
+                let mut key = Vec::with_capacity(stripped.len() + 4);
+                key.extend_from_slice(stem);
+                key.extend_from_slice(b"[");
+                key.extend_from_slice((offset + index).to_string().as_bytes());
+                key.extend_from_slice(b"]");
+                Some(Judged::Rendered(key))
+            }
         }
     }
 
@@ -1611,86 +1586,28 @@ impl FixCodec {
         self.build(&pairs, &[], extras)
     }
 
-    /// Restates one message and fills what it implies but did not carry.
-    ///
-    /// The one enriching pass, three steps in order. First the
-    /// message is restated: every child canonicalized to the field its tag,
-    /// name, alias or decimal spelling reaches, children reaching one field
-    /// merged, and `fix:replacements` applied. The crate `version` is left as
-    /// the line stated it. That is not a step a caller may skip, because
-    /// every rule below reads by tag and a child stored under an alias with
-    /// no tag is invisible until it has been canonicalized.
-    ///
-    /// Nothing is written to complete a spelling: a consumer addressing
-    /// `lastshares` finds the `lastqty` the message states, because
-    /// [`FixMsg::get_by_name`] resolves the name through the registry. A
-    /// spelling is a way of asking rather than a thing to store.
-    ///
-    /// Then the filling, from three sources in order, each of which may feed
-    /// the next. A composed key the row carried - `TECH.CLIENTID` naming an
-    /// absent `ClientID` - fills the field its last segment names, where the
-    /// row names that field with one voice. Then the rules, which are the
-    /// specification's own tables read as implications: FIX 4.4's Appendix D
-    /// for an order's life, 4.2's Appendix O for what a foreign exchange
-    /// trade settles on, and a rule answers only where every input is stated
-    /// and typed. The component's identifier declaration fills the sorted
-    /// `altids` Map at the message's own level, without flattening groups.
-    ///
-    /// Only the row is filled. The entries are what arrived and are carried
-    /// through untouched, so [`FixMsg::into_bytes`] re-emits the received line
-    /// byte for byte whether the message was enriched or not. A stated value
-    /// is never overwritten, which also makes this idempotent.
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal where the restated children do
-    /// not make a root, and the dictionary's own refusal where its
-    /// `fix:derivation` rules do not compile. No value refuses: a derived
-    /// value a column will not hold, and a declared identifier that cannot
-    /// spell UTF-8, are both silence.
-    pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg> {
-        super::enrich::enrich(&self.registry, message)
-    }
-
-    /// Fills a stream of messages, lazily.
+    /// Chains a stream of messages, lazily: the lifecycle.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
-    /// million messages costs one at a time. [`Self::enrich_messages_arrow_reader`]
-    /// is the same pass over batches of rows. Each message crosses the pass
-    /// [`Self::enrich_message`] runs, and nothing is carried from one to the
-    /// next. Owned messages and their fallible counterparts compose directly.
-    /// Errors move through; exhaustion is fused.
-    pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
-    where
-        I: IntoIterator,
-        I::Item: Into<Result<FixMsg>>,
-    {
-        let registry = Arc::clone(&self.registry);
-        messages
-            .into_iter()
-            .fuse()
-            .map(move |message| super::enrich::enrich(&registry, message.into()?))
-    }
-
-    /// Stamps a stream of messages with the identities it implies, in order.
-    ///
-    /// One [`FixLifecycle`](super::FixLifecycle) over the whole stream: each
-    /// message gets its `msghash` and - where it carries an order identifier -
-    /// the `msgphash` of the chain that identifier reaches, scoped by the
-    /// instrument the message names, and a terminal state closes the chain. Nothing is collected: the
-    /// iterator is the stream, and what is held is the orders still alive.
-    /// Owned messages and their fallible counterparts compose directly;
-    /// source errors do not advance the lifecycle, and exhaustion is fused.
+    /// million messages costs one at a time. The one walk,
+    /// [`EventIterator`](crate::graph::EventIterator), states each message
+    /// as the one after the live message it follows - the last message of
+    /// its chain, under the cross identity its cross code derives, still
+    /// alive - so a chained message carries its predecessor's identity and
+    /// instant, its place in the chain, the predecessor as a parent and the
+    /// lifecycle carried forward, and is settled again around them.
+    /// [`Self::lifecycle_arrow_reader`] is the same walk over batches of
+    /// rows. The stream is read in its own order: a message that arrives
+    /// before the live one it would follow is yielded as it came. Owned
+    /// messages and their fallible counterparts compose directly. Errors
+    /// move through in the order the source had them, and never advance the
+    /// walk; exhaustion is fused.
     pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        let mut life = super::FixLifecycle::new(Arc::clone(&self.registry));
-        messages
-            .into_iter()
-            .fuse()
-            .map(move |message| message.into().and_then(|message| life.fill(message)))
+        super::enrich::Walked::new(messages.into_iter().fuse().map(Into::into))
     }
 
     /// Builds one message from pairs the caller already split.
@@ -1772,7 +1689,7 @@ impl FixCodec {
         // A stated absence produces no field and no entry: the key is read
         // as never having been sent. Filtering happens before typing, so
         // nothing tries to read `<null>` as a price and file the failure.
-        builder.push_pairs(pairs, |key, value| self.is_absent(key, value));
+        builder.push_pairs(pairs, |_, value| self.is_absent(value));
         for row in nested {
             self.push_nested(&mut builder, row, stated_version);
         }
@@ -1791,10 +1708,13 @@ impl FixCodec {
                 value: &value,
             });
         }
-        self.finish(
-            builder.finish(root_name(stated.as_deref()).as_str())?,
-            extras,
-        )
+        // The root is named for the message type the row states once every
+        // nested row has been read: a frame carrying a message in its data
+        // field is named for that message.
+        let name = builder
+            .stated_msgtype()
+            .or_else(|| stated.as_deref().map(SmolStr::new));
+        self.finish(builder.finish(root_name(name.as_deref()).as_str())?, extras)
     }
 
     fn finish(&self, mut built: super::build::Built, extras: RowExtras<'_>) -> Result<FixMsg> {
@@ -1817,14 +1737,15 @@ impl FixCodec {
                 .map(|fill| super::build::typed_fill(fill.field, fill.tag, fill.value))
                 .transpose()?
         };
-        FixMsg::from_built(
+        let message = FixMsg::from_built(
             Arc::clone(&self.registry),
             built,
             carrier
                 .as_ref()
                 .filter(|value| !value.is_null())
                 .or(self.default_sending_time.as_ref()),
-        )
+        )?;
+        super::enrich::enrich(&self.registry, message)
     }
 
     /// Reads one row a data field carried into the line it arrived on.
@@ -1889,7 +1810,7 @@ impl FixCodec {
         let dated = pinned.or_else(|| self.infer_version(pairs));
         builder.begin_nested(declared, dated);
         for pair in pairs {
-            if self.is_absent(pair.key(), pair.value()) {
+            if self.is_absent(pair.value()) {
                 continue;
             }
             builder.push(pair.key(), pair.value());
@@ -2340,7 +2261,7 @@ fn spelled_pairs<'a>(pairs: impl IntoIterator<Item = SpelledPair<'a>>) -> Result
             let key = page.slice(opens, split)?;
             let value = page.slice(split, ends)?;
             Ok(match name {
-                Some(name) => FixPair::spelled(name, key, value),
+                Some(name) => FixPair::spelled(name, value),
                 None => FixPair::own(key, value),
             })
         })
@@ -2522,20 +2443,25 @@ const fn name_separator(byte: u8) -> bool {
 /// pair a duplicate; the bytes are compared trimmed of the space the row put
 /// around them and never folded, because a value is a value and `abc` is
 /// not `ABC`.
-fn judge_hashed(stripped: &[u8], value: &[u8], twins: &[(&[u8], &[u8])]) -> Hashed {
+fn judge_hashed(stripped: &[u8], twins: &[(&[u8], &[u8])]) -> Hashed {
     let stem = stem_of(stripped);
-    let value = line::trim_ascii(value);
     let mut twinned = false;
-    for &(held, held_value) in twins {
-        if folds_twin(held, stripped) && line::trim_ascii(held_value) == value {
-            return Hashed::Duplicate;
+    let mut occurrences = 0;
+    for &(held, _) in twins {
+        if !folds_twin(stem_of(held), stem) {
+            continue;
         }
-        twinned |= folds_twin(stem_of(held), stem);
+        twinned = true;
+        if let Some((_, index)) = group_index(held) {
+            occurrences = occurrences.max(index + 1);
+        }
     }
-    if twinned {
-        Hashed::Verbatim
-    } else {
+    if !twinned {
         Hashed::Bare
+    } else if group_index(stripped).is_some() {
+        Hashed::Reindexed(occurrences)
+    } else {
+        Hashed::Duplicate
     }
 }
 
@@ -2565,6 +2491,7 @@ fn folds_twin(left: &[u8], right: &[u8]) -> bool {
 #[cfg(test)]
 mod clock_intake_tests {
     use super::*;
+    use crate::graph::Event;
     use crate::{DataType, TimeUnit, Timezone};
 
     fn clock(value: i64) -> Scalar {
@@ -2612,25 +2539,19 @@ mod clock_intake_tests {
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
-        // `TransactTime` still settles the event instant the clocks default
-        // to; what it no longer does is fill `snapshotat`, which says this
-        // row is a reading the lifecycle took.
+        // `TransactTime` settles the instant the clocks default to; what it
+        // does not do is fill `snapunix`, which says this row is a reading a
+        // walk took.
         assert_eq!(
-            message.by_tag(super::super::UPDATEDAT_TAG_NAME.0).unwrap(),
-            message.by_tag(60).unwrap()
-        );
-        assert!(
+            Some(message.get_unix()),
             message
-                .by_tag(super::super::SNAPSHOTAT_TAG_NAME.0)
+                .by_tag(60)
                 .unwrap()
-                .is_null()
+                .temporal_count_at(TimeUnit::Nanosecond)
         );
-        assert_eq!(
-            message.by_tag(super::super::UPDATEDAT_TAG_NAME.0).unwrap(),
-            message.by_tag(60).unwrap()
-        );
+        assert_eq!(message.get_snapunix(), None);
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
-        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(absent.get_by_tag(60).is_none());
     }
 
@@ -2649,16 +2570,11 @@ mod clock_intake_tests {
             .next()
             .unwrap()
             .unwrap();
-        assert_eq!(message.by_tag(52).unwrap(), &clock(17));
-        // `snapshotat` says this row is a reading the lifecycle took. An
-        // intake that took none leaves it null rather than copying a clock
-        // into it, which is what makes the question answerable from the row.
-        assert!(
-            message
-                .by_tag(super::super::SNAPSHOTAT_TAG_NAME.0)
-                .unwrap()
-                .is_null()
-        );
+        assert_eq!(message.by_tag(52).unwrap(), clock(17));
+        // `snapunix` says this row is a reading a walk took. An intake that
+        // took none leaves it unstated rather than copying a clock into it,
+        // which is what makes the question answerable from the row.
+        assert_eq!(message.get_snapunix(), None);
     }
 
     #[test]
@@ -2679,7 +2595,14 @@ mod clock_intake_tests {
             .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|")
             .unwrap();
         assert_eq!(message.by_tag(52).unwrap(), direct.by_tag(52).unwrap());
-        assert_eq!(message.entries().len(), 1);
+        assert!(message.entries().is_empty());
+        assert_eq!(
+            message
+                .metadata()
+                .get("scope.sendingtime")
+                .map(|held| held.as_str()),
+            Some("20260102-10:15:30")
+        );
         let carried = text_line(b"8=FIX.4.4|35=D|")
             .with_captures(vec![Some(
                 TextBytes::from_bytes(b"20260102-10:15:30").unwrap(),
@@ -2709,12 +2632,11 @@ mod clock_intake_tests {
         );
         let source_free = codec.parse_ullink_line(b"#scope.SendingTime=|").unwrap();
         assert!(source_free.entries().is_empty());
-        assert_eq!(source_free.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(source_free.by_tag(52).unwrap(), clock(17));
         for body in [
             &b"#scope.SendingTime=20260102-10:15:30\0|"[..],
             &b"#scope.SendingTime=20260102-10:15:30\xff|"[..],
             &b"MSGTYPE=D|#scope.SendingTime=|"[..],
-            &b"#scope.code=bad\xff|"[..],
         ] {
             assert!(codec.parse_ullink_line(body).is_err(), "{body:?}");
         }
@@ -2725,24 +2647,29 @@ mod clock_intake_tests {
         let absent = self::codec()
             .parse_ullink_line(b"MSGTYPE=D|#scope.SendingTime=|")
             .unwrap();
-        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(
             !absent
                 .entries()
                 .iter()
-                .any(|entry| entry.key().as_bytes() == b"scope.SendingTime")
+                .any(|entry| entry.name() == "scope.SendingTime")
         );
         let disagreed = codec
             .parse_ullink_line(
                 b"#one.SendingTime=20260102-10:15:30\0|#two.SendingTime=20260102-10:15:30|",
             )
             .unwrap();
-        assert_eq!(disagreed.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(disagreed.by_tag(52).unwrap(), clock(17));
+        // A namespace's spelling of a field no dictionary names is the
+        // bridge's own statement: metadata, cleaned as every value is.
         let ordinary = codec
             .parse_ullink_line(b"#scope.unregistered=bad\0value|")
             .unwrap();
         assert_eq!(
-            ordinary.by_name("scope.unregistered").unwrap().as_str(),
+            ordinary
+                .metadata()
+                .get("scope.unregistered")
+                .map(|held| held.as_str()),
             Some("badvalue")
         );
     }
@@ -2750,7 +2677,9 @@ mod clock_intake_tests {
     #[test]
     fn malformed_root_invariants_are_items_not_recovered_messages() {
         let codec = codec();
-        for tag in [52, 60, 65003, 65017, 65018, 65023, 65025] {
+        // The two clocks: a crate column a spelling will not type is
+        // silence, the way every other typed fact is.
+        for tag in [52, 60] {
             let body = format!("8=FIX.4.4|35=D|{tag}=invalid|10=0|");
             assert!(
                 matches!(
@@ -2793,7 +2722,7 @@ mod clock_intake_tests {
             .next()
             .unwrap()
             .unwrap();
-        assert_eq!(message.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(message.by_tag(52).unwrap(), clock(17));
         assert!(message.entries().is_empty());
         assert!(
             codec
@@ -2802,10 +2731,17 @@ mod clock_intake_tests {
                 .next()
                 .is_none()
         );
+        // The header owns the clock a message leaves unstated; one it states
+        // is typed by the registry's field, so a registry without that field
+        // refuses the statement.
         let mut registry = FixRegistry::new();
         assert!(registry.remove(52).is_some());
         let codec = FixCodec::new(Arc::new(registry));
-        assert!(codec.parse_text_line(&broken).is_err());
+        assert!(
+            codec
+                .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|")
+                .is_err()
+        );
         let mut registry = FixRegistry::new();
         let mut sending = registry.field_by_tag(52).unwrap().clone();
         sending.set_dtype(DataType::utf8()).unwrap();
@@ -2826,85 +2762,22 @@ mod clock_intake_tests {
         let absent = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|52=not-sent|")
             .unwrap();
-        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
-        assert!(absent.entries().iter().any(|entry| entry.tag() == 52));
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(!absent.header().stated_sendingtime());
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=|").unwrap();
-        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
-        assert!(!absent.entries().iter().any(|entry| entry.tag() == 52));
+        assert_eq!(absent.by_tag(52).unwrap(), clock(17));
+        assert!(!absent.header().stated_sendingtime());
         let literal = codec.with_null_values::<[&str; 0], &str>([]);
         assert!(literal.parse_fix_line(b"8=FIX.4.4|35=D|52=|").is_err());
         for body in [
             &b"8=FIX.4.4|35=D|52=20260102-10:15:30\xff|"[..],
             &b"8=FIX.4.4|35=D|52=20260102-10:15:30\0|"[..],
-            &b"8=FIX.4.4|35=D|65024=name\xff|"[..],
         ] {
             assert!(literal.parse_fix_line(body).is_err());
         }
-        let code = literal
-            .parse_fix_line(b"8=FIX.4.4|35=D|65024=  named  |")
-            .unwrap();
-        assert_eq!(code.by_tag(65024).unwrap().as_str(), Some("  named  "));
         let ordinary = literal
             .parse_fix_line(b"8=FIX.4.4|35=D|90001=bad\0value|")
             .unwrap();
         assert_eq!(ordinary.by_tag(90001).unwrap().as_str(), Some("badvalue"));
-    }
-
-    #[test]
-    fn code_keeps_original_segment_bytes_at_every_text_door() {
-        let mut registry = FixRegistry::new();
-        let mut code = registry.field_by_tag(65024).unwrap().clone();
-        code.as_fix_mut().set_names(["ChainLabel"]).unwrap();
-        registry.insert(code).unwrap();
-        let codec = FixCodec::new(Arc::new(registry))
-            .try_with_default_sending_time(Some(clock(17)))
-            .unwrap();
-        for key in [
-            "65024",
-            "code",
-            "ChainLabel",
-            "scope.code",
-            "scope.ChainLabel",
-        ] {
-            for value in ["  named  ", " \t ", "name);,}", "équipe  "] {
-                let body = format!("35=D|{key}={value}|90001=ordinary  |");
-                let direct = codec.parse_fix_line(body.as_bytes()).unwrap();
-                let bridge = codec.parse_ullink_line(body.as_bytes()).unwrap();
-                let selected = codec
-                    .parse_line(body.as_bytes())
-                    .unwrap()
-                    .next()
-                    .unwrap()
-                    .unwrap();
-                let captured = codec
-                    .parse_text_line(&text_line(body.as_bytes()))
-                    .unwrap()
-                    .next()
-                    .unwrap()
-                    .unwrap();
-                let paired = codec
-                    .parse_pairs([
-                        (b"35".as_slice(), b"D".as_slice()),
-                        (key.as_bytes(), value.as_bytes()),
-                    ])
-                    .unwrap();
-                for message in [&direct, &bridge, &selected, &captured, &paired] {
-                    assert_eq!(
-                        message.by_tag(65024).unwrap().as_str(),
-                        Some(value),
-                        "{key} {value:?}"
-                    );
-                }
-                assert_eq!(direct.by_tag(90001).unwrap().as_str(), Some("ordinary"));
-                assert_eq!(direct.entries()[1].value().as_bytes(), value.as_bytes());
-                // The public scanner still answers its existing trimmed view.
-                let page = TextBytes::from_bytes(body.as_bytes()).unwrap();
-                let public = TextEntries::from_bytes_direct(&page).unwrap();
-                assert_ne!(
-                    public.as_slice()[1].value_bytes().as_bytes(),
-                    value.as_bytes()
-                );
-            }
-        }
     }
 }

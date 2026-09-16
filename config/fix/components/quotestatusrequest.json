@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotestatusreqid"
+          "fix:field": "quotestatusreqid",
+          "fix:tag": "649"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteid"
+          "fix:field": "quoteid",
+          "fix:tag": "117"
         }
       },
       {
@@ -60,7 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -80,7 +83,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -100,7 +104,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -120,7 +125,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetpartyids"
+          "fix:field": "notargetpartyids",
+          "fix:tag": "1461"
         }
       },
       {
@@ -140,7 +146,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account"
+          "fix:field": "account",
+          "fix:tag": "1"
         }
       },
       {
@@ -150,7 +157,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource"
+          "fix:field": "acctidsource",
+          "fix:tag": "660"
         }
       },
       {
@@ -160,7 +168,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "accounttype"
+          "fix:field": "accounttype",
+          "fix:tag": "581"
         }
       },
       {
@@ -170,7 +179,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -180,7 +190,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -190,7 +201,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionpartysubid"
+          "fix:field": "underlyingprovisionpartysubid",
+          "fix:tag": "42178"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionpartysubidtype"
+          "fix:field": "underlyingprovisionpartysubidtype",
+          "fix:tag": "42179"
         }
       }
     ]

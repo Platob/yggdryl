@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdreportid"
+          "fix:field": "mdreportid",
+          "fix:tag": "963"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreportevent"
+          "fix:field": "mdreportevent",
+          "fix:tag": "2535"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreportcount"
+          "fix:field": "mdreportcount",
+          "fix:tag": "2536"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnumreports"
+          "fix:field": "totnumreports",
+          "fix:tag": "911"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnomarketsegmentreports"
+          "fix:field": "totnomarketsegmentreports",
+          "fix:tag": "2537"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoinstrumentreports"
+          "fix:field": "totnoinstrumentreports",
+          "fix:tag": "2538"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnopartydetailreports"
+          "fix:field": "totnopartydetailreports",
+          "fix:tag": "2539"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoentitlementreports"
+          "fix:field": "totnoentitlementreports",
+          "fix:tag": "2540"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorisklimitreports"
+          "fix:field": "totnorisklimitreports",
+          "fix:tag": "2541"
         }
       },
       {

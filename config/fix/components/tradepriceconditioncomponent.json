@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradepricecondition"
+          "fix:field": "tradepricecondition",
+          "fix:tag": "1839"
         }
       }
     ]

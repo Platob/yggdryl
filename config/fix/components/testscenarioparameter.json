@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametername"
+          "fix:field": "testscenarioparametername",
+          "fix:tag": "3131"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametertype"
+          "fix:field": "testscenarioparametertype",
+          "fix:tag": "3132"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametervalue"
+          "fix:field": "testscenarioparametervalue",
+          "fix:tag": "3133"
         }
       }
     ]

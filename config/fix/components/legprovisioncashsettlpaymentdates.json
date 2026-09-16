@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdatebusinessdayconvention"
+          "fix:field": "legprovisioncashsettlpaymentdatebusinessdayconvention",
+          "fix:tag": "40516"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisioncashsettlpaymentdatebusinesscenters"
+          "fix:field": "nolegprovisioncashsettlpaymentdatebusinesscenters",
+          "fix:tag": "40934"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdaterelativeto"
+          "fix:field": "legprovisioncashsettlpaymentdaterelativeto",
+          "fix:tag": "40518"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdateoffsetperiod"
+          "fix:field": "legprovisioncashsettlpaymentdateoffsetperiod",
+          "fix:tag": "40519"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdateoffsetunit"
+          "fix:field": "legprovisioncashsettlpaymentdateoffsetunit",
+          "fix:tag": "40520"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdateoffsetdaytype"
+          "fix:field": "legprovisioncashsettlpaymentdateoffsetdaytype",
+          "fix:tag": "40521"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdaterangefirst"
+          "fix:field": "legprovisioncashsettlpaymentdaterangefirst",
+          "fix:tag": "40522"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdaterangelast"
+          "fix:field": "legprovisioncashsettlpaymentdaterangelast",
+          "fix:tag": "40523"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisioncashsettlpaymentdates"
+          "fix:field": "nolegprovisioncashsettlpaymentdates",
+          "fix:tag": "40473"
         }
       },
       {

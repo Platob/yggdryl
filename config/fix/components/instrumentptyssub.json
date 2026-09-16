@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentpartysubid"
+          "fix:field": "instrumentpartysubid",
+          "fix:tag": "1053"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentpartysubidtype"
+          "fix:field": "instrumentpartysubidtype",
+          "fix:tag": "1054"
         }
       }
     ]

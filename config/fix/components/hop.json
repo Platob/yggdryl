@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hopcompid"
+          "fix:field": "hopcompid",
+          "fix:tag": "628"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hopsendingtime"
+          "fix:field": "hopsendingtime",
+          "fix:tag": "629"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hoprefid"
+          "fix:field": "hoprefid",
+          "fix:tag": "630"
         }
       }
     ]

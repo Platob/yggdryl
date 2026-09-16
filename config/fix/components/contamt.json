@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamttype"
+          "fix:field": "contamttype",
+          "fix:tag": "519"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamtvalue"
+          "fix:field": "contamtvalue",
+          "fix:tag": "520"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamtcurr"
+          "fix:field": "contamtcurr",
+          "fix:tag": "521"
         }
       }
     ]

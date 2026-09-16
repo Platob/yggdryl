@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "physicalsettldeliverableobligationtype"
+          "fix:field": "physicalsettldeliverableobligationtype",
+          "fix:tag": "40210"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "physicalsettldeliverableobligationvalue"
+          "fix:field": "physicalsettldeliverableobligationvalue",
+          "fix:tag": "40211"
         }
       }
     ]

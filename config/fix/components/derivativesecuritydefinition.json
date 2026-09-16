@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeinstrattrib"
+          "fix:field": "noderivativeinstrattrib",
+          "fix:tag": "1311"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments"
+          "fix:field": "nomarketsegments",
+          "fix:tag": "1310"
         }
       },
       {
@@ -60,7 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosecurityclassifications"
+          "fix:field": "nosecurityclassifications",
+          "fix:tag": "1582"
         }
       },
       {

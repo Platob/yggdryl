@@ -1,0 +1,4912 @@
+[
+  {
+    "name": "marketdisruptionfallbackunderliersecuritydesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the description of the underlying security.",
+      "display": "MarketDisruptionFallbackUnderlierSecurityDesc",
+      "fix:tag": "41100"
+    }
+  },
+  {
+    "name": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedMarketDisruptionFallbackUnderlierSecurityDesc(41102) field.",
+      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDescLen",
+      "fix:tag": "41101"
+    }
+  },
+  {
+    "name": "encodedmarketdisruptionfallbackunderliersecuritydesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the MarketDisruptionFallbackUnderlierSecurityDesc(41100) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MarketDisruptionFallbackUnderlierSecurityDesc(41100) field.",
+      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDesc",
+      "fix:tag": "41102"
+    }
+  },
+  {
+    "name": "marketdisruptionfallbackopenunits",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "If there are multiple underlying assets, this specifies the number of units (index or securities) that constitute the underlier of the swap. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
+      "display": "MarketDisruptionFallbackOpenUnits",
+      "fix:tag": "41103"
+    }
+  },
+  {
+    "name": "marketdisruptionfallbackbasketcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency if the underlier is a basket. Uses ISO 4217 currency codes.",
+      "display": "MarketDisruptionFallbackBasketCurrency",
+      "fix:tag": "41104"
+    }
+  },
+  {
+    "name": "marketdisruptionfallbackbasketdivisor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
+      "display": "MarketDisruptionFallbackBasketDivisor",
+      "fix:tag": "41105"
+    }
+  },
+  {
+    "name": "exercisedesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A description of the option exercise.",
+      "display": "ExerciseDesc",
+      "fix:tag": "41106"
+    }
+  },
+  {
+    "name": "encodedexercisedesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedExerciseDesc(41102) field.",
+      "display": "EncodedExerciseDescLen",
+      "fix:tag": "41107"
+    }
+  },
+  {
+    "name": "encodedexercisedesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the ExerciseDesc(41106) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ExerciseDesc(41106) field.",
+      "display": "EncodedExerciseDesc",
+      "fix:tag": "41108"
+    }
+  },
+  {
+    "name": "automaticexerciseindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates (when 'Y') that exercise is automatic when the strike price is crossed or the underlying trade is in the money.",
+      "display": "AutomaticExerciseIndicator",
+      "fix:tag": "41109"
+    }
+  },
+  {
+    "name": "automaticexercisethresholdrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The threshold rate for triggering automatic exercise.",
+      "display": "AutomaticExerciseThresholdRate",
+      "fix:tag": "41110"
+    }
+  },
+  {
+    "name": "exerciseconfirmationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
+      "display": "ExerciseConfirmationMethod",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotRequired",
+          "doc": "Not required"
+        },
+        {
+          "value": "1",
+          "name": "NonElectronic",
+          "doc": "Non-electronic"
+        },
+        {
+          "value": "2",
+          "name": "Electronic",
+          "doc": "Electronic"
+        },
+        {
+          "value": "3",
+          "name": "Unknown",
+          "doc": "Unknown at time of report"
+        }
+      ],
+      "fix:tag": "41111"
+    }
+  },
+  {
+    "name": "manualnoticebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the business center used for adjusting the time for manual exercise notice. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "ManualNoticeBusinessCenter",
+      "fix:tag": "41112"
+    }
+  },
+  {
+    "name": "fallbackexerciseindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the notional amount of the underlying swap, not previously exercised under the option, will be automatically exercised at the expiration time on the expiration date if at such time the buyer is in-the-money, provided that the difference between the settlement rate and the fixed rate under the relevant underlying swap is not less than one tenth of a percentage point (0.10% or 0.001).",
+      "display": "FallbackExerciseIndicator",
+      "fix:tag": "41113"
+    }
+  },
+  {
+    "name": "limitedrighttoconfirmindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the Seller may request the Buyer to confirm its intent to exercise if not done on or before the expiration time on the expiration date. If true (\"Y\") specific rules will apply in relation to the settlement mode.",
+      "display": "LimitedRightToConfirmIndicator",
+      "fix:tag": "41114"
+    }
+  },
+  {
+    "name": "exercisesplitticketindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates in physical settlement of bond and convertible bond options whether the party required to deliver the bonds will divide those to be delivered as notifying party desires to facilitate delivery obligations.",
+      "display": "ExerciseSplitTicketIndicator",
+      "fix:tag": "41115"
+    }
+  },
+  {
+    "name": "nooptionexercisebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoOptionExerciseBusinessCenters",
+      "fix:tag": "41116"
+    }
+  },
+  {
+    "name": "optionexercisebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the option exercise dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "OptionExerciseBusinessCenter",
+      "fix:tag": "41117"
+    }
+  },
+  {
+    "name": "optionexercisebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "OptionExerciseBusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "41118"
+    }
+  },
+  {
+    "name": "optionexerciseearliestdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative earliest option exercise date offset.",
+      "display": "OptionExerciseEarliestDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "41119"
+    }
+  },
+  {
+    "name": "optionexerciseearliestdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative earliest exercise date offset.",
+      "display": "OptionExerciseEarliestDateOffsetPeriod",
+      "fix:tag": "41120"
+    }
+  },
+  {
+    "name": "optionexerciseearliestdateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative earliest exercise date offset.",
+      "display": "OptionExerciseEarliestDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41121"
+    }
+  },
+  {
+    "name": "optionexercisefrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of exercise dates.",
+      "display": "OptionExerciseFrequencyPeriod",
+      "fix:tag": "41122"
+    }
+  },
+  {
+    "name": "optionexercisefrequencyunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of exercise dates.",
+      "display": "OptionExerciseFrequencyUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41123"
+    }
+  },
+  {
+    "name": "optionexercisestartdateunadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted start date for calculating periodic exercise dates.",
+      "display": "OptionExerciseStartDateUnadjusted",
+      "fix:tag": "41124"
+    }
+  },
+  {
+    "name": "optionexercisestartdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "OptionExerciseStartDateRelativeTo",
+      "fix:tag": "41125"
+    }
+  },
+  {
+    "name": "optionexercisestartdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative exercise start date offset.",
+      "display": "OptionExerciseStartDateOffsetPeriod",
+      "fix:tag": "41126"
+    }
+  },
+  {
+    "name": "optionexercisestartdateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative exercise start date offset.",
+      "display": "OptionExerciseStartDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41127"
+    }
+  },
+  {
+    "name": "optionexercisestartdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative option exercise start date offset.",
+      "display": "OptionExerciseStartDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "41128"
+    }
+  },
+  {
+    "name": "optionexercisestartdateadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The adjusted start date for calculating periodic exercise dates.",
+      "display": "OptionExerciseStartDateAdjusted",
+      "fix:tag": "41129"
+    }
+  },
+  {
+    "name": "optionexerciseskip",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
+      "display": "OptionExerciseSkip",
+      "fix:tag": "41130"
+    }
+  },
+  {
+    "name": "optionexercisenominationdeadline",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Last date (adjusted) for establishing the option exercise terms.",
+      "display": "OptionExerciseNominationDeadline",
+      "fix:tag": "41131"
+    }
+  },
+  {
+    "name": "optionexercisefirstdateunadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted first exercise date.",
+      "display": "OptionExerciseFirstDateUnadjusted",
+      "fix:tag": "41132"
+    }
+  },
+  {
+    "name": "optionexerciselastdateunadjusted",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted last exercise date.",
+      "display": "OptionExerciseLastDateUnadjusted",
+      "fix:tag": "41133"
+    }
+  },
+  {
+    "name": "optionexerciseearliesttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
+      "display": "OptionExerciseEarliestTime",
+      "fix:tag": "41134"
+    }
+  },
+  {
+    "name": "optionexerciselatesttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The latest exercise time. See also OptionExerciseEarliestTime(41134).",
+      "display": "OptionExerciseLatestTime",
+      "fix:tag": "41135"
+    }
+  },
+  {
+    "name": "optionexercisetimebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center used to determine the locale for option exercise time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values",
+      "display": "OptionExerciseTimeBusinessCenter",
+      "fix:tag": "41136"
+    }
+  },
+  {
+    "name": "nooptionexercisedates",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of dates in the repeating group.",
+      "display": "NoOptionExerciseDates",
+      "fix:tag": "41137"
+    }
+  },
+  {
+    "name": "optionexercisedate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The option exercise fixed date, unadjusted or adjusted depending on OptionExerciseDateType(41139).",
+      "display": "OptionExerciseDate",
+      "fix:tag": "41138"
+    }
+  },
+  {
+    "name": "optionexercisedatetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "OptionExerciseDateType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
+        },
+        {
+          "value": "1",
+          "name": "Adjusted",
+          "doc": "Adjusted"
+        }
+      ],
+      "fix:tag": "41139"
+    }
+  },
+  {
+    "name": "nooptionexerciseexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoOptionExerciseExpirationDateBusinessCenters",
+      "fix:tag": "41140"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdatebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the option exercise expiration dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "OptionExerciseExpirationDateBusinessCenter",
+      "fix:tag": "41141"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used to adjust the option exercise expiration dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "OptionExerciseExpirationDateBusinessDayConvention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "doc": "Nearest day"
+        }
+      ],
+      "fix:tag": "41142"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the option exercise expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "OptionExerciseExpirationDateRelativeTo",
+      "fix:tag": "41143"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative exercise expiration date offset.",
+      "display": "OptionExerciseExpirationDateOffsetPeriod",
+      "fix:tag": "41144"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative exercise expiration date offset.",
+      "display": "OptionExerciseExpirationDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41145"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of exercise expiration dates.",
+      "display": "OptionExerciseExpirationFrequencyPeriod",
+      "fix:tag": "41146"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationfrequencyunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of exercise expiration dates.",
+      "display": "OptionExerciseExpirationFrequencyUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41147"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationrollconvention",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The convention for determining the sequence of exercise expiration dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the DateAdjustment component in Instrument.",
+      "display": "OptionExerciseExpirationRollConvention",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FirstDay",
+          "doc": "1st day of the month"
+        },
+        {
+          "value": "2",
+          "name": "SecondDay",
+          "doc": "2nd day of the month"
+        },
+        {
+          "value": "3",
+          "name": "ThirdDay",
+          "doc": "3rd day of the month"
+        },
+        {
+          "value": "4",
+          "name": "FourthDay",
+          "doc": "4th day of the month"
+        },
+        {
+          "value": "5",
+          "name": "FifthDay",
+          "doc": "5th day of the month"
+        },
+        {
+          "value": "6",
+          "name": "SixthDay",
+          "doc": "6thd day of the month"
+        },
+        {
+          "value": "7",
+          "name": "SeventhDay",
+          "doc": "7th day of the month"
+        },
+        {
+          "value": "8",
+          "name": "EighthDay",
+          "doc": "8th day of the month"
+        },
+        {
+          "value": "9",
+          "name": "NinthDay",
+          "doc": "9th day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "doc": "30th day of the month"
+        },
+        {
+          "value": "EOM",
+          "name": "EOM",
+          "doc": "The end of the month."
+        },
+        {
+          "value": "FRN",
+          "name": "FRN",
+          "doc": "The floating rate note convention or Eurodollar convention."
+        },
+        {
+          "value": "IMM",
+          "name": "IMM",
+          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+        },
+        {
+          "value": "IMMCAD",
+          "name": "IMMCAD",
+          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+        },
+        {
+          "value": "IMMNZD",
+          "name": "IMMNZD",
+          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+        },
+        {
+          "value": "SFE",
+          "name": "SFE",
+          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+        },
+        {
+          "value": "NONE",
+          "name": "NONE",
+          "doc": "No adjustment"
+        },
+        {
+          "value": "TBILL",
+          "name": "TBILL",
+          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+        },
+        {
+          "value": "MON",
+          "name": "MON",
+          "doc": "Monday"
+        },
+        {
+          "value": "TUE",
+          "name": "TUE",
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "WED",
+          "doc": "Wednesday"
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "doc": "Thursday"
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "doc": "Friday"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "doc": "Sunday"
+        }
+      ],
+      "fix:tag": "41148"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative option exercise expiration date offset.",
+      "display": "OptionExerciseExpirationDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "41149"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The option exercise expiration time.",
+      "display": "OptionExerciseExpirationTime",
+      "fix:tag": "41150"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationtimebusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center used to determine the locale for option exercise expiration time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "OptionExerciseExpirationTimeBusinessCenter",
+      "fix:tag": "41151"
+    }
+  },
+  {
+    "name": "nooptionexerciseexpirationdates",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of fixed exercise expiration dates in the repeating group.",
+      "display": "NoOptionExerciseExpirationDates",
+      "fix:tag": "41152"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An adjusted or unadjusted fixed option exercise expiration date.",
+      "display": "OptionExerciseExpirationDate",
+      "fix:tag": "41153"
+    }
+  },
+  {
+    "name": "optionexerciseexpirationdatetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of option exercise expiration date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "OptionExerciseExpirationDateType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "doc": "Unadjusted"
+        },
+        {
+          "value": "1",
+          "name": "Adjusted",
+          "doc": "Adjusted"
+        }
+      ],
+      "fix:tag": "41154"
+    }
+  },
+  {
+    "name": "paymentunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the unit of measure (UOM) of the payment amount if not in the currency of the trade.",
+      "display": "PaymentUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41155"
+    }
+  },
+  {
+    "name": "paymentdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "PaymentDateRelativeTo",
+      "fix:tag": "41156"
+    }
+  },
+  {
+    "name": "paymentdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative payment date offset.",
+      "display": "PaymentDateOffsetPeriod",
+      "fix:tag": "41157"
+    }
+  },
+  {
+    "name": "paymentdateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative payment date offset.",
+      "display": "PaymentDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41158"
+    }
+  },
+  {
+    "name": "paymentdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative payment date offset.",
+      "display": "PaymentDateOffsetDayType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "Commodity",
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "Currency",
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "Exchange",
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "Scheduled",
+          "doc": "Scheduled trading day"
+        }
+      ],
+      "fix:tag": "41159"
+    }
+  },
+  {
+    "name": "paymentforwardstarttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Forward start premium type.",
+      "display": "PaymentForwardStartType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Prepaid",
+          "doc": "Prepaid"
+        },
+        {
+          "value": "1",
+          "name": "Postpaid",
+          "doc": "Post-paid"
+        },
+        {
+          "value": "2",
+          "name": "Variable",
+          "doc": "Variable"
+        },
+        {
+          "value": "3",
+          "name": "Fixed",
+          "doc": "Fixed"
+        }
+      ],
+      "fix:tag": "41160"
+    }
+  },
+  {
+    "name": "nopaymentschedulefixingdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of fixing days in the repeating group.",
+      "display": "NoPaymentScheduleFixingDays",
+      "fix:tag": "41161"
+    }
+  },
+  {
+    "name": "paymentschedulefixingdayofweek",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The day of the week on which fixing will take place.",
+      "display": "PaymentScheduleFixingDayOfWeek",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "EveryDay",
+          "doc": "Every day (the default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "Monday",
+          "doc": "Monday"
+        },
+        {
+          "value": "2",
+          "name": "Tuesday",
+          "doc": "Tuesday"
+        },
+        {
+          "value": "3",
+          "name": "Wednesday",
+          "doc": "Wednesday"
+        },
+        {
+          "value": "4",
+          "name": "Thursday",
+          "doc": "Thursday"
+        },
+        {
+          "value": "5",
+          "name": "Friday",
+          "doc": "Friday"
+        },
+        {
+          "value": "6",
+          "name": "Saturday",
+          "doc": "Saturday"
+        },
+        {
+          "value": "7",
+          "name": "Sunday",
+          "doc": "Sunday"
+        }
+      ],
+      "fix:tag": "41162"
+    }
+  },
+  {
+    "name": "paymentschedulefixingdaynumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The occurrence of the day of week on which fixing takes place.",
+      "display": "PaymentScheduleFixingDayNumber",
+      "fix:tag": "41163"
+    }
+  },
+  {
+    "name": "paymentschedulexid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of this PaymentSchedule for cross referencing elsewhere in the message.",
+      "display": "PaymentScheduleXID",
+      "fix:tag": "41164"
+    }
+  },
+  {
+    "name": "paymentschedulexidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to payment schedule elsewhere in the message.",
+      "display": "PaymentScheduleXIDRef",
+      "fix:tag": "41165"
+    }
+  },
+  {
+    "name": "paymentscheduleratecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The currency of the schedule rate. Uses ISO 4217 currency codes.",
+      "display": "PaymentScheduleRateCurrency",
+      "fix:tag": "41166"
+    }
+  },
+  {
+    "name": "paymentschedulerateunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule rate unit of measure (UOM).",
+      "display": "PaymentScheduleRateUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41167"
+    }
+  },
+  {
+    "name": "paymentschedulerateconversionfactor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number to be multiplied by the derived floating rate of the payment schedule in order to arrive at the payment rate. If omitted, the schedule rate conversion factor is 1.",
+      "display": "PaymentScheduleRateConversionFactor",
+      "fix:tag": "41168"
+    }
+  },
+  {
+    "name": "paymentscheduleratespreadtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
+      "display": "PaymentScheduleRateSpreadType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Absolute",
+          "doc": "Absolute"
+        },
+        {
+          "value": "1",
+          "name": "Percentage",
+          "doc": "Percentage"
+        }
+      ],
+      "fix:tag": "41169"
+    }
+  },
+  {
+    "name": "paymentschedulesettlperiodprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule settlement period price.",
+      "display": "PaymentScheduleSettlPeriodPrice",
+      "fix:tag": "41170"
+    }
+  },
+  {
+    "name": "paymentschedulesettlperiodpricecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the schedule settlement period price. Uses ISO 4217 currency codes.",
+      "display": "PaymentScheduleSettlPeriodPriceCurrency",
+      "fix:tag": "41171"
+    }
+  },
+  {
+    "name": "paymentschedulesettlperiodpriceunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The settlement period price unit of measure (UOM).",
+      "display": "PaymentScheduleSettlPeriodPriceUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41172"
+    }
+  },
+  {
+    "name": "paymentschedulestepunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule step unit of measure (UOM).",
+      "display": "PaymentScheduleStepUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41173"
+    }
+  },
+  {
+    "name": "paymentschedulefixingdaydistribution",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The distribution of fixing days.",
+      "display": "PaymentScheduleFixingDayDistribution",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "All",
+          "doc": "All"
+        },
+        {
+          "value": "1",
+          "name": "First",
+          "doc": "First"
+        },
+        {
+          "value": "2",
+          "name": "Last",
+          "doc": "Last"
+        },
+        {
+          "value": "3",
+          "name": "Penultimate",
+          "doc": "Penultimate"
+        }
+      ],
+      "fix:tag": "41174"
+    }
+  },
+  {
+    "name": "paymentschedulefixingdaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of days over which fixing should take place.",
+      "display": "PaymentScheduleFixingDayCount",
+      "fix:tag": "41175"
+    }
+  },
+  {
+    "name": "paymentschedulefixinglagperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the fixing lag duration.",
+      "display": "PaymentScheduleFixingLagPeriod",
+      "fix:tag": "41176"
+    }
+  },
+  {
+    "name": "paymentschedulefixinglagunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the fixing lag duration.",
+      "display": "PaymentScheduleFixingLagUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41177"
+    }
+  },
+  {
+    "name": "paymentschedulefixingfirstobservationdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative first observation date offset.",
+      "display": "PaymentScheduleFixingFirstObservationDateOffsetPeriod",
+      "fix:tag": "41178"
+    }
+  },
+  {
+    "name": "paymentschedulefixingfirstobservationdateoffsetunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative first observation date offset.",
+      "display": "PaymentScheduleFixingFirstObservationDateOffsetUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41179"
+    }
+  },
+  {
+    "name": "paymentstreamflatrateindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', the Flat Rate is the New Worldwide Tanker Nominal Freight Scale for the Freight Index Route taken at the Trade Date of the transaction \"Fixed\". If 'N' it is taken on each Pricing Date \"Floating\".",
+      "display": "PaymentStreamFlatRateIndicator",
+      "fix:tag": "41180"
+    }
+  },
+  {
+    "name": "paymentstreamflatrateamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the actual monetary value of the flat rate when PaymentStreamFlatRateIndicator(41180) = 'Y'.",
+      "display": "PaymentStreamFlatRateAmount",
+      "fix:tag": "41181"
+    }
+  },
+  {
+    "name": "paymentstreamflatratecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the actual flat rate. Uses ISO 4217 currency codes.",
+      "display": "PaymentStreamFlatRateCurrency",
+      "fix:tag": "41182"
+    }
+  },
+  {
+    "name": "paymentstreammaximumpaymentamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the limit on the total payment amount.",
+      "display": "PaymentStreamMaximumPaymentAmount",
+      "fix:tag": "41183"
+    }
+  },
+  {
+    "name": "paymentstreammaximumpaymentcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of total payment amount limit. Uses ISO 4217 currency codes.",
+      "display": "PaymentStreamMaximumPaymentCurrency",
+      "fix:tag": "41184"
+    }
+  },
+  {
+    "name": "paymentstreammaximumtransactionamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the limit on the payment amount that goes out in any particular calculation period.",
+      "display": "PaymentStreamMaximumTransactionAmount",
+      "fix:tag": "41185"
+    }
+  },
+  {
+    "name": "paymentstreammaximumtransactioncurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the period payment amount limit. Uses ISO 4217 currency codes.",
+      "display": "PaymentStreamMaximumTransactionCurrency",
+      "fix:tag": "41186"
+    }
+  },
+  {
+    "name": "paymentstreamfixedamountunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the fixed payment amount unit of measure (UOM).",
+      "display": "PaymentStreamFixedAmountUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41187"
+    }
+  },
+  {
+    "name": "paymentstreamtotalfixedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the total fixed payment amount.",
+      "display": "PaymentStreamTotalFixedAmount",
+      "fix:tag": "41188"
+    }
+  },
+  {
+    "name": "paymentstreamworldscalerate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of Worldscale points for purposes of the calculation of a fixed amount for a wet voyage charter commodity swap.",
+      "display": "PaymentStreamWorldScaleRate",
+      "fix:tag": "41189"
+    }
+  },
+  {
+    "name": "paymentstreamcontractprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The price per relevant unit for purposes of the calculation of a fixed amount for a dry voyage charter or time charter commodity swap.",
+      "display": "PaymentStreamContractPrice",
+      "fix:tag": "41190"
+    }
+  },
+  {
+    "name": "paymentstreamcontractpricecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of PaymentStreamContractPrice(41190). Uses ISO 4217 currency codes.",
+      "display": "PaymentStreamContractPriceCurrency",
+      "fix:tag": "41191"
+    }
+  },
+  {
+    "name": "nopaymentstreampricingbusinesscenters",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamPricingBusinessCenters",
+      "fix:tag": "41192"
+    }
+  },
+  {
+    "name": "paymentstreampricingbusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the payment stream's pricing dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "PaymentStreamPricingBusinessCenter",
+      "fix:tag": "41193"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2curveperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Secondary time unit multiplier for the payment stream's floating rate index curve.",
+      "display": "PaymentStreamRateIndex2CurvePeriod",
+      "fix:tag": "41194"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2curveunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Secondary time unit associated with the payment stream's floating rate index curve.",
+      "display": "PaymentStreamRateIndex2CurveUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "41195"
+    }
+  },
+  {
+    "name": "paymentstreamrateindexlocation",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the location of the floating rate index.",
+      "display": "PaymentStreamRateIndexLocation",
+      "fix:tag": "41196"
+    }
+  },
+  {
+    "name": "paymentstreamrateindexlevel",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "This is the weather Cooling Degree Days (CDD), Heating Degree Days (HDD) or HDD index level specified as the number of (amount of) weather index units specified by the parties in the related confirmation.",
+      "display": "PaymentStreamRateIndexLevel",
+      "fix:tag": "41197"
+    }
+  },
+  {
+    "name": "paymentstreamrateindexunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unit of measure (UOM) of the rate index level.",
+      "display": "PaymentStreamRateIndexUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "41198"
+    }
+  },
+  {
+    "name": "paymentstreamsettllevel",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies how weather index units are to be calculated.",
+      "display": "PaymentStreamSettlLevel",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Average",
+          "doc": "Average"
+        },
+        {
+          "value": "1",
+          "name": "Maximum",
+          "doc": "Maximum"
+        },
+        {
+          "value": "2",
+          "name": "Minimum",
+          "doc": "Minimum"
+        },
+        {
+          "value": "3",
+          "name": "Cumulative",
+          "doc": "Cumulative"
+        }
+      ],
+      "fix:tag": "41199"
+    }
+  }
+]

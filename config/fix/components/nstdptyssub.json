@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartysubid"
+          "fix:field": "nestedpartysubid",
+          "fix:tag": "545"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartysubidtype"
+          "fix:field": "nestedpartysubidtype",
+          "fix:tag": "805"
         }
       }
     ]

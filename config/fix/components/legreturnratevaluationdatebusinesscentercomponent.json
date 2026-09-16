@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratevaluationdatebusinesscenter"
+          "fix:field": "legreturnratevaluationdatebusinesscenter",
+          "fix:tag": "42570"
         }
       }
     ]

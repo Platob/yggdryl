@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricequalifier"
+          "fix:field": "pricequalifier",
+          "fix:tag": "2710"
         }
       }
     ]

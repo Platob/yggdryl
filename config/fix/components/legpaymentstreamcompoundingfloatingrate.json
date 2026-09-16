@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingrateindex"
+          "fix:field": "legpaymentstreamcompoundingrateindex",
+          "fix:tag": "42427"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingrateindexcurveperiod"
+          "fix:field": "legpaymentstreamcompoundingrateindexcurveperiod",
+          "fix:tag": "42428"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingrateindexcurveunit"
+          "fix:field": "legpaymentstreamcompoundingrateindexcurveunit",
+          "fix:tag": "42429"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingratemultiplier"
+          "fix:field": "legpaymentstreamcompoundingratemultiplier",
+          "fix:tag": "42430"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingratespread"
+          "fix:field": "legpaymentstreamcompoundingratespread",
+          "fix:tag": "42431"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingratespreadpositiontype"
+          "fix:field": "legpaymentstreamcompoundingratespreadpositiontype",
+          "fix:tag": "42432"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingratetreatment"
+          "fix:field": "legpaymentstreamcompoundingratetreatment",
+          "fix:tag": "42433"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingcaprate"
+          "fix:field": "legpaymentstreamcompoundingcaprate",
+          "fix:tag": "42434"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingcapratebuyside"
+          "fix:field": "legpaymentstreamcompoundingcapratebuyside",
+          "fix:tag": "42435"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingcapratesellside"
+          "fix:field": "legpaymentstreamcompoundingcapratesellside",
+          "fix:tag": "42436"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfloorrate"
+          "fix:field": "legpaymentstreamcompoundingfloorrate",
+          "fix:tag": "42437"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfloorratebuyside"
+          "fix:field": "legpaymentstreamcompoundingfloorratebuyside",
+          "fix:tag": "42438"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfloorratesellside"
+          "fix:field": "legpaymentstreamcompoundingfloorratesellside",
+          "fix:tag": "42439"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundinginitialrate"
+          "fix:field": "legpaymentstreamcompoundinginitialrate",
+          "fix:tag": "42440"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfinalrateroundingdirection"
+          "fix:field": "legpaymentstreamcompoundingfinalrateroundingdirection",
+          "fix:tag": "42441"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfinalrateprecision"
+          "fix:field": "legpaymentstreamcompoundingfinalrateprecision",
+          "fix:tag": "42442"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingaveragingmethod"
+          "fix:field": "legpaymentstreamcompoundingaveragingmethod",
+          "fix:tag": "42443"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingnegativeratetreatment"
+          "fix:field": "legpaymentstreamcompoundingnegativeratetreatment",
+          "fix:tag": "42444"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisebusinessdayconvention"
+          "fix:field": "legprovisionoptionexercisebusinessdayconvention",
+          "fix:tag": "40476"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionoptionexercisebusinesscenters"
+          "fix:field": "nolegprovisionoptionexercisebusinesscenters",
+          "fix:tag": "40936"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionoptionexercisefixeddates"
+          "fix:field": "nolegprovisionoptionexercisefixeddates",
+          "fix:tag": "40495"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseearliestdateoffsetperiod"
+          "fix:field": "legprovisionoptionexerciseearliestdateoffsetperiod",
+          "fix:tag": "40478"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseearliestdateoffsetunit"
+          "fix:field": "legprovisionoptionexerciseearliestdateoffsetunit",
+          "fix:tag": "40479"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisefrequencyperiod"
+          "fix:field": "legprovisionoptionexercisefrequencyperiod",
+          "fix:tag": "40480"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisefrequencyunit"
+          "fix:field": "legprovisionoptionexercisefrequencyunit",
+          "fix:tag": "40481"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdateunadjusted"
+          "fix:field": "legprovisionoptionexercisestartdateunadjusted",
+          "fix:tag": "40482"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdaterelativeto"
+          "fix:field": "legprovisionoptionexercisestartdaterelativeto",
+          "fix:tag": "40483"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdateoffsetperiod"
+          "fix:field": "legprovisionoptionexercisestartdateoffsetperiod",
+          "fix:tag": "40484"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdateoffsetunit"
+          "fix:field": "legprovisionoptionexercisestartdateoffsetunit",
+          "fix:tag": "40485"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdateoffsetdaytype"
+          "fix:field": "legprovisionoptionexercisestartdateoffsetdaytype",
+          "fix:tag": "40486"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestartdateadjusted"
+          "fix:field": "legprovisionoptionexercisestartdateadjusted",
+          "fix:tag": "40487"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseperiodskip"
+          "fix:field": "legprovisionoptionexerciseperiodskip",
+          "fix:tag": "40488"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseboundsfirstdateunadjusted"
+          "fix:field": "legprovisionoptionexerciseboundsfirstdateunadjusted",
+          "fix:tag": "40489"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseboundslastdateunadjusted"
+          "fix:field": "legprovisionoptionexerciseboundslastdateunadjusted",
+          "fix:tag": "40490"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseearliesttime"
+          "fix:field": "legprovisionoptionexerciseearliesttime",
+          "fix:tag": "40491"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseearliesttimebusinesscenter"
+          "fix:field": "legprovisionoptionexerciseearliesttimebusinesscenter",
+          "fix:tag": "40492"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciselatesttime"
+          "fix:field": "legprovisionoptionexerciselatesttime",
+          "fix:tag": "40493"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciselatesttimebusinesscenter"
+          "fix:field": "legprovisionoptionexerciselatesttimebusinesscenter",
+          "fix:tag": "40494"
         }
       }
     ]

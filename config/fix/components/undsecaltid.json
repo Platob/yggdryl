@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecurityaltid"
+          "fix:field": "underlyingsecurityaltid",
+          "fix:tag": "458"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecurityaltidsource"
+          "fix:field": "underlyingsecurityaltidsource",
+          "fix:tag": "459"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsymbolpositionnumber"
+          "fix:field": "underlyingsymbolpositionnumber",
+          "fix:tag": "2959"
         }
       }
     ]

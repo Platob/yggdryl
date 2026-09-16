@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementdesc"
+          "fix:field": "agreementdesc",
+          "fix:tag": "913"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementid"
+          "fix:field": "agreementid",
+          "fix:tag": "914"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementversion"
+          "fix:field": "agreementversion",
+          "fix:tag": "1961"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementdate"
+          "fix:field": "agreementdate",
+          "fix:tag": "915"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementcurrency"
+          "fix:field": "agreementcurrency",
+          "fix:tag": "918"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "agreementcurrencycodesource"
+          "fix:field": "agreementcurrencycodesource",
+          "fix:tag": "2952"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "masterconfirmationdesc"
+          "fix:field": "masterconfirmationdesc",
+          "fix:tag": "1962"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "masterconfirmationdate"
+          "fix:field": "masterconfirmationdate",
+          "fix:tag": "1963"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "masterconfirmationannexdesc"
+          "fix:field": "masterconfirmationannexdesc",
+          "fix:tag": "1964"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "masterconfirmationannexdate"
+          "fix:field": "masterconfirmationannexdate",
+          "fix:tag": "1965"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "brokerconfirmationdesc"
+          "fix:field": "brokerconfirmationdesc",
+          "fix:tag": "1966"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocontractualdefinitions"
+          "fix:field": "nocontractualdefinitions",
+          "fix:tag": "40040"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nofinancingtermsupplements"
+          "fix:field": "nofinancingtermsupplements",
+          "fix:tag": "40046"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocontractualmatrices"
+          "fix:field": "nocontractualmatrices",
+          "fix:tag": "40042"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "creditsupportagreementdesc"
+          "fix:field": "creditsupportagreementdesc",
+          "fix:tag": "1967"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "creditsupportagreementdate"
+          "fix:field": "creditsupportagreementdate",
+          "fix:tag": "1968"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "creditsupportagreementid"
+          "fix:field": "creditsupportagreementid",
+          "fix:tag": "1969"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "governinglaw"
+          "fix:field": "governinglaw",
+          "fix:tag": "1970"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "documentationtext"
+          "fix:field": "documentationtext",
+          "fix:tag": "1513"
         }
       },
       {
@@ -230,7 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodeddocumentationtextlen"
+          "fix:field": "encodeddocumentationtextlen",
+          "fix:tag": "1525"
         }
       },
       {
@@ -240,7 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodeddocumentationtext"
+          "fix:field": "encodeddocumentationtext",
+          "fix:tag": "1527"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "terminationtype"
+          "fix:field": "terminationtype",
+          "fix:tag": "788"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "startdate"
+          "fix:field": "startdate",
+          "fix:tag": "916"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "enddate"
+          "fix:field": "enddate",
+          "fix:tag": "917"
         }
       },
       {
@@ -280,7 +304,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverytype"
+          "fix:field": "deliverytype",
+          "fix:tag": "919"
         }
       },
       {
@@ -290,7 +315,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginratio"
+          "fix:field": "marginratio",
+          "fix:tag": "898"
         }
       },
       {
@@ -300,7 +326,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginprice"
+          "fix:field": "marginprice",
+          "fix:tag": "3114"
         }
       }
     ]

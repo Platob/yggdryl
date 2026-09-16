@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "altmdsourceid"
+          "fix:field": "altmdsourceid",
+          "fix:tag": "817"
         }
       }
     ]

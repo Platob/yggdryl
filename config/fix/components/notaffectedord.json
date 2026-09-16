@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notafforigclordid"
+          "fix:field": "notafforigclordid",
+          "fix:tag": "1372"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffectedorderid"
+          "fix:field": "notaffectedorderid",
+          "fix:tag": "1371"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffsecondaryorderid"
+          "fix:field": "notaffsecondaryorderid",
+          "fix:tag": "1825"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffectedreason"
+          "fix:field": "notaffectedreason",
+          "fix:tag": "2677"
         }
       }
     ]

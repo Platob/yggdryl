@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualdefinition"
+          "fix:field": "contractualdefinition",
+          "fix:tag": "40041"
         }
       }
     ]

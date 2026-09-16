@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdate"
+          "fix:field": "paymentstreamcompoundingdate",
+          "fix:tag": "42607"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatetype"
+          "fix:field": "paymentstreamcompoundingdatetype",
+          "fix:tag": "42608"
         }
       }
     ]

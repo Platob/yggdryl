@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodsequence"
+          "fix:field": "dividendperiodsequence",
+          "fix:tag": "42275"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodstartdateunadjusted"
+          "fix:field": "dividendperiodstartdateunadjusted",
+          "fix:tag": "42276"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodenddateunadjusted"
+          "fix:field": "dividendperiodenddateunadjusted",
+          "fix:tag": "42277"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodunderlierrefid"
+          "fix:field": "dividendperiodunderlierrefid",
+          "fix:tag": "42278"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodstrikeprice"
+          "fix:field": "dividendperiodstrikeprice",
+          "fix:tag": "42279"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodbusinessdayconvention"
+          "fix:field": "dividendperiodbusinessdayconvention",
+          "fix:tag": "42280"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodividendperiodbusinesscenters"
+          "fix:field": "nodividendperiodbusinesscenters",
+          "fix:tag": "42294"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdateunadjusted"
+          "fix:field": "dividendperiodvaluationdateunadjusted",
+          "fix:tag": "42281"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdaterelativeto"
+          "fix:field": "dividendperiodvaluationdaterelativeto",
+          "fix:tag": "42282"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdateoffsetperiod"
+          "fix:field": "dividendperiodvaluationdateoffsetperiod",
+          "fix:tag": "42283"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdateoffsetunit"
+          "fix:field": "dividendperiodvaluationdateoffsetunit",
+          "fix:tag": "42284"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdateoffsetdaytype"
+          "fix:field": "dividendperiodvaluationdateoffsetdaytype",
+          "fix:tag": "42285"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodvaluationdateadjusted"
+          "fix:field": "dividendperiodvaluationdateadjusted",
+          "fix:tag": "42286"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdateunadjusted"
+          "fix:field": "dividendperiodpaymentdateunadjusted",
+          "fix:tag": "42287"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdaterelativeto"
+          "fix:field": "dividendperiodpaymentdaterelativeto",
+          "fix:tag": "42288"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdateoffsetperiod"
+          "fix:field": "dividendperiodpaymentdateoffsetperiod",
+          "fix:tag": "42289"
         }
       },
       {
@@ -180,7 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdateoffsetunit"
+          "fix:field": "dividendperiodpaymentdateoffsetunit",
+          "fix:tag": "42290"
         }
       },
       {
@@ -190,7 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdateoffsetdaytype"
+          "fix:field": "dividendperiodpaymentdateoffsetdaytype",
+          "fix:tag": "42291"
         }
       },
       {
@@ -200,7 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodpaymentdateadjusted"
+          "fix:field": "dividendperiodpaymentdateadjusted",
+          "fix:tag": "42292"
         }
       },
       {
@@ -210,7 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodxid"
+          "fix:field": "dividendperiodxid",
+          "fix:tag": "42293"
         }
       }
     ]

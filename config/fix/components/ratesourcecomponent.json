@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesource"
+          "fix:field": "ratesource",
+          "fix:tag": "1446"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcetype"
+          "fix:field": "ratesourcetype",
+          "fix:tag": "1447"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "referencepage"
+          "fix:field": "referencepage",
+          "fix:tag": "1448"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcereferencepageheading"
+          "fix:field": "ratesourcereferencepageheading",
+          "fix:tag": "2412"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkratefix"
+          "fix:field": "fxbenchmarkratefix",
+          "fix:tag": "2796"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcesymbol"
+          "fix:field": "ratesourcesymbol",
+          "fix:tag": "3072"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmark"
+          "fix:field": "fxbenchmark",
+          "fix:tag": "3073"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkdate"
+          "fix:field": "fxbenchmarkdate",
+          "fix:tag": "3074"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarktime"
+          "fix:field": "fxbenchmarktime",
+          "fix:tag": "3075"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkbusinesscenter"
+          "fix:field": "fxbenchmarkbusinesscenter",
+          "fix:tag": "3076"
         }
       }
     ]

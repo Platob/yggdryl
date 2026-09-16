@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expirationqtytype"
+          "fix:field": "expirationqtytype",
+          "fix:tag": "982"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expqty"
+          "fix:field": "expqty",
+          "fix:tag": "983"
         }
       }
     ]

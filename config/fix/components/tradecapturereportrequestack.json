@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequestid"
+          "fix:field": "traderequestid",
+          "fix:tag": "568"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeid"
+          "fix:field": "tradeid",
+          "fix:tag": "1003"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarytradeid"
+          "fix:field": "secondarytradeid",
+          "fix:tag": "1040"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "firmtradeid"
+          "fix:field": "firmtradeid",
+          "fix:tag": "1041"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryfirmtradeid"
+          "fix:field": "secondaryfirmtradeid",
+          "fix:tag": "1042"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequesttype"
+          "fix:field": "traderequesttype",
+          "fix:tag": "569"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnumtradereports"
+          "fix:field": "totnumtradereports",
+          "fix:tag": "748"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequestresult"
+          "fix:field": "traderequestresult",
+          "fix:tag": "749"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequeststatus"
+          "fix:field": "traderequeststatus",
+          "fix:tag": "750"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -160,7 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -180,7 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegreportingtype"
+          "fix:field": "multilegreportingtype",
+          "fix:tag": "442"
         }
       },
       {
@@ -190,7 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsetransporttype"
+          "fix:field": "responsetransporttype",
+          "fix:tag": "725"
         }
       },
       {
@@ -200,7 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsedestination"
+          "fix:field": "responsedestination",
+          "fix:tag": "726"
         }
       },
       {
@@ -210,7 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -220,7 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -230,7 +247,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {
@@ -240,7 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "messageeventsource"
+          "fix:field": "messageeventsource",
+          "fix:tag": "1011"
         }
       },
       {

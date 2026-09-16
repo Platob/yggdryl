@@ -191,15 +191,13 @@ impl super::FixMsg {
         let text = |tag: i32| {
             self.get_by_tag(tag)
                 .filter(|held| !held.is_null())
-                .and_then(crate::Scalar::as_str)
-                .map(str::trim)
+                .and_then(|held| held.as_str().map(str::trim).map(str::to_ascii_uppercase))
                 .filter(|held| !held.is_empty())
-                .map(str::to_ascii_uppercase)
         };
         let number = |tag: i32| {
             self.get_by_tag(tag)
                 .filter(|held| !held.is_null())
-                .and_then(crate::Scalar::as_i128)
+                .and_then(|held| held.as_i128())
                 .and_then(|held| i64::try_from(held).ok())
         };
         // A step only ever fills what is still unknown: `merged` keeps a

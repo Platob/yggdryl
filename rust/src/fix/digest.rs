@@ -97,61 +97,20 @@ fn is_envelope(tag: i32) -> bool {
     ENVELOPE_TAGS.binary_search(&tag).is_ok()
 }
 
-impl FixMsg {
-    /// This message's value digest.
-    ///
-    /// Computed on every call and stored nowhere. Two calls answer the same
-    /// value because the entries do not change, and a cached digest is a fact
-    /// that a later edit makes a lie - the invalidation rule that would
-    /// prevent it costs more than the walk it saves. A direction is the
-    /// opposite case and *is* stored - as tag 385 on the row -
-    /// because the bytes it is read from are gone by the time anyone could
-    /// ask again.
-    ///
-    /// 128 bits rather than 64. A day of capture is comfortably a billion
-    /// messages, and the birthday bound puts a 64-bit digest into collision
-    /// around ten times that - so a 64-bit dedup key silently drops a real
-    /// message roughly once per large capture. Sixteen bytes a row is the
-    /// price.
-    ///
-    /// Nothing is materialized: the entries feed a resumable state as they
-    /// are walked, and the length prefixes come from a stack array, so
-    /// hashing a million messages allocates nothing.
-    ///
-    /// A message built from a schema and a value has no entries and digests
-    /// as the empty walk - the same answer for every such message, which is
-    /// correct: none of them arrived.
-    ///
-    /// ```
-    /// # fn main() -> yggdryl::Result<()> {
-    /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixCodec, FixRegistry};
-    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    /// let reader = FixCodec::new(Arc::new(registry));
-    /// let sent = reader.parse_fix_line(b"8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|")?;
-    ///
-    /// // The frame is not the message: a different separator, a recomputed
-    /// // body length and a different checksum are the same message.
-    /// let again = reader.parse_fix_line(b"8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|")?;
-    /// assert_eq!(sent.digest(), again.digest());
-    ///
-    /// // A different value is a different message.
-    /// let other = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=203|")?;
-    /// assert_ne!(sent.digest(), other.digest());
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[must_use]
-    pub fn digest(&self) -> u128 {
-        let mut state = DigestAlgorithm::Xxh128.digester();
-        walk(&mut state, self.entries());
-        state
-            .as_digest()
-            .as_u128()
-            .expect("the 128-bit algorithm answers 128 bits")
-    }
+/// The deterministic digest of a wire: every entry pre-order, its tag, its
+/// name where the tag named no field, its value and how many entries nest
+/// under it, the envelope tags left out.
+///
+/// The frame is not the message: `BeginString`, `BodyLength` and `CheckSum`
+/// say how the bytes were framed, and a different separator, a recomputed
+/// body length and a different checksum are the same message.
+pub(super) fn digest_of(entries: &[super::FixEntry]) -> u128 {
+    let mut state = DigestAlgorithm::Xxh128.digester();
+    walk(&mut state, entries);
+    state
+        .as_digest()
+        .as_u128()
+        .expect("the 128-bit algorithm answers 128 bits")
 }
 
 /// Feeds one level of entries, pre-order, children under their parent.
@@ -172,20 +131,20 @@ fn walk(state: &mut crate::digest::Digester, entries: &[super::FixEntry]) {
             continue;
         }
         state.write_bytes(&tag.to_be_bytes());
-        // The key only where the tag named no field. A resolved entry is
+        // The name only where the tag named no field. A resolved entry is
         // identified by its tag, and two spellings of one tag are one
-        // field; an unresolved one has nothing but its key, so two rows
+        // field; an unresolved one has nothing but its name, so two rows
         // whose unknown keys differ are two messages.
         if tag == 0 {
-            let key = entry.key().as_bytes();
-            state.write_bytes(&length_of(key));
-            state.write_bytes(key);
+            let name = entry.name().as_bytes();
+            state.write_bytes(&length_of(name));
+            state.write_bytes(name);
         }
-        let value = entry.value().as_bytes();
+        let value = entry.value().unwrap_or_default().as_bytes();
         state.write_bytes(&length_of(value));
         state.write_bytes(value);
-        state.write_bytes(&(entry.children().len() as u32).to_be_bytes());
-        walk(state, entry.children());
+        state.write_bytes(&(entry.entries().len() as u32).to_be_bytes());
+        walk(state, entry.entries());
     }
 }
 
@@ -210,9 +169,10 @@ fn length_of(bytes: &[u8]) -> [u8; 4] {
 ///
 /// A resend survives. A message replayed under `PossDupFlag` carries a fresh
 /// `SendingTime` and so digests differently - deliberately, because dedup
-/// catches the same bytes twice and the `resent` facet catches the replay,
-/// and neither is made to do the other's job. A dedup that folded resends
-/// would drop exactly the recovery traffic a sequence-gap check reads.
+/// catches the same bytes twice and the header's
+/// [`possdupflag`](crate::FixHeader::possdupflag) catches the replay, and
+/// neither is made to do the other's job. A dedup that folded resends would
+/// drop exactly the recovery traffic a sequence-gap check reads.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {

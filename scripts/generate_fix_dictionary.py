@@ -163,7 +163,7 @@ LOGICAL_NAMES = {
 # on every value they share, and the crate's own `state` type reads either.
 # Tag 385, `MsgDirection`, is typed as any coded field is - text carrying its
 # code set - and the registry reads it.
-CODED_TAGS = {39: "state", 54: "side", 150: "state"}
+CODED_TAGS = {54: "side"}
 
 # FIX Latest's order, quote, execution, trade and allocation identifier
 # families. Suffixes admit side/leg/ref/orig/affected forms;
@@ -1434,6 +1434,12 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             metadata["display"] = field["name"]
         if field["doc"]:
             metadata["description"] = field["doc"]
+        # A field the newest source deprecates is one it removed: the
+        # dictionary keeps it so an old message still resolves, and says so,
+        # so a reader restates it under what replaced it and keeps no value
+        # of its own for it.
+        if field.get("deprecated"):
+            metadata["fix:deprecated"] = field["deprecated"]
         # Every spelling an earlier version gave this tag is an alternate
         # name of the one the dictionary holds it under, and the store holds
         # them as the JSON array they are. A field no version spelled
@@ -1535,12 +1541,18 @@ def build_catalog(
             entry_displays[identifier] = entry_name(display)
             entries[identifier] = claim(entry_displays[identifier], "Component", identifier, original=False)
 
-    def reference(name: str, kind: str, required: bool) -> dict[str, Any]:
+    def reference(name: str, kind: str, required: bool, tag: int | None = None) -> dict[str, Any]:
+        # A field reference carries the field's tag beside its name, so a
+        # reader resolves it by its identity - the pair - and never by a
+        # spelling alone.
+        metadata = {f"fix:{kind}": name}
+        if tag is not None:
+            metadata["fix:tag"] = str(tag)
         return {
             "name": name,
             "dtype": {"type": "null"},
             "nullable": not required,
-            "metadata": {f"fix:{kind}": name},
+            "metadata": dict(sorted(metadata.items())),
         }
 
     def members(owner: tuple[str, int]) -> list[dict[str, Any]]:
@@ -1552,7 +1564,7 @@ def build_catalog(
             if kind == "field":
                 if identifier not in by_tag:
                     raise ValueError(f"{source_names[owner]}: unresolved field {identifier}")
-                children.append(reference(by_tag[identifier]["name"], "field", required))
+                children.append(reference(by_tag[identifier]["name"], "field", required, identifier))
             else:
                 target = (f"{kind}s", identifier)
                 if target not in definitions:
@@ -1561,7 +1573,7 @@ def build_catalog(
                     counter = definitions[target]["tag"]
                     if counter not in by_tag or by_tag[counter]["dtype"] != {"type": "int32"}:
                         raise ValueError(f"{source_names[target]}: counter {counter} must be an int32 field")
-                    children.append(reference(by_tag[counter]["name"], "field", required))
+                    children.append(reference(by_tag[counter]["name"], "field", required, counter))
                 children.append(reference(names[target], kind, required))
         for child in children:
             if child["name"] in child_names:
@@ -1816,8 +1828,10 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     for field in catalog["fields"]:
         tag = int(field["metadata"]["fix:tag"])
         shards.setdefault(tag // 100, []).append(field)
+    # Nine digits with leading zeros, so the shards list in tag order
+    # wherever they are listed.
     documents: dict[str, Any] = {
-        f"fields/{shard}.json": held for shard, held in sorted(shards.items())
+        f"fields/{shard:09}.json": held for shard, held in sorted(shards.items())
     }
     # A message is a component carrying `fix:msgtype`: its document lives in
     # `components/` beside every other component.
@@ -1842,13 +1856,31 @@ def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
     )
 
 
+# The first tag of the crate's own block: `CRATE_TAG_MIN` in the Rust core.
+CRATE_TAG_MIN = 65_000
+
+
+def crate_owned(name: str) -> bool:
+    """Whether a document under the output root is the crate's own dump.
+
+    The crate's field shard and its fixed row, ``components/fixmsg.json``,
+    are written by ``FixRegistry::write_into`` and pinned by the Rust store
+    tests; this generator neither writes nor checks them, and never removes
+    them.
+    """
+    if name == "components/fixmsg.json":
+        return True
+    held = re.fullmatch(r"fields/(\d{9})\.json", name)
+    return held is not None and int(held.group(1)) >= CRATE_TAG_MIN // 100
+
+
 def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
     """Replace generated files only; every target stays under the output root."""
     out = out.resolve()
     for tree in ("fields", "components", "groups", "messages", "primitive", "nested"):
         for stale in sorted((out / tree).glob("*.json")):
             relative = stale.resolve().relative_to(out).as_posix()
-            if relative not in documents:
+            if relative not in documents and not crate_owned(relative):
                 stale.unlink()
         # The retired trees, `messages/` among them: a message document lives
         # in `components/`.
@@ -2003,7 +2035,7 @@ def main() -> int:
         for category in ("fields", "components", "groups", "messages", "primitive", "nested"):
             for path in (out / category).glob("*.json"):
                 name = path.relative_to(out).as_posix()
-                if name not in expected_names:
+                if name not in expected_names and not crate_owned(name):
                     failures.append(f"unexpected {name}")
         if (out / "layouts.json").exists():
             failures.append("retired layouts.json exists")

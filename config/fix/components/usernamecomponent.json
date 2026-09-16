@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "username"
+          "fix:field": "username",
+          "fix:tag": "553"
         }
       }
     ]

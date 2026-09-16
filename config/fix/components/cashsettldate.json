@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateunadjusted"
+          "fix:field": "cashsettldateunadjusted",
+          "fix:tag": "42207"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldatebusinessdayconvention"
+          "fix:field": "cashsettldatebusinessdayconvention",
+          "fix:tag": "42208"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocashsettldatebusinesscenters"
+          "fix:field": "nocashsettldatebusinesscenters",
+          "fix:tag": "42214"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldaterelativeto"
+          "fix:field": "cashsettldaterelativeto",
+          "fix:tag": "42209"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetperiod"
+          "fix:field": "cashsettldateoffsetperiod",
+          "fix:tag": "42210"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetunit"
+          "fix:field": "cashsettldateoffsetunit",
+          "fix:tag": "42211"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetdaytype"
+          "fix:field": "cashsettldateoffsetdaytype",
+          "fix:tag": "42212"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateadjusted"
+          "fix:field": "cashsettldateadjusted",
+          "fix:tag": "42213"
         }
       }
     ]

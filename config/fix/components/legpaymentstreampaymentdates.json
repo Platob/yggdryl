@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentdatebusinessdayconvention"
+          "fix:field": "legpaymentstreampaymentdatebusinessdayconvention",
+          "fix:tag": "40292"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreampaymentdatebusinesscenters"
+          "fix:field": "nolegpaymentstreampaymentdatebusinesscenters",
+          "fix:tag": "40930"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreampaymentdates"
+          "fix:field": "nolegpaymentstreampaymentdates",
+          "fix:tag": "41589"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentfrequencyperiod"
+          "fix:field": "legpaymentstreampaymentfrequencyperiod",
+          "fix:tag": "40294"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentfrequencyunit"
+          "fix:field": "legpaymentstreampaymentfrequencyunit",
+          "fix:tag": "40295"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentrollconvention"
+          "fix:field": "legpaymentstreampaymentrollconvention",
+          "fix:tag": "40296"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfirstpaymentdateunadjusted"
+          "fix:field": "legpaymentstreamfirstpaymentdateunadjusted",
+          "fix:tag": "40297"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamlastregularpaymentdateunadjusted"
+          "fix:field": "legpaymentstreamlastregularpaymentdateunadjusted",
+          "fix:tag": "40298"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentdaterelativeto"
+          "fix:field": "legpaymentstreampaymentdaterelativeto",
+          "fix:tag": "40299"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentdateoffsetperiod"
+          "fix:field": "legpaymentstreampaymentdateoffsetperiod",
+          "fix:tag": "40300"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentdateoffsetunit"
+          "fix:field": "legpaymentstreampaymentdateoffsetunit",
+          "fix:tag": "40301"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampaymentdateoffsetdaytype"
+          "fix:field": "legpaymentstreampaymentdateoffsetdaytype",
+          "fix:tag": "40302"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreammasteragreementpaymentdatesindicator"
+          "fix:field": "legpaymentstreammasteragreementpaymentdatesindicator",
+          "fix:tag": "41592"
         }
       },
       {

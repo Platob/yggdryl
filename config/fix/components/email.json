@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "emailthreadid"
+          "fix:field": "emailthreadid",
+          "fix:tag": "164"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "emailtype"
+          "fix:field": "emailtype",
+          "fix:tag": "94"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origtime"
+          "fix:field": "origtime",
+          "fix:tag": "42"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subject"
+          "fix:field": "subject",
+          "fix:tag": "147"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedsubjectlen"
+          "fix:field": "encodedsubjectlen",
+          "fix:tag": "356"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedsubject"
+          "fix:field": "encodedsubject",
+          "fix:tag": "357"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noroutingids"
+          "fix:field": "noroutingids",
+          "fix:tag": "215"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -140,7 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -160,7 +170,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid"
+          "fix:field": "orderid",
+          "fix:tag": "37"
         }
       },
       {
@@ -170,7 +181,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid"
+          "fix:field": "clordid",
+          "fix:tag": "11"
         }
       },
       {
@@ -180,7 +192,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nolinesoftext"
+          "fix:field": "nolinesoftext",
+          "fix:tag": "33"
         }
       },
       {
@@ -200,7 +213,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdatalength"
+          "fix:field": "rawdatalength",
+          "fix:tag": "95"
         }
       },
       {
@@ -210,7 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdata"
+          "fix:field": "rawdata",
+          "fix:tag": "96"
         }
       },
       {
@@ -220,7 +235,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noattachments"
+          "fix:field": "noattachments",
+          "fix:tag": "2104"
         }
       },
       {

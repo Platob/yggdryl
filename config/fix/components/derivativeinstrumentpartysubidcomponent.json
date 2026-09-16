@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartysubid"
+          "fix:field": "derivativeinstrumentpartysubid",
+          "fix:tag": "1297"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartysubidtype"
+          "fix:field": "derivativeinstrumentpartysubidtype",
+          "fix:tag": "1298"
         }
       }
     ]

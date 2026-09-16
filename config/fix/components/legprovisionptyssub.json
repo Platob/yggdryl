@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionpartysubid"
+          "fix:field": "legprovisionpartysubid",
+          "fix:tag": "40538"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionpartysubidtype"
+          "fix:field": "legprovisionpartysubidtype",
+          "fix:tag": "40539"
         }
       }
     ]

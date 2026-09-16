@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedatebusinesscenter"
+          "fix:field": "legprovisioncashsettlvaluedatebusinesscenter",
+          "fix:tag": "40527"
         }
       }
     ]

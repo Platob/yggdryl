@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqty"
+          "fix:field": "allocgroupsubqty",
+          "fix:tag": "2976"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtyoffset"
+          "fix:field": "allocgroupsubqtyoffset",
+          "fix:tag": "2977"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupremainingsubqty"
+          "fix:field": "allocgroupremainingsubqty",
+          "fix:tag": "2978"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtyid"
+          "fix:field": "allocgroupsubqtyid",
+          "fix:tag": "2974"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noallocgroupsubqtyattributes"
+          "fix:field": "noallocgroupsubqtyattributes",
+          "fix:tag": "2979"
         }
       },
       {

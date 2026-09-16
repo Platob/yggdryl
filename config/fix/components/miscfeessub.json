@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeesubtype"
+          "fix:field": "miscfeesubtype",
+          "fix:tag": "2634"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeesubtypeamt"
+          "fix:field": "miscfeesubtypeamt",
+          "fix:tag": "2635"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeesubtypedesc"
+          "fix:field": "miscfeesubtypedesc",
+          "fix:tag": "2636"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmiscfeesubtypedesclen"
+          "fix:field": "encodedmiscfeesubtypedesclen",
+          "fix:tag": "2637"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmiscfeesubtypedesc"
+          "fix:field": "encodedmiscfeesubtypedesc",
+          "fix:tag": "2638"
         }
       }
     ]

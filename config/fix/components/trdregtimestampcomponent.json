@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamp"
+          "fix:field": "trdregtimestamp",
+          "fix:tag": "769"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamptype"
+          "fix:field": "trdregtimestamptype",
+          "fix:tag": "770"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamporigin"
+          "fix:field": "trdregtimestamporigin",
+          "fix:tag": "771"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestampmanualindicator"
+          "fix:field": "trdregtimestampmanualindicator",
+          "fix:tag": "2839"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "desktype"
+          "fix:field": "desktype",
+          "fix:tag": "1033"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "desktypesource"
+          "fix:field": "desktypesource",
+          "fix:tag": "1034"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deskorderhandlinginst"
+          "fix:field": "deskorderhandlinginst",
+          "fix:tag": "1035"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "informationbarrierid"
+          "fix:field": "informationbarrierid",
+          "fix:tag": "1727"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboentrytype"
+          "fix:field": "nbboentrytype",
+          "fix:tag": "2831"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboprice"
+          "fix:field": "nbboprice",
+          "fix:tag": "2832"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboqty"
+          "fix:field": "nbboqty",
+          "fix:tag": "2833"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbbosource"
+          "fix:field": "nbbosource",
+          "fix:tag": "2834"
         }
       }
     ]

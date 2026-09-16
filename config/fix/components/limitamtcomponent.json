@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamttype"
+          "fix:field": "limitamttype",
+          "fix:tag": "1631"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastlimitamt"
+          "fix:field": "lastlimitamt",
+          "fix:tag": "1632"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtremaining"
+          "fix:field": "limitamtremaining",
+          "fix:tag": "1633"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitutilizationamt"
+          "fix:field": "limitutilizationamt",
+          "fix:tag": "2394"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamt"
+          "fix:field": "limitamt",
+          "fix:tag": "2395"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtcurrency"
+          "fix:field": "limitamtcurrency",
+          "fix:tag": "1634"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtcurrencycodesource"
+          "fix:field": "limitamtcurrencycodesource",
+          "fix:tag": "2935"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitrole"
+          "fix:field": "limitrole",
+          "fix:tag": "2396"
         }
       }
     ]

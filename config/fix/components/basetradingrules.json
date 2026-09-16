@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notickrules"
+          "fix:field": "notickrules",
+          "fix:tag": "1205"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolottyperules"
+          "fix:field": "nolottyperules",
+          "fix:tag": "1234"
         }
       },
       {
@@ -60,7 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricerangerules"
+          "fix:field": "nopricerangerules",
+          "fix:tag": "2550"
         }
       },
       {
@@ -80,7 +83,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noquotesizerules"
+          "fix:field": "noquotesizerules",
+          "fix:tag": "2558"
         }
       },
       {
@@ -100,7 +104,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expirationcycle"
+          "fix:field": "expirationcycle",
+          "fix:tag": "827"
         }
       },
       {
@@ -110,7 +115,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradevoltype"
+          "fix:field": "tradevoltype",
+          "fix:tag": "1786"
         }
       },
       {
@@ -120,7 +126,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mintradevol"
+          "fix:field": "mintradevol",
+          "fix:tag": "562"
         }
       },
       {
@@ -130,7 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maxtradevol"
+          "fix:field": "maxtradevol",
+          "fix:tag": "1140"
         }
       },
       {
@@ -140,7 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maxpricevariation"
+          "fix:field": "maxpricevariation",
+          "fix:tag": "1143"
         }
       },
       {
@@ -150,7 +159,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "impliedmarketindicator"
+          "fix:field": "impliedmarketindicator",
+          "fix:tag": "1144"
         }
       },
       {
@@ -160,7 +170,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingcurrency"
+          "fix:field": "tradingcurrency",
+          "fix:tag": "1245"
         }
       },
       {
@@ -170,7 +181,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingcurrencycodesource"
+          "fix:field": "tradingcurrencycodesource",
+          "fix:tag": "2934"
         }
       },
       {
@@ -180,7 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "roundlot"
+          "fix:field": "roundlot",
+          "fix:tag": "561"
         }
       },
       {
@@ -190,7 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegmodel"
+          "fix:field": "multilegmodel",
+          "fix:tag": "1377"
         }
       },
       {
@@ -200,7 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegpricemethod"
+          "fix:field": "multilegpricemethod",
+          "fix:tag": "1378"
         }
       },
       {
@@ -210,7 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricetype"
+          "fix:field": "pricetype",
+          "fix:tag": "423"
         }
       },
       {
@@ -220,7 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketpercentage"
+          "fix:field": "fastmarketpercentage",
+          "fix:tag": "2557"
         }
       },
       {
@@ -230,7 +247,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesideindicator"
+          "fix:field": "quotesideindicator",
+          "fix:tag": "2559"
         }
       }
     ]

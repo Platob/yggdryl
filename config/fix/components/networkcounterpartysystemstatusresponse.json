@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkstatusresponsetype"
+          "fix:field": "networkstatusresponsetype",
+          "fix:tag": "937"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "networkrequestid"
+          "fix:field": "networkrequestid",
+          "fix:tag": "933"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkresponseid"
+          "fix:field": "networkresponseid",
+          "fix:tag": "932"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastnetworkresponseid"
+          "fix:field": "lastnetworkresponseid",
+          "fix:tag": "934"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nocompids"
+          "fix:field": "nocompids",
+          "fix:tag": "936"
         }
       },
       {

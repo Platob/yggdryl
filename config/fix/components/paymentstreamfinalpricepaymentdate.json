@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateunadjusted"
+          "fix:field": "paymentstreamfinalpricepaymentdateunadjusted",
+          "fix:tag": "42654"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdaterelativeto"
+          "fix:field": "paymentstreamfinalpricepaymentdaterelativeto",
+          "fix:tag": "42655"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetfperiod"
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetfperiod",
+          "fix:tag": "42656"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetunit"
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetunit",
+          "fix:tag": "42657"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetdaytype"
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetdaytype",
+          "fix:tag": "42658"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateadjusted"
+          "fix:field": "paymentstreamfinalpricepaymentdateadjusted",
+          "fix:tag": "42659"
         }
       }
     ]

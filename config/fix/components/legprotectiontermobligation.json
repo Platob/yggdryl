@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermobligationtype"
+          "fix:field": "legprotectiontermobligationtype",
+          "fix:tag": "41636"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermobligationvalue"
+          "fix:field": "legprotectiontermobligationvalue",
+          "fix:tag": "41637"
         }
       }
     ]

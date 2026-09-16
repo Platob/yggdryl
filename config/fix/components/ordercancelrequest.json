@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrequestid"
+          "fix:field": "orderrequestid",
+          "fix:tag": "2422"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origclordid"
+          "fix:field": "origclordid",
+          "fix:tag": "41"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid"
+          "fix:field": "orderid",
+          "fix:tag": "37"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clordid"
+          "fix:field": "clordid",
+          "fix:tag": "11"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid"
+          "fix:field": "secondaryclordid",
+          "fix:tag": "526"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordlinkid"
+          "fix:field": "clordlinkid",
+          "fix:tag": "583"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listid"
+          "fix:field": "listid",
+          "fix:tag": "66"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origordmodtime"
+          "fix:field": "origordmodtime",
+          "fix:tag": "586"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account"
+          "fix:field": "account",
+          "fix:tag": "1"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource"
+          "fix:field": "acctidsource",
+          "fix:tag": "660"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "accounttype"
+          "fix:field": "accounttype",
+          "fix:tag": "581"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -170,7 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -190,7 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -200,7 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exdestination"
+          "fix:field": "exdestination",
+          "fix:tag": "100"
         }
       },
       {
@@ -210,7 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exdestinationidsource"
+          "fix:field": "exdestinationidsource",
+          "fix:tag": "1133"
         }
       },
       {
@@ -220,7 +236,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "side"
+          "fix:field": "side",
+          "fix:tag": "54"
         }
       },
       {
@@ -230,7 +247,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -250,7 +268,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid"
+          "fix:field": "complianceid",
+          "fix:tag": "376"
         }
       },
       {
@@ -260,7 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext"
+          "fix:field": "compliancetext",
+          "fix:tag": "2404"
         }
       },
       {
@@ -270,7 +290,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetextlen"
+          "fix:field": "encodedcompliancetextlen",
+          "fix:tag": "2351"
         }
       },
       {
@@ -280,7 +301,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetext"
+          "fix:field": "encodedcompliancetext",
+          "fix:tag": "2352"
         }
       },
       {
@@ -290,7 +312,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -300,7 +323,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -310,7 +334,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

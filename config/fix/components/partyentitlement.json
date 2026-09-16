@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails"
+          "fix:field": "nopartydetails",
+          "fix:tag": "1671"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstatus"
+          "fix:field": "entitlementstatus",
+          "fix:tag": "1883"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlements"
+          "fix:field": "noentitlements",
+          "fix:tag": "1773"
         }
       },
       {

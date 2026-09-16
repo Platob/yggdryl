@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` |
+//! | identity | `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -158,7 +158,6 @@ impl FixCodec {
         // column answers for is read off it once rather than once per row.
         let schema = field.clone();
         let plan = super::schema::column_plan(&schema, self.registry())?;
-        plan.identity.require_bundle(&schema)?;
         let target = self.batch_byte_size();
         let mut carried = 0_u64;
         let rows = rows.map(move |held| match held {
@@ -177,25 +176,26 @@ impl FixCodec {
         Ok(canonical_closing_reader(&field, rows)?)
     }
 
-    /// Fills a stream of batches of FIX rows with what each message implies.
+    /// Walks a stream of batches of FIX rows as one lifecycle.
     ///
-    /// [`Self::enrich_messages`] over batches: each row becomes the message
-    /// it holds through [`FixMsg::from_row`] - any schema that constructor
-    /// accepts, the fixed row carrying a capture's columns or not - is filled
-    /// as [`Self::enrich_message`] fills one, and is written back through
-    /// [`FixMsg::into_row`] under the **same** schema, so a carried column
-    /// returns to its place. Nothing is parsed again, and the arrival record
-    /// is carried through untouched. Batches close on the raw bytes of each
-    /// message's arrival record, against [`Self::with_batch_byte_size`].
+    /// [`Self::lifecycle`] over batches: each row becomes the message it
+    /// holds through [`FixMsg::from_row`] - any schema that constructor
+    /// accepts, the fixed row carrying a capture's columns or not - the
+    /// messages are walked as [`Self::lifecycle`] walks them, and each is
+    /// written back through [`FixMsg::into_row`] under the **same** schema,
+    /// so a carried column returns to its place. Nothing is parsed again,
+    /// and the arrival record is carried through untouched. Batches close on
+    /// the raw bytes of each message's arrival record, against
+    /// [`Self::with_batch_byte_size`].
     ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the source's schema does not
     /// make a root field; a row that is not a FIX row and the source
     /// reader's own failure are error batches.
-    pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
+    pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         let schema = Self::row_field(source.schema().as_ref())?;
-        self.arrow_reader(schema, self.enrich_messages(self.messages(source)))
+        self.arrow_reader(schema, self.lifecycle(self.messages(source)))
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -210,13 +210,10 @@ impl FixCodec {
     /// schema than the first is a conflict item, and a row the schema does
     /// not make a message of is an error item; either fuses the stream.
     ///
-    /// This is one half of what [`Self::enrich_messages_arrow_reader`]
-    /// composes, public because [`Self::lifecycle`] and
-    /// [`FixDedup`](super::FixDedup) compose over batches the same way: the
-    /// messages a batch holds, through the stage, into [`Self::arrow_reader`]
-    /// under the schema read off the batch. There are two such stages now,
-    /// not three: restatement is the first step of the enriching pass rather
-    /// than a stage of its own.
+    /// This is one half of what [`Self::lifecycle_arrow_reader`] composes,
+    /// public because [`FixDedup`](super::FixDedup) composes over batches
+    /// the same way: the messages a batch holds, through the stage, into
+    /// [`Self::arrow_reader`] under the schema read off the batch.
     pub fn messages(
         &self,
         source: BatchReader,
@@ -277,9 +274,10 @@ impl FixCodec {
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by. A parse lands every
-    /// line in the [fixed row](super::fix_schema) and an
-    /// [enrichment](Self::enrich_messages) fills what each message implies;
-    /// this answers the same messages under whatever field a consumer reads
+    /// line in the [fixed row](super::fix_schema), filled with what each
+    /// message implies, and a [lifecycle](Self::lifecycle) walk states what
+    /// each follows; this answers the same messages under whatever field a
+    /// consumer reads
     /// by - a venue's own message type, the [fixed row](super::fix_schema)
     /// itself, which keeps every column a capture lands in, or any Struct
     /// root a caller built for the table it is writing.
@@ -331,11 +329,10 @@ impl FixCodec {
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        let registry = self.registry();
         messages
             .into_iter()
             .fuse()
-            .map(move |held| super::enrich::lifted(registry, held.into()?).into_row(field))
+            .map(move |held| held.into()?.into_row(field))
     }
 
     /// A stream of batches of stable FIX rows as batches under one message field.
@@ -383,11 +380,8 @@ impl FixCodec {
                 crate::ArrowCastOptions::new(),
             )?);
         }
-        let registry = Arc::clone(self.registry());
-        let lifted = self
-            .messages(source)
-            .map(move |held| Ok(super::enrich::lifted(&registry, held?)));
-        self.arrow_reader(target, lifted)
+        let messages = self.messages(source);
+        self.arrow_reader(target, messages)
     }
 
     /// Writes a stream of batches of FIX rows back to the wire, streamed.
@@ -453,11 +447,13 @@ fn closes(carried: &mut u64, charge: u64, target: u64) -> bool {
     false
 }
 
-/// The raw bytes one arrival record is, walked without allocating: the
-/// length of every key and value at every level, plus the per-row width.
+/// The raw bytes one message's entries are, walked without allocating: the
+/// length of every name and value at every level, plus the per-row width.
 fn wire_size(entries: &[FixEntry]) -> u64 {
     entries.iter().fold(ROW_OVERHEAD, |sum, entry| {
-        sum + entry.key().len() as u64 + entry.value().len() as u64 + wire_size(entry.children())
+        sum + entry.name().len() as u64
+            + entry.value().map_or(0, str::len) as u64
+            + wire_size(entry.entries())
     })
 }
 
@@ -512,10 +508,8 @@ fn row_of(
     plan: &super::schema::Columns,
     front: Vec<Scalar>,
 ) -> Result<Scalar> {
-    // Capture values land before the field contract and content hash run.
-    let mut held = message.row_values(schema, plan, front)?;
-    plan.identity
-        .finalize(schema, &mut held, super::identity::Assertions::default())?;
+    // Capture values land before the field contract runs.
+    let held = message.row_values(schema, plan, front)?;
     Ok(Scalar::from_sequence(held))
 }
 

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid"
+          "fix:field": "orderid",
+          "fix:tag": "37"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryorderid"
+          "fix:field": "secondaryorderid",
+          "fix:tag": "198"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid"
+          "fix:field": "clordid",
+          "fix:tag": "11"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid"
+          "fix:field": "secondaryclordid",
+          "fix:tag": "526"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listid"
+          "fix:field": "listid",
+          "fix:tag": "66"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "reforderid"
+          "fix:field": "reforderid",
+          "fix:tag": "1080"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "reforderidsource"
+          "fix:field": "reforderidsource",
+          "fix:tag": "1081"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refordidreason"
+          "fix:field": "refordidreason",
+          "fix:tag": "1431"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorders"
+          "fix:field": "noorders",
+          "fix:tag": "73"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pretradeanonymity"
+          "fix:field": "pretradeanonymity",
+          "fix:tag": "1091"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype"
+          "fix:field": "ordtype",
+          "fix:tag": "40"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price"
+          "fix:field": "price",
+          "fix:tag": "44"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "stoppx"
+          "fix:field": "stoppx",
+          "fix:tag": "99"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "execinst"
+          "fix:field": "execinst",
+          "fix:tag": "18"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordstatus"
+          "fix:field": "ordstatus",
+          "fix:tag": "39"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leavesqty"
+          "fix:field": "leavesqty",
+          "fix:tag": "151"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cumqty"
+          "fix:field": "cumqty",
+          "fix:tag": "14"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "timeinforce"
+          "fix:field": "timeinforce",
+          "fix:tag": "59"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expiretime"
+          "fix:field": "expiretime",
+          "fix:tag": "126"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomatchinst"
+          "fix:field": "nomatchinst",
+          "fix:tag": "1624"
         }
       },
       {
@@ -240,7 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "selfmatchpreventionid"
+          "fix:field": "selfmatchpreventionid",
+          "fix:tag": "2362"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "selfmatchpreventioninstruction"
+          "fix:field": "selfmatchpreventioninstruction",
+          "fix:tag": "2964"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exposureduration"
+          "fix:field": "exposureduration",
+          "fix:tag": "1629"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exposuredurationunit"
+          "fix:field": "exposuredurationunit",
+          "fix:tag": "1916"
         }
       },
       {
@@ -290,7 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercapacity"
+          "fix:field": "ordercapacity",
+          "fix:tag": "528"
         }
       },
       {
@@ -300,7 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrestrictions"
+          "fix:field": "orderrestrictions",
+          "fix:tag": "529"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bookingtype"
+          "fix:field": "bookingtype",
+          "fix:tag": "775"
         }
       },
       {
@@ -320,7 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origcustordercapacity"
+          "fix:field": "origcustordercapacity",
+          "fix:tag": "1432"
         }
       },
       {
@@ -330,7 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderorigination"
+          "fix:field": "orderorigination",
+          "fix:tag": "1724"
         }
       },
       {
@@ -340,7 +369,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorderattributes"
+          "fix:field": "noorderattributes",
+          "fix:tag": "2593"
         }
       },
       {
@@ -360,7 +390,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exdestinationtype"
+          "fix:field": "exdestinationtype",
+          "fix:tag": "2704"
         }
       },
       {
@@ -370,7 +401,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderinputdevice"
+          "fix:field": "orderinputdevice",
+          "fix:tag": "821"
         }
       },
       {
@@ -380,7 +412,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lottype"
+          "fix:field": "lottype",
+          "fix:tag": "1093"
         }
       },
       {
@@ -390,7 +423,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transbkdtime"
+          "fix:field": "transbkdtime",
+          "fix:tag": "483"
         }
       },
       {
@@ -400,7 +434,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origordmodtime"
+          "fix:field": "origordmodtime",
+          "fix:tag": "586"
         }
       },
       {
@@ -410,7 +445,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderpercentoftotalvolume"
+          "fix:field": "orderpercentoftotalvolume",
+          "fix:tag": "2766"
         }
       }
     ]

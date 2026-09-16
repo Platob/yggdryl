@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablerefcurrency"
+          "fix:field": "legpaymentstreamnondeliverablerefcurrency",
+          "fix:tag": "40359"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention"
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention",
+          "fix:tag": "40360"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters"
+          "fix:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
+          "fix:tag": "40929"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesrelativeto"
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesrelativeto",
+          "fix:tag": "40362"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetperiod"
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetperiod",
+          "fix:tag": "40363"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetunit"
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetunit",
+          "fix:tag": "40364"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype"
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "fix:tag": "40365"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegnondeliverablefixingdates"
+          "fix:field": "nolegnondeliverablefixingdates",
+          "fix:tag": "40367"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegsettlratefallbacks"
+          "fix:field": "nolegsettlratefallbacks",
+          "fix:tag": "40902"
         }
       },
       {

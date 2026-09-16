@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratedatemode"
+          "fix:field": "underlyingreturnratedatemode",
+          "fix:tag": "43009"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingreturnratevaluationdates"
+          "fix:field": "nounderlyingreturnratevaluationdates",
+          "fix:tag": "43071"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdaterelativeto"
+          "fix:field": "underlyingreturnratevaluationdaterelativeto",
+          "fix:tag": "43010"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdateoffsetperiod"
+          "fix:field": "underlyingreturnratevaluationdateoffsetperiod",
+          "fix:tag": "43011"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdateoffsetunit"
+          "fix:field": "underlyingreturnratevaluationdateoffsetunit",
+          "fix:tag": "43012"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdateoffsetdaytype"
+          "fix:field": "underlyingreturnratevaluationdateoffsetdaytype",
+          "fix:tag": "43013"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdateunadjusted"
+          "fix:field": "underlyingreturnratevaluationstartdateunadjusted",
+          "fix:tag": "43014"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdaterelativeto"
+          "fix:field": "underlyingreturnratevaluationstartdaterelativeto",
+          "fix:tag": "43015"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdateoffsetperiod"
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetperiod",
+          "fix:tag": "43016"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdateoffsetunit"
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetunit",
+          "fix:tag": "43017"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdateoffsetdaytype"
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetdaytype",
+          "fix:tag": "43018"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationstartdateadjusted"
+          "fix:field": "underlyingreturnratevaluationstartdateadjusted",
+          "fix:tag": "43019"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddateunadjusted"
+          "fix:field": "underlyingreturnratevaluationenddateunadjusted",
+          "fix:tag": "43020"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddaterelativeto"
+          "fix:field": "underlyingreturnratevaluationenddaterelativeto",
+          "fix:tag": "43021"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddateoffsetperiod"
+          "fix:field": "underlyingreturnratevaluationenddateoffsetperiod",
+          "fix:tag": "43022"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddateoffsetunit"
+          "fix:field": "underlyingreturnratevaluationenddateoffsetunit",
+          "fix:tag": "43023"
         }
       },
       {
@@ -180,7 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddateoffsetdaytype"
+          "fix:field": "underlyingreturnratevaluationenddateoffsetdaytype",
+          "fix:tag": "43024"
         }
       },
       {
@@ -190,7 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationenddateadjusted"
+          "fix:field": "underlyingreturnratevaluationenddateadjusted",
+          "fix:tag": "43025"
         }
       },
       {
@@ -200,7 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationfrequencyperiod"
+          "fix:field": "underlyingreturnratevaluationfrequencyperiod",
+          "fix:tag": "43026"
         }
       },
       {
@@ -210,7 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationfrequencyunit"
+          "fix:field": "underlyingreturnratevaluationfrequencyunit",
+          "fix:tag": "43027"
         }
       },
       {
@@ -220,7 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationfrequencyrollconvention"
+          "fix:field": "underlyingreturnratevaluationfrequencyrollconvention",
+          "fix:tag": "43028"
         }
       },
       {
@@ -230,7 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdatebusinessdayconvention"
+          "fix:field": "underlyingreturnratevaluationdatebusinessdayconvention",
+          "fix:tag": "43029"
         }
       },
       {
@@ -240,7 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingreturnratevaluationdatebusinesscenters"
+          "fix:field": "nounderlyingreturnratevaluationdatebusinesscenters",
+          "fix:tag": "43069"
         }
       },
       {

@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate"
+          "fix:field": "clearingbusinessdate",
+          "fix:tag": "715"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlementcycleno"
+          "fix:field": "settlementcycleno",
+          "fix:tag": "1153"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlobligmsgid"
+          "fix:field": "settlobligmsgid",
+          "fix:tag": "1160"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlobligmode"
+          "fix:field": "settlobligmode",
+          "fix:tag": "1159"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nosettloblig"
+          "fix:field": "nosettloblig",
+          "fix:tag": "1165"
         }
       },
       {

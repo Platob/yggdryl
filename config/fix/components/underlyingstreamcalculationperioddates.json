@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddatesxid"
+          "fix:field": "underlyingstreamcalculationperioddatesxid",
+          "fix:tag": "41957"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddatesxidref"
+          "fix:field": "underlyingstreamcalculationperioddatesxidref",
+          "fix:tag": "41958"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperiodbusinessdayconvention"
+          "fix:field": "underlyingstreamcalculationperiodbusinessdayconvention",
+          "fix:tag": "40556"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcalculationperiodbusinesscenters"
+          "fix:field": "nounderlyingstreamcalculationperiodbusinesscenters",
+          "fix:tag": "40973"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcalculationperioddates"
+          "fix:field": "nounderlyingstreamcalculationperioddates",
+          "fix:tag": "41954"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstperiodstartdateunadjusted"
+          "fix:field": "underlyingstreamfirstperiodstartdateunadjusted",
+          "fix:tag": "40558"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstperiodstartdatebusinessdayconvention"
+          "fix:field": "underlyingstreamfirstperiodstartdatebusinessdayconvention",
+          "fix:tag": "40559"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamfirstperiodstartdatebusinesscenters"
+          "fix:field": "nounderlyingstreamfirstperiodstartdatebusinesscenters",
+          "fix:tag": "40974"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstperiodstartdateadjusted"
+          "fix:field": "underlyingstreamfirstperiodstartdateadjusted",
+          "fix:tag": "40561"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstregularperiodstartdateunadjusted"
+          "fix:field": "underlyingstreamfirstregularperiodstartdateunadjusted",
+          "fix:tag": "40562"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstcompoundingperiodenddateunadjusted"
+          "fix:field": "underlyingstreamfirstcompoundingperiodenddateunadjusted",
+          "fix:tag": "40563"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamlastregularperiodenddateunadjusted"
+          "fix:field": "underlyingstreamlastregularperiodenddateunadjusted",
+          "fix:tag": "40564"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationfrequencyperiod"
+          "fix:field": "underlyingstreamcalculationfrequencyperiod",
+          "fix:tag": "40565"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationfrequencyunit"
+          "fix:field": "underlyingstreamcalculationfrequencyunit",
+          "fix:tag": "40566"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationrollconvention"
+          "fix:field": "underlyingstreamcalculationrollconvention",
+          "fix:tag": "40567"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationbalanceoffirstperiod"
+          "fix:field": "underlyingstreamcalculationbalanceoffirstperiod",
+          "fix:tag": "41959"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationcorrectionperiod"
+          "fix:field": "underlyingstreamcalculationcorrectionperiod",
+          "fix:tag": "41960"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationcorrectionunit"
+          "fix:field": "underlyingstreamcalculationcorrectionunit",
+          "fix:tag": "41961"
         }
       }
     ]

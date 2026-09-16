@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamcommoditysource"
+          "fix:field": "legdeliverystreamcommoditysource",
+          "fix:tag": "41461"
         }
       }
     ]

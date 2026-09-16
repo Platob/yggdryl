@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityaltid"
+          "fix:field": "legsecurityaltid",
+          "fix:tag": "605"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityaltidsource"
+          "fix:field": "legsecurityaltidsource",
+          "fix:tag": "606"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsymbolpositionnumber"
+          "fix:field": "legsymbolpositionnumber",
+          "fix:tag": "2958"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty"
+          "fix:field": "legorderqty",
+          "fix:tag": "685"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legqty"
+          "fix:field": "legqty",
+          "fix:tag": "687"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmidpx"
+          "fix:field": "legmidpx",
+          "fix:tag": "2346"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype"
+          "fix:field": "legswaptype",
+          "fix:tag": "690"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype"
+          "fix:field": "legsettltype",
+          "fix:tag": "587"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettldate"
+          "fix:field": "legsettldate",
+          "fix:tag": "588"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations"
+          "fix:field": "nolegstipulations",
+          "fix:tag": "683"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids"
+          "fix:field": "nonestedpartyids",
+          "fix:tag": "539"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegratesources"
+          "fix:field": "nolegratesources",
+          "fix:tag": "3116"
         }
       },
       {
@@ -150,7 +159,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid"
+          "fix:field": "legrefid",
+          "fix:tag": "654"
         }
       }
     ]

@@ -1,0 +1,3822 @@
+[
+  {
+    "name": "ordereventqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity associated with the event.",
+      "display": "OrderEventQty",
+      "fix:tag": "1800"
+    }
+  },
+  {
+    "name": "ordereventliquidityindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity. Applicable only for OrderEventType(1796) values of 4(Partially Filled) or 5(Filled).",
+      "display": "OrderEventLiquidityIndicator",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NeitherAddedNorRemovedLiquidity",
+          "doc": "Neither added nor removed liquidity"
+        },
+        {
+          "value": "1",
+          "name": "AddedLiquidity",
+          "doc": "Added Liquidity"
+        },
+        {
+          "value": "2",
+          "name": "RemovedLiquidity",
+          "doc": "Removed Liquidity"
+        },
+        {
+          "value": "3",
+          "name": "LiquidityRoutedOut",
+          "doc": "Liquidity Routed Out"
+        },
+        {
+          "value": "4",
+          "name": "Auction",
+          "doc": "Auction execution"
+        },
+        {
+          "value": "5",
+          "name": "TriggeredStopOrder",
+          "doc": "Triggered stop order"
+        },
+        {
+          "value": "6",
+          "name": "TriggeredContingencyOrder",
+          "doc": "Triggered contingency order"
+        },
+        {
+          "value": "7",
+          "name": "TriggeredMarketOrder",
+          "doc": "Triggered market order"
+        },
+        {
+          "value": "8",
+          "name": "RemovedLiquidityAfterFirmOrderCommitment",
+          "doc": "Removed liquidity after firm order commitment"
+        },
+        {
+          "value": "9",
+          "name": "AuctionExecutionAfterFirmOrderCommitment",
+          "doc": "Auction execution after firm order commitment"
+        },
+        {
+          "value": "10",
+          "name": "Unknown",
+          "doc": "Unknown"
+        },
+        {
+          "value": "11",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1801"
+    }
+  },
+  {
+    "name": "ordereventtext",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Additional information about the event.",
+      "display": "OrderEventText",
+      "fix:tag": "1802"
+    }
+  },
+  {
+    "name": "auctiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of auction order.",
+      "display": "AuctionType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "BlockOrderAuction",
+          "doc": "Block order auction"
+        },
+        {
+          "value": "2",
+          "name": "DirectedOrderAuction",
+          "doc": "Directed order auction"
+        },
+        {
+          "value": "3",
+          "name": "ExposureOrderAuction",
+          "doc": "Exposure order auction"
+        },
+        {
+          "value": "4",
+          "name": "FlashOrderAuction",
+          "doc": "Flash order auction"
+        },
+        {
+          "value": "5",
+          "name": "FacilitationOrderAuction",
+          "doc": "Facilitation order auction"
+        },
+        {
+          "value": "6",
+          "name": "SolicitationOrderAuction",
+          "doc": "Solicitation order auction"
+        },
+        {
+          "value": "7",
+          "name": "PriceImprovementMechanism",
+          "doc": "Price improvement mechanism (PIM)"
+        },
+        {
+          "value": "8",
+          "name": "DirectedOrderPriceImprovementMechanism",
+          "doc": "Directed Order price improvement mechanism (PIM)"
+        }
+      ],
+      "fix:tag": "1803"
+    }
+  },
+  {
+    "name": "auctionallocationpct",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of matched quantity to be allocated to the submitter of the response to an auction order.",
+      "display": "AuctionAllocationPct",
+      "fix:tag": "1804"
+    }
+  },
+  {
+    "name": "auctioninstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction related to system generated auctions, e.g. flash order auctions.",
+      "display": "AuctionInstruction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "AutomatedAuctionPermitted",
+          "doc": "Automatic auction permitted (default)"
+        },
+        {
+          "value": "1",
+          "name": "AutomatedAuctionNotPermitted",
+          "doc": "Automatic auction not permitted"
+        }
+      ],
+      "fix:tag": "1805"
+    }
+  },
+  {
+    "name": "refclordid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to reference an order via ClOrdID(11).",
+      "display": "RefClOrdID",
+      "fix:tag": "1806"
+    }
+  },
+  {
+    "name": "locktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether an order is locked and for what reason.",
+      "display": "LockType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotLocked",
+          "doc": "Not locked"
+        },
+        {
+          "value": "1",
+          "name": "AwayMarketNetter",
+          "doc": "Away market better"
+        },
+        {
+          "value": "2",
+          "name": "ThreeTickLocked",
+          "doc": "Three tick locked"
+        },
+        {
+          "value": "3",
+          "name": "LockedByMarketMaker",
+          "doc": "Locked by market maker"
+        },
+        {
+          "value": "4",
+          "name": "DirectedOrderLock",
+          "doc": "Directed order lock"
+        },
+        {
+          "value": "5",
+          "name": "MultilegLock",
+          "doc": "Multileg lock"
+        },
+        {
+          "value": "6",
+          "name": "MarketOrderLock",
+          "doc": "Market order lock"
+        },
+        {
+          "value": "7",
+          "name": "PreAssignmentLock",
+          "doc": "Pre-assignment lock"
+        }
+      ],
+      "fix:tag": "1807"
+    }
+  },
+  {
+    "name": "lockedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Locked order quantity.",
+      "display": "LockedQty",
+      "fix:tag": "1808"
+    }
+  },
+  {
+    "name": "secondarylockedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Locked order quantity in addition to LockedQty (1808), e.g. to distinguish total locked quantity from currently locked quantity.",
+      "display": "SecondaryLockedQty",
+      "fix:tag": "1809"
+    }
+  },
+  {
+    "name": "releaseinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction to define conditions under which to release a locked order or parts of it.",
+      "display": "ReleaseInstruction",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ISO",
+          "doc": "Intermarket Sweep Order (ISO)"
+        },
+        {
+          "value": "2",
+          "name": "NoAwayMarketBetterCheck",
+          "doc": "No Away Market Better check"
+        }
+      ],
+      "fix:tag": "1810"
+    }
+  },
+  {
+    "name": "releaseqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity to be made available, i.e. released from a lock.",
+      "display": "ReleaseQty",
+      "fix:tag": "1811"
+    }
+  },
+  {
+    "name": "nodisclosureinstructions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of disclosure instructions.",
+      "display": "NoDisclosureInstructions",
+      "fix:tag": "1812"
+    }
+  },
+  {
+    "name": "disclosuretype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Information subject to disclosure.",
+      "display": "DisclosureType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Volume",
+          "doc": "Volume"
+        },
+        {
+          "value": "2",
+          "name": "Price",
+          "doc": "Price"
+        },
+        {
+          "value": "3",
+          "name": "Side",
+          "doc": "Side"
+        },
+        {
+          "value": "4",
+          "name": "AON",
+          "doc": "AON"
+        },
+        {
+          "value": "5",
+          "name": "General",
+          "doc": "General"
+        },
+        {
+          "value": "6",
+          "name": "ClearingAccount",
+          "doc": "Clearing account"
+        },
+        {
+          "value": "7",
+          "name": "CMTAAccount",
+          "doc": "CMTA account"
+        }
+      ],
+      "fix:tag": "1813"
+    }
+  },
+  {
+    "name": "disclosureinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction to disclose information or to use default value of the receiver.",
+      "display": "DisclosureInstruction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "No",
+          "doc": "No"
+        },
+        {
+          "value": "1",
+          "name": "Yes",
+          "doc": "Yes"
+        },
+        {
+          "value": "2",
+          "name": "UseDefaultSetting",
+          "doc": "Use default setting"
+        }
+      ],
+      "fix:tag": "1814"
+    }
+  },
+  {
+    "name": "tradingcapacity",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the capacity in which the order is submitted for trading by the market participant.",
+      "display": "TradingCapacity",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Customer",
+          "doc": "Customer"
+        },
+        {
+          "value": "2",
+          "name": "CustomerProfessional",
+          "doc": "Customer professional"
+        },
+        {
+          "value": "3",
+          "name": "BrokerDealer",
+          "doc": "Broker-dealer"
+        },
+        {
+          "value": "4",
+          "name": "CustomerBrokerDealer",
+          "doc": "Customer broker-dealer"
+        },
+        {
+          "value": "5",
+          "name": "Principal",
+          "doc": "Principal"
+        },
+        {
+          "value": "6",
+          "name": "MarketMaker",
+          "doc": "Market maker"
+        },
+        {
+          "value": "7",
+          "name": "AwayMarketMaker",
+          "doc": "Away market maker"
+        },
+        {
+          "value": "8",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic internaliser"
+        }
+      ],
+      "fix:tag": "1815"
+    }
+  },
+  {
+    "name": "clearingaccounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the account type to be used for the order when submitted to clearing.",
+      "display": "ClearingAccountType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Customer",
+          "doc": "Customer"
+        },
+        {
+          "value": "2",
+          "name": "Firm",
+          "doc": "Firm"
+        },
+        {
+          "value": "3",
+          "name": "MarketMaker",
+          "doc": "Market maker"
+        }
+      ],
+      "fix:tag": "1816"
+    }
+  },
+  {
+    "name": "legclearingaccounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the capacity in which the order will be submitted to clearing.",
+      "display": "LegClearingAccountType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Customer",
+          "doc": "Customer"
+        },
+        {
+          "value": "2",
+          "name": "Firm",
+          "doc": "Firm"
+        },
+        {
+          "value": "3",
+          "name": "MarketMaker",
+          "doc": "Market maker"
+        }
+      ],
+      "fix:tag": "1817"
+    }
+  },
+  {
+    "name": "targetpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Qualifies the value of TargetPartyRole (1464).",
+      "display": "TargetPartyRoleQualifier",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Agency",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Agency"
+        },
+        {
+          "value": "1",
+          "name": "Principal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Principal"
+        },
+        {
+          "value": "2",
+          "name": "RisklessPrincipal",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Riskless principal"
+        },
+        {
+          "value": "3",
+          "name": "GeneralClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "General clearing member"
+        },
+        {
+          "value": "30",
+          "name": "ExchangeOrderSubmitter",
+          "group": "For party role 1 (Executing Firm)",
+          "doc": "Exchange order submitter"
+        },
+        {
+          "value": "4",
+          "name": "IndividualClearingMember",
+          "group": "For party role 4 (Clearing Firm)",
+          "doc": "Individual clearing member"
+        },
+        {
+          "value": "5",
+          "name": "PreferredMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Preferred market maker"
+        },
+        {
+          "value": "6",
+          "name": "DirectedMarketMaker",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Directed market maker"
+        },
+        {
+          "value": "7",
+          "name": "Bank",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Bank"
+        },
+        {
+          "value": "8",
+          "name": "Hub",
+          "group": "For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)",
+          "doc": "Hub"
+        },
+        {
+          "value": "9",
+          "name": "PrimaryTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Primary trade repository"
+        },
+        {
+          "value": "10",
+          "name": "OrigTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Original trade repository"
+        },
+        {
+          "value": "11",
+          "name": "AddtnlIntlTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional international trade repository"
+        },
+        {
+          "value": "12",
+          "name": "AddtnlDomesticTrdRepository",
+          "group": "For party role 102 (Data repository)",
+          "doc": "Additional domestic trade repository"
+        },
+        {
+          "value": "13",
+          "name": "RelatedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Related exchange"
+        },
+        {
+          "value": "14",
+          "name": "OptionsExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Options exchange"
+        },
+        {
+          "value": "15",
+          "name": "SpecifiedExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Specified exchange"
+        },
+        {
+          "value": "16",
+          "name": "ConstituentExchange",
+          "group": "For party role 22 (Exchange)",
+          "doc": "Constituent exchange"
+        },
+        {
+          "value": "17",
+          "name": "ExemptFromTradeReporting",
+          "group": "For party role 73 (Execution Venue)",
+          "doc": "Exempt from trade reporting"
+        },
+        {
+          "value": "18",
+          "name": "Current",
+          "group": "For all party roles",
+          "doc": "Current"
+        },
+        {
+          "value": "19",
+          "name": "New",
+          "group": "For all party roles",
+          "doc": "New"
+        },
+        {
+          "value": "20",
+          "name": "DesignatedSponsor",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Designated sponsor"
+        },
+        {
+          "value": "21",
+          "name": "Specialist",
+          "group": "For party role 66 (Market Maker)",
+          "doc": "Specialist"
+        },
+        {
+          "value": "22",
+          "name": "Algorithm",
+          "group": "For party role 12 (Executing trader) or 122 (Investment decision maker)",
+          "doc": "Algorithm"
+        },
+        {
+          "value": "23",
+          "name": "FirmOrLegalEntity",
+          "group": "For all firm / broker type party roles",
+          "doc": "Firm or legal entity"
+        },
+        {
+          "value": "24",
+          "name": "NaturalPerson",
+          "group": "For all trader / customer type party roles",
+          "doc": "Natural person"
+        },
+        {
+          "value": "25",
+          "name": "RegularTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Regular trader"
+        },
+        {
+          "value": "26",
+          "name": "HeadTrader",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Head trader"
+        },
+        {
+          "value": "27",
+          "name": "Supervisor",
+          "group": "For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)",
+          "doc": "Supervisor"
+        },
+        {
+          "value": "28",
+          "name": "TriParty",
+          "group": "For party role 30 (Agent)",
+          "doc": "Tri-party"
+        },
+        {
+          "value": "29",
+          "name": "Lender",
+          "group": "For party role 30 (Agent)",
+          "doc": "Lender"
+        }
+      ],
+      "fix:tag": "1818"
+    }
+  },
+  {
+    "name": "relatedhighprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
+      "display": "RelatedHighPrice",
+      "fix:tag": "1819"
+    }
+  },
+  {
+    "name": "relatedlowprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Lower boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
+      "display": "RelatedLowPrice",
+      "fix:tag": "1820"
+    }
+  },
+  {
+    "name": "relatedpricesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Source for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order. Can be used together with RelatedHighPrice (1819) and/or RelatedLowPrice (1820).",
+      "display": "RelatedPriceSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "NBBid",
+          "doc": "NBB (National Best Bid)"
+        },
+        {
+          "value": "2",
+          "name": "NBOffer",
+          "doc": "NBO (National Best Offer)"
+        }
+      ],
+      "fix:tag": "1821"
+    }
+  },
+  {
+    "name": "minqtymethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates how the minimum quantity should be applied when executing the order.",
+      "display": "MinQtyMethod",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Once",
+          "doc": "Once (applies only to first execution)"
+        },
+        {
+          "value": "2",
+          "name": "Multiple",
+          "doc": "Multiple (applies to every execution)"
+        }
+      ],
+      "fix:tag": "1822"
+    }
+  },
+  {
+    "name": "triggered",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether order has been triggered during its lifetime. Applies to cases where original information, e.g. OrdType(40), is modified when the order is triggered.",
+      "display": "Triggered",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotTriggered",
+          "doc": "Not triggered (default)"
+        },
+        {
+          "value": "1",
+          "name": "Triggered",
+          "doc": "Triggered"
+        },
+        {
+          "value": "2",
+          "name": "StopOrderTriggered",
+          "doc": "Stop order triggered"
+        },
+        {
+          "value": "3",
+          "name": "OCOOrderTriggered",
+          "doc": "One Cancels the Other (OCO) order triggered"
+        },
+        {
+          "value": "4",
+          "name": "OTOOrderTriggered",
+          "doc": "One Triggers the Other (OTO) order triggered"
+        },
+        {
+          "value": "5",
+          "name": "OUOOrderTriggered",
+          "doc": "One Updates the Other (OUO) order triggered"
+        }
+      ],
+      "fix:tag": "1823"
+    }
+  },
+  {
+    "name": "affectedorigclordid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "OrigClOrdID(41) of an order affected by a mass cancel or mass action request.",
+      "display": "AffectedOrigClOrdID",
+      "fix:tag": "1824"
+    }
+  },
+  {
+    "name": "notaffsecondaryorderid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "SecondaryOrderID (198) of an order not affected by a mass cancel or mass action request.",
+      "display": "NotAffSecondaryOrderID",
+      "fix:tag": "1825"
+    }
+  },
+  {
+    "name": "eventtimeperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the event.",
+      "display": "EventTimePeriod",
+      "fix:tag": "1826"
+    }
+  },
+  {
+    "name": "eventtimeunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the event.",
+      "display": "EventTimeUnit",
+      "fix:codes": [
+        {
+          "value": "H",
+          "name": "Hour",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "doc": "Minute"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "doc": "Second"
+        },
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        }
+      ],
+      "fix:tag": "1827"
+    }
+  },
+  {
+    "name": "lastqtyvariance",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When LastQty is an estimated value, e.g. for a Repo \"circled\" trade, LastQtyVariance specifies the absolute amount that the size may vary up or down when finalized. Omitted when LastQty(32) is already final.",
+      "display": "LastQtyVariance",
+      "fix:tag": "1828"
+    }
+  },
+  {
+    "name": "nocrosslegs",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of legs in the side of a cross order.",
+      "display": "NoCrossLegs",
+      "fix:tag": "1829"
+    }
+  },
+  {
+    "name": "settlpriceincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Settlement price increment for stated price range.",
+      "display": "SettlPriceIncrement",
+      "fix:tag": "1830"
+    }
+  },
+  {
+    "name": "settlpricesecondaryincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Secondary settlement price increment for stated price range. The meaning of secondary is left to bilateral agreement, e.g. it may refer to final settlement for a contract.",
+      "display": "SettlPriceSecondaryIncrement",
+      "fix:tag": "1831"
+    }
+  },
+  {
+    "name": "clearedindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the trade or position being reported was cleared through a clearing organization.",
+      "display": "ClearedIndicator",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotCleared",
+          "doc": "Not cleared"
+        },
+        {
+          "value": "1",
+          "name": "Cleared",
+          "doc": "Cleared"
+        },
+        {
+          "value": "2",
+          "name": "Submitted",
+          "doc": "Submitted"
+        },
+        {
+          "value": "3",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "1832"
+    }
+  },
+  {
+    "name": "contractrefpostype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Additional information related to the pricing of a commodity swaps position, specifically an indicator referring to the position type.",
+      "display": "ContractRefPosType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "TwoComponentIntercommoditySpread",
+          "doc": "Two component intercommodity spread"
+        },
+        {
+          "value": "1",
+          "name": "IndexOrBasket",
+          "doc": "Index or basket"
+        },
+        {
+          "value": "2",
+          "name": "TwoComponentLocationBasis",
+          "doc": "Two component locational basis"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1833"
+    }
+  },
+  {
+    "name": "positioncapacity",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to describe the ownership of the position.",
+      "display": "PositionCapacity",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Principal",
+          "doc": "Principal"
+        },
+        {
+          "value": "1",
+          "name": "Agent",
+          "doc": "Agent"
+        },
+        {
+          "value": "2",
+          "name": "Customer",
+          "doc": "Customer"
+        },
+        {
+          "value": "3",
+          "name": "Counterparty",
+          "doc": "Counterparty"
+        }
+      ],
+      "fix:tag": "1834"
+    }
+  },
+  {
+    "name": "posqtyunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the unit of measure if position quantity is expressed in valuation rather than contracts. Conditionally required when PosQtyUnitOfMeasure(1836)=Ccy.",
+      "display": "PosQtyUnitOfMeasureCurrency",
+      "fix:tag": "1835"
+    }
+  },
+  {
+    "name": "posqtyunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the unit of measure of the position quantity when not expressed in contracts.",
+      "display": "PosQtyUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "1836"
+    }
+  },
+  {
+    "name": "underlyingcontractpricerefmonth",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference month if there is no applicable UnderlyingMaturityMonth(313) value for the contract or security.",
+      "display": "UnderlyingContractPriceRefMonth",
+      "fix:tag": "1837"
+    }
+  },
+  {
+    "name": "notradepriceconditions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade price conditions.",
+      "display": "NoTradePriceConditions",
+      "fix:tag": "1838"
+    }
+  },
+  {
+    "name": "tradepricecondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Price conditions in effect at the time of the trade. Multiple price conditions can be in effect at the same time. Price conditions are usually required to be reported in markets that have regulations on price execution at a market or national best bid or offer, and the trade price differs from the best bid or offer.",
+      "display": "TradePriceCondition",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "SpecialCumDividend",
+          "doc": "Special cum dividend (CD)"
+        },
+        {
+          "value": "1",
+          "name": "SpecialCumRights",
+          "doc": "Special cum rights (CR)"
+        },
+        {
+          "value": "2",
+          "name": "SpecialExDividend",
+          "doc": "Special ex dividend (XD)"
+        },
+        {
+          "value": "3",
+          "name": "SpecialExRights",
+          "doc": "Special ex rights (XR)"
+        },
+        {
+          "value": "4",
+          "name": "SpecialCumCoupon",
+          "doc": "Special cum coupon (CC)"
+        },
+        {
+          "value": "5",
+          "name": "SpecialCumCapitalRepayments",
+          "doc": "Special cum capital repayments (CP)"
+        },
+        {
+          "value": "6",
+          "name": "SpecialExCoupon",
+          "doc": "Special ex coupon (XC)"
+        },
+        {
+          "value": "7",
+          "name": "SpecialExCapitalRepayments",
+          "doc": "Special ex capital repayments (XP)"
+        },
+        {
+          "value": "8",
+          "name": "CashSettlement",
+          "doc": "Cash settlement (CS)"
+        },
+        {
+          "value": "9",
+          "name": "SpecialCumBonus",
+          "doc": "Special cum bonus (CB)"
+        },
+        {
+          "value": "10",
+          "name": "SpecialPrice",
+          "doc": "Special price (SP)"
+        },
+        {
+          "value": "11",
+          "name": "SpecialExBonus",
+          "doc": "Special ex bonus (XB)"
+        },
+        {
+          "value": "12",
+          "name": "GuaranteedDelivery",
+          "doc": "Guaranteed delivery (GD)"
+        },
+        {
+          "value": "13",
+          "name": "SpecialDividend",
+          "doc": "Special dividend"
+        },
+        {
+          "value": "14",
+          "name": "PriceImprovement",
+          "doc": "Price improvement"
+        },
+        {
+          "value": "15",
+          "name": "NonPriceFormingTrade",
+          "doc": "Non-price forming trade"
+        },
+        {
+          "value": "16",
+          "name": "TradeExemptedFromTradingObligation",
+          "doc": "Trade exempted from trading obligation"
+        },
+        {
+          "value": "17",
+          "name": "PricePending",
+          "doc": "Price or strike price is pending"
+        },
+        {
+          "value": "18",
+          "name": "PriceNotApplicable",
+          "doc": "Price is not applicable"
+        }
+      ],
+      "fix:tag": "1839"
+    }
+  },
+  {
+    "name": "tradeallocstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the status of an allocation when using a pre-clear workflow.",
+      "display": "TradeAllocStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "PendingClear",
+          "doc": "Pending clear"
+        },
+        {
+          "value": "1",
+          "name": "Claimed",
+          "doc": "Claimed"
+        },
+        {
+          "value": "2",
+          "name": "Cleared",
+          "doc": "Cleared"
+        },
+        {
+          "value": "3",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "1840"
+    }
+  },
+  {
+    "name": "notradeqtys",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade quantities.",
+      "display": "NoTradeQtys",
+      "fix:tag": "1841"
+    }
+  },
+  {
+    "name": "tradeqtytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of trade quantity in TradeQty(1843).",
+      "display": "TradeQtyType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ClearedQuantity",
+          "doc": "Cleared quantity"
+        },
+        {
+          "value": "1",
+          "name": "LongSideClaimedQuantity",
+          "doc": "Long side claimed quantity"
+        },
+        {
+          "value": "2",
+          "name": "ShortSideClaimedQuantity",
+          "doc": "Short side claimed quantity"
+        },
+        {
+          "value": "3",
+          "name": "LongSideRejectedQuantity",
+          "doc": "Long side rejected quantity"
+        },
+        {
+          "value": "4",
+          "name": "ShortSideRejectedQuantity",
+          "doc": "Short side rejected quantity"
+        },
+        {
+          "value": "5",
+          "name": "PendingQuantity",
+          "doc": "Pending quantity"
+        },
+        {
+          "value": "6",
+          "name": "TransactionQuantity",
+          "doc": "Transaction quantity"
+        },
+        {
+          "value": "7",
+          "name": "RemainingQuantity",
+          "doc": "Remaining trade quantity"
+        },
+        {
+          "value": "8",
+          "name": "PreviousRemainingQuantity",
+          "doc": "Previous remaining trade quantity"
+        }
+      ],
+      "fix:tag": "1842"
+    }
+  },
+  {
+    "name": "tradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade quantity.",
+      "display": "TradeQty",
+      "fix:tag": "1843"
+    }
+  },
+  {
+    "name": "notradeallocamts",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade allocation amount entries.",
+      "display": "NoTradeAllocAmts",
+      "fix:tag": "1844"
+    }
+  },
+  {
+    "name": "tradeallocamttype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of the amount associated with a trade allocation.",
+      "display": "TradeAllocAmtType",
+      "fix:codes": [
+        {
+          "value": "CASH",
+          "name": "CashAmount",
+          "doc": "Cash amount (corporate event)"
+        },
+        {
+          "value": "CRES",
+          "name": "CashResidualAmount",
+          "doc": "Cash residual amount"
+        },
+        {
+          "value": "FMTM",
+          "name": "FinalMarkToMarketAmount",
+          "doc": "Final mark-to-market amount"
+        },
+        {
+          "value": "IMTM",
+          "name": "IncrementalMarkToMarketAmount",
+          "doc": "Incremental mark-to-market"
+        },
+        {
+          "value": "PREM",
+          "name": "PremiumAmount",
+          "doc": "Premium amount"
+        },
+        {
+          "value": "SMTM",
+          "name": "StartOfDayMarkToMarketAmount",
+          "doc": "Start of day mark-to-market"
+        },
+        {
+          "value": "TVAR",
+          "name": "TradeVariationAmount",
+          "doc": "Trade variation amount"
+        },
+        {
+          "value": "VADJ",
+          "name": "ValueAdjustedAmount",
+          "doc": "Value adjusted amount"
+        },
+        {
+          "value": "SETL",
+          "name": "SettlementValue",
+          "doc": "Settlement value"
+        },
+        {
+          "value": "ICPN",
+          "name": "InitialTradeCouponAmount",
+          "doc": "Initial trade coupon amount"
+        },
+        {
+          "value": "ACPN",
+          "name": "AccruedCouponAmount",
+          "doc": "Accrued coupon amount"
+        },
+        {
+          "value": "CPN",
+          "name": "CouponAmount",
+          "doc": "Coupon amount"
+        },
+        {
+          "value": "IACPN",
+          "name": "IncrementalAccruedCoupon",
+          "doc": "Incremental accrued coupon"
+        },
+        {
+          "value": "CMTM",
+          "name": "CollateralizedMarkToMarket",
+          "doc": "Collateralized mark-to-market"
+        },
+        {
+          "value": "ICMTM",
+          "name": "IncrementalCollateralizedMarkToMarket",
+          "doc": "Incremental collateralized mark-to-market"
+        },
+        {
+          "value": "DLV",
+          "name": "CompensationAmount",
+          "doc": "Compensation amount"
+        },
+        {
+          "value": "BANK",
+          "name": "TotalBankedAmount",
+          "doc": "Total banked amount"
+        },
+        {
+          "value": "COLAT",
+          "name": "TotalCollateralizedAmount",
+          "doc": "Total collateralized amount"
+        },
+        {
+          "value": "LSNV",
+          "name": "LongPairedSwapNotionalValue",
+          "doc": "Long paired swap or swaption notional value"
+        },
+        {
+          "value": "SSNV",
+          "name": "ShortPairedSwapNotionalValue",
+          "doc": "Short paired swap or swaption notional value"
+        },
+        {
+          "value": "SACPN",
+          "name": "StartOfDayAccruedCoupon",
+          "doc": "Start-of-day accrued coupon"
+        },
+        {
+          "value": "NPV",
+          "name": "NetPresentValue",
+          "doc": "Net present value"
+        },
+        {
+          "value": "SNPV",
+          "name": "StartOfDayNetPresentValue",
+          "doc": "Start-of-day net present value"
+        },
+        {
+          "value": "NCF",
+          "name": "NetCashFlow",
+          "doc": "Net cash flow"
+        },
+        {
+          "value": "PVFEES",
+          "name": "PresentValueOfFees",
+          "doc": "Present value of all fees"
+        },
+        {
+          "value": "PV01",
+          "name": "PresentValueOneBasisPoints",
+          "doc": "Present value of one basis points"
+        },
+        {
+          "value": "5YREN",
+          "name": "FiveYearEquivalentNotional",
+          "doc": "The five year equivalent notional amount"
+        },
+        {
+          "value": "UMTM",
+          "name": "UndiscountedMarkToMarket",
+          "doc": "Undiscounted mark-to-market"
+        },
+        {
+          "value": "MTD",
+          "name": "MarkToModel",
+          "doc": "Mark-to-model"
+        },
+        {
+          "value": "VMTM",
+          "name": "MarkToMarketVariance",
+          "doc": "Mark-to-market variance"
+        },
+        {
+          "value": "VMTD",
+          "name": "MarkToModelVariance",
+          "doc": "Mark-to-model variance"
+        },
+        {
+          "value": "UPFRNT",
+          "name": "UpfrontPayment",
+          "doc": "Upfront payment"
+        },
+        {
+          "value": "ENDV",
+          "name": "EndVale",
+          "doc": "End value"
+        },
+        {
+          "value": "MGNLN",
+          "name": "OutstandingMarginLoan",
+          "doc": "Outstanding margin loan"
+        },
+        {
+          "value": "LNVL",
+          "name": "LoanValue",
+          "doc": "Loan value"
+        }
+      ],
+      "fix:tag": "1845"
+    }
+  },
+  {
+    "name": "tradeallocamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The amount associated with a trade allocation.",
+      "display": "TradeAllocAmt",
+      "fix:tag": "1846"
+    }
+  },
+  {
+    "name": "tradealloccurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Currency denomination of the trade allocation amount.",
+      "display": "TradeAllocCurrency",
+      "fix:tag": "1847"
+    }
+  },
+  {
+    "name": "tradeallocgroupinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction on how to add a trade to an allocation group when it is being given-up.",
+      "display": "TradeAllocGroupInstruction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Add",
+          "doc": "Add to an existing allocation group if one exists."
+        },
+        {
+          "value": "1",
+          "name": "DoNotAdd",
+          "doc": "Do not add the trade to an allocation group."
+        }
+      ],
+      "fix:tag": "1848"
+    }
+  },
+  {
+    "name": "offsetinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the trade is a result of an offset or onset.",
+      "display": "OffsetInstruction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Offset",
+          "doc": "Offset"
+        },
+        {
+          "value": "1",
+          "name": "Onset",
+          "doc": "Onset"
+        }
+      ],
+      "fix:tag": "1849"
+    }
+  },
+  {
+    "name": "tradeallocamtreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the reason for an amount type when reported on an allocation. Useful when multiple instances of the same amount type are reported.",
+      "display": "TradeAllocAmtReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "OptionsSettlement",
+          "doc": "Options settlement"
+        },
+        {
+          "value": "1",
+          "name": "PendingErosionAdjustment",
+          "doc": "Pending erosion adjustment"
+        },
+        {
+          "value": "2",
+          "name": "FinalErosionAdjustment",
+          "doc": "Final erosion adjustment"
+        },
+        {
+          "value": "3",
+          "name": "TearUpCouponAmount",
+          "doc": "Tear-up coupon amount"
+        },
+        {
+          "value": "4",
+          "name": "PriceAlignmentInterest",
+          "doc": "Price alignment interest"
+        },
+        {
+          "value": "5",
+          "name": "DeliveryInvoiceCharges",
+          "doc": "Delivery invoice charges"
+        },
+        {
+          "value": "6",
+          "name": "DeliveryStorageCharges",
+          "doc": "Delivery storage charges"
+        }
+      ],
+      "fix:tag": "1850"
+    }
+  },
+  {
+    "name": "strategylinkid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the multileg strategy (e.g. spread) to which the trade belongs. This links together trade legs executed as part of a strategy during a single match event.",
+      "display": "StrategyLinkID",
+      "fix:tag": "1851"
+    }
+  },
+  {
+    "name": "sideavgpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Calculated average price for this side of the trade.",
+      "display": "SideAvgPx",
+      "fix:tag": "1852"
+    }
+  },
+  {
+    "name": "sideavgpxindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate whether a trade or a sub-allocation should be allocated at the trade price (e.g. no average pricing), or whether it should be grouped with other trades/sub-allocations and allocated at the average price of the group.",
+      "display": "SideAvgPxIndicator",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NoAveragePricing",
+          "aliases": [
+            "NoAvgPricing"
+          ],
+          "doc": "No average pricing"
+        },
+        {
+          "value": "1",
+          "name": "Trade",
+          "aliases": [
+            "TradeIsPartAvgPriceGrp"
+          ],
+          "doc": "Trade is part of an average price group identified by the AvgPxGroupID(1731)"
+        },
+        {
+          "value": "2",
+          "name": "LastTrade",
+          "aliases": [
+            "LastTradeIsPartAvgPriceGrp"
+          ],
+          "doc": "Last trade of the average price group identified by the AvgPxGroupID(1731)"
+        },
+        {
+          "value": "3",
+          "name": "NotionalValueAveragePxGroupTrade",
+          "doc": "Trade is part of a notional value average price group"
+        },
+        {
+          "value": "4",
+          "name": "AveragePricedTrade",
+          "doc": "Trade is average priced"
+        }
+      ],
+      "fix:tag": "1853"
+    }
+  },
+  {
+    "name": "sideavgpxgroupid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The identifier for the average price group for the trade side. See also AvgPxGroupID(1731).",
+      "display": "SideAvgPxGroupID",
+      "fix:tag": "1854"
+    }
+  },
+  {
+    "name": "norelatedtrades",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related trades.",
+      "display": "NoRelatedTrades",
+      "fix:tag": "1855"
+    }
+  },
+  {
+    "name": "relatedtradeid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of a related trade.",
+      "display": "RelatedTradeID",
+      "fix:tag": "1856"
+    }
+  },
+  {
+    "name": "relatedtradeidsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the source of the identifier that RelatedTradeID(1856) represents.",
+      "display": "RelatedTradeIDSource",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NonFIXSource",
+          "doc": "Non-FIX source"
+        },
+        {
+          "value": "1",
+          "name": "TradeID",
+          "doc": "Trade ID"
+        },
+        {
+          "value": "2",
+          "name": "SecondaryTradeID",
+          "doc": "Secondary trade ID"
+        },
+        {
+          "value": "3",
+          "name": "TradeReportID",
+          "doc": "Trade report ID"
+        },
+        {
+          "value": "4",
+          "name": "FirmTradeID",
+          "doc": "Firm trade ID"
+        },
+        {
+          "value": "5",
+          "name": "SecondaryFirmTradeID",
+          "doc": "Secondary firm Trade ID"
+        },
+        {
+          "value": "6",
+          "name": "RegulatoryTradeID",
+          "doc": "Regulatory trade ID"
+        }
+      ],
+      "fix:tag": "1857"
+    }
+  },
+  {
+    "name": "relatedtradedate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Date of a related trade.",
+      "display": "RelatedTradeDate",
+      "fix:tag": "1858"
+    }
+  },
+  {
+    "name": "relatedtrademarketid",
+    "dtype": {
+      "type": "mic"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market of execution of related trade.",
+      "display": "RelatedTradeMarketID",
+      "fix:tag": "1859"
+    }
+  },
+  {
+    "name": "relatedtradequantity",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity of the related trade which can be less than or equal to the actual quantity of the related trade. For example, when one trade offsets another across asset classes.",
+      "display": "RelatedTradeQuantity",
+      "fix:tag": "1860"
+    }
+  },
+  {
+    "name": "norelatedpositions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related positions.",
+      "display": "NoRelatedPositions",
+      "fix:tag": "1861"
+    }
+  },
+  {
+    "name": "relatedpositionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of a related position.",
+      "display": "RelatedPositionID",
+      "fix:tag": "1862"
+    }
+  },
+  {
+    "name": "relatedpositionidsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the source of the identifier that RelatedPositionID(1862) represents.",
+      "display": "RelatedPositionIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "PosMaintRptID",
+          "doc": "Position maintenance report ID - PosMaintRptID(721)"
+        },
+        {
+          "value": "2",
+          "name": "TransferID",
+          "doc": "Position transfer ID - TransferID(2437)"
+        },
+        {
+          "value": "3",
+          "name": "PositionEntityID",
+          "doc": "Position entity ID - PositionID(2618)"
+        }
+      ],
+      "fix:tag": "1863"
+    }
+  },
+  {
+    "name": "relatedpositiondate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to help identify the position when RelatedPositionID(1862) is not unique across multiple days. This date is generally the creation date of the identifier.",
+      "display": "RelatedPositionDate",
+      "fix:tag": "1864"
+    }
+  },
+  {
+    "name": "quoteackstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Acknowledgement status of a Quote(35=S) or QuoteCancel(35=Z) message submission.",
+      "display": "QuoteAckStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ReceivedNotYetProcessed",
+          "doc": "Received, not yet processed"
+        },
+        {
+          "value": "1",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "1865"
+    }
+  },
+  {
+    "name": "strikeindex",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the index used to calculate the strike price.",
+      "display": "StrikeIndex",
+      "fix:tag": "1866"
+    }
+  },
+  {
+    "name": "offerid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for the ask side of the quote assigned by the quote issuer.",
+      "display": "OfferID",
+      "fix:tag": "1867"
+    }
+  },
+  {
+    "name": "novaluechecks",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of value check entries.",
+      "display": "NoValueChecks",
+      "fix:tag": "1868"
+    }
+  },
+  {
+    "name": "valuechecktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of value to be checked.",
+      "display": "ValueCheckType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "PriceCheck",
+          "doc": "Price check"
+        },
+        {
+          "value": "2",
+          "name": "NotionalValueCheck",
+          "doc": "Notional value check"
+        },
+        {
+          "value": "3",
+          "name": "QuantityCheck",
+          "doc": "Quantity check"
+        }
+      ],
+      "fix:tag": "1869"
+    }
+  },
+  {
+    "name": "valuecheckaction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Action to be taken for the ValueCheckType(1869).",
+      "display": "ValueCheckAction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "DoNotCheck",
+          "doc": "Do not check"
+        },
+        {
+          "value": "1",
+          "name": "Check",
+          "doc": "Check"
+        },
+        {
+          "value": "2",
+          "name": "BestEffort",
+          "doc": "Best effort"
+        }
+      ],
+      "fix:tag": "1870"
+    }
+  },
+  {
+    "name": "legsecurityxmllen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The length of the LegSecurityXML(1872) data block.",
+      "display": "LegSecurityXMLLen",
+      "fix:tag": "1871"
+    }
+  },
+  {
+    "name": "legsecurityxml",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "XML definition for the leg security.",
+      "display": "LegSecurityXML",
+      "fix:tag": "1872"
+    }
+  },
+  {
+    "name": "legsecurityxmlschema",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schema used to validate the contents of LegSecurityXML(1872).",
+      "display": "LegSecurityXMLSchema",
+      "fix:tag": "1873"
+    }
+  },
+  {
+    "name": "underlyingsecurityxmllen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The length of the UnderlyingSecurityXML(1875) data block.",
+      "display": "UnderlyingSecurityXMLLen",
+      "fix:tag": "1874"
+    }
+  },
+  {
+    "name": "underlyingsecurityxml",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "XML definition for the underlying security.",
+      "display": "UnderlyingSecurityXML",
+      "fix:tag": "1875"
+    }
+  },
+  {
+    "name": "underlyingsecurityxmlschema",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schema used to validate the contents of UnderlyingSecurityXML(1875).",
+      "display": "UnderlyingSecurityXMLSchema",
+      "fix:tag": "1876"
+    }
+  },
+  {
+    "name": "partydetailrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result party detail definition request.",
+      "display": "PartyDetailRequestResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party(-ies)"
+        },
+        {
+          "value": "2",
+          "name": "InvalidRelatedParty",
+          "doc": "Invalid related party(-ies)"
+        },
+        {
+          "value": "3",
+          "name": "InvalidPartyStatus",
+          "doc": "Invalid party status(es)"
+        },
+        {
+          "value": "98",
+          "name": "NotAuthorized",
+          "doc": "Not authorized"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1877"
+    }
+  },
+  {
+    "name": "partydetailrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party details definition request.",
+      "display": "PartyDetailRequestStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "AcceptedWithChanges",
+          "doc": "Accepted with changes"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "3",
+          "name": "AcceptancePending",
+          "doc": "Acceptance pending"
+        }
+      ],
+      "fix:tag": "1878"
+    }
+  },
+  {
+    "name": "partydetaildefinitionstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party detail definition for one party.",
+      "display": "PartyDetailDefinitionStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "AcceptedWithChanges",
+          "doc": "Accepted with changes"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "1879"
+    }
+  },
+  {
+    "name": "partydetaildefinitionresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of party detail definition for one party.",
+      "display": "PartyDetailDefinitionResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party(-ies)"
+        },
+        {
+          "value": "2",
+          "name": "InvalidRelatedParty",
+          "doc": "Invalid related party(-ies)"
+        },
+        {
+          "value": "3",
+          "name": "InvalidPartyStatus",
+          "doc": "Invalid party status(es)"
+        },
+        {
+          "value": "98",
+          "name": "NotAuthorized",
+          "doc": "Not authorized"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1880"
+    }
+  },
+  {
+    "name": "entitlementrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of risk limit definition request.",
+      "display": "EntitlementRequestResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party(-ies)"
+        },
+        {
+          "value": "2",
+          "name": "InvalidRelatedParty",
+          "doc": "Invalid related party(-ies)"
+        },
+        {
+          "value": "3",
+          "name": "InvalidEntitlementType",
+          "doc": "Invalid entitlement type(s)"
+        },
+        {
+          "value": "4",
+          "name": "InvalidEntitlementID",
+          "doc": "Invalid entitlement ID(s) / ref ID(s)"
+        },
+        {
+          "value": "5",
+          "name": "InvalidEntitlementAttribute",
+          "doc": "Invalid entitlement attribute(s)"
+        },
+        {
+          "value": "6",
+          "name": "InvalidInstrumentScope",
+          "doc": "Invalid instrument scope(s)"
+        },
+        {
+          "value": "7",
+          "name": "InvalidMarketSegmentScope",
+          "doc": "Invalid market segment scope(s)"
+        },
+        {
+          "value": "8",
+          "name": "InvalidStartDate",
+          "doc": "Invalid start date"
+        },
+        {
+          "value": "9",
+          "name": "InvalidEndDate",
+          "doc": "Invalid end date"
+        },
+        {
+          "value": "10",
+          "name": "InstrumentScopeNotSupported",
+          "doc": "Instrument scope not supported"
+        },
+        {
+          "value": "11",
+          "name": "MarketSegmentScopeNotSupported",
+          "doc": "Market segment scope not supported"
+        },
+        {
+          "value": "12",
+          "name": "EntitlementNotApprovedForParty",
+          "doc": "Entitlement not approved for party(-ies)"
+        },
+        {
+          "value": "13",
+          "name": "EntitlementAlreadyDefinedForParty",
+          "doc": "Entitlement already defined for party(-ies)"
+        },
+        {
+          "value": "14",
+          "name": "InstrumentNotApprovedForParty",
+          "doc": "Instrument not approved for party(-ies)"
+        },
+        {
+          "value": "98",
+          "name": "NotAuthorized",
+          "doc": "Not authorized"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1881"
+    }
+  },
+  {
+    "name": "entitlementrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party entitlements definition request.",
+      "display": "EntitlementRequestStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "AcceptedWithChanges",
+          "doc": "Accepted with changes"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "3",
+          "name": "AcceptancePending",
+          "doc": "Acceptance pending"
+        }
+      ],
+      "fix:tag": "1882"
+    }
+  },
+  {
+    "name": "entitlementstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of entitlement definition for one party.",
+      "display": "EntitlementStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "AcceptedWithChanges",
+          "doc": "Accepted with changes"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "3",
+          "name": "Pending",
+          "doc": "Pending"
+        },
+        {
+          "value": "4",
+          "name": "Requested",
+          "doc": "Requested"
+        },
+        {
+          "value": "5",
+          "name": "Deferred",
+          "doc": "Deferred"
+        }
+      ],
+      "fix:tag": "1883"
+    }
+  },
+  {
+    "name": "entitlementresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of entitlement definition for one party.",
+      "display": "EntitlementResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party(-ies)"
+        },
+        {
+          "value": "2",
+          "name": "InvalidRelatedParty",
+          "doc": "Invalid related party(-ies)"
+        },
+        {
+          "value": "3",
+          "name": "InvalidEntitlementType",
+          "doc": "Invalid entitlement type(s)"
+        },
+        {
+          "value": "4",
+          "name": "InvalidEntitlementID",
+          "doc": "Invalid entitlement ID(s) / ref ID(s)"
+        },
+        {
+          "value": "5",
+          "name": "InvalidEntitlementAttribute",
+          "doc": "Invalid entitlement attribute(s)"
+        },
+        {
+          "value": "6",
+          "name": "InvalidInstrumentScope",
+          "doc": "Invalid instrument scope(s)"
+        },
+        {
+          "value": "7",
+          "name": "InvalidMarketSegmentScope",
+          "doc": "Invalid market segment scope(s)"
+        },
+        {
+          "value": "8",
+          "name": "InvalidStartDate",
+          "doc": "Invalid start date"
+        },
+        {
+          "value": "9",
+          "name": "InvalidEndDate",
+          "doc": "Invalid end date"
+        },
+        {
+          "value": "10",
+          "name": "InstrumentScopeNotSupported",
+          "doc": "Instrument scope not supported"
+        },
+        {
+          "value": "11",
+          "name": "MarketSegmentScopeNotSupported",
+          "doc": "Market segment scope not supported"
+        },
+        {
+          "value": "12",
+          "name": "EntitlementNotApprovedForParty",
+          "doc": "Entitlement not approved for party(-ies)"
+        },
+        {
+          "value": "13",
+          "name": "EntitlementAlreadyDefinedForParty",
+          "doc": "Entitlement already defined for party(-ies)"
+        },
+        {
+          "value": "14",
+          "name": "InstrumentNotApprovedForParty",
+          "doc": "Instrument not approved for party(-ies)"
+        },
+        {
+          "value": "98",
+          "name": "NotAuthorized",
+          "doc": "Not authorized"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1884"
+    }
+  },
+  {
+    "name": "entitlementrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to an EntitlementID(1776). Used for modification or deletion of an entitlement.",
+      "display": "EntitlementRefID",
+      "fix:tag": "1885"
+    }
+  },
+  {
+    "name": "settlpriceunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the unit of measure of the settlement price if different from the contract.",
+      "display": "SettlPriceUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "1886"
+    }
+  },
+  {
+    "name": "settlpriceunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the settlement price unit of measure if expressed in another currency than the base currency.",
+      "display": "SettlPriceUnitOfMeasureCurrency",
+      "fix:tag": "1887"
+    }
+  },
+  {
+    "name": "tradematchtimestamp",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Timestamp of the match event. For off-exchange trades the time at which the deal was matched by the exchange.",
+      "display": "TradeMatchTimestamp",
+      "fix:tag": "1888"
+    }
+  },
+  {
+    "name": "noinstrmtmatchsides",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instrument match sides.",
+      "display": "NoInstrmtMatchSides",
+      "fix:tag": "1889"
+    }
+  },
+  {
+    "name": "notrdmatchsides",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade match sides.",
+      "display": "NoTrdMatchSides",
+      "fix:tag": "1890"
+    }
+  },
+  {
+    "name": "trdmatchsubid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify each price level, step or clip within a match event.",
+      "display": "TrdMatchSubID",
+      "fix:tag": "1891"
+    }
+  },
+  {
+    "name": "nolegexecs",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instrument leg executions.",
+      "display": "NoLegExecs",
+      "fix:tag": "1892"
+    }
+  },
+  {
+    "name": "legexecid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The ExecID(17) value corresponding to a trade leg.",
+      "display": "LegExecID",
+      "fix:tag": "1893"
+    }
+  },
+  {
+    "name": "legtradeid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The TradeID(1003) value corresponding to a trade leg.",
+      "display": "LegTradeID",
+      "fix:tag": "1894"
+    }
+  },
+  {
+    "name": "legtradereportid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The TradeReportID(571) value corresponding to a trade leg.",
+      "display": "LegTradeReportID",
+      "fix:tag": "1895"
+    }
+  },
+  {
+    "name": "tradematchackstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate the status of the trade match report submission.",
+      "display": "TradeMatchAckStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ReceivedNotProcessed",
+          "doc": "Received, not yet processed"
+        },
+        {
+          "value": "1",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "1896"
+    }
+  },
+  {
+    "name": "tradematchrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reason the trade match report submission was rejected.",
+      "display": "TradeMatchRejectReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful"
+        },
+        {
+          "value": "1",
+          "name": "InvalidPartyInformation",
+          "doc": "Invalid party information"
+        },
+        {
+          "value": "2",
+          "name": "UnknownInstrument",
+          "doc": "Unknown instrument"
+        },
+        {
+          "value": "3",
+          "name": "Unauthorized",
+          "doc": "Not authorized to report trades"
+        },
+        {
+          "value": "4",
+          "name": "InvalidTradeType",
+          "doc": "Invalid trade type"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1897"
+    }
+  },
+  {
+    "name": "sidemarketsegmentid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the market segment of the side.",
+      "display": "SideMarketSegmentID",
+      "fix:tag": "1898"
+    }
+  },
+  {
+    "name": "sidevenuetype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of venue where the trade was executed for the side.",
+      "display": "SideVenueType",
+      "fix:codes": [
+        {
+          "value": "E",
+          "name": "Electronic",
+          "doc": "Electronic exchange"
+        },
+        {
+          "value": "P",
+          "name": "Pit",
+          "doc": "Pit"
+        },
+        {
+          "value": "X",
+          "name": "ExPit",
+          "doc": "Ex-pit"
+        },
+        {
+          "value": "C",
+          "name": "ClearingHouse",
+          "doc": "Clearinghouse"
+        },
+        {
+          "value": "R",
+          "name": "RegisteredMarket",
+          "doc": "Registered market"
+        },
+        {
+          "value": "O",
+          "name": "OffMarket",
+          "doc": "Off-market"
+        },
+        {
+          "value": "B",
+          "name": "CentralLimitOrderBook",
+          "doc": "Central limit order book"
+        },
+        {
+          "value": "Q",
+          "name": "QuoteDrivenMarket",
+          "doc": "Quote driven market"
+        },
+        {
+          "value": "D",
+          "name": "DarkOrderBook",
+          "doc": "Dark order book"
+        },
+        {
+          "value": "A",
+          "name": "AuctionDrivenMarket",
+          "doc": "Auction driven market"
+        },
+        {
+          "value": "N",
+          "name": "QuoteNegotiation",
+          "doc": "Quote negotiation"
+        },
+        {
+          "value": "V",
+          "name": "VoiceNegotiation",
+          "doc": "Voice negotiation"
+        },
+        {
+          "value": "H",
+          "name": "HybridMarket",
+          "doc": "Hybrid market"
+        },
+        {
+          "value": "z",
+          "name": "OtherMarket",
+          "doc": "Other market (lowercase \"z\")"
+        }
+      ],
+      "fix:tag": "1899"
+    }
+  }
+]

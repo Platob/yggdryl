@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampaymentdate"
+          "fix:field": "paymentstreampaymentdate",
+          "fix:tag": "41221"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampaymentdatetype"
+          "fix:field": "paymentstreampaymentdatetype",
+          "fix:tag": "41222"
         }
       }
     ]

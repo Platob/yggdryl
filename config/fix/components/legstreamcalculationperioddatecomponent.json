@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddate"
+          "fix:field": "legstreamcalculationperioddate",
+          "fix:tag": "41639"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddatetype"
+          "fix:field": "legstreamcalculationperioddatetype",
+          "fix:tag": "41640"
         }
       }
     ]

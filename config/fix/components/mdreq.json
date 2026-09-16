@@ -10,7 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdentrytype"
+          "fix:field": "mdentrytype",
+          "fix:tag": "269"
         }
       }
     ]

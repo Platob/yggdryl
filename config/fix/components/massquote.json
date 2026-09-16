@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotereqid"
+          "fix:field": "quotereqid",
+          "fix:tag": "131"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quoteid"
+          "fix:field": "quoteid",
+          "fix:tag": "117"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotetype"
+          "fix:field": "quotetype",
+          "fix:tag": "537"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotemodeltype"
+          "fix:field": "quotemodeltype",
+          "fix:tag": "2403"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteresponselevel"
+          "fix:field": "quoteresponselevel",
+          "fix:tag": "301"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account"
+          "fix:field": "account",
+          "fix:tag": "1"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource"
+          "fix:field": "acctidsource",
+          "fix:tag": "660"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "accounttype"
+          "fix:field": "accounttype",
+          "fix:tag": "581"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defbidsize"
+          "fix:field": "defbidsize",
+          "fix:tag": "293"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defoffersize"
+          "fix:field": "defoffersize",
+          "fix:tag": "294"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noquotesets"
+          "fix:field": "noquotesets",
+          "fix:tag": "296"
         }
       },
       {
@@ -160,7 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "selfmatchpreventionid"
+          "fix:field": "selfmatchpreventionid",
+          "fix:tag": "2362"
         }
       },
       {
@@ -170,7 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "selfmatchpreventioninstruction"
+          "fix:field": "selfmatchpreventioninstruction",
+          "fix:tag": "2964"
         }
       },
       {
@@ -180,7 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttleinst"
+          "fix:field": "throttleinst",
+          "fix:tag": "1685"
         }
       },
       {
@@ -190,7 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid"
+          "fix:field": "complianceid",
+          "fix:tag": "376"
         }
       },
       {
@@ -200,7 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext"
+          "fix:field": "compliancetext",
+          "fix:tag": "2404"
         }
       },
       {
@@ -210,7 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetextlen"
+          "fix:field": "encodedcompliancetextlen",
+          "fix:tag": "2351"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetext"
+          "fix:field": "encodedcompliancetext",
+          "fix:tag": "2352"
         }
       },
       {

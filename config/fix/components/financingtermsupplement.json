@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "financingtermsupplementdesc"
+          "fix:field": "financingtermsupplementdesc",
+          "fix:tag": "40047"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "financingtermsupplementdate"
+          "fix:field": "financingtermsupplementdate",
+          "fix:tag": "40048"
         }
       }
     ]

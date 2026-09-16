@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxmllen"
+          "fix:field": "legsecurityxmllen",
+          "fix:tag": "1871"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxml"
+          "fix:field": "legsecurityxml",
+          "fix:tag": "1872"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxmlschema"
+          "fix:field": "legsecurityxmlschema",
+          "fix:tag": "1873"
         }
       }
     ]

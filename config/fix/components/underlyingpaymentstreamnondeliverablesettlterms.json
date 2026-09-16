@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablerefcurrency"
+          "fix:field": "underlyingpaymentstreamnondeliverablerefcurrency",
+          "fix:tag": "40648"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention",
+          "fix:tag": "40649"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters"
+          "fix:field": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
+          "fix:tag": "40968"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto",
+          "fix:tag": "40651"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod",
+          "fix:tag": "40652"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit",
+          "fix:tag": "40653"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype"
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "fix:tag": "40654"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingnondeliverablefixingdates"
+          "fix:field": "nounderlyingnondeliverablefixingdates",
+          "fix:tag": "40656"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingsettlratefallbacks"
+          "fix:field": "nounderlyingsettlratefallbacks",
+          "fix:tag": "40659"
         }
       },
       {

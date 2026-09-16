@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlpaymentdate"
+          "fix:field": "provisioncashsettlpaymentdate",
+          "fix:tag": "40172"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlpaymentdatetype"
+          "fix:field": "provisioncashsettlpaymentdatetype",
+          "fix:tag": "40173"
         }
       }
     ]

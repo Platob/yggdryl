@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedateunadjusted"
+          "fix:field": "underlyingstreameffectivedateunadjusted",
+          "fix:tag": "40057"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedatebusinessdayconvention"
+          "fix:field": "underlyingstreameffectivedatebusinessdayconvention",
+          "fix:tag": "40058"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreameffectivedatebusinesscenters"
+          "fix:field": "nounderlyingstreameffectivedatebusinesscenters",
+          "fix:tag": "40975"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedaterelativeto"
+          "fix:field": "underlyingstreameffectivedaterelativeto",
+          "fix:tag": "40060"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedateoffsetperiod"
+          "fix:field": "underlyingstreameffectivedateoffsetperiod",
+          "fix:tag": "40061"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedateoffsetunit"
+          "fix:field": "underlyingstreameffectivedateoffsetunit",
+          "fix:tag": "40062"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedateoffsetdaytype"
+          "fix:field": "underlyingstreameffectivedateoffsetdaytype",
+          "fix:tag": "40063"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreameffectivedateadjusted"
+          "fix:field": "underlyingstreameffectivedateadjusted",
+          "fix:tag": "40064"
         }
       }
     ]

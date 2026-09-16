@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreportid"
+          "fix:field": "securityreportid",
+          "fix:tag": "964"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreqid"
+          "fix:field": "securityreqid",
+          "fix:tag": "320"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponseid"
+          "fix:field": "securityresponseid",
+          "fix:tag": "322"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponsetype"
+          "fix:field": "securityresponsetype",
+          "fix:tag": "323"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate"
+          "fix:field": "clearingbusinessdate",
+          "fix:tag": "715"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityupdateaction"
+          "fix:field": "securityupdateaction",
+          "fix:tag": "980"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "corporateaction"
+          "fix:field": "corporateaction",
+          "fix:tag": "292"
         }
       },
       {
@@ -130,7 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -150,7 +158,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments"
+          "fix:field": "norelatedinstruments",
+          "fix:tag": "1647"
         }
       },
       {
@@ -170,7 +179,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -180,7 +190,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -190,7 +201,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "previousadjustedopeninterest"
+          "fix:field": "previousadjustedopeninterest",
+          "fix:tag": "2572"
         }
       },
       {
@@ -200,7 +212,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "previousunadjustedopeninterest"
+          "fix:field": "previousunadjustedopeninterest",
+          "fix:tag": "2573"
         }
       },
       {
@@ -210,7 +223,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "priorsettlprice"
+          "fix:field": "priorsettlprice",
+          "fix:tag": "734"
         }
       },
       {
@@ -220,7 +234,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -230,7 +245,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -240,7 +256,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {
@@ -250,7 +267,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostipulations"
+          "fix:field": "nostipulations",
+          "fix:tag": "232"
         }
       },
       {
@@ -270,7 +288,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numofsimpleinstruments"
+          "fix:field": "numofsimpleinstruments",
+          "fix:tag": "1606"
         }
       },
       {
@@ -280,7 +299,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numofcomplexinstruments"
+          "fix:field": "numofcomplexinstruments",
+          "fix:tag": "2562"
         }
       },
       {
@@ -290,7 +310,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -330,7 +351,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments"
+          "fix:field": "nomarketsegments",
+          "fix:tag": "1310"
         }
       },
       {
@@ -350,7 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime"
+          "fix:field": "lastupdatetime",
+          "fix:tag": "779"
         }
       },
       {
@@ -360,7 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivebusinessdate"
+          "fix:field": "effectivebusinessdate",
+          "fix:tag": "2400"
         }
       },
       {
@@ -370,7 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {

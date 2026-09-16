@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnrateinformationsource"
+          "fix:field": "underlyingreturnrateinformationsource",
+          "fix:tag": "43061"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratereferencepage"
+          "fix:field": "underlyingreturnratereferencepage",
+          "fix:tag": "43062"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratereferencepageheading"
+          "fix:field": "underlyingreturnratereferencepageheading",
+          "fix:tag": "43063"
         }
       }
     ]

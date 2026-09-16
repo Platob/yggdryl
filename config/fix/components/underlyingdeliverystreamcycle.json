@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamcycledesc"
+          "fix:field": "underlyingdeliverystreamcycledesc",
+          "fix:tag": "41805"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingdeliverystreamcycledesclen"
+          "fix:field": "encodedunderlyingdeliverystreamcycledesclen",
+          "fix:tag": "41806"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingdeliverystreamcycledesc"
+          "fix:field": "encodedunderlyingdeliverystreamcycledesc",
+          "fix:tag": "41807"
         }
       }
     ]

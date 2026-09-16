@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestamp"
+          "fix:field": "alloctrdregtimestamp",
+          "fix:tag": "3009"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestamptype"
+          "fix:field": "alloctrdregtimestamptype",
+          "fix:tag": "3010"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestampsrc"
+          "fix:field": "alloctrdregtimestampsrc",
+          "fix:tag": "3011"
         }
       }
     ]

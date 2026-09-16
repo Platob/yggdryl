@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "advid"
+          "fix:field": "advid",
+          "fix:tag": "2"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "advtranstype"
+          "fix:field": "advtranstype",
+          "fix:tag": "5"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "advrefid"
+          "fix:field": "advrefid",
+          "fix:tag": "3"
         }
       },
       {
@@ -80,7 +83,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -100,7 +104,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -120,7 +125,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments"
+          "fix:field": "norelatedinstruments",
+          "fix:tag": "1647"
         }
       },
       {
@@ -140,7 +146,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "advside"
+          "fix:field": "advside",
+          "fix:tag": "4"
         }
       },
       {
@@ -150,7 +157,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quantity"
+          "fix:field": "quantity",
+          "fix:tag": "53"
         }
       },
       {
@@ -160,7 +168,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "qtytype"
+          "fix:field": "qtytype",
+          "fix:tag": "854"
         }
       },
       {
@@ -170,7 +179,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price"
+          "fix:field": "price",
+          "fix:tag": "44"
         }
       },
       {
@@ -180,7 +190,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -190,7 +201,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -200,7 +212,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate"
+          "fix:field": "tradedate",
+          "fix:tag": "75"
         }
       },
       {
@@ -210,7 +223,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -220,7 +234,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -230,7 +245,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -240,7 +256,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {
@@ -250,7 +267,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "urllink"
+          "fix:field": "urllink",
+          "fix:tag": "149"
         }
       },
       {
@@ -260,7 +278,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastmkt"
+          "fix:field": "lastmkt",
+          "fix:tag": "30"
         }
       },
       {
@@ -270,7 +289,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -280,7 +300,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -290,7 +311,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noroutingids"
+          "fix:field": "noroutingids",
+          "fix:tag": "215"
         }
       },
       {

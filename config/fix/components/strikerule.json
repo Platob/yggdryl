@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeruleid"
+          "fix:field": "strikeruleid",
+          "fix:tag": "1223"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "startstrikepxrange"
+          "fix:field": "startstrikepxrange",
+          "fix:tag": "1202"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endstrikepxrange"
+          "fix:field": "endstrikepxrange",
+          "fix:tag": "1203"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeincrement"
+          "fix:field": "strikeincrement",
+          "fix:tag": "1204"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeexercisestyle"
+          "fix:field": "strikeexercisestyle",
+          "fix:tag": "1304"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomaturityrules"
+          "fix:field": "nomaturityrules",
+          "fix:tag": "1236"
         }
       },
       {

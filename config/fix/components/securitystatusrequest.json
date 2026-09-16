@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securitystatusreqid"
+          "fix:field": "securitystatusreqid",
+          "fix:tag": "324"
         }
       },
       {
@@ -60,7 +61,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings"
+          "fix:field": "nounderlyings",
+          "fix:tag": "711"
         }
       },
       {
@@ -80,7 +82,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -100,7 +103,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments"
+          "fix:field": "norelatedinstruments",
+          "fix:tag": "1647"
         }
       },
       {
@@ -120,7 +124,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -130,7 +135,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -140,7 +146,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {
@@ -150,7 +157,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid"
+          "fix:field": "marketid",
+          "fix:tag": "1301"
         }
       },
       {
@@ -160,7 +168,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid"
+          "fix:field": "marketsegmentid",
+          "fix:tag": "1300"
         }
       },
       {
@@ -170,7 +179,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "venuetype"
+          "fix:field": "venuetype",
+          "fix:tag": "1430"
         }
       },
       {
@@ -180,7 +190,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid"
+          "fix:field": "tradingsessionid",
+          "fix:tag": "336"
         }
       },
       {
@@ -190,7 +201,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid"
+          "fix:field": "tradingsessionsubid",
+          "fix:tag": "625"
         }
       },
       {
@@ -200,7 +212,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmode"
+          "fix:field": "tradsesmode",
+          "fix:tag": "339"
         }
       },
       {
@@ -210,7 +223,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionenvironment"
+          "fix:field": "tradingsessionenvironment",
+          "fix:tag": "3139"
         }
       },
       {

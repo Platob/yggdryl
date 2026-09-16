@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "indexrollmonth"
+          "fix:field": "indexrollmonth",
+          "fix:tag": "2733"
         }
       }
     ]

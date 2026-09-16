@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingaccounttype"
+          "fix:field": "clearingaccounttype",
+          "fix:tag": "1816"
         }
       }
     ]

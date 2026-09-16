@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "rfqreqid"
+          "fix:field": "rfqreqid",
+          "fix:tag": "644"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {
@@ -70,7 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {
@@ -80,7 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "privatequote"
+          "fix:field": "privatequote",
+          "fix:tag": "1171"
         }
       },
       {

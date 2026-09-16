@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliertype"
+          "fix:field": "marketdisruptionfallbackunderliertype",
+          "fix:tag": "41097"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecurityid"
+          "fix:field": "marketdisruptionfallbackunderliersecurityid",
+          "fix:tag": "41098"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecurityidsource"
+          "fix:field": "marketdisruptionfallbackunderliersecurityidsource",
+          "fix:tag": "41099"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecuritydesc"
+          "fix:field": "marketdisruptionfallbackunderliersecuritydesc",
+          "fix:tag": "41100"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesclen"
+          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
+          "fix:tag": "41101"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesc"
+          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesc",
+          "fix:tag": "41102"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackopenunits"
+          "fix:field": "marketdisruptionfallbackopenunits",
+          "fix:tag": "41103"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackbasketcurrency"
+          "fix:field": "marketdisruptionfallbackbasketcurrency",
+          "fix:tag": "41104"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackbasketdivisor"
+          "fix:field": "marketdisruptionfallbackbasketdivisor",
+          "fix:tag": "41105"
         }
       }
     ]

@@ -33,11 +33,10 @@
 //! anything else is a value the message stated, and what the message stated
 //! stands.
 
-use std::sync::Arc;
-
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use super::build::{stated as stated_field, typed_spelling};
+use super::entry::wire_text;
 use super::msg::FixMsg;
 use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
@@ -352,19 +351,6 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
 /// rendering; a string and a code are themselves. A `state` answers its stored
 /// spelling, which [`matches`] never reaches: a state is compared through
 /// [`State::from_spelling`] and never rendered back to a code.
-fn wire_text(value: &Scalar) -> Option<SmolStr> {
-    match value {
-        Scalar::String(_) | Scalar::Code(_) | Scalar::Enum(_) => value.as_str().map(SmolStr::new),
-        Scalar::Boolean(_) => value
-            .as_bool()
-            .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
-        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
-        Scalar::Version(held) => Some(format_smolstr!("{held}")),
-        // Every number and temporal writes its leaf's own canonical text.
-        other => other.leaf_display().map(|held| format_smolstr!("{held}")),
-    }
-}
-
 /// The source's own value under a constant its rule writes back to it: the
 /// constant where the whole value is one the rule's condition named, else the
 /// held tokens with the named one replaced - `ExecInst` `G T` restated at `T`
@@ -699,6 +685,16 @@ impl<'msg> Restater<'msg> {
                     level.apply(write);
                 }
                 remaining -= 1;
+                // A field the specification deprecated is restated and not
+                // kept: what it said now lives under what replaced it, and
+                // a second copy under the retired name would be a second
+                // owner of one fact.
+                if let Child::Flat(field, value) = &mut level.children[at] {
+                    if field.as_fix().deprecated().is_some() {
+                        *value = Scalar::Null;
+                        break;
+                    }
+                }
                 if level.value_at(at) == before.as_ref() {
                     break;
                 }
@@ -962,7 +958,7 @@ fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
 ///
 /// Returns the schema grammar's refusal when the restated children do not
 /// make a root, or the refusal [`FixMsg::with_registry`] raises.
-pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
+pub(super) fn restate(mut msg: FixMsg) -> Result<FixMsg> {
     let root = msg.as_field();
     let Some(children) = root.dtype().as_fields() else {
         return Ok(msg);
@@ -972,7 +968,7 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
         let restater = Restater {
             msg: &msg,
             registry: msg.registry(),
-            msgtype: msg.get_by_tag(35).and_then(Scalar::as_str),
+            msgtype: Some(msg.header().msgtype()).filter(|held| !held.is_empty()),
         };
         restater
             .level(Level::unpack(children, values), None)?
@@ -986,13 +982,6 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
         root.is_nullable(),
         root.metadata.clone(),
     );
-    let registry = Arc::clone(msg.registry());
-    let entries = msg.into_entries();
-    FixMsg::settled_parts(
-        registry,
-        root,
-        Scalar::from_sequence(values),
-        entries,
-        super::identity::Assertions::default(),
-    )
+    msg.replace_content(root, values)?;
+    Ok(msg)
 }

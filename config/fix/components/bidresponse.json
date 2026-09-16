@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid"
+          "fix:field": "bidid",
+          "fix:tag": "390"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clientbidid"
+          "fix:field": "clientbidid",
+          "fix:tag": "391"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nobidcomponents"
+          "fix:field": "nobidcomponents",
+          "fix:tag": "420"
         }
       },
       {

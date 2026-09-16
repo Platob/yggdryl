@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldateunadjusted"
+          "fix:field": "underlyingcashsettldateunadjusted",
+          "fix:tag": "42790"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldatebusinessdayconvention"
+          "fix:field": "underlyingcashsettldatebusinessdayconvention",
+          "fix:tag": "42791"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcashsettldatebusinesscenters"
+          "fix:field": "nounderlyingcashsettldatebusinesscenters",
+          "fix:tag": "42788"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldaterelativeto"
+          "fix:field": "underlyingcashsettldaterelativeto",
+          "fix:tag": "42792"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldateoffsetperiod"
+          "fix:field": "underlyingcashsettldateoffsetperiod",
+          "fix:tag": "42793"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldateoffsetunit"
+          "fix:field": "underlyingcashsettldateoffsetunit",
+          "fix:tag": "42794"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldateoffsetdaytype"
+          "fix:field": "underlyingcashsettldateoffsetdaytype",
+          "fix:tag": "42795"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldateadjusted"
+          "fix:field": "underlyingcashsettldateadjusted",
+          "fix:tag": "42796"
         }
       }
     ]

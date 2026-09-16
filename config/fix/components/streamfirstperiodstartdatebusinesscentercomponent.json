@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamfirstperiodstartdatebusinesscenter"
+          "fix:field": "streamfirstperiodstartdatebusinesscenter",
+          "fix:tag": "40077"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdaterelativeto"
+          "fix:field": "legdividendfxtriggerdaterelativeto",
+          "fix:tag": "42357"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetperiod"
+          "fix:field": "legdividendfxtriggerdateoffsetperiod",
+          "fix:tag": "42358"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetunit"
+          "fix:field": "legdividendfxtriggerdateoffsetunit",
+          "fix:tag": "42359"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetdaytype"
+          "fix:field": "legdividendfxtriggerdateoffsetdaytype",
+          "fix:tag": "42360"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateunadjusted"
+          "fix:field": "legdividendfxtriggerdateunadjusted",
+          "fix:tag": "42361"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdatebusinessdayconvention"
+          "fix:field": "legdividendfxtriggerdatebusinessdayconvention",
+          "fix:tag": "42362"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdividendfxtriggerdatebusinesscenters"
+          "fix:field": "nolegdividendfxtriggerdatebusinesscenters",
+          "fix:tag": "42364"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateadjusted"
+          "fix:field": "legdividendfxtriggerdateadjusted",
+          "fix:tag": "42363"
         }
       }
     ]

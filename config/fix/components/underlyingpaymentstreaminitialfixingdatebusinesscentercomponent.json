@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreaminitialfixingdatebusinesscenter"
+          "fix:field": "underlyingpaymentstreaminitialfixingdatebusinesscenter",
+          "fix:tag": "40600"
         }
       }
     ]

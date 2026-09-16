@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartysubid"
+          "fix:field": "settlpartysubid",
+          "fix:tag": "785"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartysubidtype"
+          "fix:field": "settlpartysubidtype",
+          "fix:tag": "786"
         }
       }
     ]

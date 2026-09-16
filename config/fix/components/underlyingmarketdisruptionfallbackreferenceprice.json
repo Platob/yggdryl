@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliertype"
+          "fix:field": "underlyingmarketdisruptionfallbackunderliertype",
+          "fix:tag": "41869"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityid"
+          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityid",
+          "fix:tag": "41870"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityidsource"
+          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
+          "fix:tag": "41871"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecuritydesc"
+          "fix:field": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
+          "fix:tag": "41872"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen"
+          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen",
+          "fix:tag": "41873"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc"
+          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc",
+          "fix:tag": "41874"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackopenunits"
+          "fix:field": "underlyingmarketdisruptionfallbackopenunits",
+          "fix:tag": "41875"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackbasketcurrency"
+          "fix:field": "underlyingmarketdisruptionfallbackbasketcurrency",
+          "fix:tag": "41876"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackbasketdivisor"
+          "fix:field": "underlyingmarketdisruptionfallbackbasketdivisor",
+          "fix:tag": "41877"
         }
       }
     ]

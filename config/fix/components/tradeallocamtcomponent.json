@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeallocamttype"
+          "fix:field": "tradeallocamttype",
+          "fix:tag": "1845"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeallocamt"
+          "fix:field": "tradeallocamt",
+          "fix:tag": "1846"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradealloccurrency"
+          "fix:field": "tradealloccurrency",
+          "fix:tag": "1847"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradealloccurrencycodesource"
+          "fix:field": "tradealloccurrencycodesource",
+          "fix:tag": "2933"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeallocamtreason"
+          "fix:field": "tradeallocamtreason",
+          "fix:tag": "1850"
         }
       }
     ]

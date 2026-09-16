@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingrateindex"
+          "fix:field": "legdividendfloatingrateindex",
+          "fix:tag": "42312"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingrateindexcurveperiod"
+          "fix:field": "legdividendfloatingrateindexcurveperiod",
+          "fix:tag": "42313"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingrateindexcurveunit"
+          "fix:field": "legdividendfloatingrateindexcurveunit",
+          "fix:tag": "42314"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingratemultiplier"
+          "fix:field": "legdividendfloatingratemultiplier",
+          "fix:tag": "42315"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingratespread"
+          "fix:field": "legdividendfloatingratespread",
+          "fix:tag": "42316"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingratespreadpositiontype"
+          "fix:field": "legdividendfloatingratespreadpositiontype",
+          "fix:tag": "42317"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloatingratetreatment"
+          "fix:field": "legdividendfloatingratetreatment",
+          "fix:tag": "42318"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendcaprate"
+          "fix:field": "legdividendcaprate",
+          "fix:tag": "42319"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendcapratebuyside"
+          "fix:field": "legdividendcapratebuyside",
+          "fix:tag": "42320"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendcapratesellside"
+          "fix:field": "legdividendcapratesellside",
+          "fix:tag": "42321"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloorrate"
+          "fix:field": "legdividendfloorrate",
+          "fix:tag": "42322"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloorratebuyside"
+          "fix:field": "legdividendfloorratebuyside",
+          "fix:tag": "42323"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfloorratesellside"
+          "fix:field": "legdividendfloorratesellside",
+          "fix:tag": "42324"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendinitialrate"
+          "fix:field": "legdividendinitialrate",
+          "fix:tag": "42325"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfinalrateroundingdirection"
+          "fix:field": "legdividendfinalrateroundingdirection",
+          "fix:tag": "42326"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfinalrateprecision"
+          "fix:field": "legdividendfinalrateprecision",
+          "fix:tag": "42327"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaveragingmethod"
+          "fix:field": "legdividendaveragingmethod",
+          "fix:tag": "42328"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendnegativeratetreatment"
+          "fix:field": "legdividendnegativeratetreatment",
+          "fix:tag": "42329"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdatebusinesscenter"
+          "fix:field": "legpaymentschedulefixingdatebusinesscenter",
+          "fix:tag": "40400"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settltype"
+          "fix:field": "settltype",
+          "fix:tag": "63"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrysize"
+          "fix:field": "mdentrysize",
+          "fix:tag": "271"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstreamid"
+          "fix:field": "mdstreamid",
+          "fix:tag": "1500"
         }
       }
     ]

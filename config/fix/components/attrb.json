@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrattribtype"
+          "fix:field": "instrattribtype",
+          "fix:tag": "871"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrattribvalue"
+          "fix:field": "instrattribvalue",
+          "fix:tag": "872"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisedate"
+          "fix:field": "underlyingoptionexercisedate",
+          "fix:tag": "41842"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisedatetype"
+          "fix:field": "underlyingoptionexercisedatetype",
+          "fix:tag": "41843"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "spread"
+          "fix:field": "spread",
+          "fix:tag": "218"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvecurrency"
+          "fix:field": "benchmarkcurvecurrency",
+          "fix:tag": "220"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvecurrencycodesource"
+          "fix:field": "benchmarkcurvecurrencycodesource",
+          "fix:tag": "2950"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvename"
+          "fix:field": "benchmarkcurvename",
+          "fix:tag": "221"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvepoint"
+          "fix:field": "benchmarkcurvepoint",
+          "fix:tag": "222"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkprice"
+          "fix:field": "benchmarkprice",
+          "fix:tag": "662"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkpricetype"
+          "fix:field": "benchmarkpricetype",
+          "fix:tag": "663"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarksecurityid"
+          "fix:field": "benchmarksecurityid",
+          "fix:tag": "699"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarksecurityidsource"
+          "fix:field": "benchmarksecurityidsource",
+          "fix:tag": "761"
         }
       }
     ]

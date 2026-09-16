@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionprovision"
+          "fix:field": "legmarketdisruptionprovision",
+          "fix:tag": "41462"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionevents"
+          "fix:field": "nolegmarketdisruptionevents",
+          "fix:tag": "41467"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbackprovision"
+          "fix:field": "legmarketdisruptionfallbackprovision",
+          "fix:tag": "41463"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionfallbacks"
+          "fix:field": "nolegmarketdisruptionfallbacks",
+          "fix:tag": "41469"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionfallbackreferenceprices"
+          "fix:field": "nolegmarketdisruptionfallbackreferenceprices",
+          "fix:tag": "41471"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionmaximumdays"
+          "fix:field": "legmarketdisruptionmaximumdays",
+          "fix:tag": "41464"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionmaterialitypercentage"
+          "fix:field": "legmarketdisruptionmaterialitypercentage",
+          "fix:tag": "41465"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionminimumfuturescontracts"
+          "fix:field": "legmarketdisruptionminimumfuturescontracts",
+          "fix:tag": "41466"
         }
       }
     ]

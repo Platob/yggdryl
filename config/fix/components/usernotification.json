@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nousernames"
+          "fix:field": "nousernames",
+          "fix:tag": "809"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userstatus"
+          "fix:field": "userstatus",
+          "fix:tag": "926"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nothrottles"
+          "fix:field": "nothrottles",
+          "fix:tag": "1610"
         }
       },
       {
@@ -70,7 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -80,7 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

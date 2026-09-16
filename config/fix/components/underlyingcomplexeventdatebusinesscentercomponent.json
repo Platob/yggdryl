@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdatebusinesscenter"
+          "fix:field": "underlyingcomplexeventdatebusinesscenter",
+          "fix:tag": "41738"
         }
       }
     ]

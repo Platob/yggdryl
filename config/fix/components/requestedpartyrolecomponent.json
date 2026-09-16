@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "requestedpartyrole"
+          "fix:field": "requestedpartyrole",
+          "fix:tag": "1509"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "requestedpartyrolequalifier"
+          "fix:field": "requestedpartyrolequalifier",
+          "fix:tag": "2386"
         }
       }
     ]

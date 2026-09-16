@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametername"
+          "fix:field": "testsuiteparametername",
+          "fix:tag": "3127"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametertype"
+          "fix:field": "testsuiteparametertype",
+          "fix:tag": "3128"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametervalue"
+          "fix:field": "testsuiteparametervalue",
+          "fix:tag": "3129"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlobligsource"
+          "fix:field": "settlobligsource",
+          "fix:tag": "1164"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbtype"
+          "fix:field": "standinstdbtype",
+          "fix:tag": "169"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbname"
+          "fix:field": "standinstdbname",
+          "fix:tag": "170"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbid"
+          "fix:field": "standinstdbid",
+          "fix:tag": "171"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlpartyids"
+          "fix:field": "nosettlpartyids",
+          "fix:tag": "781"
         }
       },
       {

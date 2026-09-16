@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldatebusinesscenter"
+          "fix:field": "cashsettldatebusinesscenter",
+          "fix:tag": "42215"
         }
       }
     ]

@@ -62,14 +62,14 @@
 //! by none. A dictionary is one reading of the protocol rather than a history
 //! of it, so a field is the field, under the one name and datatype the
 //! dictionary gives it. A spelling an earlier version used reaches it as one
-//! of its alternate [names](FixField::names), stated by whoever built the
+//! of its alternate [names](crate::FixField::names), stated by whoever built the
 //! dictionary; nothing here derives one from a date.
 //!
 //! What a *value* was is the field's own business and stays: a
 //! [code](FixCode) an older version declared is a code of the set like any
 //! other, and a [`fix:replacements`](FixReplacement) rule says how a
-//! retired field or value is restated - which is what
-//! [`FixCodec::enrich_message`] applies.
+//! retired field or value is restated - which every
+//! [parse](FixCodec::parse_line) applies.
 //!
 //! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
 //! separators - so a query spelled in any case or with any separator finds
@@ -132,7 +132,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Result};
 
 mod aliases;
-mod anomaly;
 mod cfi;
 // Batching is the crate's Arrow surface seen from FIX, so it exists exactly
 // where that surface does.
@@ -157,8 +156,6 @@ mod global;
 mod group_plan;
 mod identity;
 mod latest;
-mod lifecycle;
-mod lift;
 mod memo;
 mod messages;
 mod msg;
@@ -171,23 +168,22 @@ mod store;
 mod tests;
 mod ulbridge;
 
-pub use anomaly::{FixAnomalies, FixAnomaly};
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    ALTIDS_TAG_NAME, BIDCURRENCY_TAG_NAME, BLOOMBERGCODE_TAG_NAME, BRIDGESESSIONID_TAG_NAME,
-    CODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREATEDAT_TAG_NAME, CUSIPCODE_TAG_NAME,
-    EXPIREDAT_TAG_NAME, INSTIDS_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
-    MSGDIRECTION_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, MSGTYPE_TAG_NAME,
-    NOFIXENTRIES_TAG_NAME, OFFERCURRENCY_TAG_NAME, PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME,
-    PLUGINID_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVPLUGINID_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
-    RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SENDERSESSIONID_TAG_NAME, SENDERSESSIONNAME_TAG_NAME,
-    SESSIONMSGID_TAG_NAME, SESSIONMSGSEQID_TAG_NAME, SNAPSHOTAT_TAG_NAME, SOURCEURL_TAG_NAME,
-    STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME, TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME,
-    UPDATEDAT_TAG_NAME, VERSION_TAG_NAME, fix_crate_fields, is_crate_tag,
+    ASKCURRENCY_TAG_NAME, ASKUNIT_TAG_NAME, BIDCURRENCY_TAG_NAME, BIDUNIT_TAG_NAME,
+    BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREATUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
+    CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME,
+    EXPIRUNIX_TAG_NAME, FIXMSG_TAG_NAME, HASHCODE_TAG_NAME, IDENTIFIERS_TAG_NAME,
+    ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
+    MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME,
+    PARENTUUIDS_TAG_NAME, PLUGINID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, PX_TAG_NAME,
+    QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
+    SOURCEURL_TAG_NAME, STATE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME, fix_crate_fields,
+    is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -195,8 +191,7 @@ pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns
 pub use document::{Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
-pub use lifecycle::FixLifecycle;
-pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
+pub use identity::{FixCapture, FixHeader};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
@@ -205,8 +200,8 @@ pub use replacements::{FixReplacement, FixReplacementEntry, FixReplacements};
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
-    BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNNAMED_ENTRY,
-    fix_column_of, fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
+    BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, fix_column_of,
+    fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 
 /// A digest as everything outside this crate holds it.

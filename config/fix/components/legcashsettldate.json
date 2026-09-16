@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateunadjusted"
+          "fix:field": "legcashsettldateunadjusted",
+          "fix:tag": "42299"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldatebusinessdayconvention"
+          "fix:field": "legcashsettldatebusinessdayconvention",
+          "fix:tag": "42300"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcashsettldatebusinesscenters"
+          "fix:field": "nolegcashsettldatebusinesscenters",
+          "fix:tag": "42306"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldaterelativeto"
+          "fix:field": "legcashsettldaterelativeto",
+          "fix:tag": "42301"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetperiod"
+          "fix:field": "legcashsettldateoffsetperiod",
+          "fix:tag": "42302"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetunit"
+          "fix:field": "legcashsettldateoffsetunit",
+          "fix:tag": "42303"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetdaytype"
+          "fix:field": "legcashsettldateoffsetdaytype",
+          "fix:tag": "42304"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateadjusted"
+          "fix:field": "legcashsettldateadjusted",
+          "fix:tag": "42305"
         }
       }
     ]

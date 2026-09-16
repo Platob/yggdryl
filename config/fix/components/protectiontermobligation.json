@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermobligationtype"
+          "fix:field": "protectiontermobligationtype",
+          "fix:tag": "40202"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermobligationvalue"
+          "fix:field": "protectiontermobligationvalue",
+          "fix:tag": "40203"
         }
       }
     ]

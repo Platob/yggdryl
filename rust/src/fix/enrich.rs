@@ -79,11 +79,15 @@
 //! it beside what it would have kept of a compiled list, and every door -
 //! the enrichment and the row fill alike - answers it until a field changes.
 
+use std::collections::VecDeque;
 use std::fmt;
+use std::iter::FusedIterator;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
+use crate::graph::{Element, EventIterator};
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar};
 
 use super::msg::FixMsg;
@@ -117,6 +121,14 @@ impl Derivation {
         if value.is_null() {
             return None;
         }
+        // A decimal target takes any number the grammar answers - a float
+        // column, an integer, text - as the exact decimal it restates, which
+        // is what every crate price and quantity is.
+        let value = if self.field.dtype() == &DataType::DECIMAL {
+            Scalar::from(crate::types::Decimal::from_scalar(&value)?)
+        } else {
+            value
+        };
         self.field.scalar(value).ok()
     }
 }
@@ -185,7 +197,7 @@ impl Input {
     /// What `msg` states for this column, or null.
     fn read(&self, msg: &FixMsg) -> Scalar {
         match self.source {
-            Source::Field(tag) => msg.indexed_by_tag(tag).cloned().unwrap_or(Scalar::Null),
+            Source::Field(tag) => msg.indexed_by_tag(tag).unwrap_or(Scalar::Null),
             Source::Group(counter) => msg
                 .index_of_group(counter)
                 .and_then(|at| msg.as_value().get(at))
@@ -497,162 +509,21 @@ impl Refused {
 /// and allocates nothing. Only a tag the message holds no child for at all is
 /// taken - a stated null is a child, and a message that said "nothing sent"
 /// said it.
-/// What a row's projection dropped, lifted back out of the arrival record.
+/// Fills what `msg` implies, leaving what it stated alone.
 ///
-/// The one door a [format](super::FixCodec::format_messages) opens before it
-/// fills a message field. A row is a projection: a column the row it came
-/// from did not carry is in the arrival record and nowhere else, so
-/// formatting a narrower row into a wider field reads the record for what
-/// the narrower one lost.
-///
-/// It fills and never overwrites, so it is idempotent and free where nothing
-/// was dropped: a message parsed from a line already holds a child for every
-/// tag its record names, and the walk writes nothing.
-///
-/// What it cannot answer is what the record does not say. A bridge's packed
-/// occurrence is one pair the codec unpacked into members, a composed key is
-/// one pair the codec resolved onto another field, and a row-header capture
-/// never arrived on the wire at all - the record keeps each as the bridge
-/// wrote it, under tag zero where nothing resolved it, because an arrival is
-/// what arrived. Those readings are the codec's, so a
-/// row that drops their columns has dropped them.
-pub(super) fn lifted(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
-    recovered(registry, msg)
-}
-
-fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
-    let mut dropped: Vec<(i32, Scalar)> = Vec::new();
-    let mut groups: Vec<(SmolStr, Scalar)> = Vec::new();
-    for entry in msg.entries() {
-        let tag = entry.tag();
-        // `0` is an unresolved key - a name or number with no registry
-        // identity - and a tag the message holds needs
-        // nothing: the record is read for what the projection lost, never to
-        // restate what survived it.
-        if tag <= 0 || msg.get_by_tag(tag).is_some() {
-            continue;
-        }
-        if dropped.iter().any(|(held, _)| *held == tag) {
-            continue;
-        }
-        // A pair that headed a subtree is a group's counter, and the
-        // occurrences it heads come back as the group the dictionary
-        // declares - never as a count with nothing under it. The group is
-        // written under its own name, because a counter's tag names the
-        // count and the group is the thing beside it.
-        if !entry.children().is_empty() {
-            if let Some(group) = registry.get_group_by_tag(tag) {
-                if let Some(value) = occurrences_of(group, entry.children()) {
-                    let count = value.as_sequence().map_or(0, <[Scalar]>::len);
-                    groups.push((SmolStr::new(group.name()), value));
-                    dropped.push((tag, Scalar::from(i32::try_from(count).unwrap_or(i32::MAX))));
-                }
-            }
-            continue;
-        }
-        let Some(text) = entry.value().as_str() else {
-            continue;
-        };
-        // The dictionary's own field reads the spelling, which is what the
-        // builder read on the way in: a FIX timestamp, a code's name and a
-        // decimal are spellings the generic value contract does not know, and
-        // a value lifted back out of the record has to come back as what went
-        // in. A spelling the field refuses is the null the row would hold
-        // anyway. `Scalar::from(&str)` holds the text as the compact string
-        // it is, for a tag no dictionary explains.
-        let value = registry.get_field_by_tag(tag).map_or_else(
-            || Scalar::from(text),
-            |field| super::build::typed_spelling(field, text),
-        );
-        if !value.is_null() {
-            dropped.push((tag, value));
-        }
-    }
-    for (tag, value) in dropped {
-        // Unresolved keys recorded tag 0 and were skipped above, so only a
-        // positive tag reaches this write; one the dictionary lacks is kept
-        // under its decimal spelling, as `set` keeps any such tag.
-        let _ = msg.set(tag, value);
-    }
-    for (name, value) in groups {
-        let _ = msg.set(name.as_str(), value);
-    }
-    msg
-}
-
-/// One group's occurrences, rebuilt from the entries that arrived under its
-/// counter.
-///
-/// An occurrence opens on the group's declared delimiter - its first member,
-/// which is what FIX says opens one - and on any member the occurrence being
-/// filled has already stated, which is what a venue writing its members in
-/// its own order still says. A member the dictionary does not declare for
-/// this group is not this group's, so it is left where the record has it; a
-/// nested counter's own subtree comes back through the same walk.
-///
-/// `None` where nothing was rebuilt, so a group that says nothing writes
-/// nothing rather than an empty list the message never stated.
-fn occurrences_of(group: &Field, entries: &[super::FixEntry]) -> Option<Scalar> {
-    let members = super::schema::item_fields(group)?;
-    let tags: Vec<Option<i32>> = members
-        .iter()
-        .map(|member| member.as_fix().tag().ok().flatten())
-        .collect();
-    let mut rows: Vec<Vec<Scalar>> = Vec::new();
-    let mut stated: Vec<bool> = Vec::new();
-    for entry in entries {
-        let Some(at) = tags.iter().position(|held| *held == Some(entry.tag())) else {
-            continue;
-        };
-        // The first declared member opens an occurrence, and so does a
-        // member the one being filled already stated.
-        if rows.is_empty() || at == 0 || stated[at] {
-            rows.push(vec![Scalar::Null; members.len()]);
-            stated = vec![false; members.len()];
-        }
-        let member = &members[at];
-        let value = if entry.children().is_empty() {
-            entry
-                .value()
-                .as_str()
-                .map(|text| super::build::typed_spelling(member, text))
-                .filter(|held| !held.is_null())
-        } else {
-            occurrences_of(member, entry.children()).and_then(|held| member.scalar(held).ok())
-        };
-        if let Some(value) = value {
-            let last = rows.len() - 1;
-            rows[last][at] = value;
-            stated[at] = true;
-        }
-    }
-    if rows.is_empty() {
-        return None;
-    }
-    Some(Scalar::from_sequence(
-        rows.into_iter().map(Scalar::from_sequence),
-    ))
-}
-
-/// Fills what `msg` implies, leaving what it stated and what arrived alone.
-///
-/// Four steps in order: what the row's projection
-/// dropped comes back off the arrival record; the message is restated under
-/// the dictionary the registry holds; the registry's derivations fill what the
-/// message implies, to a fixpoint; and the component's identifier
-/// declaration fills the sorted `altids` Map. Every answer lands in the row
-/// alone, typed by the dictionary's own field for the tag, so a derived
-/// column is indistinguishable from a stated one and carries the same
-/// display, description and `fix:tag` a reader resolves it by - and a value
-/// it refuses, such as an identifier whose check digit does not close, is
-/// silence. A declared identifier that cannot spell text is silence too: it
-/// is left out of the Map rather than allowed to refuse the message.
+/// Four steps in order, and the last step of every parse. The message is
+/// restated under the dictionary the registry holds; the registry's
+/// derivations fill what the message implies, to a fixpoint; the
+/// component's identifier declaration fills the names the message goes by;
+/// and an order's lanes fill from its price and side. Every answer lands
+/// where the fact lives - a typed fact on its holder, anything else in the
+/// row, typed by the dictionary's own field for the tag - so a derived
+/// value is indistinguishable from a stated one, and a value the field
+/// refuses, such as an identifier whose check digit does not close, is
+/// silence. A declared identifier that cannot spell text is silence too:
+/// it is left out rather than allowed to refuse the message.
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
-    // What the row's projection dropped comes back off the arrival record
-    // first, because restatement reads what the document stated and a row
-    // states only its columns.
-    let msg = recovered(registry, msg);
-    // Restatement next, and not as a step a caller may skip: every
+    // Restatement first, and not as a step a caller may skip: every
     // derivation reads by canonical name, and a child stored under an alias
     // is invisible until it has been canonicalized.
     let mut held = super::latest::restate(msg)?;
@@ -660,23 +531,112 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.
     registry.derivations()?.fill_all(&mut held)?;
-    if held
-        .get_by_tag(super::ALTIDS_TAG_NAME.0)
-        .is_none_or(Scalar::is_null)
-    {
-        // Held compactly rather than as a `String`: a message type is one to
-        // three characters, which stays inside the value.
-        let msgtype = SmolStr::new(
-            held.get_by_tag(35)
-                .and_then(Scalar::as_str)
-                .unwrap_or_default(),
-        );
-        if let Some(component) = registry.get_msgtype(&msgtype) {
-            held.set(
-                super::ALTIDS_TAG_NAME.0,
-                component.identifier_mapping(&held)?,
-            )?;
+    if held.get_identifiers().is_empty() {
+        if let Some(component) = registry.get_msgtype(held.header().msgtype()) {
+            let identifiers = component.identifier_mapping(&held)?;
+            if !identifiers.is_null() {
+                held.set(super::IDENTIFIERS_TAG_NAME.0, identifiers)?;
+            }
         }
     }
+    held.fill_order_lanes();
     Ok(held)
 }
+
+/// The errors a stream met, kept aside while the walk reads past them.
+type Failures = Arc<Mutex<VecDeque<Error>>>;
+
+/// A stream of messages walked: the one [`EventIterator`] over the messages
+/// in the order they come, so each is stated as the message after the live
+/// one it follows.
+///
+/// The walk reads elements and not results, so a source error is kept
+/// aside while the walk reads past it and yielded before the message the
+/// walk pulled past it, which keeps the order the source had. A failure
+/// never advances the walk.
+pub(super) struct Walked<I> {
+    walk: EventIterator<FixMsg, Sieve<I>>,
+    failures: Failures,
+    /// The message the walk pulled while a failure was met, owed after it.
+    pending: Option<FixMsg>,
+}
+
+/// The source read as messages, its failures kept aside.
+struct Sieve<I> {
+    source: I,
+    failures: Failures,
+}
+
+fn failed(failures: &Failures) -> Option<Error> {
+    failures
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .pop_front()
+}
+
+impl<I> Iterator for Sieve<I>
+where
+    I: Iterator<Item = Result<FixMsg>>,
+{
+    type Item = FixMsg;
+
+    fn next(&mut self) -> Option<FixMsg> {
+        loop {
+            match self.source.next()? {
+                Ok(message) => return Some(message),
+                Err(error) => self
+                    .failures
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push_back(error),
+            }
+        }
+    }
+}
+
+impl<I> Walked<I>
+where
+    I: Iterator<Item = Result<FixMsg>>,
+{
+    pub(super) fn new(source: I) -> Self {
+        let failures: Failures = Arc::new(Mutex::new(VecDeque::new()));
+        let sieve = Sieve {
+            source,
+            failures: Arc::clone(&failures),
+        };
+        // Collected and sorted by instant, not streamed: a capture's order is
+        // the order its lines were written, and a message's instant is the
+        // clock it states, so two messages of one chain routinely arrive out
+        // of their own order and a walk over the stream would refuse to chain
+        // them.
+        Self {
+            walk: EventIterator::new(sieve, false),
+            failures,
+            pending: None,
+        }
+    }
+}
+
+impl<I> Iterator for Walked<I>
+where
+    I: Iterator<Item = Result<FixMsg>>,
+{
+    type Item = Result<FixMsg>;
+
+    fn next(&mut self) -> Option<Result<FixMsg>> {
+        if let Some(error) = failed(&self.failures) {
+            return Some(Err(error));
+        }
+        if let Some(message) = self.pending.take() {
+            return Some(Ok(message));
+        }
+        let next = self.walk.next();
+        if let Some(error) = failed(&self.failures) {
+            self.pending = next;
+            return Some(Err(error));
+        }
+        next.map(Ok)
+    }
+}
+
+impl<I> FusedIterator for Walked<I> where I: Iterator<Item = Result<FixMsg>> {}

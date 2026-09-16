@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxcurrencysymbol"
+          "fix:field": "legreturnratefxcurrencysymbol",
+          "fix:tag": "42531"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxrate"
+          "fix:field": "legreturnratefxrate",
+          "fix:tag": "42532"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxratecalc"
+          "fix:field": "legreturnratefxratecalc",
+          "fix:tag": "42533"
         }
       }
     ]

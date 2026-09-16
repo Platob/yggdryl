@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingratespreadinitialvalue"
+          "fix:field": "underlyingratespreadinitialvalue",
+          "fix:tag": "43004"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingratespreadsteps"
+          "fix:field": "nounderlyingratespreadsteps",
+          "fix:tag": "43005"
         }
       },
       {

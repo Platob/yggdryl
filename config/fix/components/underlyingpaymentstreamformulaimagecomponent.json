@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulaimagelength"
+          "fix:field": "underlyingpaymentstreamformulaimagelength",
+          "fix:tag": "42947"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulaimage"
+          "fix:field": "underlyingpaymentstreamformulaimage",
+          "fix:tag": "42948"
         }
       }
     ]

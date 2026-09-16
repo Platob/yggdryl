@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratesource"
+          "fix:field": "legpaymentscheduleratesource",
+          "fix:tag": "40415"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratesourcetype"
+          "fix:field": "legpaymentscheduleratesourcetype",
+          "fix:tag": "40416"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulereferencepage"
+          "fix:field": "legpaymentschedulereferencepage",
+          "fix:tag": "40417"
         }
       }
     ]

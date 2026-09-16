@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditybase"
+          "fix:field": "underlyingstreamcommoditybase",
+          "fix:tag": "41964"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditytype"
+          "fix:field": "underlyingstreamcommoditytype",
+          "fix:tag": "41965"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysecurityid"
+          "fix:field": "underlyingstreamcommoditysecurityid",
+          "fix:tag": "41966"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysecurityidsource"
+          "fix:field": "underlyingstreamcommoditysecurityidsource",
+          "fix:tag": "41967"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcommodityaltids"
+          "fix:field": "nounderlyingstreamcommodityaltids",
+          "fix:tag": "41990"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditydesc"
+          "fix:field": "underlyingstreamcommoditydesc",
+          "fix:tag": "41968"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingstreamcommoditydesclen"
+          "fix:field": "encodedunderlyingstreamcommoditydesclen",
+          "fix:tag": "41969"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingstreamcommoditydesc"
+          "fix:field": "encodedunderlyingstreamcommoditydesc",
+          "fix:tag": "41970"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditydeliverypricingregion"
+          "fix:field": "underlyingstreamcommoditydeliverypricingregion",
+          "fix:tag": "42589"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamassetattributes"
+          "fix:field": "nounderlyingstreamassetattributes",
+          "fix:tag": "41800"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityunitofmeasure"
+          "fix:field": "underlyingstreamcommodityunitofmeasure",
+          "fix:tag": "41971"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditycurrency"
+          "fix:field": "underlyingstreamcommoditycurrency",
+          "fix:tag": "41972"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityexchange"
+          "fix:field": "underlyingstreamcommodityexchange",
+          "fix:tag": "41973"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityratesource"
+          "fix:field": "underlyingstreamcommodityratesource",
+          "fix:tag": "41974"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityratereferencepage"
+          "fix:field": "underlyingstreamcommodityratereferencepage",
+          "fix:tag": "41975"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityratereferencepageheading"
+          "fix:field": "underlyingstreamcommodityratereferencepageheading",
+          "fix:tag": "41976"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamdataprovider"
+          "fix:field": "underlyingstreamdataprovider",
+          "fix:tag": "41977"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcommoditydatasources"
+          "fix:field": "nounderlyingstreamcommoditydatasources",
+          "fix:tag": "41993"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditypricingtype"
+          "fix:field": "underlyingstreamcommoditypricingtype",
+          "fix:tag": "41978"
         }
       },
       {
@@ -230,7 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditynearbysettldayperiod"
+          "fix:field": "underlyingstreamcommoditynearbysettldayperiod",
+          "fix:tag": "41979"
         }
       },
       {
@@ -240,7 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditynearbysettldayunit"
+          "fix:field": "underlyingstreamcommoditynearbysettldayunit",
+          "fix:tag": "41980"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldateunadjusted"
+          "fix:field": "underlyingstreamcommoditysettldateunadjusted",
+          "fix:tag": "41981"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldatebusinessdayconvention"
+          "fix:field": "underlyingstreamcommoditysettldatebusinessdayconvention",
+          "fix:tag": "41982"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcommoditysettlbusinesscenters"
+          "fix:field": "nounderlyingstreamcommoditysettlbusinesscenters",
+          "fix:tag": "41962"
         }
       },
       {
@@ -290,7 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldateadjusted"
+          "fix:field": "underlyingstreamcommoditysettldateadjusted",
+          "fix:tag": "41983"
         }
       },
       {
@@ -300,7 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettlmonth"
+          "fix:field": "underlyingstreamcommoditysettlmonth",
+          "fix:tag": "41984"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldaterollperiod"
+          "fix:field": "underlyingstreamcommoditysettldaterollperiod",
+          "fix:tag": "41985"
         }
       },
       {
@@ -320,7 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldaterollunit"
+          "fix:field": "underlyingstreamcommoditysettldaterollunit",
+          "fix:tag": "41986"
         }
       },
       {
@@ -330,7 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettldaytype"
+          "fix:field": "underlyingstreamcommoditysettldaytype",
+          "fix:tag": "41987"
         }
       },
       {
@@ -340,7 +369,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamcommoditysettlperiods"
+          "fix:field": "nounderlyingstreamcommoditysettlperiods",
+          "fix:tag": "42002"
         }
       },
       {
@@ -360,7 +390,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityxid"
+          "fix:field": "underlyingstreamcommodityxid",
+          "fix:tag": "41988"
         }
       },
       {
@@ -370,7 +401,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommodityxidref"
+          "fix:field": "underlyingstreamcommodityxidref",
+          "fix:tag": "41989"
         }
       }
     ]

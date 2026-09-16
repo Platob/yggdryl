@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlbusinesscenter"
+          "fix:field": "legstreamcommoditysettlbusinesscenter",
+          "fix:tag": "41647"
         }
       }
     ]

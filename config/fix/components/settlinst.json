@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstid"
+          "fix:field": "settlinstid",
+          "fix:tag": "162"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinsttranstype"
+          "fix:field": "settlinsttranstype",
+          "fix:tag": "163"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstrefid"
+          "fix:field": "settlinstrefid",
+          "fix:tag": "214"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side"
+          "fix:field": "side",
+          "fix:tag": "54"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "product"
+          "fix:field": "product",
+          "fix:tag": "460"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytype"
+          "fix:field": "securitytype",
+          "fix:tag": "167"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cficode"
+          "fix:field": "cficode",
+          "fix:tag": "461"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "upicode"
+          "fix:field": "upicode",
+          "fix:tag": "2891"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrency"
+          "fix:field": "settlcurrency",
+          "fix:tag": "120"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrencycodesource"
+          "fix:field": "settlcurrencycodesource",
+          "fix:tag": "2899"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivetime"
+          "fix:field": "effectivetime",
+          "fix:tag": "168"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expiretime"
+          "fix:field": "expiretime",
+          "fix:tag": "126"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime"
+          "fix:field": "lastupdatetime",
+          "fix:tag": "779"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentmethod"
+          "fix:field": "paymentmethod",
+          "fix:tag": "492"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentref"
+          "fix:field": "paymentref",
+          "fix:tag": "476"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardholdername"
+          "fix:field": "cardholdername",
+          "fix:tag": "488"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardnumber"
+          "fix:field": "cardnumber",
+          "fix:tag": "489"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardstartdate"
+          "fix:field": "cardstartdate",
+          "fix:tag": "503"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardexpdate"
+          "fix:field": "cardexpdate",
+          "fix:tag": "490"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardissnum"
+          "fix:field": "cardissnum",
+          "fix:tag": "491"
         }
       },
       {
@@ -240,7 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdate"
+          "fix:field": "paymentdate",
+          "fix:tag": "504"
         }
       },
       {
@@ -250,7 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentremitterid"
+          "fix:field": "paymentremitterid",
+          "fix:tag": "505"
         }
       }
     ]

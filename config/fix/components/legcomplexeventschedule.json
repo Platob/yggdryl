@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventschedulestartdate"
+          "fix:field": "legcomplexeventschedulestartdate",
+          "fix:tag": "41401"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventscheduleenddate"
+          "fix:field": "legcomplexeventscheduleenddate",
+          "fix:tag": "41402"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventschedulefrequencyperiod"
+          "fix:field": "legcomplexeventschedulefrequencyperiod",
+          "fix:tag": "41403"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventschedulefrequencyunit"
+          "fix:field": "legcomplexeventschedulefrequencyunit",
+          "fix:tag": "41404"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventschedulerollconvention"
+          "fix:field": "legcomplexeventschedulerollconvention",
+          "fix:tag": "41405"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norisklimittypes"
+          "fix:field": "norisklimittypes",
+          "fix:tag": "1529"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noriskinstrumentscopes"
+          "fix:field": "noriskinstrumentscopes",
+          "fix:tag": "1534"
         }
       },
       {

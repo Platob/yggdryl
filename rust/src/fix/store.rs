@@ -174,7 +174,19 @@ impl Resolver<'_> {
             });
         }
         let (mut resolved, height) = if category == FixCategory::Fields {
-            (self.fields.definition(category, name)?.clone(), 0)
+            // By identity where the reference carries the tag - strict, and
+            // one probe - by name where it does not.
+            let by_id = match view.tag()? {
+                Some(tag) => super::FixId::of(tag, name)
+                    .ok()
+                    .and_then(|id| self.fields.get_field_by_id(id)),
+                None => None,
+            };
+            let target = match by_id {
+                Some(target) => target,
+                None => self.fields.definition(category, name)?,
+            };
+            (target.clone(), 0)
         } else {
             let exact = (category, name.to_owned());
             let key = self
@@ -274,7 +286,15 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
             let mut placeholder = DataType::Null.nullable_field(field.name());
             placeholder.set_nullable(field.is_nullable());
             match category {
-                FixCategory::Fields => placeholder.as_fix_mut().set_field_ref(&name)?,
+                FixCategory::Fields => {
+                    placeholder.as_fix_mut().set_field_ref(&name)?;
+                    // The tag beside the name: a reader resolves the
+                    // reference by the field's identity, the pair, and
+                    // never by a spelling alone.
+                    if let Some(tag) = field.as_fix().tag()? {
+                        placeholder.as_fix_mut().set_tag(tag)?;
+                    }
+                }
                 FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
                 FixCategory::Components => placeholder.as_fix_mut().set_component(&name)?,
             }
@@ -349,11 +369,11 @@ impl FixRegistry {
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry};
     /// let mut registry = FixRegistry::new();
     /// let mut message = DataType::from_fields([])?.required_field("Order");
     /// message.as_fix_mut().set_msgtype("D")?;
-    /// registry.create_definition(FixCategory::Components, message)?;
+    /// registry.insert(message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
     /// assert_eq!(restored, registry);
     /// assert_eq!(restored.msgtype("D")?.name(), "Order");
@@ -414,7 +434,7 @@ impl FixRegistry {
             // takes the crate's copy over the document's, so the two never
             // collide; the folder store writes the same way in `write_into`.
             let fields = if category == FixCategory::Fields {
-                self.iter()
+                self.scalars()
                     .cloned()
                     .map(|field| super::document::dump(field.into_value()))
                     .collect::<Result<Vec<_>>>()?
@@ -693,18 +713,18 @@ impl FixRegistry {
         self.validate_catalog()?;
         let mut documents: BTreeMap<String, Scalar> = BTreeMap::new();
         let mut shards: BTreeMap<i32, Vec<Field>> = BTreeMap::new();
-        // Every field the dictionary holds, the crate's own among them, so a
+        // Every scalar the dictionary holds, the crate's own among them, so a
         // written store states the whole row rather than the half it declared
         // itself. The crate's block is one shard of its own, above every tag
         // a dictionary reaches, and a reader takes the held definition over
         // the document it finds there.
-        for field in self {
+        for field in self.scalars() {
             let (tag, _) = super::registry::canonical_identity(field)?;
             shards.entry(shard_of(tag)).or_default().push(field.clone());
         }
         for (shard, fields) in shards {
             documents.insert(
-                format!("fields/{shard}.json"),
+                format!("fields/{shard:09}.json"),
                 Scalar::from_sequence(
                     fields
                         .into_iter()
@@ -714,14 +734,20 @@ impl FixRegistry {
             );
         }
         for entry in self.catalog.all() {
-            // And every named definition, the crate's own message among them,
-            // for the reason its own fields are written above.
             let path = format!("{}/{}.json", entry.category, entry.field.name());
             documents.insert(
                 path,
                 super::document::dump(compact(entry.field.as_field().clone(), true)?.into_value())?,
             );
         }
+        // And the fixed row itself, for the reason the crate's own fields are
+        // written above: a consumer reads the row's shape off the store, and
+        // a reader passes the document over as it passes those fields.
+        let fixmsg = super::schema::fixmsg_definition(self)?;
+        documents.insert(
+            format!("{}/{}.json", FixCategory::Components, fixmsg.name()),
+            super::document::dump(compact(fixmsg, true)?.into_value())?,
+        );
         for (path, document) in &documents {
             // A text file ends with a newline, as the one a person's editor
             // and the generator write does, so a rewrite changes no line it

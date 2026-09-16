@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posmaintrptid"
+          "fix:field": "posmaintrptid",
+          "fix:tag": "721"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posreqtype"
+          "fix:field": "posreqtype",
+          "fix:tag": "724"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clearingbusinessdate"
+          "fix:field": "clearingbusinessdate",
+          "fix:tag": "715"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlsessid"
+          "fix:field": "settlsessid",
+          "fix:tag": "716"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posmaintrptrefid"
+          "fix:field": "posmaintrptrefid",
+          "fix:tag": "714"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nopositions"
+          "fix:field": "nopositions",
+          "fix:tag": "702"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlprice"
+          "fix:field": "settlprice",
+          "fix:tag": "730"
         }
       },
       {
@@ -140,7 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "priorsettlprice"
+          "fix:field": "priorsettlprice",
+          "fix:tag": "734"
         }
       },
       {

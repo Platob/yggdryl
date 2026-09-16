@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinaryeventtype"
+          "fix:field": "underlyingextraordinaryeventtype",
+          "fix:tag": "42885"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinaryeventvalue"
+          "fix:field": "underlyingextraordinaryeventvalue",
+          "fix:tag": "42886"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamassetattributetype"
+          "fix:field": "legstreamassetattributetype",
+          "fix:tag": "41453"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamassetattributevalue"
+          "fix:field": "legstreamassetattributevalue",
+          "fix:tag": "41454"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamassetattributelimit"
+          "fix:field": "legstreamassetattributelimit",
+          "fix:tag": "41455"
         }
       }
     ]

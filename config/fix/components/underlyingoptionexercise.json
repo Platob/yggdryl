@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexercisedesc"
+          "fix:field": "underlyingexercisedesc",
+          "fix:tag": "41810"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingexercisedesclen"
+          "fix:field": "encodedunderlyingexercisedesclen",
+          "fix:tag": "41811"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingexercisedesc"
+          "fix:field": "encodedunderlyingexercisedesc",
+          "fix:tag": "41812"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingautomaticexerciseindicator"
+          "fix:field": "underlyingautomaticexerciseindicator",
+          "fix:tag": "41813"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingautomaticexercisethresholdrate"
+          "fix:field": "underlyingautomaticexercisethresholdrate",
+          "fix:tag": "41814"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexerciseconfirmationmethod"
+          "fix:field": "underlyingexerciseconfirmationmethod",
+          "fix:tag": "41815"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmanualnoticebusinesscenter"
+          "fix:field": "underlyingmanualnoticebusinesscenter",
+          "fix:tag": "41816"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingfallbackexerciseindicator"
+          "fix:field": "underlyingfallbackexerciseindicator",
+          "fix:tag": "41817"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglimitedrighttoconfirmindicator"
+          "fix:field": "underlyinglimitedrighttoconfirmindicator",
+          "fix:tag": "41818"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexercisesplitticketindicator"
+          "fix:field": "underlyingexercisesplitticketindicator",
+          "fix:tag": "41819"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectingpartyside"
+          "fix:field": "underlyingsettlmethodelectingpartyside",
+          "fix:tag": "42887"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecondaryassetclass"
+          "fix:field": "legsecondaryassetclass",
+          "fix:tag": "2077"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecondaryassetsubclass"
+          "fix:field": "legsecondaryassetsubclass",
+          "fix:tag": "2078"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecondaryassettype"
+          "fix:field": "legsecondaryassettype",
+          "fix:tag": "2079"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecondaryassetsubtype"
+          "fix:field": "legsecondaryassetsubtype",
+          "fix:tag": "2743"
         }
       }
     ]

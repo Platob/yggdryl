@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablerefcurrency"
+          "fix:field": "paymentstreamnondeliverablerefcurrency",
+          "fix:tag": "40817"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesbusinessdayconvention"
+          "fix:field": "paymentstreamnondeliverablefixingdatesbusinessdayconvention",
+          "fix:tag": "40818"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters"
+          "fix:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
+          "fix:tag": "40946"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesrelativeto"
+          "fix:field": "paymentstreamnondeliverablefixingdatesrelativeto",
+          "fix:tag": "40820"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetperiod"
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetperiod",
+          "fix:tag": "40821"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetunit"
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetunit",
+          "fix:tag": "40822"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetdaytype"
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "fix:tag": "40823"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonondeliverablefixingdates"
+          "fix:field": "nonondeliverablefixingdates",
+          "fix:tag": "40825"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlratefallbacks"
+          "fix:field": "nosettlratefallbacks",
+          "fix:tag": "40085"
         }
       },
       {

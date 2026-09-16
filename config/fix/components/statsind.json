@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "statstype"
+          "fix:field": "statstype",
+          "fix:tag": "1176"
         }
       }
     ]

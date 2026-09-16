@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratedatemode"
+          "fix:field": "returnratedatemode",
+          "fix:tag": "42710"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratevaluationdates"
+          "fix:field": "noreturnratevaluationdates",
+          "fix:tag": "42772"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdaterelativeto"
+          "fix:field": "returnratevaluationdaterelativeto",
+          "fix:tag": "42711"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetperiod"
+          "fix:field": "returnratevaluationdateoffsetperiod",
+          "fix:tag": "42712"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetunit"
+          "fix:field": "returnratevaluationdateoffsetunit",
+          "fix:tag": "42713"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetdaytype"
+          "fix:field": "returnratevaluationdateoffsetdaytype",
+          "fix:tag": "42714"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateunadjusted"
+          "fix:field": "returnratevaluationstartdateunadjusted",
+          "fix:tag": "42715"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdaterelativeto"
+          "fix:field": "returnratevaluationstartdaterelativeto",
+          "fix:tag": "42716"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetperiod"
+          "fix:field": "returnratevaluationstartdateoffsetperiod",
+          "fix:tag": "42717"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetunit"
+          "fix:field": "returnratevaluationstartdateoffsetunit",
+          "fix:tag": "42718"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetdaytype"
+          "fix:field": "returnratevaluationstartdateoffsetdaytype",
+          "fix:tag": "42719"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateadjusted"
+          "fix:field": "returnratevaluationstartdateadjusted",
+          "fix:tag": "42720"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateunadjusted"
+          "fix:field": "returnratevaluationenddateunadjusted",
+          "fix:tag": "42721"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddaterelativeto"
+          "fix:field": "returnratevaluationenddaterelativeto",
+          "fix:tag": "42722"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetperiod"
+          "fix:field": "returnratevaluationenddateoffsetperiod",
+          "fix:tag": "42723"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetunit"
+          "fix:field": "returnratevaluationenddateoffsetunit",
+          "fix:tag": "42724"
         }
       },
       {
@@ -180,7 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetdaytype"
+          "fix:field": "returnratevaluationenddateoffsetdaytype",
+          "fix:tag": "42725"
         }
       },
       {
@@ -190,7 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateadjusted"
+          "fix:field": "returnratevaluationenddateadjusted",
+          "fix:tag": "42726"
         }
       },
       {
@@ -200,7 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyperiod"
+          "fix:field": "returnratevaluationfrequencyperiod",
+          "fix:tag": "42727"
         }
       },
       {
@@ -210,7 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyunit"
+          "fix:field": "returnratevaluationfrequencyunit",
+          "fix:tag": "42728"
         }
       },
       {
@@ -220,7 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyrollconvention"
+          "fix:field": "returnratevaluationfrequencyrollconvention",
+          "fix:tag": "42729"
         }
       },
       {
@@ -230,7 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdatebusinessdayconvention"
+          "fix:field": "returnratevaluationdatebusinessdayconvention",
+          "fix:tag": "42730"
         }
       },
       {
@@ -240,7 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratevaluationdatebusinesscenters"
+          "fix:field": "noreturnratevaluationdatebusinesscenters",
+          "fix:tag": "42770"
         }
       },
       {

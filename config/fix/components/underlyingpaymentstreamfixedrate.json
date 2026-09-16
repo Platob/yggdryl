@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamrate"
+          "fix:field": "underlyingpaymentstreamrate",
+          "fix:tag": "40615"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfixedamount"
+          "fix:field": "underlyingpaymentstreamfixedamount",
+          "fix:tag": "40616"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamrateoramountcurrency"
+          "fix:field": "underlyingpaymentstreamrateoramountcurrency",
+          "fix:tag": "40617"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfixedamountunitofmeasure"
+          "fix:field": "underlyingpaymentstreamfixedamountunitofmeasure",
+          "fix:tag": "41904"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamtotalfixedamount"
+          "fix:field": "underlyingpaymentstreamtotalfixedamount",
+          "fix:tag": "41905"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfuturevaluenotional"
+          "fix:field": "underlyingpaymentstreamfuturevaluenotional",
+          "fix:tag": "40618"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfuturevaluedateadjusted"
+          "fix:field": "underlyingpaymentstreamfuturevaluedateadjusted",
+          "fix:tag": "40619"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamworldscalerate"
+          "fix:field": "underlyingpaymentstreamworldscalerate",
+          "fix:tag": "41906"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcontractprice"
+          "fix:field": "underlyingpaymentstreamcontractprice",
+          "fix:tag": "41907"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcontractpricecurrency"
+          "fix:field": "underlyingpaymentstreamcontractpricecurrency",
+          "fix:tag": "41908"
         }
       }
     ]

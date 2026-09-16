@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlday"
+          "fix:field": "underlyingdeliveryschedulesettlday",
+          "fix:tag": "41771"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettltotalhours"
+          "fix:field": "underlyingdeliveryschedulesettltotalhours",
+          "fix:tag": "41772"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdeliveryschedulesettltimes"
+          "fix:field": "nounderlyingdeliveryschedulesettltimes",
+          "fix:tag": "41773"
         }
       },
       {

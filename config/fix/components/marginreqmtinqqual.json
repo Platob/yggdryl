@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginreqmtinqqualifier"
+          "fix:field": "marginreqmtinqqualifier",
+          "fix:tag": "1637"
         }
       }
     ]

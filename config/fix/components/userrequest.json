@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequestid"
+          "fix:field": "userrequestid",
+          "fix:tag": "923"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequesttype"
+          "fix:field": "userrequesttype",
+          "fix:tag": "924"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "username"
+          "fix:field": "username",
+          "fix:tag": "553"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "password"
+          "fix:field": "password",
+          "fix:tag": "554"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newpassword"
+          "fix:field": "newpassword",
+          "fix:tag": "925"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordmethod"
+          "fix:field": "encryptedpasswordmethod",
+          "fix:tag": "1400"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordlen"
+          "fix:field": "encryptedpasswordlen",
+          "fix:tag": "1401"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpassword"
+          "fix:field": "encryptedpassword",
+          "fix:tag": "1402"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpasswordlen"
+          "fix:field": "encryptednewpasswordlen",
+          "fix:tag": "1403"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpassword"
+          "fix:field": "encryptednewpassword",
+          "fix:tag": "1404"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdatalength"
+          "fix:field": "rawdatalength",
+          "fix:tag": "95"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdata"
+          "fix:field": "rawdata",
+          "fix:tag": "96"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventnewssource"
+          "fix:field": "protectiontermeventnewssource",
+          "fix:tag": "40189"
         }
       }
     ]

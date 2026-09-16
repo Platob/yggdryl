@@ -4,8 +4,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use smol_str::SmolStr;
-
 use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
@@ -85,10 +83,18 @@ fn seeded_fields() -> usize {
     *COUNT.get_or_init(|| FixRegistry::new().len())
 }
 
+/// Every message the catalog defines: a component carrying a `fix:msgtype`.
+fn msgtypes(registry: &FixRegistry) -> usize {
+    registry
+        .definitions(FixCategory::Components)
+        .filter(|field| field.as_fix().msgtype().is_some())
+        .count()
+}
+
 /// The named components this crate defines beside the dictionary's own.
 ///
 /// A definition is filed by the shape it has, so every crate column shaped as
-/// a Struct is a component: `instids` is one.
+/// a Struct is a component.
 fn crated_components() -> usize {
     crate::fix_crate_fields()
         .expect("the crate's own fields")
@@ -97,21 +103,43 @@ fn crated_components() -> usize {
         .count()
 }
 
-/// The crate's own field names, in the order every registry iterates them:
-/// last, because their tags are above every tag a test claims.
-fn crate_names() -> Vec<&'static str> {
+/// The crate's own scalars, or its own groups - the Maps - in the order
+/// every registry iterates them; `parentuuids`, a List of scalars, is a row
+/// column no registry files.
+fn crate_names_of(groups: bool) -> Vec<&'static str> {
     crate::fix_crate_fields()
         .unwrap()
         .iter()
-        .filter(|field| !field.dtype().is_nested())
+        .filter(|field| {
+            if groups {
+                matches!(field.dtype(), DataType::Map(_))
+            } else {
+                !field.dtype().is_nested()
+            }
+        })
         .map(Field::name)
         .collect()
+}
+
+/// The crate's own names in the order every registry iterates them: the
+/// scalars last among the scalars, because their tags are above every tag a
+/// test claims, and the definitions after every scalar.
+fn crate_names() -> Vec<&'static str> {
+    let mut names = crate_names_of(false);
+    names.extend(crate_names_of(true));
+    names
 }
 
 /// `names`, then the crate's own: the order a registry holding `names`
 /// iterates.
 fn then_crated<'a>(names: &[&'a str]) -> Vec<&'a str> {
     names.iter().copied().chain(crate_names()).collect()
+}
+
+/// `names`, then the crate's own scalars: the order the cursor, which walks
+/// the scalars alone, answers for a registry holding `names`.
+fn then_crated_scalars<'a>(names: &[&'a str]) -> Vec<&'a str> {
+    names.iter().copied().chain(crate_names_of(false)).collect()
 }
 
 /// The stored keys of one registry, probed through every index.
@@ -570,7 +598,7 @@ fn an_identifier_is_one_integer_over_the_tag_and_the_folded_name() {
     // An entry keeps the tag; the field the tag names is the registry's to
     // answer, so an identity is assembled from the two owners.
     assert_eq!(
-        id_of(entry(5001, "5001", "x").tag(), "VenueSym"),
+        id_of(FixEntry::new(5001, "5001", None).tag(), "VenueSym"),
         id_of(5001, "VenueSym")
     );
 
@@ -792,7 +820,7 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         .register_msgtype("P Report Ack", Some("allocationreportack"), Some("Other"))
         .unwrap();
     assert_eq!(code(&registry), initial);
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(msgtypes(&registry), 2);
 
     registry
         .register_msgtype("D", None, Some("Order - Single"))
@@ -1214,7 +1242,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
             .add_definition(FixCategory::Components, message("new_order_single", "D"))
             .unwrap()
     );
-    assert_eq!(registry.msgtypes().count(), 1);
+    assert_eq!(msgtypes(&registry), 1);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
 
     // Under another name it is a second message, whose bare code answers
@@ -1224,18 +1252,16 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
             .add_definition(FixCategory::Components, message("VenueOrder", "D"))
             .unwrap()
     );
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(msgtypes(&registry), 2);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(registry.msgtype("VenueOrder").unwrap().name(), "VenueOrder");
     assert_eq!(registry.msgtype("venue_order").unwrap().as_str(), "D");
     assert_eq!(registry.msgtype("neworder_single").unwrap().as_str(), "D");
-    // The two this test added, behind the ones every registry starts with -
-    // the crate's own message and its `instids` component.
+    // The two this test added.
     assert_eq!(
         registry
             .definitions(FixCategory::Components)
             .map(Field::name)
-            .filter(|name| *name != crate::INSTIDS_TAG_NAME.1)
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "VenueOrder"]
     );
@@ -1402,22 +1428,22 @@ fn a_name_or_alias_resolves_in_any_case_to_the_canonical_spelling() {
 
 #[test]
 fn tier_order_never_lets_an_alternate_key_shadow_a_canonical_one() {
-    // `Px` is Price's canonical name and also an alias LastPx declares; the
+    // `Prc` is Price's canonical name and also an alias LastPx declares; the
     // canonical claim wins whatever order the fields entered in. The same
     // holds for a tag: 31 is LastPx's own tag and Price lists it as an
     // alternate.
-    let price = full("Px", 44, &[31], &["Price"]);
-    let last = full("LastPx", 31, &[], &["Px", "LastPrice"]);
+    let price = full("Prc", 44, &[31], &["Price"]);
+    let last = full("LastPx", 31, &[], &["Prc", "LastPrice"]);
     for order in [[price.clone(), last.clone()], [last, price]] {
         let registry = FixRegistry::from_fields(order).unwrap();
-        assert_eq!(registry.field_by_name("px").unwrap().name(), "Px");
-        assert_eq!(registry.field_by_name("Price").unwrap().name(), "Px");
+        assert_eq!(registry.field_by_name("prc").unwrap().name(), "Prc");
+        assert_eq!(registry.field_by_name("Price").unwrap().name(), "Prc");
         assert_eq!(
             registry.field_by_name("LastPrice").unwrap().name(),
             "LastPx"
         );
         assert_eq!(registry.field_by_tag(31).unwrap().name(), "LastPx");
-        assert_eq!(registry.field_by_tag(44).unwrap().name(), "Px");
+        assert_eq!(registry.field_by_tag(44).unwrap().name(), "Prc");
     }
 }
 
@@ -1609,7 +1635,7 @@ fn a_merge_follows_the_truth_table() {
 fn a_rejected_merge_leaves_the_registry_untouched() {
     let mut registry = FixRegistry::from_fields([
         full("Symbol", 55, &[65], &["Ticker"]),
-        full("Price", 44, &[31], &["Px"]),
+        full("Price", 44, &[31], &["Prc"]),
     ])
     .unwrap();
     let before = registry.clone();
@@ -1642,7 +1668,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
         "{error}"
     );
     let error = registry
-        .update(full("Symbol", 55, &[], &["PX"]))
+        .update(full("Symbol", 55, &[], &["PRC"]))
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
 
@@ -1670,7 +1696,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
         probe(&registry, 55, 65, "symbol", "ticker"),
         [Some("Symbol"); 4]
     );
-    assert_eq!(probe(&registry, 44, 31, "price", "px"), [Some("Price"); 4]);
+    assert_eq!(probe(&registry, 44, 31, "price", "prc"), [Some("Price"); 4]);
     assert_eq!(registry.len(), 2 + seeded_fields());
 }
 
@@ -1773,7 +1799,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
 fn removal_keeps_every_position_consistent() {
     let mut registry = FixRegistry::from_fields([
         full("Symbol", 55, &[65], &["Ticker"]),
-        full("Price", 44, &[45], &["Px"]),
+        full("Price", 44, &[45], &["Prc"]),
         full("Text", 58, &[59], &["FreeText"]),
     ])
     .unwrap();
@@ -1783,7 +1809,7 @@ fn removal_keeps_every_position_consistent() {
     assert_eq!(removed.name(), "Symbol");
     assert_eq!(registry.len(), 2 + seeded_fields());
     assert_eq!(probe(&registry, 55, 65, "symbol", "ticker"), [None; 4]);
-    assert_eq!(probe(&registry, 44, 45, "price", "px"), [Some("Price"); 4]);
+    assert_eq!(probe(&registry, 44, 45, "price", "prc"), [Some("Price"); 4]);
     assert_eq!(
         probe(&registry, 58, 59, "text", "freetext"),
         [Some("Text"); 4]
@@ -1795,8 +1821,8 @@ fn removal_keeps_every_position_consistent() {
 
     // A name key removes through the alias tier too; a path never does.
     assert!(registry.remove("Symbol").is_none());
-    assert_eq!(registry.remove("PX").unwrap().name(), "Price");
-    assert_eq!(probe(&registry, 44, 45, "price", "px"), [None; 4]);
+    assert_eq!(registry.remove("PRC").unwrap().name(), "Price");
+    assert_eq!(probe(&registry, 44, 45, "price", "prc"), [None; 4]);
     assert_eq!(
         probe(&registry, 58, 59, "text", "freetext"),
         [Some("Text"); 4]
@@ -2002,7 +2028,7 @@ fn one_spelling_reaches_a_member_through_the_message_and_through_the_registry() 
     );
     assert_eq!(
         message.by_path(&member).expect("the occurrence's value"),
-        &Scalar::from("BUYSIDE")
+        Scalar::from("BUYSIDE")
     );
 
     // A bare decimal is a name and not a position, exactly as it is one layer
@@ -2021,7 +2047,7 @@ fn one_spelling_reaches_a_member_through_the_message_and_through_the_registry() 
         message
             .by_path(&fpath("Parties[-1].PartyID"))
             .expect("the last occurrence"),
-        &Scalar::from("BUYSIDE")
+        Scalar::from("BUYSIDE")
     );
 }
 
@@ -2070,7 +2096,7 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     }
     assert_eq!(
         walked,
-        then_crated(&["Account", "sendingtime", "Symbol", "Text", "transacttime"])
+        then_crated_scalars(&["Account", "sendingtime", "Symbol", "Text", "transacttime"])
     );
     assert!(
         registry
@@ -2147,7 +2173,7 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
         (id_of(35, "MsgType"), "MsgType"),
         (id_of(35, "MsgKind"), "MsgKind"),
     ];
-    let expected = then_crated(&[
+    let scalars = [
         "Account",
         "MsgType",
         "MsgKind",
@@ -2155,7 +2181,8 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
         "transacttime",
         "TradeID",
         "Venue",
-    ]);
+    ];
+    let expected = then_crated(&scalars);
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         expected
@@ -2163,16 +2190,16 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
     let mut backwards = registry.iter().rev().map(Field::name).collect::<Vec<_>>();
     backwards.reverse();
     assert_eq!(backwards, expected);
-    // The cursor form walks the same order, and a binding advancing it with
-    // only the last identity it saw sees each of the two fields on one tag
-    // exactly once.
+    // The cursor form walks the scalars in the same order, and a binding
+    // advancing it with only the last identity it saw sees each of the two
+    // fields on one tag exactly once.
     let mut walked = Vec::new();
     let mut cursor = None;
     while let Some(field) = registry.next_field_after(cursor) {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, expected);
+    assert_eq!(walked, then_crated_scalars(&scalars));
     assert_eq!(
         registry.next_field_after(Some(on_35[0].0)).map(Field::name),
         Some(on_35[1].1)
@@ -2235,11 +2262,27 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
 }
 
 #[test]
-fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
+fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
+    // A Struct inserts as a component and a List of Structs as a group, so
+    // the tag such a field states is a definition's, derived into the
+    // definition block: a wire tag on one is refused, naming the block, and
+    // the registry stands as it was.
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
     let original = registry.clone();
+    let occurrence = DataType::from_fields([tagged("Member", 9_001)]).unwrap();
     for dtype in [
-        DataType::from_fields([tagged("Member", 9_001)]).unwrap(),
+        occurrence.clone(),
+        DataType::list(occurrence.required_field("item")),
+    ] {
+        let mut field = dtype.nullable_field("InvalidWireField");
+        field.as_fix_mut().set_tag(453).unwrap();
+        let error = registry.insert(field).unwrap_err();
+        assert!(error.to_string().contains("100000"), "{error}");
+        assert_eq!(registry, original);
+    }
+    // A List of scalars and a dictionary-encoded Struct are neither a
+    // definition nor a wire field: refused as the scalar they are not.
+    for dtype in [
         DataType::list(DataType::utf8().required_field("item")),
         DataType::dictionary(
             DataType::Int32,
@@ -2434,14 +2477,19 @@ fn scalar_iteration_and_named_category_iteration_have_distinct_orders() {
     registry
         .insert_definition(FixCategory::Groups, named_group("Parties", 453))
         .unwrap();
-    let expected = then_crated(&[
+    // Every scalar, the test's own and the crate's, then every definition:
+    // the test's group before the crate's.
+    let scalars = [
         "Account",
         "sendingtime",
         "Symbol",
         "Text",
         "transacttime",
         "NoPartyIDs",
-    ]);
+    ];
+    let mut expected = then_crated_scalars(&scalars);
+    expected.push("Parties");
+    expected.extend(crate_names_of(true));
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         expected
@@ -2457,15 +2505,17 @@ fn scalar_iteration_and_named_category_iteration_have_distinct_orders() {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, expected);
+    assert_eq!(walked, then_crated_scalars(&scalars));
     assert_eq!(
         registry
             .definitions(FixCategory::Groups)
             .map(Field::name)
             .collect::<Vec<_>>(),
-        ["Parties", "altids"]
+        ["Parties", "identifiers", "metadata"]
     );
-    assert_ne!(
+    // The walk holds the definitions too, so a registry rebuilt from its
+    // own walk is the registry.
+    assert_eq!(
         registry,
         FixRegistry::from_fields(registry.iter().cloned()).unwrap()
     );
@@ -2562,7 +2612,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         .nullable_field("Instrument");
     let mut qty = DataType::Int64.required_field("OrderQty");
     qty.as_fix_mut().set_tag(38).unwrap();
-    qty.as_fix_mut().set_names(["Qty"]).unwrap();
+    qty.as_fix_mut().set_names(["Quantity"]).unwrap();
     let count = counter("NoPartyIDs", 453);
     let mut registry =
         FixRegistry::from_fields([count.clone(), qty.clone(), tagged("Symbol", 55)]).unwrap();
@@ -2637,42 +2687,46 @@ fn folded_message_child_lookup_does_not_choose_between_colliding_names() {
 #[test]
 fn a_message_resolves_values_through_its_registry() {
     let (registry, root, value) = order();
-    let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value).unwrap();
+    let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value.clone()).unwrap();
     assert!(Arc::ptr_eq(msg.registry(), &registry));
     assert_eq!(msg.as_field().name(), root.name());
     assert_eq!(&msg.as_field().fields()[..5], &root.fields()[..5]);
 
     // A record input canonicalizes to the ordered sequence the root declares.
     let row = msg.as_value().as_sequence().unwrap();
-    assert_eq!(row.len(), 12, "five business fields and the replay bundle");
+    assert_eq!(
+        row.len(),
+        5,
+        "five business fields; the clock is the header's"
+    );
     assert_eq!(row[0], Scalar::from(100));
     assert_eq!(row[2], Scalar::from(2_i32));
     assert_eq!(row[4], Scalar::from("custom"));
     assert_eq!(
         msg.by_tag(52).unwrap(),
-        &Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap()
+        Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap()
     );
 
     // By tag, through the registry's canonical name.
-    assert_eq!(msg.by_tag(38).unwrap(), &Scalar::from(100));
+    assert_eq!(msg.by_tag(38).unwrap(), Scalar::from(100));
     // By name, folded through the registry, and by alias.
-    assert_eq!(msg.by_name("orderqty").unwrap(), &Scalar::from(100));
-    assert_eq!(msg.by_name("QTY").unwrap(), &Scalar::from(100));
+    assert_eq!(msg.by_name("orderqty").unwrap(), Scalar::from(100));
+    assert_eq!(msg.by_name("QUANTITY").unwrap(), Scalar::from(100));
     // An unknown tag is kept under its rendered name.
-    assert_eq!(msg.by_tag(9999).unwrap(), &Scalar::from("custom"));
-    assert_eq!(msg.by_name("9999").unwrap(), &Scalar::from("custom"));
+    assert_eq!(msg.by_tag(9999).unwrap(), Scalar::from("custom"));
+    assert_eq!(msg.by_name("9999").unwrap(), Scalar::from("custom"));
     // A path descends a component by name and a group by index.
     assert_eq!(
         msg.by_path(&fpath("Instrument.symbol")).unwrap(),
-        &Scalar::from("AAPL")
+        Scalar::from("AAPL")
     );
     assert_eq!(
         msg.by_path(&fpath("Parties[1].PartyID")).unwrap(),
-        &Scalar::from("CLIENT")
+        Scalar::from("CLIENT")
     );
     assert_eq!(
         msg.by_path(&fpath("parties[0].PartyRole")).unwrap(),
-        &Scalar::from(1)
+        Scalar::from(1)
     );
     assert_eq!(msg.by_path(&fpath("Parties")).unwrap().len(), 2);
     assert!(
@@ -2688,11 +2742,11 @@ fn a_message_resolves_values_through_its_registry() {
     // A member the registry does not know resolves its unique local spelling.
     assert_eq!(
         msg.by_path(&fpath("Parties[0].PartyID")).unwrap(),
-        &Scalar::from("BROKER")
+        Scalar::from("BROKER")
     );
     assert_eq!(
         msg.by_path(&fpath("Parties[0].partyid")).unwrap(),
-        &Scalar::from("BROKER")
+        Scalar::from("BROKER")
     );
     assert!(msg.get_by_tag(-1).is_none());
 
@@ -2704,7 +2758,7 @@ fn a_message_resolves_values_through_its_registry() {
     // The generic pair matches the specialized one for every key: a name
     // reaches what the name door reaches, and a key spelling more than one
     // segment reaches what the path door reaches once that key is read.
-    for name in ["OrderQty", "qty", "absent"] {
+    for name in ["OrderQty", "quantity", "absent"] {
         assert_eq!(msg.get(name), msg.get_by_name(name), "{name}");
         assert_eq!(msg.value(name).ok(), msg.by_name(name).ok(), "{name}");
     }
@@ -2722,7 +2776,7 @@ fn a_message_resolves_values_through_its_registry() {
     }
     // A path of one named segment is that name lookup, which is what makes
     // the two doors one reading rather than two.
-    for name in ["OrderQty", "qty", "absent"] {
+    for name in ["OrderQty", "quantity", "absent"] {
         assert_eq!(
             msg.get_by_path(&fpath(name)),
             msg.get_by_name(name),
@@ -2734,8 +2788,10 @@ fn a_message_resolves_values_through_its_registry() {
     let error = msg.by_path(&fpath("absent.x")).unwrap_err();
     assert!(matches!(&error, Error::Absent { path, .. } if path == "path absent.x"));
 
-    // Equality and hashing follow the schema and the value.
-    let same = FixMsg::from_row(Arc::clone(&registry), msg.as_field(), msg.as_value()).unwrap();
+    // Equality and hashing follow the facts, the schema and the value, so
+    // the same parts build the same message: the stated clock keeps the
+    // identity it settles to deterministic.
+    let same = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
     assert_eq!(msg, same);
     assert_eq!(
         crate::hashing::stable_hash_of(&msg),
@@ -2763,7 +2819,7 @@ fn a_message_rejects_a_value_its_field_refuses() {
     .unwrap_err();
     assert!(
         matches!(&error, Error::InvalidRecord { path, reason }
-        if path == "$.scalar" && reason == "expected a Struct field, got int64"),
+        if path == "$" && reason == "expected a struct root, got field \"scalar\" of int64"),
         "{error}"
     );
 }
@@ -2798,11 +2854,11 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
     assert_eq!(msg.as_field().as_fix().branches().count(), 0);
 
     // The bare tag: its first holder, which is the child this root carries.
-    assert_eq!(msg.by_tag(5001).unwrap(), &Scalar::from("T-1"));
-    assert_eq!(msg.by_name("tid").unwrap(), &Scalar::from("T-1"));
+    assert_eq!(msg.by_tag(5001).unwrap(), Scalar::from("T-1"));
+    assert_eq!(msg.by_name("tid").unwrap(), Scalar::from("T-1"));
     // One namespace, so MsgType is reachable from a venue message.
-    assert_eq!(msg.by_tag(35).unwrap(), &Scalar::from("8"));
-    assert_eq!(msg.by_name("msgtype").unwrap(), &Scalar::from("8"));
+    assert_eq!(msg.by_tag(35).unwrap(), Scalar::from("8"));
+    assert_eq!(msg.by_name("msgtype").unwrap(), Scalar::from("8"));
     // The specification's field on 5001 names a root child this message
     // does not hold, so its alias misses rather than answering the venue's
     // value.
@@ -2812,7 +2868,7 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
     // that field's name reaches.
     let venue_id = id_of(5001, "TradeID");
     let spec_id = id_of(5001, "SecondaryTradeID");
-    assert_eq!(msg.by_id(venue_id).unwrap(), &Scalar::from("T-1"));
+    assert_eq!(msg.by_id(venue_id).unwrap(), Scalar::from("T-1"));
     assert!(
         msg.get_by_id(spec_id).is_none(),
         "the other field on the tag misses"
@@ -2844,9 +2900,9 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
     )
     .unwrap();
     assert_eq!(plain.as_field().as_fix().branches().count(), 0);
-    assert_eq!(plain.by_tag(5001).unwrap(), &Scalar::from("S-1"));
-    assert_eq!(plain.by_name("stid").unwrap(), &Scalar::from("S-1"));
-    assert_eq!(plain.by_id(spec_id).unwrap(), &Scalar::from("S-1"));
+    assert_eq!(plain.by_tag(5001).unwrap(), Scalar::from("S-1"));
+    assert_eq!(plain.by_name("stid").unwrap(), Scalar::from("S-1"));
+    assert_eq!(plain.by_id(spec_id).unwrap(), Scalar::from("S-1"));
     assert!(plain.get_by_name("tid").is_none());
     assert!(plain.get_by_id(venue_id).is_none());
 }
@@ -2867,7 +2923,7 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
         Scalar::from_record([("MsgType", Scalar::from("8"))]).unwrap(),
     )
     .unwrap();
-    assert_eq!(message.by_tag(35).unwrap(), &Scalar::from("8"));
+    assert_eq!(message.by_tag(35).unwrap(), Scalar::from("8"));
     assert_eq!(
         message.as_field().as_fix().branches().collect::<Vec<_>>(),
         ["2cme", "c me"],
@@ -2875,91 +2931,70 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
     );
 }
 
-/// The committed dictionary, as the codec every enrichment case reads with.
-fn enriching() -> super::FixCodec {
+/// The committed dictionary, as the codec every derivation case reads with:
+/// a parse runs the dictionary's rules, so a parsed report already states
+/// what its rules imply.
+fn deriving() -> super::FixCodec {
     super::FixCodec::new(committed())
 }
 
 #[test]
 fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
-    let codec = enriching();
+    let codec = deriving();
     // Appendix D: a part-filled working order. What is left is what was
     // ordered minus what was done, and the fill's worth is its quantity at
     // its price.
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
-    assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(60.0_f64));
+    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(420.0_f64));
     // One fill, so the average is that fill's price.
-    assert_eq!(held.by_tag(6).unwrap(), &Scalar::from(10.5_f64));
+    assert_eq!(held.by_tag(6).unwrap(), Scalar::from(10.5_f64));
 
     // A closed order leaves nothing, whatever the arithmetic of the other two
     // would say: Appendix D shows zero on every terminal row.
     let closed = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
 
     // The same identity read backwards: what was ordered is what is left plus
     // what was done.
     let ordered = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    assert_eq!(ordered.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(ordered.by_tag(38).unwrap(), Scalar::from(100.0_f64));
 }
 
 #[test]
 fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
-    let codec = enriching();
+    let codec = deriving();
     // The venue's own arithmetic wins even where it disagrees with the
     // specification's: the row says what was sent.
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(999.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(999.0_f64));
 
     // Idempotent: a value derived once is a stated value the second time, so
-    // a second pass derives it to itself.
+    // the message read back from its own wire - which spells what it derived
+    // - derives it to itself.
     let once = codec
-        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|")
-        .and_then(|held| codec.enrich_message(held))
+        .parse_fix_line(b"8=FIX.4.4|35=8|52=20260102-10:15:30|39=1|38=100|14=40|10=0|")
         .expect("a readable report");
-    let twice = codec.enrich_message(once.clone()).expect("a second pass");
+    let twice = codec
+        .parse_fix_line(&once.into_bytes(b'|'))
+        .expect("a second reading");
     assert_eq!(once, twice);
 }
 
 #[test]
-fn filling_leaves_the_wire_exactly_as_it_arrived() {
-    let codec = enriching();
-    const LINE: &[u8] = b"8=FIX.4.4|35=8|39=1|38=100|14=40|32=40|31=10.5|54=1|10=0|";
-    let bare = codec.parse_fix_line(LINE).expect("a readable report");
-    let filled = codec
-        .parse_fix_line(LINE)
-        .and_then(|held| codec.enrich_message(held))
-        .expect("a readable report");
-
-    // The row gained columns.
-    assert_eq!(bare.get_by_tag(151), None);
-    assert_eq!(filled.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
-    // The entries did not, so the two re-emit the same bytes: the entries are
-    // what arrived and the row is the reading of them.
-    assert_eq!(bare.entries(), filled.entries());
-    assert_eq!(bare.into_bytes(b'|'), filled.into_bytes(b'|'));
-    assert_eq!(filled.into_bytes(b'|'), LINE);
-}
-
-#[test]
 fn a_rule_answers_nothing_rather_than_a_guess() {
-    let codec = enriching();
+    let codec = deriving();
     // An input the message never stated: nothing is derived from an absence.
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.get_by_tag(151), None, "no CumQty to subtract");
 
@@ -2967,14 +3002,12 @@ fn a_rule_answers_nothing_rather_than_a_guess() {
     // so the rule declines rather than stating a quantity that cannot exist.
     let crossed = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(crossed.get_by_tag(151), None);
 
     // A status the matrices do not place answers nothing either.
     let unknown = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(unknown.get_by_tag(151), None);
 
@@ -2982,26 +3015,24 @@ fn a_rule_answers_nothing_rather_than_a_guess() {
     // no remainder to state until something reports on it.
     let order = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable order");
     assert_eq!(order.get_by_tag(151), None);
 }
 
 #[test]
 fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
-    let codec = enriching();
+    let codec = deriving();
     // Appendix O: the settlement currency defaults to the dealt one, and the
     // settled amount is the traded amount at the stated rate.
     let held = codec
         .parse_fix_line(
             b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
         )
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(125.0_f64));
+    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(125.0_f64));
     assert_eq!(
         held.by_tag(119).unwrap(),
-        &Scalar::from(137.5_f64),
+        Scalar::from(137.5_f64),
         "the traded amount at the stated rate",
     );
     let settled = held.by_tag(120).unwrap();
@@ -3010,7 +3041,6 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
     // A trade that states its own settlement currency keeps it.
     let stated = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|")
-        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(stated.by_tag(120).unwrap().as_str(), Some("USD"));
 }
@@ -3036,25 +3066,20 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
         assert!(!field.as_fix().is_null_value(held), "{held}");
     }
 
-    // The row types it as null; the entry keeps what arrived, because the
-    // entries are the wire and the row is the reading of it.
+    // The row types it as null, and the entries are the row read as a tree,
+    // so a stated absence is no entry.
     let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
     let message = super::FixCodec::new(Arc::clone(&registry))
         .parse_fix_line(b"99=N/A|")
         .expect("a readable frame");
-    assert_eq!(message.get_by_tag(99), Some(&Scalar::Null));
-    let entry = message
-        .entries()
-        .iter()
-        .find(|held| held.tag() == 99)
-        .expect("the pair still arrived");
-    assert_eq!(entry.value().as_str(), Some("N/A"));
+    assert_eq!(message.get_by_tag(99), Some(Scalar::Null));
+    assert!(!message.entries().iter().any(|held| held.tag() == 99));
 
     // A value the list does not name is read as the price it is.
     let message = super::FixCodec::new(registry)
         .parse_fix_line(b"99=12.5|")
         .expect("a readable frame");
-    assert_eq!(message.by_tag(99).unwrap(), &Scalar::from(12.5_f64));
+    assert_eq!(message.by_tag(99).unwrap(), Scalar::from(12.5_f64));
 }
 
 #[test]
@@ -3867,13 +3892,18 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     for field in registry.definitions(FixCategory::Groups) {
         assert!(groups.insert(field.name()));
         if let DataType::Map(map) = field.dtype() {
-            assert_eq!(field.name(), "altids");
-            assert_eq!(field.as_fix().tag().unwrap(), Some(65_020));
-            assert_eq!(field.as_fix().counter().unwrap(), Some(65_020));
+            // The crate's two Map groups, each counted by its own tag and
+            // reached through the counter door, as every group is.
+            let (tag, name) = [super::IDENTIFIERS_TAG_NAME, super::METADATA_TAG_NAME]
+                .into_iter()
+                .find(|(_, name)| *name == field.name())
+                .unwrap_or_else(|| panic!("{} is no crate group", field.name()));
+            assert_eq!(field.as_fix().tag().unwrap(), Some(tag), "{name}");
+            assert_eq!(field.as_fix().counter().unwrap(), Some(tag), "{name}");
             assert!(map.keys_sorted());
             assert!(!map.entries().is_nullable());
             assert!(!map.entries().fields()[0].is_nullable());
-            assert!(registry.get_field_by_tag(65_020).is_none());
+            assert_eq!(registry.get_field_by_counter(tag), Some(field), "{name}");
             continue;
         }
         let DataType::List(item) = field.dtype() else {
@@ -3886,13 +3916,21 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
             .definition(FixCategory::Components, item.name())
             .unwrap();
         assert_eq!(item.dtype(), component.dtype());
-        assert!(registry.get_field_by_name(item.name()).is_none());
+        // No scalar shares the occurrence's name, and the field door reaches
+        // the component by it once no scalar answers.
+        assert!(
+            registry
+                .get_definition(FixCategory::Fields, item.name())
+                .is_none()
+        );
+        assert_eq!(registry.get_field_by_name(item.name()), Some(component));
         let counter = registry
             .field_by_tag(field.as_fix().counter().unwrap().unwrap())
             .unwrap();
         assert_eq!(counter.dtype(), &DataType::Int32);
     }
-    assert_eq!(groups.len(), 581);
+    // The shipped dictionary's groups, beside the crate's two Map groups.
+    assert_eq!(groups.len(), 580 + 2);
     assert_eq!(entries.len(), 580);
     // The shipped dictionary's own, beside the crate's own components,
     // which every registry carries.
@@ -3900,7 +3938,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
         registry.definitions(FixCategory::Components).count(),
         928 + crated_components()
     );
-    assert_eq!(registry.msgtypes().count(), 181);
+    assert_eq!(msgtypes(&registry), 181);
 }
 
 #[test]
@@ -3916,8 +3954,11 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
     );
     for field in registry.definitions(FixCategory::Groups) {
         let DataType::List(item) = field.dtype() else {
-            assert_eq!(field.name(), "altids");
-            assert!(matches!(field.dtype(), DataType::Map(_)));
+            assert!(
+                matches!(field.dtype(), DataType::Map(_)),
+                "{}: a group is a List, or one of the crate's Maps",
+                field.name()
+            );
             continue;
         };
         for child in item.fields() {
@@ -3997,7 +4038,7 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
             .expect("the row builds");
         assert_ne!(
             message.by_tag(tag).unwrap(),
-            &Scalar::Null,
+            Scalar::Null,
             "{spelling} reads {wire}",
         );
     }
@@ -4034,25 +4075,11 @@ fn canonical_versions(document: &str) -> String {
     out
 }
 
-/// Every field in the committed dictionary, occurrences and members included.
-fn every_committed_field(registry: &FixRegistry) -> Vec<Field> {
-    fn walk(field: &Field, out: &mut Vec<Field>) {
-        out.push(field.clone());
-        match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => walk(item, out),
-            DataType::Struct(fields) => {
-                for held in fields.iter() {
-                    walk(held, out);
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut out = Vec::new();
-    for field in registry.iter() {
-        walk(field, &mut out);
-    }
-    out
+/// Every scalar field of the committed dictionary: a component's or a
+/// group's member is a reference to one of these, so walking the
+/// definitions would count each document once per reference.
+fn every_committed_field(registry: &FixRegistry) -> impl Iterator<Item = &Field> {
+    registry.definitions(FixCategory::Fields)
 }
 
 #[test]
@@ -4090,88 +4117,6 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
 }
 
 #[test]
-fn an_entry_is_a_range_of_its_line_and_the_registry_names_its_field() {
-    // The measured footprint, so the report states the tree's number rather
-    // than an estimate: a tag, two counted ranges of the one page the line was
-    // read into, and the children vector.
-    //
-    // The shape this replaced, laid out by the same rules, is declared beside
-    // it so the saving is measured rather than reasoned about: two owned
-    // copies of bytes the line already held, and a per-pair copy of a branch
-    // digest that no pair carries any more, the field a tag names being the
-    // registry's to answer.
-    struct Was {
-        _tag: i32,
-        _branch: i32,
-        _key: SmolStr,
-        _value: SmolStr,
-        _children: Vec<Was>,
-    }
-    assert_eq!(std::mem::size_of::<Was>(), 80, "the copying entry");
-    assert_eq!(
-        std::mem::size_of::<FixEntry>(),
-        64,
-        "one entry, as this tree lays it out",
-    );
-
-    let registry = Arc::new(
-        FixRegistry::from_fields([tagged("Symbol", 55), member("VenueSym", "cme", 5_055)]).unwrap(),
-    );
-    assert_eq!(registry.dialects(), ["cme"]);
-
-    let codec = super::FixCodec::new(Arc::clone(&registry));
-    let line = b"55=AAPL|5055=XYZ|VenueOwnThing=?|";
-    let msg = codec.parse_fix_line(line).expect("a readable frame");
-    let entries = msg.entries();
-    assert!(!entries.is_empty());
-
-    // A message root the codec builds carries no membership: a message is
-    // not a dictionary member, whatever dictionaries spoke its fields.
-    assert_eq!(msg.as_field().as_fix().branches().count(), 0);
-    assert!(
-        registry
-            .field_by_tag(5_055)
-            .unwrap()
-            .as_fix()
-            .has_branch("cme")
-    );
-    // An entry keeps the tag and nothing else of the identity: the field
-    // that tag names is the registry's to answer, and the identity is
-    // assembled from the two owners rather than copied onto every pair.
-    let venue = entries.iter().find(|held| held.tag() == 5_055).unwrap();
-    let named = registry.field_by_tag(venue.tag()).unwrap();
-    assert_eq!(
-        id_of(venue.tag(), named.name()),
-        id_of(5_055, "VenueSym"),
-        "an entry names its field with the tag it kept and the name its registry holds",
-    );
-    assert_eq!(
-        msg.by_id(id_of(5_055, "VenueSym")).unwrap(),
-        &Scalar::from("XYZ")
-    );
-    assert_eq!(
-        msg.by_id(id_of(55, "Symbol")).unwrap(),
-        &Scalar::from("AAPL")
-    );
-    // A key that named no field names no identity, whatever the message
-    // resolved in.
-    assert!(entries.iter().any(|held| held.tag() == 0));
-
-    // Every key and value is a range of the line, never a copy of it: the
-    // bytes are the same bytes, at the offsets the line wrote them.
-    for entry in entries {
-        for held in [entry.key(), entry.value()] {
-            let at = held.start() as usize;
-            assert_eq!(
-                &line[at..held.end() as usize],
-                held.as_bytes(),
-                "an entry names the line at its own offsets",
-            );
-        }
-    }
-}
-
-#[test]
 fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
     let column = super::FIXENTRIES_COLUMN;
@@ -4184,10 +4129,9 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         panic!("a list, got {}", held.dtype());
     };
     // Exactly three fixentry levels on every root-to-leaf path, each with the
-    // same five members - what the line said, what the dictionary made of it,
-    // and nothing the message already answers - the fifth a fixentries that
-    // is a non-null deeper list twice and the nullable text leaf at the
-    // bottom.
+    // same four members - the tag, the name the dictionary gives it, the
+    // value as the wire spells it - the fourth a fixentries that is a
+    // non-null deeper list twice and the nullable text leaf at the bottom.
     let mut held = item;
     for level in 1..=3 {
         assert_eq!(held.name(), "fixentry", "{column} level {level}");
@@ -4196,7 +4140,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         let names: Vec<&str> = members.iter().map(Field::name).collect();
         assert_eq!(
             names,
-            ["tagnum", "tagname", "tagvalue", "tagkey", "fixentries"],
+            ["tag", "name", "value", "fixentries"],
             "{column} level {level}",
         );
         assert_eq!(
@@ -4204,13 +4148,13 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
             &DataType::Int32,
             "{column} level {level}"
         );
-        // The dictionary's name for the arrival is the one member that cannot
-        // be null: a consumer groups a wire name by it without a dictionary
-        // of its own, so an absence there would be its problem to solve.
-        assert!(!members[1].is_nullable(), "{column} level {level} tagname");
-        assert!(members[2].is_nullable(), "{column} level {level} tagvalue");
-        assert!(members[3].is_nullable(), "{column} level {level} tagkey");
-        let tail = &members[4];
+        assert!(!members[0].is_nullable(), "{column} level {level} tag");
+        // The name is the other member that cannot be null: a consumer groups
+        // a wire name by it without a dictionary of its own, so an absence
+        // there would be its problem to solve.
+        assert!(!members[1].is_nullable(), "{column} level {level} name");
+        assert!(members[2].is_nullable(), "{column} level {level} value");
+        let tail = &members[3];
         match tail.dtype() {
             DataType::List(deeper) if level < 3 => {
                 assert!(!tail.is_nullable(), "{column} level {level} tail");
@@ -4228,53 +4172,73 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     }
 }
 
-/// One entry a fixture states by hand, its key and value copied into a page of
-/// their own - which is what a message nothing read from a line has to do.
-fn entry(tag: i32, key: &str, value: &str) -> FixEntry {
-    FixEntry::new(
-        tag,
-        crate::media::text::TextBytes::from_bytes(key).expect("a key"),
-        crate::media::text::TextBytes::from_bytes(value).expect("a value"),
-    )
+/// A root of `depth` components nested one inside the next, each the sole
+/// member of the one above, the innermost holding one text child: the
+/// deepest tree a row states without a dictionary naming any of it.
+fn towering(depth: usize) -> (Field, Scalar) {
+    let mut field = DataType::utf8().nullable_field("leaf");
+    let mut value = Scalar::from("deep");
+    for level in (1..depth).rev() {
+        field = DataType::from_fields([field])
+            .unwrap()
+            .nullable_field(format!("level{level}"));
+        value = Scalar::from_sequence([value]);
+    }
+    let root = DataType::from_fields([field]).unwrap().required_field("D");
+    (root, Scalar::from_sequence([value]))
 }
 
-/// A chain of entries `depth` long, each child the sole passenger of the one
-/// above, ending in a leaf pair carrying `value`.
-fn nested_entries(depth: usize, value: &str) -> Vec<FixEntry> {
-    let mut held = entry(523, "523", value);
-    for level in (1..depth).rev() {
-        let mut parent = entry(453, "453", &level.to_string());
-        parent.push(held);
-        held = parent;
-    }
-    vec![entry(35, "35", "D"), held]
+/// One entry of the arrival column, read as its four members.
+fn entry_members(entry: &Scalar) -> &[Scalar] {
+    entry.as_sequence().expect("an entry")
+}
+
+/// The entry of one tag among the entries of one level.
+fn entry_tagged(entries: &[Scalar], tag: i32) -> &[Scalar] {
+    entries
+        .iter()
+        .map(entry_members)
+        .find(|held| held[0] == Scalar::from(tag))
+        .unwrap_or_else(|| panic!("an entry of tag {tag}"))
 }
 
 #[test]
 fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     let registry = committed();
-    let root = DataType::from_fields([DataType::utf8().nullable_field("35")])
-        .unwrap()
-        .required_field("D");
+    let codec = FixCodec::new(Arc::clone(&registry));
+    // A party carrying a sub-party: the group entry, its occurrence, the
+    // nested group entry, its occurrence and the member it states - five
+    // levels of entries out of two levels of groups.
     let message = |value: &str| {
-        FixMsg::from_parts(
-            Arc::clone(&registry),
-            root.clone(),
-            Scalar::from_sequence([Scalar::from("D")]),
-            nested_entries(5, value),
-        )
-        .unwrap()
+        codec
+            .parse_fix_line(
+                format!(
+                    "8=FIX.4.4|35=D|11=ORDER-1|453=1|448=BUYSIDE|452=1|802=1|523={value}|10=0|"
+                )
+                .as_bytes(),
+            )
+            .expect("a readable order")
     };
     let deep = message("x");
 
     // The Rust tree is never truncated: all five levels are held whole.
-    let mut held = &deep.entries()[1];
+    let mut held = deep
+        .entries()
+        .iter()
+        .find(|held| held.tag() == 453)
+        .expect("the group entry");
     let mut levels = 1;
-    while let Some(next) = held.children().first() {
+    while let Some(next) = held
+        .entries()
+        .iter()
+        .find(|held| !held.entries().is_empty())
+        .or_else(|| held.entries().first())
+    {
         held = next;
         levels += 1;
     }
     assert_eq!(levels, 5, "the record holds what the wire nested");
+    assert_eq!((held.tag(), held.value()), (523, Some("x")));
 
     // The Arrow value materializes exactly three fixentry levels; the fourth
     // and fifth fold into a non-empty leaf.
@@ -4286,16 +4250,16 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         .unwrap()
         .as_sequence()
         .expect("the arrival column");
-    let level1 = entries[1].as_sequence().expect("the counter entry");
-    let level2 = level1[4].as_sequence().expect("one child list")[0]
+    let level1 = entry_tagged(entries, 453);
+    let level2 = entry_members(&level1[3].as_sequence().expect("one occurrence")[0]);
+    let level3 = level2[3]
         .as_sequence()
-        .expect("the level-2 entry")
-        .to_vec();
-    let level3 = level2[4].as_sequence().expect("one child list")[0]
-        .as_sequence()
-        .expect("the level-3 entry")
-        .to_vec();
-    let leaf = level3[4].as_str().expect("the folded text leaf");
+        .expect("the party's members")
+        .iter()
+        .map(entry_members)
+        .find(|held| held[1].as_str() == Some("ptyssubgrp"))
+        .expect("the nested group entry");
+    let leaf = level3[3].as_str().expect("the folded text leaf");
     assert!(!leaf.is_empty(), "two levels folded into it");
 
     // The leaf recovers exactly the folded entries through the one JSON
@@ -4303,69 +4267,70 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     let decoded = crate::from_json_scalar(leaf.as_bytes()).expect("a decodable leaf");
     let folded = decoded.as_sequence().expect("the folded children");
     assert_eq!(folded.len(), 1);
-    let level4 = folded[0].as_sequence().expect("the level-4 entry").to_vec();
-    assert_eq!(level4[0].as_i64(), Some(453));
-    // A folded entry carries the same five members in the same order as a
+    let level4 = entry_members(&folded[0]);
+    // A folded entry carries the same four members in the same order as a
     // materialized one, so a reader walks the decode exactly as it walks the
     // levels above it.
-    assert_eq!(level4.len(), 5);
-    assert_eq!(level4[1].as_str(), Some("nopartyids"));
-    let level5 = level4[4].as_sequence().expect("its children")[0]
-        .as_sequence()
-        .expect("the level-5 entry")
-        .to_vec();
-    assert_eq!(level5[0].as_i64(), Some(523));
+    assert_eq!(level4.len(), 4);
+    assert_eq!(level4[2], Scalar::Null, "an occurrence states no value");
+    let level5 = entry_tagged(level4[3].as_sequence().expect("its children"), 523);
+    assert_eq!(level5[1].as_str(), Some("partysubid"));
     assert_eq!(level5[2].as_str(), Some("x"));
 
     // A flat sibling's child list is empty: nothing arrived under it and
     // nothing was folded for it.
-    let flat = entries[0].as_sequence().expect("the msgtype entry");
-    assert_eq!(flat[4].as_sequence().map(<[Scalar]>::len), Some(0));
+    let flat = entry_tagged(entries, 11);
+    assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
 
     // Wire emission walks the whole tree pre-order, so what comes back is
     // what went in.
-    let bytes = deep.into_bytes(b'|');
-    assert_eq!(
-        std::str::from_utf8(&bytes).unwrap(),
-        "35=D|453=1|453=2|453=3|453=4|523=x|",
-    );
+    let text = deep.into_text('|').unwrap();
+    assert!(text.contains("|453=1|448=BUYSIDE|452=1|"), "{text}");
+    assert!(text.contains("|802=1|523=x|"), "{text}");
 
     // Two messages that differ only below the materialization depth still
     // hash apart, because the digest walks the untruncated tree.
     assert_ne!(message("x").digest(), message("y").digest());
-    // And a parent of one is not a flat pair beside one: the hashed child
-    // count is what separates them.
-    let nested = FixMsg::from_parts(
-        Arc::clone(&registry),
-        root.clone(),
-        Scalar::from_sequence([Scalar::from("D")]),
-        nested_entries(2, "x"),
-    )
-    .unwrap();
-    let flattened = FixMsg::from_parts(
-        Arc::clone(&registry),
-        root.clone(),
-        Scalar::from_sequence([Scalar::from("D")]),
-        vec![
-            entry(35, "35", "D"),
-            entry(453, "453", "1"),
-            entry(523, "523", "x"),
-        ],
-    )
-    .unwrap();
-    assert_ne!(nested.digest(), flattened.digest());
 
     // Depth is a materialization concern, never a refusal: thirty levels
     // read, fold and type without a complaint.
-    let towering = FixMsg::from_parts(
-        Arc::clone(&registry),
-        root.clone(),
-        Scalar::from_sequence([Scalar::from("D")]),
-        nested_entries(30, "deep"),
-    )
-    .unwrap();
+    let (root, value) = towering(30);
+    let towering = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
+    let mut held = &towering.entries()[0];
+    let mut levels = 1;
+    while let Some(next) = held.entries().first() {
+        held = next;
+        levels += 1;
+    }
+    assert_eq!(levels, 30);
     let row = towering.into_row(&schema).expect("no depth refusal");
     assert!(row.as_sequence().is_some());
+}
+
+#[test]
+fn a_nested_group_states_its_counter_once() {
+    // A group's count is the group entry's own value, so the counter beside
+    // it states nothing the entries do not already: at the root the counter
+    // is left out of the entries, and an occurrence's counter beside the
+    // group it heads is the same fact one level down.
+    let codec = FixCodec::new(committed());
+    let order = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|453=1|448=BUYSIDE|802=1|523=x|10=0|")
+        .expect("a readable order");
+    let party = &order.entries()[1].entries()[0];
+    assert_eq!(party.name(), "party");
+    assert_eq!(
+        party
+            .entries()
+            .iter()
+            .filter(|held| held.tag() == 802)
+            .count(),
+        1,
+        "{:?}",
+        party.entries()
+    );
+    let text = order.into_text('|').unwrap();
+    assert_eq!(text.matches("|802=1|").count(), 1, "{text}");
 }
 
 #[test]
@@ -4379,11 +4344,9 @@ fn a_composed_key_fills_the_field_its_last_segment_names() {
             .unwrap()
             .unwrap()
     };
-    let enriched = |row: &str| codec.enrich_message(one(row)).unwrap();
-
     // A bridge writes a field under its own namespace, and the fact is the
     // field's however the writer spelled the key.
-    let filled = enriched("MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|");
+    let filled = one("MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|");
     assert_eq!(
         filled.by_name("Account").unwrap().as_str(),
         Some("ACCT-000117")
@@ -4391,22 +4354,22 @@ fn a_composed_key_fills_the_field_its_last_segment_names() {
 
     // What the row states is never overwritten: a namespace's spelling of a
     // fact is not the fact. The corpus states both on one line, disagreeing.
-    let stated = enriched("MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|");
+    let stated = one("MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|");
     assert_eq!(stated.by_name("Symbol").unwrap().as_str(), Some("XAU/USD"));
 
     // One voice or silence: two namespaces naming one absent field, and
     // disagreeing, fill nothing. Nine lines of the corpus do exactly this.
-    let split = enriched("MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|");
+    let split = one("MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|");
     assert_eq!(split.get_by_name("ClientID"), None);
     // Agreeing, they fill.
-    let agreed = enriched("MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|");
+    let agreed = one("MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|");
     assert_eq!(
         agreed.by_name("ClientID").unwrap().as_str(),
         Some("trader1")
     );
 
     // A segment naming no field of this dictionary names nothing.
-    let stranger = enriched("MSGTYPE=8|METAL.LOCO=LDN|");
+    let stranger = one("MSGTYPE=8|METAL.LOCO=LDN|");
     assert!(stranger.get_by_name("Loco").is_none());
 }
 
@@ -4425,7 +4388,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 65, "{names:?}");
+    assert_eq!(names.len(), 71, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -4446,8 +4409,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        39,
-        "29 shipped fields and the crate's ten columns"
+        42,
+        "29 shipped fields and the crate's thirteen columns"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -4489,10 +4452,9 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
         .map(|field| field.name().to_owned())
         .collect();
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
-    // The four columns added after `state` read eight sources between them -
-    // the expiry chain's four tags, the lane currencies' two, and the two
-    // clocks - so the working schema is that much wider.
-    assert_eq!(names.len(), 65, "the edit reads a column another rule read");
+    // The edit reads a column another rule already read, so the working
+    // schema is no wider.
+    assert_eq!(names.len(), 71, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -4511,26 +4473,28 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
             super::MICCODE_TAG_NAME.0,
             super::STATE_TAG_NAME.0,
             super::RECORDEDAT_TAG_NAME.0,
-            super::EXPIREDAT_TAG_NAME.0,
+            super::EXPIRUNIX_TAG_NAME.0,
             super::BIDCURRENCY_TAG_NAME.0,
-            super::OFFERCURRENCY_TAG_NAME.0,
+            super::ASKCURRENCY_TAG_NAME.0,
             super::BLOOMBERGCODE_TAG_NAME.0,
             super::CUSIPCODE_TAG_NAME.0,
             super::SEDOLCODE_TAG_NAME.0,
+            super::PX_TAG_NAME.0,
+            super::QTY_TAG_NAME.0,
+            super::UNIT_TAG_NAME.0,
         ]
     );
     // A stated crate column is never overwritten and never re-derived, and
     // a refusal of nothing enriches: the handful of fields fills nothing.
     let codec = FixCodec::new(Arc::new(registry));
-    let read = codec
+    let held = codec
         .parse_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|10=0|")
         .unwrap()
         .next()
         .unwrap()
         .unwrap();
-    let held = codec.enrich_message(read).unwrap();
     assert!(
         held.get_by_tag(super::ISINCODE_TAG_NAME.0)
-            .is_none_or(Scalar::is_null)
+            .is_none_or(|held| held.is_null())
     );
 }

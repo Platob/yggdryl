@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedinstrumenttype"
+          "fix:field": "relatedinstrumenttype",
+          "fix:tag": "1648"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedsymbol"
+          "fix:field": "relatedsymbol",
+          "fix:tag": "1649"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedsecurityid"
+          "fix:field": "relatedsecurityid",
+          "fix:tag": "1650"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedsecurityidsource"
+          "fix:field": "relatedsecurityidsource",
+          "fix:tag": "1651"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedsecuritytype"
+          "fix:field": "relatedsecuritytype",
+          "fix:tag": "1652"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedmaturitymonthyear"
+          "fix:field": "relatedmaturitymonthyear",
+          "fix:tag": "1653"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtosecurityid"
+          "fix:field": "relatedtosecurityid",
+          "fix:tag": "2413"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtosecurityidsource"
+          "fix:field": "relatedtosecurityidsource",
+          "fix:tag": "2414"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtostreamxidref"
+          "fix:field": "relatedtostreamxidref",
+          "fix:tag": "2415"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtodividendperiodxidref"
+          "fix:field": "relatedtodividendperiodxidref",
+          "fix:tag": "2417"
         }
       }
     ]

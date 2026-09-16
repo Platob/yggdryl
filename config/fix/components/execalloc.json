@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastqty"
+          "fix:field": "lastqty",
+          "fix:tag": "32"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "execid"
+          "fix:field": "execid",
+          "fix:tag": "17"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryexecid"
+          "fix:field": "secondaryexecid",
+          "fix:tag": "527"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastpx"
+          "fix:field": "lastpx",
+          "fix:tag": "31"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastparpx"
+          "fix:field": "lastparpx",
+          "fix:tag": "669"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastcapacity"
+          "fix:field": "lastcapacity",
+          "fix:tag": "29"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeid"
+          "fix:field": "tradeid",
+          "fix:tag": "1003"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "firmtradeid"
+          "fix:field": "firmtradeid",
+          "fix:tag": "1041"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdmatchid"
+          "fix:field": "trdmatchid",
+          "fix:tag": "880"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "executiontimestamp"
+          "fix:field": "executiontimestamp",
+          "fix:tag": "2749"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradereportingindicator"
+          "fix:field": "tradereportingindicator",
+          "fix:tag": "2524"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notrdregpublications"
+          "fix:field": "notrdregpublications",
+          "fix:tag": "2668"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradepriceconditions"
+          "fix:field": "notradepriceconditions",
+          "fix:tag": "1838"
         }
       },
       {

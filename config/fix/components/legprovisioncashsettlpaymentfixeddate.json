@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdate"
+          "fix:field": "legprovisioncashsettlpaymentdate",
+          "fix:tag": "40474"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdatetype"
+          "fix:field": "legprovisioncashsettlpaymentdatetype",
+          "fix:tag": "40475"
         }
       }
     ]

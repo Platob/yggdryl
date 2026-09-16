@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype"
+          "fix:field": "legswaptype",
+          "fix:tag": "690"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype"
+          "fix:field": "legsettltype",
+          "fix:tag": "587"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations"
+          "fix:field": "nolegstipulations",
+          "fix:tag": "683"
         }
       },
       {

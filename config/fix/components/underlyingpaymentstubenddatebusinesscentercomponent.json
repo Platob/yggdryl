@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddatebusinesscenter"
+          "fix:field": "underlyingpaymentstubenddatebusinesscenter",
+          "fix:tag": "42992"
         }
       }
     ]

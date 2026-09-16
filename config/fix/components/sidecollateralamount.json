@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecurrentcollateralamount"
+          "fix:field": "sidecurrentcollateralamount",
+          "fix:tag": "2702"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralcurrency"
+          "fix:field": "sidecollateralcurrency",
+          "fix:tag": "2695"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralcurrencycodesource"
+          "fix:field": "sidecollateralcurrencycodesource",
+          "fix:tag": "2930"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamounttype"
+          "fix:field": "sidecollateralamounttype",
+          "fix:tag": "2694"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralfxrate"
+          "fix:field": "sidecollateralfxrate",
+          "fix:tag": "2696"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralfxratecalc"
+          "fix:field": "sidecollateralfxratecalc",
+          "fix:tag": "2697"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateraltype"
+          "fix:field": "sidecollateraltype",
+          "fix:tag": "2701"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamountmarketsegmentid"
+          "fix:field": "sidecollateralamountmarketsegmentid",
+          "fix:tag": "2693"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamountmarketid"
+          "fix:field": "sidecollateralamountmarketid",
+          "fix:tag": "2692"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidehaircutindicator"
+          "fix:field": "sidehaircutindicator",
+          "fix:tag": "2703"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralportfolioid"
+          "fix:field": "sidecollateralportfolioid",
+          "fix:tag": "2700"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralpercentoverage"
+          "fix:field": "sidecollateralpercentoverage",
+          "fix:tag": "2699"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralmarketprice"
+          "fix:field": "sidecollateralmarketprice",
+          "fix:tag": "2698"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmentrate"
+          "fix:field": "sidecollateralreinvestmentrate",
+          "fix:tag": "2862"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosidecollateralreinvestments"
+          "fix:field": "nosidecollateralreinvestments",
+          "fix:tag": "2864"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideunderlyingrefid"
+          "fix:field": "sideunderlyingrefid",
+          "fix:tag": "2863"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlday"
+          "fix:field": "legstreamcommoditysettlday",
+          "fix:tag": "41681"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettltotalhours"
+          "fix:field": "legstreamcommoditysettltotalhours",
+          "fix:tag": "41682"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettltimes"
+          "fix:field": "nolegstreamcommoditysettltimes",
+          "fix:tag": "41683"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamrate"
+          "fix:field": "legpaymentstreamrate",
+          "fix:tag": "40326"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixedamount"
+          "fix:field": "legpaymentstreamfixedamount",
+          "fix:tag": "40327"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamrateoramountcurrency"
+          "fix:field": "legpaymentstreamrateoramountcurrency",
+          "fix:tag": "40328"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixedamountunitofmeasure"
+          "fix:field": "legpaymentstreamfixedamountunitofmeasure",
+          "fix:tag": "41556"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamtotalfixedamount"
+          "fix:field": "legpaymentstreamtotalfixedamount",
+          "fix:tag": "41557"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfuturevaluenotional"
+          "fix:field": "legpaymentstreamfuturevaluenotional",
+          "fix:tag": "40329"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfuturevaluedateadjusted"
+          "fix:field": "legpaymentstreamfuturevaluedateadjusted",
+          "fix:tag": "40330"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamworldscalerate"
+          "fix:field": "legpaymentstreamworldscalerate",
+          "fix:tag": "41558"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcontractprice"
+          "fix:field": "legpaymentstreamcontractprice",
+          "fix:tag": "41559"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcontractpricecurrency"
+          "fix:field": "legpaymentstreamcontractpricecurrency",
+          "fix:tag": "41560"
         }
       }
     ]

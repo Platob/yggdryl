@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholedate"
+          "fix:field": "underlyingmakewholedate",
+          "fix:tag": "42888"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholeamount"
+          "fix:field": "underlyingmakewholeamount",
+          "fix:tag": "42889"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkcurvename"
+          "fix:field": "underlyingmakewholebenchmarkcurvename",
+          "fix:tag": "42890"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkcurvepoint"
+          "fix:field": "underlyingmakewholebenchmarkcurvepoint",
+          "fix:tag": "42891"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholerecallspread"
+          "fix:field": "underlyingmakewholerecallspread",
+          "fix:tag": "42892"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkquote"
+          "fix:field": "underlyingmakewholebenchmarkquote",
+          "fix:tag": "42893"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholeinterpolationmethod"
+          "fix:field": "underlyingmakewholeinterpolationmethod",
+          "fix:tag": "42894"
         }
       }
     ]

@@ -7,12 +7,12 @@
 //!
 //! A digest identifies the bytes or values its owner selects, not an assumed
 //! schema. For example, [`crate::FixMsg::digest`] identifies the arrival body
-//! independently of its delivery envelope. [`crate::FixMsg::msgphash`] hashes exact
-//! chain-code bytes; [`crate::FixMsg::msghash`] couples updatedat nanoseconds with
-//! the canonical named-content digest. [`crate::FixLifecycle`] derives an
-//! instrument UUID from market, classification, ISIN (else symbol) and currency,
-//! and aligns updatedat to an epoch grid. These FIX recipes reuse the shared
-//! algorithms; they do not define another hash engine. A raw
+//! independently of its delivery envelope. A message's `hashcode` is the
+//! XXH3-64 of what its event states and the canonical named content behind
+//! it, coupled with its instant into the UUIDv7 that is its identity; its
+//! `crosshashcode` is the XXH3-64 of the chain identifier it shares. These
+//! FIX recipes reuse the shared algorithms; they do not define another hash
+//! engine. A raw
 //! [`txhash::TxHash`] is a time/digest pair, not an RFC UUID.
 //! These hashes detect accidental differences; they are not cryptographic
 //! integrity checks and cannot guarantee distinct identities.

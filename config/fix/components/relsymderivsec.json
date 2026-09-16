@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource"
+          "fix:field": "currencycodesource",
+          "fix:tag": "2897"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "corporateaction"
+          "fix:field": "corporateaction",
+          "fix:tag": "292"
         }
       },
       {
@@ -70,7 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs"
+          "fix:field": "nolegs",
+          "fix:tag": "555"
         }
       },
       {
@@ -90,7 +94,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relsymtransacttime"
+          "fix:field": "relsymtransacttime",
+          "fix:tag": "1504"
         }
       },
       {
@@ -100,7 +105,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numofsimpleinstruments"
+          "fix:field": "numofsimpleinstruments",
+          "fix:tag": "1606"
         }
       },
       {
@@ -110,7 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -120,7 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       }
     ]

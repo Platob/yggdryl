@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applid"
+          "fix:field": "applid",
+          "fix:tag": "1180"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applseqnum"
+          "fix:field": "applseqnum",
+          "fix:tag": "1181"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "appllastseqnum"
+          "fix:field": "appllastseqnum",
+          "fix:tag": "1350"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applresendflag"
+          "fix:field": "applresendflag",
+          "fix:tag": "1352"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualpaymentdatebusinesscenter"
+          "fix:field": "underlyingdividendaccrualpaymentdatebusinesscenter",
+          "fix:tag": "42800"
         }
       }
     ]

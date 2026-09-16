@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondatebusinesscenter"
+          "fix:field": "legsettlmethodelectiondatebusinesscenter",
+          "fix:tag": "42582"
         }
       }
     ]

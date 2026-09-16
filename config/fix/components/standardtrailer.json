@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "signaturelength"
+          "fix:field": "signaturelength",
+          "fix:tag": "93"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "signature"
+          "fix:field": "signature",
+          "fix:tag": "89"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "checksum"
+          "fix:field": "checksum",
+          "fix:tag": "10"
         }
       }
     ]

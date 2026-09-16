@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingratespreadstepdate"
+          "fix:field": "underlyingratespreadstepdate",
+          "fix:tag": "43006"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingratespreadstepvalue"
+          "fix:field": "underlyingratespreadstepvalue",
+          "fix:tag": "43007"
         }
       }
     ]

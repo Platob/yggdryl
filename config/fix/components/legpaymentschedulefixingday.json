@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdayofweek"
+          "fix:field": "legpaymentschedulefixingdayofweek",
+          "fix:tag": "41531"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulefixingdaynumber"
+          "fix:field": "legpaymentschedulefixingdaynumber",
+          "fix:tag": "41532"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlprice"
+          "fix:field": "underlyingsettlprice",
+          "fix:tag": "732"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlpricetype"
+          "fix:field": "underlyingsettlpricetype",
+          "fix:tag": "733"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryamount"
+          "fix:field": "underlyingdeliveryamount",
+          "fix:tag": "1037"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingamounts"
+          "fix:field": "nounderlyingamounts",
+          "fix:tag": "984"
         }
       },
       {

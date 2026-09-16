@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderid"
+          "fix:field": "testorderid",
+          "fix:tag": "3083"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersymbol"
+          "fix:field": "testordersymbol",
+          "fix:tag": "3084"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersecurityid"
+          "fix:field": "testordersecurityid",
+          "fix:tag": "3085"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersecurityidsource"
+          "fix:field": "testordersecurityidsource",
+          "fix:tag": "3086"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderprice"
+          "fix:field": "testorderprice",
+          "fix:tag": "3087"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderpricetype"
+          "fix:field": "testorderpricetype",
+          "fix:tag": "3088"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderqty"
+          "fix:field": "testorderqty",
+          "fix:tag": "3089"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderoffsetperiod"
+          "fix:field": "testorderoffsetperiod",
+          "fix:tag": "3090"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderoffsetunit"
+          "fix:field": "testorderoffsetunit",
+          "fix:tag": "3091"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecondaryassetclass"
+          "fix:field": "underlyingsecondaryassetclass",
+          "fix:tag": "2081"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecondaryassetsubclass"
+          "fix:field": "underlyingsecondaryassetsubclass",
+          "fix:tag": "2082"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecondaryassettype"
+          "fix:field": "underlyingsecondaryassettype",
+          "fix:tag": "2083"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecondaryassetsubtype"
+          "fix:field": "underlyingsecondaryassetsubtype",
+          "fix:tag": "2745"
         }
       }
     ]

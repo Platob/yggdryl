@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderattributetype"
+          "fix:field": "orderattributetype",
+          "fix:tag": "2594"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderattributevalue"
+          "fix:field": "orderattributevalue",
+          "fix:tag": "2595"
         }
       }
     ]

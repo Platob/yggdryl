@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingrateindex"
+          "fix:field": "dividendfloatingrateindex",
+          "fix:tag": "42218"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingrateindexcurveperiod"
+          "fix:field": "dividendfloatingrateindexcurveperiod",
+          "fix:tag": "42219"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingrateindexcurveunit"
+          "fix:field": "dividendfloatingrateindexcurveunit",
+          "fix:tag": "42220"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingratemultiplier"
+          "fix:field": "dividendfloatingratemultiplier",
+          "fix:tag": "42221"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingratespread"
+          "fix:field": "dividendfloatingratespread",
+          "fix:tag": "42222"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingratespreadpositiontype"
+          "fix:field": "dividendfloatingratespreadpositiontype",
+          "fix:tag": "42223"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloatingratetreatment"
+          "fix:field": "dividendfloatingratetreatment",
+          "fix:tag": "42224"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcaprate"
+          "fix:field": "dividendcaprate",
+          "fix:tag": "42225"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcapratebuyside"
+          "fix:field": "dividendcapratebuyside",
+          "fix:tag": "42226"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcapratesellside"
+          "fix:field": "dividendcapratesellside",
+          "fix:tag": "42227"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloorrate"
+          "fix:field": "dividendfloorrate",
+          "fix:tag": "42228"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloorratebuyside"
+          "fix:field": "dividendfloorratebuyside",
+          "fix:tag": "42229"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfloorratesellside"
+          "fix:field": "dividendfloorratesellside",
+          "fix:tag": "42230"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendinitialrate"
+          "fix:field": "dividendinitialrate",
+          "fix:tag": "42231"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfinalrateroundingdirection"
+          "fix:field": "dividendfinalrateroundingdirection",
+          "fix:tag": "42232"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfinalrateprecision"
+          "fix:field": "dividendfinalrateprecision",
+          "fix:tag": "42233"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaveragingmethod"
+          "fix:field": "dividendaveragingmethod",
+          "fix:tag": "42234"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendnegativeratetreatment"
+          "fix:field": "dividendnegativeratetreatment",
+          "fix:tag": "42235"
         }
       }
     ]

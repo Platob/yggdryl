@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluetime"
+          "fix:field": "legprovisioncashsettlvaluetime",
+          "fix:tag": "40524"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluetimebusinesscenter"
+          "fix:field": "legprovisioncashsettlvaluetimebusinesscenter",
+          "fix:tag": "40525"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedatebusinessdayconvention"
+          "fix:field": "legprovisioncashsettlvaluedatebusinessdayconvention",
+          "fix:tag": "40526"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisioncashsettlvaluedatebusinesscenters"
+          "fix:field": "nolegprovisioncashsettlvaluedatebusinesscenters",
+          "fix:tag": "40935"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedaterelativeto"
+          "fix:field": "legprovisioncashsettlvaluedaterelativeto",
+          "fix:tag": "40528"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedateoffsetperiod"
+          "fix:field": "legprovisioncashsettlvaluedateoffsetperiod",
+          "fix:tag": "40529"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedateoffsetunit"
+          "fix:field": "legprovisioncashsettlvaluedateoffsetunit",
+          "fix:tag": "40530"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedateoffsetdaytype"
+          "fix:field": "legprovisioncashsettlvaluedateoffsetdaytype",
+          "fix:tag": "40531"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlvaluedateadjusted"
+          "fix:field": "legprovisioncashsettlvaluedateadjusted",
+          "fix:tag": "40532"
         }
       }
     ]

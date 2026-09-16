@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamtype"
+          "fix:field": "streamtype",
+          "fix:tag": "40050"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamxid"
+          "fix:field": "streamxid",
+          "fix:tag": "41303"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamdesc"
+          "fix:field": "streamdesc",
+          "fix:tag": "40051"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamversion"
+          "fix:field": "streamversion",
+          "fix:tag": "42784"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamversioneffectivedate"
+          "fix:field": "streamversioneffectivedate",
+          "fix:tag": "42785"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streampayside"
+          "fix:field": "streampayside",
+          "fix:tag": "40052"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamreceiveside"
+          "fix:field": "streamreceiveside",
+          "fix:tag": "40053"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionalxidref"
+          "fix:field": "streamnotionalxidref",
+          "fix:tag": "41305"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotional"
+          "fix:field": "streamnotional",
+          "fix:tag": "40054"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcurrency"
+          "fix:field": "streamcurrency",
+          "fix:tag": "40055"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionaldeterminationmethod"
+          "fix:field": "streamnotionaldeterminationmethod",
+          "fix:tag": "42786"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionaladjustments"
+          "fix:field": "streamnotionaladjustments",
+          "fix:tag": "42787"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionalfrequencyperiod"
+          "fix:field": "streamnotionalfrequencyperiod",
+          "fix:tag": "41306"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionalfrequencyunit"
+          "fix:field": "streamnotionalfrequencyunit",
+          "fix:tag": "41307"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionalcommodityfrequency"
+          "fix:field": "streamnotionalcommodityfrequency",
+          "fix:tag": "41308"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamnotionalunitofmeasure"
+          "fix:field": "streamnotionalunitofmeasure",
+          "fix:tag": "41309"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamtotalnotional"
+          "fix:field": "streamtotalnotional",
+          "fix:tag": "41310"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamtotalnotionalunitofmeasure"
+          "fix:field": "streamtotalnotionalunitofmeasure",
+          "fix:tag": "41311"
         }
       },
       {
@@ -240,7 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentschedules"
+          "fix:field": "nopaymentschedules",
+          "fix:tag": "40828"
         }
       },
       {
@@ -260,7 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstubs"
+          "fix:field": "nopaymentstubs",
+          "fix:tag": "40872"
         }
       },
       {
@@ -290,7 +310,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodeliveryschedules"
+          "fix:field": "nodeliveryschedules",
+          "fix:tag": "41037"
         }
       },
       {
@@ -310,7 +331,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamtext"
+          "fix:field": "streamtext",
+          "fix:tag": "40056"
         }
       },
       {
@@ -320,7 +342,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedstreamtextlen"
+          "fix:field": "encodedstreamtextlen",
+          "fix:tag": "40982"
         }
       },
       {
@@ -330,7 +353,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedstreamtext"
+          "fix:field": "encodedstreamtext",
+          "fix:tag": "40983"
         }
       }
     ]

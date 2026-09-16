@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "postype"
+          "fix:field": "postype",
+          "fix:tag": "703"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "longqty"
+          "fix:field": "longqty",
+          "fix:tag": "704"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "shortqty"
+          "fix:field": "shortqty",
+          "fix:tag": "705"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "coveredqty"
+          "fix:field": "coveredqty",
+          "fix:tag": "1654"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtystatus"
+          "fix:field": "posqtystatus",
+          "fix:tag": "706"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quantitydate"
+          "fix:field": "quantitydate",
+          "fix:tag": "976"
         }
       }
     ]

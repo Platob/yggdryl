@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noordtyperules"
+          "fix:field": "noordtyperules",
+          "fix:tag": "1237"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notimeinforcerules"
+          "fix:field": "notimeinforcerules",
+          "fix:tag": "1239"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noexecinstrules"
+          "fix:field": "noexecinstrules",
+          "fix:tag": "1232"
         }
       },
       {
@@ -70,7 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noauctiontyperules"
+          "fix:field": "noauctiontyperules",
+          "fix:tag": "2548"
         }
       },
       {
@@ -90,7 +94,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomatchrules"
+          "fix:field": "nomatchrules",
+          "fix:tag": "1235"
         }
       },
       {
@@ -110,7 +115,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomdfeedtypes"
+          "fix:field": "nomdfeedtypes",
+          "fix:tag": "1141"
         }
       },
       {

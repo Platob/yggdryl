@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyid"
+          "fix:field": "paymentsettlpartyid",
+          "fix:tag": "40234"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyidsource"
+          "fix:field": "paymentsettlpartyidsource",
+          "fix:tag": "40235"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyrole"
+          "fix:field": "paymentsettlpartyrole",
+          "fix:tag": "40236"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyrolequalifier"
+          "fix:field": "paymentsettlpartyrolequalifier",
+          "fix:tag": "40237"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentsettlpartysubids"
+          "fix:field": "nopaymentsettlpartysubids",
+          "fix:tag": "40238"
         }
       },
       {

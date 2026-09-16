@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nested4partyid"
+          "fix:field": "nested4partyid",
+          "fix:tag": "1415"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nested4partyidsource"
+          "fix:field": "nested4partyidsource",
+          "fix:tag": "1416"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nested4partyrole"
+          "fix:field": "nested4partyrole",
+          "fix:tag": "1417"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nested4partyrolequalifier"
+          "fix:field": "nested4partyrolequalifier",
+          "fix:tag": "2383"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested4partysubids"
+          "fix:field": "nonested4partysubids",
+          "fix:tag": "1413"
         }
       },
       {

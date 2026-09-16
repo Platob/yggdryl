@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "startpricerange"
+          "fix:field": "startpricerange",
+          "fix:tag": "2551"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endpricerange"
+          "fix:field": "endpricerange",
+          "fix:tag": "2552"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricerangevalue"
+          "fix:field": "pricerangevalue",
+          "fix:tag": "2553"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricerangepercentage"
+          "fix:field": "pricerangepercentage",
+          "fix:tag": "2554"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricerangeruleid"
+          "fix:field": "pricerangeruleid",
+          "fix:tag": "2556"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricerangeproductcomplex"
+          "fix:field": "pricerangeproductcomplex",
+          "fix:tag": "2555"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commission"
+          "fix:field": "commission",
+          "fix:tag": "12"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commtype"
+          "fix:field": "commtype",
+          "fix:tag": "13"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commcurrency"
+          "fix:field": "commcurrency",
+          "fix:tag": "479"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commcurrencycodesource"
+          "fix:field": "commcurrencycodesource",
+          "fix:tag": "2922"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commrate"
+          "fix:field": "commrate",
+          "fix:tag": "1233"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "communitofmeasure"
+          "fix:field": "communitofmeasure",
+          "fix:tag": "1238"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundrenewwaiv"
+          "fix:field": "fundrenewwaiv",
+          "fix:tag": "497"
         }
       }
     ]

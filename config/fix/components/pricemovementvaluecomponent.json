@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricemovementvalue"
+          "fix:field": "pricemovementvalue",
+          "fix:tag": "1921"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricemovementpoint"
+          "fix:field": "pricemovementpoint",
+          "fix:tag": "1922"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricemovementtype"
+          "fix:field": "pricemovementtype",
+          "fix:tag": "1923"
         }
       }
     ]

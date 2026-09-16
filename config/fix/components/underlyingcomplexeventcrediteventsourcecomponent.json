@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventsource"
+          "fix:field": "underlyingcomplexeventcrediteventsource",
+          "fix:tag": "41749"
         }
       }
     ]

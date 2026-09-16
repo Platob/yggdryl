@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "flexproducteligibilityindicator"
+          "fix:field": "flexproducteligibilityindicator",
+          "fix:tag": "1242"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "flexproducteligibilitycomplex"
+          "fix:field": "flexproducteligibilitycomplex",
+          "fix:tag": "2561"
         }
       }
     ]

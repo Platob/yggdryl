@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "auctiontype"
+          "fix:field": "auctiontype",
+          "fix:tag": "1803"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "auctiontypeproductcomplex"
+          "fix:field": "auctiontypeproductcomplex",
+          "fix:tag": "2549"
         }
       }
     ]

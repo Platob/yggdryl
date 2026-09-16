@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricemovementvalues"
+          "fix:field": "nopricemovementvalues",
+          "fix:tag": "1920"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noclearingaccounttypes"
+          "fix:field": "noclearingaccounttypes",
+          "fix:tag": "1918"
         }
       },
       {

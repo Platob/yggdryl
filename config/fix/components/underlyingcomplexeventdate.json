@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventstartdate"
+          "fix:field": "underlyingcomplexeventstartdate",
+          "fix:tag": "2054"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventenddate"
+          "fix:field": "underlyingcomplexeventenddate",
+          "fix:tag": "2055"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcomplexeventtimes"
+          "fix:field": "nounderlyingcomplexeventtimes",
+          "fix:tag": "2056"
         }
       },
       {

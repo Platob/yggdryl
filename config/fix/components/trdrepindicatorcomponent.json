@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdreppartyrole"
+          "fix:field": "trdreppartyrole",
+          "fix:tag": "1388"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdrepindicator"
+          "fix:field": "trdrepindicator",
+          "fix:tag": "1389"
         }
       }
     ]

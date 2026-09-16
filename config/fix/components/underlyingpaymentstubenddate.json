@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddateunadjusted"
+          "fix:field": "underlyingpaymentstubenddateunadjusted",
+          "fix:tag": "42984"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddatebusinessdayconvention"
+          "fix:field": "underlyingpaymentstubenddatebusinessdayconvention",
+          "fix:tag": "42985"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentstubenddatebusinesscenters"
+          "fix:field": "nounderlyingpaymentstubenddatebusinesscenters",
+          "fix:tag": "42991"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddaterelativeto"
+          "fix:field": "underlyingpaymentstubenddaterelativeto",
+          "fix:tag": "42986"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddateoffsetperiod"
+          "fix:field": "underlyingpaymentstubenddateoffsetperiod",
+          "fix:tag": "42987"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddateoffsetunit"
+          "fix:field": "underlyingpaymentstubenddateoffsetunit",
+          "fix:tag": "42988"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddateoffsetdaytype"
+          "fix:field": "underlyingpaymentstubenddateoffsetdaytype",
+          "fix:tag": "42989"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubenddateadjusted"
+          "fix:field": "underlyingpaymentstubenddateadjusted",
+          "fix:tag": "42990"
         }
       }
     ]

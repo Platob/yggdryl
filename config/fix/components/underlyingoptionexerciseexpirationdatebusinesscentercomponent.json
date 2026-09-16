@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseexpirationdatebusinesscenter"
+          "fix:field": "underlyingoptionexerciseexpirationdatebusinesscenter",
+          "fix:tag": "41845"
         }
       }
     ]

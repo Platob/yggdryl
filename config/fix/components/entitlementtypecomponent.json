@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementtype"
+          "fix:field": "entitlementtype",
+          "fix:tag": "1775"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementsubtype"
+          "fix:field": "entitlementsubtype",
+          "fix:tag": "2402"
         }
       }
     ]

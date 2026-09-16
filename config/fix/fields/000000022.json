@@ -1,0 +1,3629 @@
+[
+  {
+    "name": "legcapprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the ceiling price of a capped call.",
+      "display": "LegCapPrice",
+      "fix:tag": "2200"
+    }
+  },
+  {
+    "name": "legfloorprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the floor price of a capped put.",
+      "display": "LegFloorPrice",
+      "fix:tag": "2201"
+    }
+  },
+  {
+    "name": "legflexibleindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate a derivatives security that can be defined using flexible terms. The terms commonly permitted to be defined by market participants are expiration date and strike price. FlexibleIndicator is an alternative to LegCFICode(608) Standard/Non-standard attribute.",
+      "display": "LegFlexibleIndicator",
+      "fix:tag": "2202"
+    }
+  },
+  {
+    "name": "legflexproducteligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
+      "display": "LegFlexProductEligibilityIndicator",
+      "fix:tag": "2203"
+    }
+  },
+  {
+    "name": "legcomplexeventstarttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The start time of the time range on which a complex event date is effective.",
+      "display": "LegComplexEventStartTime",
+      "fix:tag": "2204"
+    }
+  },
+  {
+    "name": "legpositionlimit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Position Limit for a given exchange-traded product.",
+      "display": "LegPositionLimit",
+      "fix:tag": "2205"
+    }
+  },
+  {
+    "name": "legntpositionlimit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Position limit in the near-term contract for a given exchange-traded product.",
+      "display": "LegNTPositionLimit",
+      "fix:tag": "2206"
+    }
+  },
+  {
+    "name": "legcpprogram",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The program under which a commercial paper is issued.",
+      "display": "LegCPProgram",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Program3a3",
+          "doc": "3(a)(3)"
+        },
+        {
+          "value": "2",
+          "name": "Program42",
+          "doc": "4(2)"
+        },
+        {
+          "value": "3",
+          "name": "Program3a2",
+          "doc": "3(a)(2)"
+        },
+        {
+          "value": "4",
+          "name": "Program3a3And3c7",
+          "doc": "3(a)(3) & 3(c)(7)"
+        },
+        {
+          "value": "5",
+          "name": "Program3a4",
+          "doc": "3(a)(4)"
+        },
+        {
+          "value": "6",
+          "name": "Program3a5",
+          "doc": "3(a)(5)"
+        },
+        {
+          "value": "7",
+          "name": "Program3a7",
+          "doc": "3(a)(7)"
+        },
+        {
+          "value": "8",
+          "name": "Program3c7",
+          "doc": "3(c)(7)"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2207"
+    }
+  },
+  {
+    "name": "legcpregtype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The registration type of a commercial paper issuance.",
+      "display": "LegCPRegType",
+      "fix:tag": "2208"
+    }
+  },
+  {
+    "name": "legshortsalerestriction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether a restriction applies to short selling a security.",
+      "display": "LegShortSaleRestriction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NoRestrictions",
+          "doc": "No restrictions"
+        },
+        {
+          "value": "1",
+          "name": "SecurityNotShortable",
+          "doc": "Security is not shortable"
+        },
+        {
+          "value": "2",
+          "name": "SecurityNotShortableAtOrBelowBestBid",
+          "doc": "Security not shortable at or below the best bid"
+        },
+        {
+          "value": "3",
+          "name": "SecurityNotShortableWithoutPreBorrow",
+          "doc": "Security is not shortable without pre-borrow"
+        }
+      ],
+      "fix:tag": "2209"
+    }
+  },
+  {
+    "name": "assetgroup",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
+      "display": "AssetGroup",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Financials",
+          "doc": "Financials"
+        },
+        {
+          "value": "2",
+          "name": "Commodities",
+          "doc": "Commodities"
+        },
+        {
+          "value": "3",
+          "name": "AlternativeInvestments",
+          "doc": "Alternative investments"
+        }
+      ],
+      "fix:tag": "2210"
+    }
+  },
+  {
+    "name": "legstrategytype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of trade strategy.",
+      "display": "LegStrategyType",
+      "fix:codes": [
+        {
+          "value": "STD",
+          "name": "Straddle",
+          "doc": "Straddle"
+        },
+        {
+          "value": "STG",
+          "name": "Strangle",
+          "doc": "Strangle"
+        },
+        {
+          "value": "BF",
+          "name": "Butterfly",
+          "doc": "Butterfly"
+        },
+        {
+          "value": "CNDR",
+          "name": "Condor",
+          "doc": "Condor"
+        },
+        {
+          "value": "CISN",
+          "name": "CallableInversibleSnowball",
+          "doc": "Callable inversible snowball"
+        },
+        {
+          "value": "OTHER",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2211"
+    }
+  },
+  {
+    "name": "legcommonpricingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', it indicates that common pricing applies. Common pricing may be relevant for a transaction that references more than one commodity reference price.",
+      "display": "LegCommonPricingIndicator",
+      "fix:tag": "2212"
+    }
+  },
+  {
+    "name": "legsettldisruptionprovision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the consequences of bullion settlement disruption events.",
+      "display": "LegSettlDisruptionProvision",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Negotiation",
+          "doc": "Negotiation"
+        },
+        {
+          "value": "2",
+          "name": "Cancellation",
+          "doc": "Cancellation and payment"
+        }
+      ],
+      "fix:tag": "2213"
+    }
+  },
+  {
+    "name": "leginstrumentroundingdirection",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the rounding direction if not overridden elsewhere.",
+      "display": "LegInstrumentRoundingDirection",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RoundToNearest",
+          "doc": "Round to nearest"
+        },
+        {
+          "value": "1",
+          "name": "RoundDown",
+          "doc": "Round down"
+        },
+        {
+          "value": "2",
+          "name": "RoundUp",
+          "doc": "Round up"
+        }
+      ],
+      "fix:tag": "2214"
+    }
+  },
+  {
+    "name": "leginstrumentroundingprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
+      "display": "LegInstrumentRoundingPrecision",
+      "fix:tag": "2215"
+    }
+  },
+  {
+    "name": "miscfeerate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The fee rate when MiscFeeAmt(137) is a percentage of trade quantity.",
+      "display": "MiscFeeRate",
+      "fix:tag": "2216"
+    }
+  },
+  {
+    "name": "miscfeeamountdue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The fee amount due if different from MiscFeeAmt(137).",
+      "display": "MiscFeeAmountDue",
+      "fix:tag": "2217"
+    }
+  },
+  {
+    "name": "nolegcomplexevents",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex events in the repeating group.",
+      "display": "NoLegComplexEvents",
+      "fix:tag": "2218"
+    }
+  },
+  {
+    "name": "legcomplexeventtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of complex event.",
+      "display": "LegComplexEventType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Capped",
+          "doc": "Capped"
+        },
+        {
+          "value": "2",
+          "name": "Trigger",
+          "doc": "Trigger"
+        },
+        {
+          "value": "3",
+          "name": "KnockInUp",
+          "doc": "Knock-in up"
+        },
+        {
+          "value": "4",
+          "name": "KnockInDown",
+          "doc": "Knock-in down"
+        },
+        {
+          "value": "5",
+          "name": "KnockOutUp",
+          "doc": "Knock-out up"
+        },
+        {
+          "value": "6",
+          "name": "KnockOutDown",
+          "doc": "Knock-out down"
+        },
+        {
+          "value": "7",
+          "name": "Underlying",
+          "doc": "Underlying"
+        },
+        {
+          "value": "8",
+          "name": "ResetBarrier",
+          "doc": "Reset Barrier"
+        },
+        {
+          "value": "9",
+          "name": "RollingBarrier",
+          "doc": "Rolling Barrier"
+        },
+        {
+          "value": "10",
+          "name": "OneTouch",
+          "doc": "One-touch"
+        },
+        {
+          "value": "11",
+          "name": "NoTouch",
+          "doc": "No-touch"
+        },
+        {
+          "value": "12",
+          "name": "DblOneTouch",
+          "doc": "Double one-touch"
+        },
+        {
+          "value": "13",
+          "name": "DblNoTouch",
+          "doc": "Double no-touch"
+        },
+        {
+          "value": "14",
+          "name": "FXComposite",
+          "doc": "Foreign exchange composite"
+        },
+        {
+          "value": "15",
+          "name": "FXQuanto",
+          "doc": "Foreign exchange Quanto"
+        },
+        {
+          "value": "16",
+          "name": "FXCrssCcy",
+          "doc": "Foreign exchange cross currency"
+        },
+        {
+          "value": "17",
+          "name": "StrkSpread",
+          "doc": "Strike spread"
+        },
+        {
+          "value": "18",
+          "name": "ClndrSpread",
+          "doc": "Calendar spread"
+        },
+        {
+          "value": "19",
+          "name": "PxObsvtn",
+          "doc": "Price observation (Asian or Lookback)"
+        },
+        {
+          "value": "20",
+          "name": "PassThrough",
+          "doc": "Pass-through"
+        },
+        {
+          "value": "21",
+          "name": "StrkSched",
+          "doc": "Strike schedule"
+        },
+        {
+          "value": "22",
+          "name": "EquityValuation",
+          "doc": "Equity valuation"
+        },
+        {
+          "value": "23",
+          "name": "DividendValuation",
+          "doc": "Dividend valuation"
+        }
+      ],
+      "fix:tag": "2219"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutpayside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade side of payout payer.",
+      "display": "LegComplexOptPayoutPaySide",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "doc": "Sell"
+        }
+      ],
+      "fix:tag": "2220"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutreceiveside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade side of payout receiver.",
+      "display": "LegComplexOptPayoutReceiveSide",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "doc": "Sell"
+        }
+      ],
+      "fix:tag": "2221"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutunderlier",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to the underlier whose payments are being passed through.",
+      "display": "LegComplexOptPayoutUnderlier",
+      "fix:tag": "2222"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
+      "display": "LegComplexOptPayoutAmount",
+      "fix:tag": "2223"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of observed price for calculating the payout associated with the event.",
+      "display": "LegComplexOptPayoutPercentage",
+      "fix:tag": "2224"
+    }
+  },
+  {
+    "name": "legcomplexoptpayouttime",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies when the payout is to occur.",
+      "display": "LegComplexOptPayoutTime",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Close",
+          "doc": "Close"
+        },
+        {
+          "value": "1",
+          "name": "Open",
+          "doc": "Open"
+        },
+        {
+          "value": "2",
+          "name": "OfficialSettl",
+          "doc": "Official settlement"
+        },
+        {
+          "value": "3",
+          "name": "ValuationTime",
+          "doc": "Valuation time"
+        },
+        {
+          "value": "4",
+          "name": "ExcahgneSettlTime",
+          "doc": "Exchange settlement time"
+        },
+        {
+          "value": "5",
+          "name": "DerivativesClose",
+          "doc": "Derivatives close"
+        },
+        {
+          "value": "6",
+          "name": "AsSpecified",
+          "doc": "As specified in master confirmation"
+        }
+      ],
+      "fix:tag": "2225"
+    }
+  },
+  {
+    "name": "legcomplexoptpayoutcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the payout amount.",
+      "display": "LegComplexOptPayoutCurrency",
+      "fix:tag": "2226"
+    }
+  },
+  {
+    "name": "legcomplexeventprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the LegComplexEventType(2219).",
+      "display": "LegComplexEventPrice",
+      "fix:tag": "2227"
+    }
+  },
+  {
+    "name": "legcomplexeventpricepercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the price percentage at which the complex event takes effect. Impact of the event price is determined by the LegComplexEventType(2219).",
+      "display": "LegComplexEventPricePercentage",
+      "fix:tag": "2228"
+    }
+  },
+  {
+    "name": "legcomplexeventpriceboundarymethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the boundary condition to be used for the event price relative to the complex event price at the point the complex event outcome takes effect as determined by the LegComplexEventPriceTimeType(2231).",
+      "display": "LegComplexEventPriceBoundaryMethod",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "LessThanComplexEventPrice",
+          "doc": "Less than ComplexEventPrice(1486)"
+        },
+        {
+          "value": "2",
+          "name": "LessThanOrEqualToComplexEventPrice",
+          "doc": "Less than or equal to ComplexEventPrice(1486)"
+        },
+        {
+          "value": "3",
+          "name": "EqualToComplexEventPrice",
+          "doc": "Equal to ComplexEventPrice(1486)"
+        },
+        {
+          "value": "4",
+          "name": "GreaterThanOrEqualToComplexEventPrice",
+          "doc": "Greater than or equal to ComplexEventPrice(1486)"
+        },
+        {
+          "value": "5",
+          "name": "GreaterThanComplexEventPrice",
+          "doc": "Greater than ComplexEventPrice(1486)"
+        }
+      ],
+      "fix:tag": "2229"
+    }
+  },
+  {
+    "name": "legcomplexeventpriceboundaryprecision",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in combination with LegComplexEventPriceBoundaryMethod(2229) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
+      "display": "LegComplexEventPriceBoundaryPrecision",
+      "fix:tag": "2230"
+    }
+  },
+  {
+    "name": "legcomplexeventpricetimetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the LegComplexEventType(2219).",
+      "display": "LegComplexEventPriceTimeType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Expiration",
+          "doc": "Expiration"
+        },
+        {
+          "value": "2",
+          "name": "Immediate",
+          "doc": "Immediate (At Any Time)"
+        },
+        {
+          "value": "3",
+          "name": "SpecifiedDate",
+          "doc": "Specified Date/Time"
+        },
+        {
+          "value": "4",
+          "name": "Close",
+          "doc": "Close"
+        },
+        {
+          "value": "5",
+          "name": "Open",
+          "doc": "Open"
+        },
+        {
+          "value": "6",
+          "name": "OfficialSettlPrice",
+          "doc": "Official settlement price"
+        },
+        {
+          "value": "7",
+          "name": "DerivativesClose",
+          "doc": "Derivatives close"
+        },
+        {
+          "value": "8",
+          "name": "AsSpecifiedMasterConfirmation",
+          "doc": "As specified in Master Confirmation"
+        }
+      ],
+      "fix:tag": "2231"
+    }
+  },
+  {
+    "name": "legcomplexeventcondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the condition between complex events when more than one event is specified.",
+      "display": "LegComplexEventCondition",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "And",
+          "doc": "And"
+        },
+        {
+          "value": "2",
+          "name": "Or",
+          "doc": "Or"
+        }
+      ],
+      "fix:tag": "2232"
+    }
+  },
+  {
+    "name": "legcomplexeventcurrencyone",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the first or only reference currency of the trade.",
+      "display": "LegComplexEventCurrencyOne",
+      "fix:tag": "2233"
+    }
+  },
+  {
+    "name": "legcomplexeventcurrencytwo",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the second reference currency of the trade.",
+      "display": "LegComplexEventCurrencyTwo",
+      "fix:tag": "2234"
+    }
+  },
+  {
+    "name": "legcomplexeventquotebasis",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For foreign exchange Quanto option feature.",
+      "display": "LegComplexEventQuoteBasis",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Currency1PerCurrency2",
+          "doc": "Currency 1 per currency 2"
+        },
+        {
+          "value": "1",
+          "name": "Currency2PerCurrency1",
+          "doc": "Currency 2 per currency 1"
+        }
+      ],
+      "fix:tag": "2235"
+    }
+  },
+  {
+    "name": "legcomplexeventfixedfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the fixed FX rate alternative for FX Quantro options.",
+      "display": "LegComplexEventFixedFXRate",
+      "fix:tag": "2236"
+    }
+  },
+  {
+    "name": "legcomplexeventdeterminationmethod",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the method according to which an amount or a date is determined. See https://fpml.org/coding-scheme/determination-method for values.",
+      "display": "LegComplexEventDeterminationMethod",
+      "fix:tag": "2237"
+    }
+  },
+  {
+    "name": "legcomplexeventcalculationagent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify the calculation agent.",
+      "display": "LegComplexEventCalculationAgent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ExercisingParty",
+          "doc": "Exercising party"
+        },
+        {
+          "value": "1",
+          "name": "NonExercisingParty",
+          "doc": "Non-exercising party"
+        },
+        {
+          "value": "2",
+          "name": "MasterAgreeent",
+          "doc": "As specified in the master agreement"
+        },
+        {
+          "value": "3",
+          "name": "Supplement",
+          "doc": "As specified in the standard terms supplement"
+        }
+      ],
+      "fix:tag": "2238"
+    }
+  },
+  {
+    "name": "legcomplexeventstrikeprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper strike price for Asian option feature. Strike percentage for a Strike Spread.",
+      "display": "LegComplexEventStrikePrice",
+      "fix:tag": "2239"
+    }
+  },
+  {
+    "name": "legcomplexeventstrikefactor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Strike factor for Asian option feature. Upper strike percentage for a Strike Spread.",
+      "display": "LegComplexEventStrikeFactor",
+      "fix:tag": "2240"
+    }
+  },
+  {
+    "name": "legcomplexeventstrikenumberofoptions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper string number of options for a Strike Spread.",
+      "display": "LegComplexEventStrikeNumberOfOptions",
+      "fix:tag": "2241"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventsxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to credit event table elsewhere in the message.",
+      "display": "LegComplexEventCreditEventsXIDRef",
+      "fix:tag": "2242"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventnotifyingparty",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
+      "display": "LegComplexEventCreditEventNotifyingParty",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "SellerNotifies",
+          "doc": "Seller notifies"
+        },
+        {
+          "value": "1",
+          "name": "BuyerNotifies",
+          "doc": "Buyer notifies"
+        },
+        {
+          "value": "2",
+          "name": "SellerOrBuyerNotifies",
+          "doc": "Seller or buyer notifies"
+        }
+      ],
+      "fix:tag": "2243"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventbusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the local business center for which the credit event is to be determined. The inclusion of this business center implies that Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions is replaced by the local time of the specified business center. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "LegComplexEventCreditEventBusinessCenter",
+      "fix:tag": "2244"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventstandardsources",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', indicates that ISDA defined Standard Public Sources are applicable.",
+      "display": "LegComplexEventCreditEventStandardSources",
+      "fix:tag": "2245"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventminimumsources",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
+      "display": "LegComplexEventCreditEventMinimumSources",
+      "fix:tag": "2246"
+    }
+  },
+  {
+    "name": "legcomplexeventendtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The end time of the time range on which a complex event date is effective.",
+      "display": "LegComplexEventEndTime",
+      "fix:tag": "2247"
+    }
+  },
+  {
+    "name": "legcomplexeventxid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
+      "display": "LegComplexEventXID",
+      "fix:tag": "2248"
+    }
+  },
+  {
+    "name": "legcomplexeventxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to a complex event elsewhere in the message.",
+      "display": "LegComplexEventXIDRef",
+      "fix:tag": "2249"
+    }
+  },
+  {
+    "name": "nolegcomplexeventdates",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex event dates in the repeating group.",
+      "display": "NoLegComplexEventDates",
+      "fix:tag": "2250"
+    }
+  },
+  {
+    "name": "legcomplexeventstartdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
+      "display": "LegComplexEventStartDate",
+      "fix:tag": "2251"
+    }
+  },
+  {
+    "name": "legcomplexeventenddate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
+      "display": "LegComplexEventEndDate",
+      "fix:tag": "2252"
+    }
+  },
+  {
+    "name": "nolegcomplexeventtimes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex event times in the repeating group.",
+      "display": "NoLegComplexEventTimes",
+      "fix:tag": "2253"
+    }
+  },
+  {
+    "name": "noleginstrumentparties",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of parties in the repeating group.",
+      "display": "NoLegInstrumentParties",
+      "fix:tag": "2254"
+    }
+  },
+  {
+    "name": "leginstrumentpartyid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify party id related to instrument.",
+      "display": "LegInstrumentPartyID",
+      "fix:tag": "2255"
+    }
+  },
+  {
+    "name": "leginstrumentpartyidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify source of instrument party id.",
+      "display": "LegInstrumentPartyIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "KoreanInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Korean Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "UKNationalInsuranceOrPensionNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "UK National Insurance or Pension Number"
+        },
+        {
+          "value": "B",
+          "name": "BIC",
+          "group": "For all PartyRoles",
+          "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
+        },
+        {
+          "value": "I",
+          "name": "ISITCAcronym",
+          "group": "For PartyRole=\"Broker of Credit\"",
+          "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
+        },
+        {
+          "value": "2",
+          "name": "TaiwaneseForeignInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
+        },
+        {
+          "value": "7",
+          "name": "USSocialSecurityNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Social Security Number"
+        },
+        {
+          "value": "C",
+          "name": "GeneralIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
+        },
+        {
+          "value": "3",
+          "name": "TaiwaneseTradingAcct",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Taiwanese Trading Acct"
+        },
+        {
+          "value": "8",
+          "name": "USEmployerOrTaxIDNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "US Employer or Tax ID Number"
+        },
+        {
+          "value": "D",
+          "name": "Proprietary",
+          "group": "For all PartyRoles",
+          "doc": "Proprietary / Custom code"
+        },
+        {
+          "value": "4",
+          "name": "MalaysianCentralDepository",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Malaysian Central Depository (MCD) number"
+        },
+        {
+          "value": "9",
+          "name": "AustralianBusinessNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Business Number"
+        },
+        {
+          "value": "E",
+          "name": "ISOCountryCode",
+          "group": "For all PartyRoles",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "5",
+          "name": "ChineseInvestorID",
+          "group": "For PartyRole = \"InvestorID\" and for Equities",
+          "doc": "Chinese Investor ID"
+        },
+        {
+          "value": "A",
+          "name": "AustralianTaxFileNumber",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Australian Tax File Number"
+        },
+        {
+          "value": "F",
+          "name": "SettlementEntityLocation",
+          "group": "For all PartyRoles",
+          "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
+        },
+        {
+          "value": "G",
+          "name": "MIC",
+          "group": "For all PartyRoles",
+          "doc": "Market Identifier Code (ISO 10383) MIC"
+        },
+        {
+          "value": "J",
+          "name": "TaxID",
+          "group": "For PartyRole = \"InvestorID\" and for CIV",
+          "doc": "Tax ID"
+        },
+        {
+          "value": "H",
+          "name": "CSDParticipant",
+          "group": "For all PartyRoles",
+          "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
+        },
+        {
+          "value": "K",
+          "name": "AustralianCompanyNumber",
+          "group": "For all PartyRoles",
+          "doc": "Australian Company Number"
+        },
+        {
+          "value": "L",
+          "name": "AustralianRegisteredBodyNumber",
+          "group": "For all PartyRoles",
+          "doc": "Australian Registered Body Number"
+        },
+        {
+          "value": "M",
+          "name": "CFTCReportingFirmIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "CFTC reporting firm identifier"
+        },
+        {
+          "value": "N",
+          "name": "LegalEntityIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Legal Entity Identifier (ISO 17442) LEI"
+        },
+        {
+          "value": "O",
+          "name": "InterimIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Interim identifier"
+        },
+        {
+          "value": "P",
+          "name": "ShortCodeIdentifier",
+          "group": "For all PartyRoles",
+          "doc": "Short code identifier"
+        },
+        {
+          "value": "Q",
+          "name": "NationalIDNaturalPerson",
+          "group": "For all PartyRoles",
+          "doc": "National ID of natural person"
+        },
+        {
+          "value": "R",
+          "name": "IndiaPermanentAccountNumber",
+          "group": "For all PartyRoles",
+          "doc": "India Permanent Account Number"
+        },
+        {
+          "value": "S",
+          "name": "FDID",
+          "group": "For all PartyRoles",
+          "doc": "Firm designated identifier"
+        },
+        {
+          "value": "T",
+          "name": "SPSAID",
+          "group": "For all PartyRoles",
+          "doc": "Special Segregated Account ID"
+        },
+        {
+          "value": "U",
+          "name": "MasterSPSAID",
+          "group": "For all PartyRoles",
+          "doc": "Master Special Segregated Account ID"
+        },
+        {
+          "value": "V",
+          "name": "KoreaShortSellingRegistrationNumber",
+          "group": "For all PartyRoles",
+          "doc": "Korea Short Selling Registration Number"
+        }
+      ],
+      "fix:tag": "2256"
+    }
+  },
+  {
+    "name": "leginstrumentpartyrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify the role of instrument party id.",
+      "display": "LegInstrumentPartyRole",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "ExecutingFirm",
+          "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
+        },
+        {
+          "value": "2",
+          "name": "BrokerOfCredit",
+          "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)"
+        },
+        {
+          "value": "3",
+          "name": "ClientID",
+          "doc": "Client ID (formerly FIX 4.2 ClientID)"
+        },
+        {
+          "value": "4",
+          "name": "ClearingFirm",
+          "doc": "Clearing Firm (formerly FIX 4.2 ClearingFirm)"
+        },
+        {
+          "value": "5",
+          "name": "InvestorID",
+          "doc": "Investor ID"
+        },
+        {
+          "value": "6",
+          "name": "IntroducingFirm",
+          "doc": "Introducing Firm"
+        },
+        {
+          "value": "7",
+          "name": "EnteringFirm",
+          "doc": "Entering Firm"
+        },
+        {
+          "value": "8",
+          "name": "Locate",
+          "doc": "Locate / Lending Firm (for short-sales)"
+        },
+        {
+          "value": "9",
+          "name": "FundManagerClientID",
+          "doc": "Fund Manager Client ID (for CIV)"
+        },
+        {
+          "value": "10",
+          "name": "SettlementLocation",
+          "doc": "Settlement Location (formerly FIX 4.2 SettlLocation)"
+        },
+        {
+          "value": "11",
+          "name": "OrderOriginationTrader",
+          "doc": "Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)"
+        },
+        {
+          "value": "12",
+          "name": "ExecutingTrader",
+          "doc": "Executing Trader (associated with Executing Firm - actually executes)"
+        },
+        {
+          "value": "13",
+          "name": "OrderOriginationFirm",
+          "doc": "Order Origination Firm (e.g. buy-side firm)"
+        },
+        {
+          "value": "14",
+          "name": "GiveupClearingFirmDepr",
+          "doc": "Giveup Clearing Firm (firm to which trade is given up)"
+        },
+        {
+          "value": "15",
+          "name": "CorrespondantClearingFirm",
+          "doc": "Correspondant Clearing Firm"
+        },
+        {
+          "value": "16",
+          "name": "ExecutingSystem",
+          "doc": "Executing System"
+        },
+        {
+          "value": "17",
+          "name": "ContraFirm",
+          "doc": "Contra Firm"
+        },
+        {
+          "value": "18",
+          "name": "ContraClearingFirm",
+          "doc": "Contra Clearing Firm"
+        },
+        {
+          "value": "19",
+          "name": "SponsoringFirm",
+          "doc": "Sponsoring Firm"
+        },
+        {
+          "value": "20",
+          "name": "UnderlyingContraFirm",
+          "doc": "Underlying Contra Firm"
+        },
+        {
+          "value": "21",
+          "name": "ClearingOrganization",
+          "doc": "Clearing Organization"
+        },
+        {
+          "value": "22",
+          "name": "Exchange",
+          "doc": "Exchange"
+        },
+        {
+          "value": "24",
+          "name": "CustomerAccount",
+          "doc": "Customer Account"
+        },
+        {
+          "value": "25",
+          "name": "CorrespondentClearingOrganization",
+          "doc": "Correspondent Clearing Organization"
+        },
+        {
+          "value": "26",
+          "name": "CorrespondentBroker",
+          "doc": "Correspondent Broker"
+        },
+        {
+          "value": "27",
+          "name": "Buyer",
+          "doc": "Buyer/Seller (Receiver/Deliverer)"
+        },
+        {
+          "value": "28",
+          "name": "Custodian",
+          "doc": "Custodian"
+        },
+        {
+          "value": "29",
+          "name": "Intermediary",
+          "doc": "Intermediary"
+        },
+        {
+          "value": "30",
+          "name": "Agent",
+          "doc": "Agent"
+        },
+        {
+          "value": "31",
+          "name": "SubCustodian",
+          "doc": "Sub-custodian"
+        },
+        {
+          "value": "32",
+          "name": "Beneficiary",
+          "doc": "Beneficiary"
+        },
+        {
+          "value": "33",
+          "name": "InterestedParty",
+          "doc": "Interested party"
+        },
+        {
+          "value": "34",
+          "name": "RegulatoryBody",
+          "doc": "Regulatory body"
+        },
+        {
+          "value": "35",
+          "name": "LiquidityProvider",
+          "doc": "Liquidity provider"
+        },
+        {
+          "value": "36",
+          "name": "EnteringTrader",
+          "doc": "Entering trader"
+        },
+        {
+          "value": "37",
+          "name": "ContraTrader",
+          "doc": "Contra trader"
+        },
+        {
+          "value": "38",
+          "name": "PositionAccount",
+          "doc": "Position account"
+        },
+        {
+          "value": "39",
+          "name": "ContraInvestorID",
+          "doc": "Contra Investor ID"
+        },
+        {
+          "value": "40",
+          "name": "TransferToFirm",
+          "doc": "Transfer to Firm"
+        },
+        {
+          "value": "41",
+          "name": "ContraPositionAccount",
+          "doc": "Contra Position Account"
+        },
+        {
+          "value": "42",
+          "name": "ContraExchange",
+          "doc": "Contra Exchange"
+        },
+        {
+          "value": "43",
+          "name": "InternalCarryAccount",
+          "doc": "Internal Carry Account"
+        },
+        {
+          "value": "44",
+          "name": "OrderEntryOperatorID",
+          "doc": "Order Entry Operator ID"
+        },
+        {
+          "value": "45",
+          "name": "SecondaryAccountNumber",
+          "doc": "Secondary Account Number"
+        },
+        {
+          "value": "46",
+          "name": "ForeignFirm",
+          "doc": "Foreign Firm"
+        },
+        {
+          "value": "47",
+          "name": "ThirdPartyAllocationFirm",
+          "doc": "Third Party Allocation Firm"
+        },
+        {
+          "value": "48",
+          "name": "ClaimingAccount",
+          "doc": "Claiming Account"
+        },
+        {
+          "value": "49",
+          "name": "AssetManager",
+          "doc": "Asset Manager"
+        },
+        {
+          "value": "50",
+          "name": "PledgorAccount",
+          "doc": "Pledgor Account"
+        },
+        {
+          "value": "51",
+          "name": "PledgeeAccount",
+          "doc": "Pledgee Account"
+        },
+        {
+          "value": "52",
+          "name": "LargeTraderReportableAccount",
+          "doc": "Large Trader Reportable Account"
+        },
+        {
+          "value": "53",
+          "name": "TraderMnemonic",
+          "doc": "Trader mnemonic"
+        },
+        {
+          "value": "54",
+          "name": "SenderLocation",
+          "doc": "Sender Location"
+        },
+        {
+          "value": "55",
+          "name": "SessionID",
+          "doc": "Session ID"
+        },
+        {
+          "value": "56",
+          "name": "AcceptableCounterparty",
+          "doc": "Acceptable Counterparty"
+        },
+        {
+          "value": "57",
+          "name": "UnacceptableCounterparty",
+          "doc": "Unacceptable Counterparty"
+        },
+        {
+          "value": "58",
+          "name": "EnteringUnit",
+          "doc": "Entering Unit"
+        },
+        {
+          "value": "59",
+          "name": "ExecutingUnit",
+          "doc": "Executing Unit"
+        },
+        {
+          "value": "60",
+          "name": "IntroducingBroker",
+          "doc": "Introducing Broker"
+        },
+        {
+          "value": "61",
+          "name": "QuoteOriginator",
+          "doc": "Quote originator"
+        },
+        {
+          "value": "62",
+          "name": "ReportOriginator",
+          "doc": "Report originator"
+        },
+        {
+          "value": "63",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic internaliser (SI)"
+        },
+        {
+          "value": "64",
+          "name": "MultilateralTradingFacility",
+          "doc": "Multilateral Trading Facility (MTF)"
+        },
+        {
+          "value": "65",
+          "name": "RegulatedMarket",
+          "doc": "Regulated Market (RM)"
+        },
+        {
+          "value": "66",
+          "name": "MarketMaker",
+          "doc": "Market Maker"
+        },
+        {
+          "value": "67",
+          "name": "InvestmentFirm",
+          "doc": "Investment Firm"
+        },
+        {
+          "value": "68",
+          "name": "HostCompetentAuthority",
+          "doc": "Host Competent Authority (Host CA)"
+        },
+        {
+          "value": "69",
+          "name": "HomeCompetentAuthority",
+          "doc": "Home Competent Authority (Home CA)"
+        },
+        {
+          "value": "70",
+          "name": "CompetentAuthorityLiquidity",
+          "doc": "Competent Authority of the most relevant market in terms of liquidity (CAL)"
+        },
+        {
+          "value": "71",
+          "name": "CompetentAuthorityTransactionVenue",
+          "doc": "Competent Authority of the Transaction (Execution) Venue (CATV)"
+        },
+        {
+          "value": "72",
+          "name": "ReportingIntermediary",
+          "doc": "Reporting intermediary"
+        },
+        {
+          "value": "73",
+          "name": "ExecutionVenue",
+          "doc": "Execution Venue"
+        },
+        {
+          "value": "74",
+          "name": "MarketDataEntryOriginator",
+          "doc": "Market data entry originator"
+        },
+        {
+          "value": "75",
+          "name": "LocationID",
+          "doc": "Location ID"
+        },
+        {
+          "value": "76",
+          "name": "DeskID",
+          "doc": "Desk ID"
+        },
+        {
+          "value": "77",
+          "name": "MarketDataMarket",
+          "doc": "Market data market"
+        },
+        {
+          "value": "78",
+          "name": "AllocationEntity",
+          "doc": "Allocation Entity"
+        },
+        {
+          "value": "79",
+          "name": "PrimeBroker",
+          "doc": "Prime Broker providing General Trade Services"
+        },
+        {
+          "value": "80",
+          "name": "StepOutFirm",
+          "doc": "Step-Out Firm (Prime Broker)"
+        },
+        {
+          "value": "81",
+          "name": "BrokerClearingID",
+          "doc": "Broker clearing identifier"
+        },
+        {
+          "value": "82",
+          "name": "CentralRegistrationDepository",
+          "doc": "Central Registration Depository (CRD)"
+        },
+        {
+          "value": "83",
+          "name": "ClearingAccount",
+          "doc": "Clearing Account"
+        },
+        {
+          "value": "84",
+          "name": "AcceptableSettlingCounterparty",
+          "doc": "Acceptable Settling Counterparty"
+        },
+        {
+          "value": "85",
+          "name": "UnacceptableSettlingCounterparty",
+          "doc": "Unacceptable Settling Counterparty"
+        },
+        {
+          "value": "86",
+          "name": "CLSMemberBank",
+          "doc": "CLS Member Bank"
+        },
+        {
+          "value": "87",
+          "name": "InConcertGroup",
+          "doc": "In Concert Group"
+        },
+        {
+          "value": "88",
+          "name": "InConcertControllingEntity",
+          "doc": "In Concert Controlling Entity"
+        },
+        {
+          "value": "89",
+          "name": "LargePositionsReportingAccount",
+          "doc": "Large Positions Reporting Account"
+        },
+        {
+          "value": "90",
+          "name": "SettlementFirm",
+          "doc": "Settlement Firm"
+        },
+        {
+          "value": "91",
+          "name": "SettlementAccount",
+          "doc": "Settlement account"
+        },
+        {
+          "value": "92",
+          "name": "ReportingMarketCenter",
+          "doc": "Reporting Market Center"
+        },
+        {
+          "value": "93",
+          "name": "RelatedReportingMarketCenter",
+          "doc": "Related Reporting Market Center"
+        },
+        {
+          "value": "94",
+          "name": "AwayMarket",
+          "doc": "Away Market"
+        },
+        {
+          "value": "95",
+          "name": "GiveupTradingFirm",
+          "doc": "Give-up (trading) firm"
+        },
+        {
+          "value": "96",
+          "name": "TakeupTradingFirm",
+          "doc": "Take-up (trading) firm"
+        },
+        {
+          "value": "97",
+          "name": "GiveupClearingFirm",
+          "doc": "Give-up clearing firm"
+        },
+        {
+          "value": "98",
+          "name": "TakeupClearingFirm",
+          "doc": "Take-up clearing firm"
+        },
+        {
+          "value": "99",
+          "name": "OriginatingMarket",
+          "doc": "Originating Market"
+        },
+        {
+          "value": "100",
+          "name": "MarginAccount",
+          "doc": "Margin account"
+        },
+        {
+          "value": "101",
+          "name": "CollateralAssetAccount",
+          "doc": "Collateral asset account"
+        },
+        {
+          "value": "102",
+          "name": "DataRepository",
+          "doc": "Data repository"
+        },
+        {
+          "value": "103",
+          "name": "CalculationAgent",
+          "doc": "Calculation agent"
+        },
+        {
+          "value": "104",
+          "name": "ExerciseNoticeSender",
+          "doc": "Sender of exercise notice"
+        },
+        {
+          "value": "105",
+          "name": "ExerciseNoticeReceiver",
+          "doc": "Receiver of exercise notice"
+        },
+        {
+          "value": "106",
+          "name": "RateReferenceBank",
+          "doc": "Rate reference bank"
+        },
+        {
+          "value": "107",
+          "name": "Correspondent",
+          "doc": "Correspondent"
+        },
+        {
+          "value": "109",
+          "name": "BeneficiaryBank",
+          "doc": "Beneficiary's bank or depository institution"
+        },
+        {
+          "value": "110",
+          "name": "Borrower",
+          "doc": "Borrower"
+        },
+        {
+          "value": "111",
+          "name": "PrimaryObligator",
+          "doc": "Primary obligator"
+        },
+        {
+          "value": "112",
+          "name": "Guarantor",
+          "doc": "Guarantor"
+        },
+        {
+          "value": "113",
+          "name": "ExcludedReferenceEntity",
+          "doc": "Excluded reference entity"
+        },
+        {
+          "value": "114",
+          "name": "DeterminingParty",
+          "doc": "Determining party"
+        },
+        {
+          "value": "115",
+          "name": "HedgingParty",
+          "doc": "Hedging party"
+        },
+        {
+          "value": "116",
+          "name": "ReportingEntity",
+          "doc": "Reporting entity"
+        },
+        {
+          "value": "117",
+          "name": "SalesPerson",
+          "doc": "Sales person"
+        },
+        {
+          "value": "118",
+          "name": "Operator",
+          "doc": "Operator"
+        },
+        {
+          "value": "119",
+          "name": "CSD",
+          "doc": "Central Securities Depository (CSD)"
+        },
+        {
+          "value": "120",
+          "name": "ICSD",
+          "doc": "International Central Securities Depository (ICSD)"
+        },
+        {
+          "value": "121",
+          "name": "TradingSubAccount",
+          "doc": "Trading sub-account"
+        },
+        {
+          "value": "122",
+          "name": "InvestmentDecisionMaker",
+          "doc": "Investment decision maker"
+        },
+        {
+          "value": "123",
+          "name": "PublishingIntermediary",
+          "doc": "Publishing intermediary"
+        },
+        {
+          "value": "124",
+          "name": "CSDParticipant",
+          "doc": "Central Securities Depository (CSD) Participant"
+        },
+        {
+          "value": "125",
+          "name": "Issuer",
+          "doc": "Issuer"
+        },
+        {
+          "value": "126",
+          "name": "ContraCustomerAccount",
+          "doc": "Contra Customer Account"
+        },
+        {
+          "value": "127",
+          "name": "ContraInvestmentDecisionMaker",
+          "doc": "Contra Investment Decision Maker"
+        },
+        {
+          "value": "128",
+          "name": "AuthorizingPerson",
+          "doc": "Authorizing person"
+        },
+        {
+          "value": "129",
+          "name": "PrimaryPlaceOfListing",
+          "doc": "Primary place of listing"
+        },
+        {
+          "value": "130",
+          "name": "SecondaryPlaceOfListing",
+          "doc": "Secondary place of listing"
+        },
+        {
+          "value": "131",
+          "name": "Algorithm",
+          "doc": "Algorithm"
+        }
+      ],
+      "fix:tag": "2257"
+    }
+  },
+  {
+    "name": "noleginstrumentpartysubids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of parties sub-IDs in the repeating group.",
+      "display": "NoLegInstrumentPartySubIDs",
+      "fix:tag": "2258"
+    }
+  },
+  {
+    "name": "leginstrumentpartysubid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "PartySubID value within an instrument party repeating group.",
+      "display": "LegInstrumentPartySubID",
+      "fix:tag": "2259"
+    }
+  },
+  {
+    "name": "leginstrumentpartysubidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of LegInstrumentPartySubID (2259) value.",
+      "display": "LegInstrumentPartySubIDType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Firm",
+          "doc": "Firm"
+        },
+        {
+          "value": "2",
+          "name": "Person",
+          "doc": "Person"
+        },
+        {
+          "value": "3",
+          "name": "System",
+          "doc": "System"
+        },
+        {
+          "value": "4",
+          "name": "Application",
+          "doc": "Application"
+        },
+        {
+          "value": "5",
+          "name": "FullLegalNameOfFirm",
+          "doc": "Full legal name of firm"
+        },
+        {
+          "value": "6",
+          "name": "PostalAddress",
+          "doc": "Postal address"
+        },
+        {
+          "value": "7",
+          "name": "PhoneNumber",
+          "doc": "Phone number"
+        },
+        {
+          "value": "8",
+          "name": "EmailAddress",
+          "doc": "Email address"
+        },
+        {
+          "value": "9",
+          "name": "ContactName",
+          "doc": "Contact name"
+        },
+        {
+          "value": "10",
+          "name": "SecuritiesAccountNumber",
+          "doc": "Securities account number (for settlement instructions)"
+        },
+        {
+          "value": "11",
+          "name": "RegistrationNumber",
+          "doc": "Registration number (for settlement instructions and confirmations)"
+        },
+        {
+          "value": "12",
+          "name": "RegisteredAddressForConfirmation",
+          "doc": "Registered address (for confirmation purposes)"
+        },
+        {
+          "value": "13",
+          "name": "RegulatoryStatus",
+          "doc": "Regulatory status (for confirmation purposes)"
+        },
+        {
+          "value": "14",
+          "name": "RegistrationName",
+          "doc": "Registration name (for settlement instructions)"
+        },
+        {
+          "value": "15",
+          "name": "CashAccountNumber",
+          "doc": "Cash account number (for settlement instructions)"
+        },
+        {
+          "value": "16",
+          "name": "BIC",
+          "doc": "BIC"
+        },
+        {
+          "value": "17",
+          "name": "CSDParticipantMemberCode",
+          "doc": "CSD participant member code"
+        },
+        {
+          "value": "18",
+          "name": "RegisteredAddress",
+          "doc": "Registered address"
+        },
+        {
+          "value": "19",
+          "name": "FundAccountName",
+          "doc": "Fund account name"
+        },
+        {
+          "value": "20",
+          "name": "TelexNumber",
+          "doc": "Telex number"
+        },
+        {
+          "value": "21",
+          "name": "FaxNumber",
+          "doc": "Fax number"
+        },
+        {
+          "value": "22",
+          "name": "SecuritiesAccountName",
+          "doc": "Securities account name"
+        },
+        {
+          "value": "23",
+          "name": "CashAccountName",
+          "doc": "Cash account name"
+        },
+        {
+          "value": "24",
+          "name": "Department",
+          "doc": "Department"
+        },
+        {
+          "value": "25",
+          "name": "LocationDesk",
+          "doc": "Location desk"
+        },
+        {
+          "value": "26",
+          "name": "PositionAccountType",
+          "doc": "Position account type"
+        },
+        {
+          "value": "27",
+          "name": "SecurityLocateID",
+          "doc": "Security locate ID"
+        },
+        {
+          "value": "28",
+          "name": "MarketMaker",
+          "doc": "Market maker"
+        },
+        {
+          "value": "29",
+          "name": "EligibleCounterparty",
+          "doc": "Eligible counterparty"
+        },
+        {
+          "value": "30",
+          "name": "ProfessionalClient",
+          "doc": "Professional client"
+        },
+        {
+          "value": "31",
+          "name": "Location",
+          "doc": "Location"
+        },
+        {
+          "value": "32",
+          "name": "ExecutionVenue",
+          "doc": "Execution venue"
+        },
+        {
+          "value": "33",
+          "name": "CurrencyDeliveryIdentifier",
+          "doc": "Currency delivery identifier"
+        },
+        {
+          "value": "34",
+          "name": "AddressCity",
+          "doc": "Address City"
+        },
+        {
+          "value": "35",
+          "name": "AddressStateOrProvince",
+          "doc": "Address State/Province"
+        },
+        {
+          "value": "36",
+          "name": "AddressPostalCode",
+          "doc": "Address Postal Code"
+        },
+        {
+          "value": "37",
+          "name": "AddressStreet",
+          "doc": "Address Street"
+        },
+        {
+          "value": "38",
+          "name": "AddressISOCountryCode",
+          "doc": "Address Country (ISO country code)"
+        },
+        {
+          "value": "39",
+          "name": "ISOCountryCode",
+          "doc": "ISO country code"
+        },
+        {
+          "value": "40",
+          "name": "MarketSegment",
+          "doc": "Market segment"
+        },
+        {
+          "value": "41",
+          "name": "CustomerAccountType",
+          "doc": "Customer account type"
+        },
+        {
+          "value": "42",
+          "name": "OmnibusAccount",
+          "doc": "Omnibus account"
+        },
+        {
+          "value": "43",
+          "name": "FundsSegregationType",
+          "doc": "Funds segregation type"
+        },
+        {
+          "value": "44",
+          "name": "GuaranteeFund",
+          "doc": "Guarantee fund"
+        },
+        {
+          "value": "45",
+          "name": "SwapDealer",
+          "doc": "Swap dealer"
+        },
+        {
+          "value": "46",
+          "name": "MajorParticipant",
+          "doc": "Major participant"
+        },
+        {
+          "value": "47",
+          "name": "FinancialEntity",
+          "doc": "Financial entity"
+        },
+        {
+          "value": "48",
+          "name": "USPerson",
+          "doc": "U.S. person"
+        },
+        {
+          "value": "49",
+          "name": "ReportingEntityIndicator",
+          "doc": "Reporting entity indicator"
+        },
+        {
+          "value": "50",
+          "name": "ElectedClearingRequirementException",
+          "doc": "Elected clearing requirement exception"
+        },
+        {
+          "value": "51",
+          "name": "BusinessCenter",
+          "doc": "Business center"
+        },
+        {
+          "value": "52",
+          "name": "ReferenceText",
+          "doc": "Reference text"
+        },
+        {
+          "value": "53",
+          "name": "ShortMarkingExemptAccount",
+          "doc": "Short-marking exempt account"
+        },
+        {
+          "value": "54",
+          "name": "ParentFirmIdentifier",
+          "doc": "Parent firm identifier"
+        },
+        {
+          "value": "55",
+          "name": "ParentFirmName",
+          "doc": "Parent firm name"
+        },
+        {
+          "value": "56",
+          "name": "DealIdentifier",
+          "doc": "Deal identifier"
+        },
+        {
+          "value": "57",
+          "name": "SystemTradeID",
+          "doc": "System trade identifier"
+        },
+        {
+          "value": "58",
+          "name": "SystemTradeSubID",
+          "doc": "System trade sub-identifier"
+        },
+        {
+          "value": "59",
+          "name": "FCMCode",
+          "doc": "Futures Commission Merchant (FCM) code"
+        },
+        {
+          "value": "60",
+          "name": "DlvryTrmlCode",
+          "doc": "Delivery terminal customer account/code"
+        },
+        {
+          "value": "61",
+          "name": "VolntyRptEntity",
+          "doc": "Voluntary reporting entity"
+        },
+        {
+          "value": "62",
+          "name": "RptObligJursdctn",
+          "doc": "Reporting obligation jurisdiction"
+        },
+        {
+          "value": "63",
+          "name": "VolntyRptJursdctn",
+          "doc": "Voluntary reporting jurisdiction"
+        },
+        {
+          "value": "64",
+          "name": "CompanyActivities",
+          "doc": "Company activities"
+        },
+        {
+          "value": "65",
+          "name": "EEAreaDomiciled",
+          "doc": "European Economic Area domiciled"
+        },
+        {
+          "value": "66",
+          "name": "ContractLinked",
+          "doc": "Contract linked to commercial or treasury financing for this counterparty"
+        },
+        {
+          "value": "67",
+          "name": "ContractAbove",
+          "doc": "Contract above clearing threshold for this counterparty"
+        },
+        {
+          "value": "68",
+          "name": "VolntyRptPty",
+          "doc": "Voluntary reporting party"
+        },
+        {
+          "value": "69",
+          "name": "EndUser",
+          "doc": "End user"
+        },
+        {
+          "value": "70",
+          "name": "LocationOrJurisdiction",
+          "doc": "Location or jurisdiction"
+        },
+        {
+          "value": "71",
+          "name": "DerivativesDealer",
+          "doc": "Derivatives dealer"
+        },
+        {
+          "value": "72",
+          "name": "Domicile",
+          "doc": "Domicile"
+        },
+        {
+          "value": "73",
+          "name": "ExemptFromRecognition",
+          "doc": "Exempt from recognition"
+        },
+        {
+          "value": "74",
+          "name": "Payer",
+          "doc": "Payer"
+        },
+        {
+          "value": "75",
+          "name": "Receiver",
+          "doc": "Receiver"
+        },
+        {
+          "value": "76",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic Internaliser (SI)"
+        },
+        {
+          "value": "77",
+          "name": "PublishingEntityIndicator",
+          "doc": "Publishing entity indicator"
+        },
+        {
+          "value": "78",
+          "name": "FirstName",
+          "doc": "First name"
+        },
+        {
+          "value": "79",
+          "name": "Surname",
+          "doc": "Surname"
+        },
+        {
+          "value": "80",
+          "name": "DateOfBirth",
+          "doc": "Date of birth"
+        },
+        {
+          "value": "81",
+          "name": "OrderTransmittingFirm",
+          "doc": "Order transmitting firm"
+        },
+        {
+          "value": "82",
+          "name": "OrderTransmittingFirmBuyer",
+          "doc": "Order transmitting firm for buyer"
+        },
+        {
+          "value": "83",
+          "name": "OrderTransmitterSeller",
+          "doc": "Order transmitter for seller"
+        },
+        {
+          "value": "84",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal Entity Identifier (ISO 17442) LEI"
+        },
+        {
+          "value": "85",
+          "name": "SubSectorClassification",
+          "doc": "Sub-sector classification"
+        },
+        {
+          "value": "86",
+          "name": "PartySide",
+          "doc": "Party side"
+        },
+        {
+          "value": "87",
+          "name": "LegalRegistrationCountry",
+          "doc": "Legal registration country"
+        },
+        {
+          "value": "88",
+          "name": "AlgorithmVersion",
+          "doc": "Algorithm version"
+        },
+        {
+          "value": "89",
+          "name": "CertificateRegistrationStatus",
+          "doc": "Certificate registration status"
+        }
+      ],
+      "fix:tag": "2260"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutpayside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade side of payout payer.",
+      "display": "UnderlyingComplexOptPayoutPaySide",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "doc": "Sell"
+        }
+      ],
+      "fix:tag": "2261"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutreceiveside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade side of payout receiver.",
+      "display": "UnderlyingComplexOptPayoutReceiveSide",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "doc": "Sell"
+        }
+      ],
+      "fix:tag": "2262"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutunderlier",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to the underlier whose payments are being passed through.",
+      "display": "UnderlyingComplexOptPayoutUnderlier",
+      "fix:tag": "2263"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of observed price for calculating the payout associated with the event.",
+      "display": "UnderlyingComplexOptPayoutPercentage",
+      "fix:tag": "2264"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayouttime",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The time when the payout is to occur.",
+      "display": "UnderlyingComplexOptPayoutTime",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Close",
+          "doc": "Close"
+        },
+        {
+          "value": "1",
+          "name": "Open",
+          "doc": "Open"
+        },
+        {
+          "value": "2",
+          "name": "OfficialSettl",
+          "doc": "Official settlement"
+        },
+        {
+          "value": "3",
+          "name": "ValuationTime",
+          "doc": "Valuation time"
+        },
+        {
+          "value": "4",
+          "name": "ExcahgneSettlTime",
+          "doc": "Exchange settlement time"
+        },
+        {
+          "value": "5",
+          "name": "DerivativesClose",
+          "doc": "Derivatives close"
+        },
+        {
+          "value": "6",
+          "name": "AsSpecified",
+          "doc": "As specified in master confirmation"
+        }
+      ],
+      "fix:tag": "2265"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the payout amount.",
+      "display": "UnderlyingComplexOptPayoutCurrency",
+      "fix:tag": "2266"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventpricepercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the price percentage at which the complex event takes effect. Impact of the event price is determined by the UnderlyingComplexEventType(2046).",
+      "display": "UnderlyingComplexEventPricePercentage",
+      "fix:tag": "2267"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcurrencyone",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the first or only reference currency of the trade.",
+      "display": "UnderlyingComplexEventCurrencyOne",
+      "fix:tag": "2268"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcurrencytwo",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the second reference currency of the trade.",
+      "display": "UnderlyingComplexEventCurrencyTwo",
+      "fix:tag": "2269"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventquotebasis",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency pairing for the quote.",
+      "display": "UnderlyingComplexEventQuoteBasis",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Currency1PerCurrency2",
+          "doc": "Currency 1 per currency 2"
+        },
+        {
+          "value": "1",
+          "name": "Currency2PerCurrency1",
+          "doc": "Currency 2 per currency 1"
+        }
+      ],
+      "fix:tag": "2270"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventfixedfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the fixed FX rate alternative for FX Quantro options.",
+      "display": "UnderlyingComplexEventFixedFXRate",
+      "fix:tag": "2271"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventdeterminationmethod",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the method according to which an amount or a date is determined. See https://fpml.org/coding-scheme/determination-method for values.",
+      "display": "UnderlyingComplexEventDeterminationMethod",
+      "fix:tag": "2272"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcalculationagent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify the calculation agent.",
+      "display": "UnderlyingComplexEventCalculationAgent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ExercisingParty",
+          "doc": "Exercising party"
+        },
+        {
+          "value": "1",
+          "name": "NonExercisingParty",
+          "doc": "Non-exercising party"
+        },
+        {
+          "value": "2",
+          "name": "MasterAgreeent",
+          "doc": "As specified in the master agreement"
+        },
+        {
+          "value": "3",
+          "name": "Supplement",
+          "doc": "As specified in the standard terms supplement"
+        }
+      ],
+      "fix:tag": "2273"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventstrikeprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper strike price for Asian option feature. Strike percentage for a Strike Spread.",
+      "display": "UnderlyingComplexEventStrikePrice",
+      "fix:tag": "2274"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventstrikefactor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Strike factor for Asian option feature. Upper strike percentage for a Strike Spread.",
+      "display": "UnderlyingComplexEventStrikeFactor",
+      "fix:tag": "2275"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventstrikenumberofoptions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper string number of options for a Strike Spread.",
+      "display": "UnderlyingComplexEventStrikeNumberOfOptions",
+      "fix:tag": "2276"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcrediteventsxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to credit event table elsewhere in the message.",
+      "display": "UnderlyingComplexEventCreditEventsXIDRef",
+      "fix:tag": "2277"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcrediteventnotifyingparty",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
+      "display": "UnderlyingComplexEventCreditEventNotifyingParty",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "SellerNotifies",
+          "doc": "Seller notifies"
+        },
+        {
+          "value": "1",
+          "name": "BuyerNotifies",
+          "doc": "Buyer notifies"
+        },
+        {
+          "value": "2",
+          "name": "SellerOrBuyerNotifies",
+          "doc": "Seller or buyer notifies"
+        }
+      ],
+      "fix:tag": "2278"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcrediteventbusinesscenter",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the local business center for which the credit event is to be determined. The inclusion of this business center implies that Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions is replaced by the local time of the specified business center. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingComplexEventCreditEventBusinessCenter",
+      "fix:tag": "2279"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcrediteventstandardsources",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', indicates that ISDA defined Standard Public Sources are applicable.",
+      "display": "UnderlyingComplexEventCreditEventStandardSources",
+      "fix:tag": "2280"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcrediteventminimumsources",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
+      "display": "UnderlyingComplexEventCreditEventMinimumSources",
+      "fix:tag": "2281"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventxid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
+      "display": "UnderlyingComplexEventXID",
+      "fix:tag": "2282"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to a complex event elsewhere in the message.",
+      "display": "UnderlyingComplexEventXIDRef",
+      "fix:tag": "2283"
+    }
+  },
+  {
+    "name": "underlyingsettlrateindex",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "In an outright or forward commodity trade that is cash settled this is the index used to determine the cash payment.",
+      "display": "UnderlyingSettlRateIndex",
+      "fix:tag": "2284"
+    }
+  },
+  {
+    "name": "underlyingsettlrateindexlocation",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "This is an optional qualifying attribute of UnderlyingSettlementRateIndex(2284) such as the delivery zone for an electricity contract.",
+      "display": "UnderlyingSettlRateIndexLocation",
+      "fix:tag": "2285"
+    }
+  },
+  {
+    "name": "underlyingoptionexpirationdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Description of the option expiration.",
+      "display": "UnderlyingOptionExpirationDesc",
+      "fix:tag": "2286"
+    }
+  },
+  {
+    "name": "encodedunderlyingoptionexpirationdesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingOptionExpirationDesc(2288) field.",
+      "display": "EncodedUnderlyingOptionExpirationDescLen",
+      "fix:tag": "2287"
+    }
+  },
+  {
+    "name": "encodedunderlyingoptionexpirationdesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the UnderlyingOptionExpirationDesc(2286) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingOptionExpirationDesc(2286).",
+      "display": "EncodedUnderlyingOptionExpirationDesc",
+      "fix:tag": "2288"
+    }
+  },
+  {
+    "name": "underlyingswapsubclass",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The sub-classification or notional schedule type of the swap.",
+      "display": "UnderlyingSwapSubClass",
+      "fix:codes": [
+        {
+          "value": "AMTZ",
+          "name": "Amortizing",
+          "doc": "Amortizing notional schedule"
+        },
+        {
+          "value": "COMP",
+          "name": "Compounding",
+          "doc": "Compounding"
+        },
+        {
+          "value": "CNST",
+          "name": "ConstantNotionalSchedule",
+          "doc": "Constant notional schedule"
+        },
+        {
+          "value": "ACRT",
+          "name": "AccretingNotionalSchedule",
+          "doc": "Accreting notional schedule"
+        },
+        {
+          "value": "CUST",
+          "name": "CustomNotionalSchedule",
+          "doc": "Custom notional schedule"
+        }
+      ],
+      "fix:tag": "2289"
+    }
+  },
+  {
+    "name": "underlyingstrikeunitofmeasure",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
+      "display": "UnderlyingStrikeUnitOfMeasure",
+      "fix:codes": [
+        {
+          "value": "Alw",
+          "name": "Allowances",
+          "group": "Variable Quantity UOM",
+          "doc": "Allowances"
+        },
+        {
+          "value": "Bcf",
+          "name": "BillionCubicFeet",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Billion cubic feet"
+        },
+        {
+          "value": "Bbl",
+          "name": "Barrels",
+          "group": "Variable Quantity UOM",
+          "doc": "Barrels"
+        },
+        {
+          "value": "CBM",
+          "name": "CubicMeters",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Cubic Meters"
+        },
+        {
+          "value": "BDFT",
+          "name": "BoardFeet",
+          "group": "Variable Quantity UOM",
+          "doc": "Board feet"
+        },
+        {
+          "value": "GJ",
+          "name": "Gigajoules",
+          "group": "Fixed Magnitude UOM",
+          "doc": "gigajoules"
+        },
+        {
+          "value": "Bu",
+          "name": "Bushels",
+          "group": "Variable Quantity UOM",
+          "doc": "Bushels"
+        },
+        {
+          "value": "kHR",
+          "name": "HeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Heat rate"
+        },
+        {
+          "value": "Ccy",
+          "name": "Currency",
+          "group": "Variable Quantity UOM",
+          "doc": "Amount of currency"
+        },
+        {
+          "value": "kWh",
+          "name": "KilowattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Kilowatt hours"
+        },
+        {
+          "value": "CDD",
+          "name": "CoolingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Cooling degree day"
+        },
+        {
+          "value": "MHR",
+          "name": "MegaHeatRate",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Mega heat rate"
+        },
+        {
+          "value": "CER",
+          "name": "CertifiedEmissionsReduction",
+          "group": "Variable Quantity UOM",
+          "doc": "Certified emissions reduction"
+        },
+        {
+          "value": "MMBtu",
+          "name": "OneMillionBTU",
+          "group": "Fixed Magnitude UOM",
+          "doc": "One Million BTU"
+        },
+        {
+          "value": "CPD",
+          "name": "CriticalPrecipDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Critical precipitation day"
+        },
+        {
+          "value": "MWh",
+          "name": "MegawattHours",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Megawatt hours"
+        },
+        {
+          "value": "CRT",
+          "name": "ClimateReserveTonnes",
+          "group": "Variable Quantity UOM",
+          "doc": "Climate reserve tonnes"
+        },
+        {
+          "value": "thm",
+          "name": "Therms",
+          "group": "Fixed Magnitude UOM",
+          "doc": "therms"
+        },
+        {
+          "value": "cwt",
+          "name": "Hundredweight",
+          "group": "Variable Quantity UOM",
+          "doc": "Hundredweight(US)"
+        },
+        {
+          "value": "tnCO2",
+          "name": "TonsOfCarbonDioxide",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Tons of carbon dioxide"
+        },
+        {
+          "value": "day",
+          "name": "Day",
+          "group": "Variable Quantity UOM",
+          "doc": "Days"
+        },
+        {
+          "value": "dt",
+          "name": "DryMetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Dry metric tons"
+        },
+        {
+          "value": "EnvAllwnc",
+          "name": "EnvAllwncCert",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental allowance certificates"
+        },
+        {
+          "value": "EnvCrd",
+          "name": "EnvironmentalCredit",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental credit"
+        },
+        {
+          "value": "EnvOfst",
+          "name": "EnvironmentalOffset",
+          "group": "Variable Quantity UOM",
+          "doc": "Environmental Offset"
+        },
+        {
+          "value": "g",
+          "name": "Grams",
+          "group": "Variable Quantity UOM",
+          "doc": "Grams"
+        },
+        {
+          "value": "Gal",
+          "name": "Gallons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gallons"
+        },
+        {
+          "value": "GT",
+          "name": "GrossTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Gross tons"
+        },
+        {
+          "value": "HDD",
+          "name": "HeatingDegreeDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Heating degree day"
+        },
+        {
+          "value": "IPNT",
+          "name": "IndexPoint",
+          "group": "Variable Quantity UOM",
+          "doc": "Index point"
+        },
+        {
+          "value": "kg",
+          "name": "Kilograms",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilograms"
+        },
+        {
+          "value": "kL",
+          "name": "Kiloliters",
+          "group": "Variable Quantity UOM",
+          "doc": "kiloliters"
+        },
+        {
+          "value": "kW-a",
+          "name": "KilowattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt year (electrical capacity)"
+        },
+        {
+          "value": "kW-d",
+          "name": "KilowattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt day (electrical capacity)"
+        },
+        {
+          "value": "kW-h",
+          "name": "KilowattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt hour (electrical capacity)"
+        },
+        {
+          "value": "kW-M",
+          "name": "KilowattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt month (electrical capacity)"
+        },
+        {
+          "value": "kW-min",
+          "name": "KilowattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilowatt-Minute (electrical capacity)"
+        },
+        {
+          "value": "L",
+          "name": "Liters",
+          "group": "Variable Quantity UOM",
+          "doc": "liters"
+        },
+        {
+          "value": "lbs",
+          "name": "Pounds",
+          "group": "Variable Quantity UOM",
+          "doc": "pounds"
+        },
+        {
+          "value": "MW-a",
+          "name": "MegawattYear",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt year (electrical capacity)"
+        },
+        {
+          "value": "MW-d",
+          "name": "MegawattDay",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt day (electrical capacity)"
+        },
+        {
+          "value": "MW-h",
+          "name": "MegawattHour",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt hour (electrical capacity)"
+        },
+        {
+          "value": "MW-M",
+          "name": "MegawattMonth",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt month (electrical capacity)"
+        },
+        {
+          "value": "MW-min",
+          "name": "MegawattMinute",
+          "group": "Variable Quantity UOM",
+          "doc": "Megawatt minute (electrical capacity)"
+        },
+        {
+          "value": "oz_tr",
+          "name": "TroyOunces",
+          "group": "Variable Quantity UOM",
+          "doc": "Troy ounces"
+        },
+        {
+          "value": "PRINC",
+          "name": "PrincipalWithRelationToDebtInstrument",
+          "group": "Variable Quantity UOM",
+          "doc": "Principal with relation to debt instrument"
+        },
+        {
+          "value": "t",
+          "name": "MetricTons",
+          "group": "Variable Quantity UOM",
+          "doc": "Metric tons"
+        },
+        {
+          "value": "tn",
+          "name": "Tons",
+          "group": "Variable Quantity UOM",
+          "doc": "Tons (US)"
+        },
+        {
+          "value": "a",
+          "name": "Are",
+          "group": "Variable Quantity UOM",
+          "doc": "Are"
+        },
+        {
+          "value": "ac",
+          "name": "Acre",
+          "group": "Variable Quantity UOM",
+          "doc": "Acre"
+        },
+        {
+          "value": "cL",
+          "name": "Centiliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centiliter"
+        },
+        {
+          "value": "cM",
+          "name": "Centimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Centimeter"
+        },
+        {
+          "value": "DGE",
+          "name": "DieselGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Diesel gallon equivalent"
+        },
+        {
+          "value": "ft",
+          "name": "Foot",
+          "group": "Variable Quantity UOM",
+          "doc": "Foot"
+        },
+        {
+          "value": "Gal_gb",
+          "name": "GBGallon",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Gallon"
+        },
+        {
+          "value": "GGE",
+          "name": "GasolineGallonEquivalent",
+          "group": "Variable Quantity UOM",
+          "doc": "Gasonline gallon equivalent"
+        },
+        {
+          "value": "ha",
+          "name": "Hectare",
+          "group": "Variable Quantity UOM",
+          "doc": "Hectare"
+        },
+        {
+          "value": "in",
+          "name": "Inch",
+          "group": "Variable Quantity UOM",
+          "doc": "Inch"
+        },
+        {
+          "value": "kM",
+          "name": "Kilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Kilometer"
+        },
+        {
+          "value": "M",
+          "name": "Meter",
+          "group": "Variable Quantity UOM",
+          "doc": "Meter"
+        },
+        {
+          "value": "mi",
+          "name": "Mile",
+          "group": "Variable Quantity UOM",
+          "doc": "Mile"
+        },
+        {
+          "value": "mL",
+          "name": "Milliliter",
+          "group": "Variable Quantity UOM",
+          "doc": "Milliliter"
+        },
+        {
+          "value": "mM",
+          "name": "Millimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Millimeter"
+        },
+        {
+          "value": "oz",
+          "name": "USOunce",
+          "group": "Variable Quantity UOM",
+          "doc": "US ounce"
+        },
+        {
+          "value": "pc",
+          "name": "Piece",
+          "group": "Variable Quantity UOM",
+          "doc": "Piece"
+        },
+        {
+          "value": "pt",
+          "name": "USPint",
+          "group": "Variable Quantity UOM",
+          "doc": "US Pint"
+        },
+        {
+          "value": "pt_gb",
+          "name": "GBPint",
+          "group": "Variable Quantity UOM",
+          "doc": "GB pint"
+        },
+        {
+          "value": "qt",
+          "name": "USQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "US Quart"
+        },
+        {
+          "value": "qt_gb",
+          "name": "GBQuart",
+          "group": "Variable Quantity UOM",
+          "doc": "GB Quart"
+        },
+        {
+          "value": "SqcM",
+          "name": "SquareCentimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square centimeter"
+        },
+        {
+          "value": "Sqft",
+          "name": "SquareFoot",
+          "group": "Variable Quantity UOM",
+          "doc": "Square foot"
+        },
+        {
+          "value": "Sqin",
+          "name": "SquareInch",
+          "group": "Variable Quantity UOM",
+          "doc": "Square inch"
+        },
+        {
+          "value": "SqkM",
+          "name": "SquareKilometer",
+          "group": "Variable Quantity UOM",
+          "doc": "Square kilometer"
+        },
+        {
+          "value": "SqM",
+          "name": "SquareMeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square meter"
+        },
+        {
+          "value": "Sqmi",
+          "name": "SquareMile",
+          "group": "Variable Quantity UOM",
+          "doc": "Square mile"
+        },
+        {
+          "value": "SqmM",
+          "name": "SquareMillimeter",
+          "group": "Variable Quantity UOM",
+          "doc": "Square millimeter"
+        },
+        {
+          "value": "Sqyd",
+          "name": "SquareYard",
+          "group": "Variable Quantity UOM",
+          "doc": "Square yard"
+        },
+        {
+          "value": "yd",
+          "name": "Yard",
+          "group": "Variable Quantity UOM",
+          "doc": "Yard"
+        },
+        {
+          "value": "MMbbl",
+          "name": "MillionBarrels",
+          "group": "Fixed Magnitude UOM",
+          "doc": "Million Barrels"
+        },
+        {
+          "value": "USD",
+          "name": "USDollars",
+          "group": "Variable Quantity UOM",
+          "doc": "US Dollars"
+        }
+      ],
+      "fix:tag": "2290"
+    }
+  },
+  {
+    "name": "underlyingstrikeindex",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the index used to calculate the strike price.",
+      "display": "UnderlyingStrikeIndex",
+      "fix:tag": "2291"
+    }
+  },
+  {
+    "name": "underlyingstrikeindexspread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the strike price offset from the named index.",
+      "display": "UnderlyingStrikeIndexSpread",
+      "fix:tag": "2292"
+    }
+  },
+  {
+    "name": "underlyingvaluationsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the source of trade valuation data.",
+      "display": "UnderlyingValuationSource",
+      "fix:tag": "2293"
+    }
+  },
+  {
+    "name": "underlyingvaluationreferencemodel",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the methodology and/or assumptions used to generate the trade value.",
+      "display": "UnderlyingValuationReferenceModel",
+      "fix:tag": "2294"
+    }
+  },
+  {
+    "name": "underlyingstrategytype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of trade strategy.",
+      "display": "UnderlyingStrategyType",
+      "fix:codes": [
+        {
+          "value": "STD",
+          "name": "Straddle",
+          "doc": "Straddle"
+        },
+        {
+          "value": "STG",
+          "name": "Strangle",
+          "doc": "Strangle"
+        },
+        {
+          "value": "BF",
+          "name": "Butterfly",
+          "doc": "Butterfly"
+        },
+        {
+          "value": "CNDR",
+          "name": "Condor",
+          "doc": "Condor"
+        },
+        {
+          "value": "CISN",
+          "name": "CallableInversibleSnowball",
+          "doc": "Callable inversible snowball"
+        },
+        {
+          "value": "OTHER",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2295"
+    }
+  },
+  {
+    "name": "underlyingcommonpricingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', it indicates that common pricing applies. Common pricing may be relevant for a transaction that references more than one commodity reference price.",
+      "display": "UnderlyingCommonPricingIndicator",
+      "fix:tag": "2296"
+    }
+  },
+  {
+    "name": "underlyingsettldisruptionprovision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the consequences of settlement disruption events.",
+      "display": "UnderlyingSettlDisruptionProvision",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Negotiation",
+          "doc": "Negotiation"
+        },
+        {
+          "value": "2",
+          "name": "Cancellation",
+          "doc": "Cancellation and payment"
+        }
+      ],
+      "fix:tag": "2297"
+    }
+  },
+  {
+    "name": "underlyinginstrumentroundingdirection",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the rounding direction if not overridden elsewhere.",
+      "display": "UnderlyingInstrumentRoundingDirection",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RoundToNearest",
+          "doc": "Round to nearest"
+        },
+        {
+          "value": "1",
+          "name": "RoundDown",
+          "doc": "Round down"
+        },
+        {
+          "value": "2",
+          "name": "RoundUp",
+          "doc": "Round up"
+        }
+      ],
+      "fix:tag": "2298"
+    }
+  },
+  {
+    "name": "underlyinginstrumentroundingprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
+      "display": "UnderlyingInstrumentRoundingPrecision",
+      "fix:tag": "2299"
+    }
+  }
+]

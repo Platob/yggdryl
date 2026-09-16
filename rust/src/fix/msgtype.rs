@@ -20,12 +20,12 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 /// the registry's message-definition methods.
 ///
 /// ```
-/// use yggdryl::{DataType, FixCategory, FixRegistry};
+/// use yggdryl::{DataType, FixRegistry};
 ///
 /// let mut registry = FixRegistry::new();
 /// let mut field = DataType::from_fields([])?.required_field("Order");
 /// field.as_fix_mut().set_msgtype("D")?;
-/// registry.create_definition(FixCategory::Components, field)?;
+/// registry.insert(field)?;
 /// let message = registry.msgtype("D")?;
 /// assert_eq!(message.name(), "Order");
 /// assert_eq!(message.as_str(), "D");
@@ -162,14 +162,14 @@ impl MsgType {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
     /// let mut id = DataType::utf8().nullable_field("clordid");
     /// id.as_fix_mut().set_tag(11)?;
     /// let mut field = DataType::from_fields([id])?.required_field("order");
     /// field.as_fix_mut().set_msgtype("D")?;
     /// field.as_fix_mut().set_identifiers(["11"])?;
     /// let mut registry = FixRegistry::new();
-    /// registry.create_definition(FixCategory::Components, field.clone())?;
+    /// registry.insert(field.clone())?;
     /// let registry = Arc::new(registry);
     /// let message = FixMsg::with_registry(
     ///     Arc::clone(&registry), field, Scalar::from_sequence([Scalar::from("O-1")]),
@@ -258,7 +258,7 @@ impl MsgType {
     /// message.
     ///
     /// The tag is the counter's, as it is on
-    /// [`FixRegistry::get_group_by_tag`](crate::FixRegistry::get_group_by_tag).
+    /// [`FixRegistry::get_field_by_counter`](crate::FixRegistry::get_field_by_counter).
     /// Its path is compiled at registration; repeated contexts are ambiguous.
     pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
         let path = &self.groups.get(&tag)?.as_ref()?.path;

@@ -11,7 +11,6 @@ const MAX_DEPTH: usize = 64;
 pub(super) struct GroupPlan {
     field: Field,
     columns: Vec<Field>,
-    paths: Vec<Vec<usize>>,
     tags: HashMap<i32, Option<usize>>,
     groups: HashMap<i32, Option<usize>>,
     nested: Vec<NestedGroup>,
@@ -69,7 +68,6 @@ impl GroupPlan {
         Ok(Self {
             field,
             columns,
-            paths,
             tags,
             groups,
             nested,
@@ -109,16 +107,6 @@ impl GroupPlan {
     }
     pub(super) fn tag_index(&self, tag: i32) -> Option<usize> {
         self.tags.get(&tag).copied().flatten()
-    }
-    pub(super) fn column_value<'row>(&self, row: &'row Scalar, tag: i32) -> Option<&'row Scalar> {
-        let mut value = row;
-        for index in &self.paths[self.tag_index(tag)?] {
-            if value.is_null() {
-                return Some(value);
-            }
-            value = value.get(*index)?;
-        }
-        Some(value)
     }
     pub(super) const fn delimiter(&self) -> Option<i32> {
         self.delimiter
@@ -252,8 +240,6 @@ mod tests {
                 Scalar::Null,
             ])
         );
-        assert_eq!(plan.column_value(&row, 452), Some(&Scalar::Null));
-        assert_eq!(plan.column_value(&row, 448), Some(&Scalar::from("broker")));
         let DataType::List(item) = source.dtype() else {
             panic!("list")
         };

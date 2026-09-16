@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchinst"
+          "fix:field": "matchinst",
+          "fix:tag": "1625"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchinstmarketid"
+          "fix:field": "matchinstmarketid",
+          "fix:tag": "1673"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchattribtagid"
+          "fix:field": "matchattribtagid",
+          "fix:tag": "1626"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchattribvalue"
+          "fix:field": "matchattribvalue",
+          "fix:tag": "1627"
         }
       }
     ]

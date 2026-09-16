@@ -10,7 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymenttype"
+          "fix:field": "posttradepaymenttype",
+          "fix:tag": "2824"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentamount"
+          "fix:field": "posttradepaymentamount",
+          "fix:tag": "2817"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentcurrency"
+          "fix:field": "posttradepaymentcurrency",
+          "fix:tag": "2818"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentcurrencycodesource"
+          "fix:field": "posttradepaymentcurrencycodesource",
+          "fix:tag": "2956"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentcalculationdate"
+          "fix:field": "posttradepaymentcalculationdate",
+          "fix:tag": "2825"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentvaluedate"
+          "fix:field": "posttradepaymentvaluedate",
+          "fix:tag": "2826"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentfinalvaluedate"
+          "fix:field": "posttradepaymentfinalvaluedate",
+          "fix:tag": "2827"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentdebitorcredit"
+          "fix:field": "posttradepaymentdebitorcredit",
+          "fix:tag": "2819"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentaccount"
+          "fix:field": "posttradepaymentaccount",
+          "fix:tag": "2816"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentid"
+          "fix:field": "posttradepaymentid",
+          "fix:tag": "2821"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentdesc"
+          "fix:field": "posttradepaymentdesc",
+          "fix:tag": "2820"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedposttradepaymentdesclen"
+          "fix:field": "encodedposttradepaymentdesclen",
+          "fix:tag": "2815"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedposttradepaymentdesc"
+          "fix:field": "encodedposttradepaymentdesc",
+          "fix:tag": "2814"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentlinkid"
+          "fix:field": "posttradepaymentlinkid",
+          "fix:tag": "2822"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentstatus"
+          "fix:field": "posttradepaymentstatus",
+          "fix:tag": "2823"
         }
       }
     ]

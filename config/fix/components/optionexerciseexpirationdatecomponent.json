@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdate"
+          "fix:field": "optionexerciseexpirationdate",
+          "fix:tag": "41153"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdatetype"
+          "fix:field": "optionexerciseexpirationdatetype",
+          "fix:tag": "41154"
         }
       }
     ]

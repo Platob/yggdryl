@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamount"
+          "fix:field": "alloccommissionamount",
+          "fix:tag": "2654"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamounttype"
+          "fix:field": "alloccommissionamounttype",
+          "fix:tag": "2655"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamountsubtype"
+          "fix:field": "alloccommissionamountsubtype",
+          "fix:tag": "2726"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionbasis"
+          "fix:field": "alloccommissionbasis",
+          "fix:tag": "2656"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissioncurrency"
+          "fix:field": "alloccommissioncurrency",
+          "fix:tag": "2657"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissioncurrencycodesource"
+          "fix:field": "alloccommissioncurrencycodesource",
+          "fix:tag": "2925"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasure"
+          "fix:field": "alloccommissionunitofmeasure",
+          "fix:tag": "2658"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasurecurrency"
+          "fix:field": "alloccommissionunitofmeasurecurrency",
+          "fix:tag": "2659"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasurecurrencycodesource"
+          "fix:field": "alloccommissionunitofmeasurecurrencycodesource",
+          "fix:tag": "2926"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionrate"
+          "fix:field": "alloccommissionrate",
+          "fix:tag": "2660"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionsharedindicator"
+          "fix:field": "alloccommissionsharedindicator",
+          "fix:tag": "2661"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamountshared"
+          "fix:field": "alloccommissionamountshared",
+          "fix:tag": "2662"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionlegrefid"
+          "fix:field": "alloccommissionlegrefid",
+          "fix:tag": "2663"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissiondesc"
+          "fix:field": "alloccommissiondesc",
+          "fix:tag": "2664"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedalloccommissiondesclen"
+          "fix:field": "encodedalloccommissiondesclen",
+          "fix:tag": "2665"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedalloccommissiondesc"
+          "fix:field": "encodedalloccommissiondesc",
+          "fix:tag": "2666"
         }
       }
     ]

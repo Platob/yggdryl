@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbacktype"
+          "fix:field": "legmarketdisruptionfallbacktype",
+          "fix:tag": "41470"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbackvalue"
+          "fix:field": "legmarketdisruptionfallbackvalue",
+          "fix:tag": "40990"
         }
       }
     ]

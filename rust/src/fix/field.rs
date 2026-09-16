@@ -56,6 +56,7 @@ const DERIVATION: &str = "derivation";
 const COUNTER: &str = "counter";
 /// Whether this field travels from one message of a chain to the next.
 const TRANSIENT: &str = "transient";
+const DEPRECATED: &str = "deprecated";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
 const GROUP: &str = "group";
@@ -88,6 +89,15 @@ impl<'field> FixField<'field> {
     /// The scalar field referenced by a catalog occurrence.
     pub fn field_ref(&self) -> Option<&'field str> {
         self.get(FIELD_REF)
+    }
+
+    /// The version at which the specification deprecated this field, where
+    /// it did: the dictionary keeps the field so an old message still
+    /// resolves, and a reader restates it under what replaced it - see
+    /// [`replacements`](Self::replacements) - and keeps no value of its own
+    /// for it.
+    pub fn deprecated(&self) -> Option<&'field str> {
+        self.get(DEPRECATED)
     }
 
     /// The repeating group referenced by a catalog occurrence.
@@ -436,9 +446,9 @@ impl<'field> FixField<'field> {
     ///
     /// One term in the crate's expression grammar over the message's fields,
     /// spelled by their canonical folded names - `orderqty`, `cumqty`,
-    /// `secaltidgrp` - and evaluated by the [enriching
-    /// pass](crate::FixCodec::enrich_message): a field carrying one is a
-    /// column the pass fills where the message left it unsaid. `None` is a
+    /// `secaltidgrp` - and evaluated by every
+    /// [parse](crate::FixCodec::parse_line): a field carrying one is a
+    /// column the parse fills where the message left it unsaid. `None` is a
     /// field nothing derives.
     ///
     /// ```
@@ -550,6 +560,26 @@ impl FixFieldMut<'_> {
     /// References one scalar field by its catalog name.
     pub fn set_field_ref(&mut self, name: &str) -> Result<()> {
         self.set_reference(FIELD_REF, name)
+    }
+
+    /// Records the version at which the specification deprecated this
+    /// field; `None` states it is current.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] for an empty version.
+    pub fn set_deprecated(&mut self, version: Option<&str>) -> Result<()> {
+        match version {
+            None => {
+                self.remove(DEPRECATED);
+                Ok(())
+            }
+            Some(version) if version.trim().is_empty() => Err(Error::InvalidMetadataValue {
+                key: DEPRECATED.into(),
+                reason: "expected a version, got an empty text".into(),
+            }),
+            Some(version) => self.store(DEPRECATED, version.trim().to_owned()),
+        }
     }
 
     /// References one repeating group by its catalog name.
@@ -1387,7 +1417,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 10] = [
+const MERGED_KEYS: [&str; 11] = [
     TAG,
     BRANCHES,
     TAGS,
@@ -1398,6 +1428,7 @@ const MERGED_KEYS: [&str; 10] = [
     DIRECTIONS,
     DERIVATION,
     IDENTIFIERS,
+    DEPRECATED,
 ];
 
 /// The body of one stored array of words, or nothing for a text that is not

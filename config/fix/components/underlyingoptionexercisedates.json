@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisebusinessdayconvention"
+          "fix:field": "underlyingoptionexercisebusinessdayconvention",
+          "fix:tag": "41822"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingoptionexercisebusinesscenters"
+          "fix:field": "nounderlyingoptionexercisebusinesscenters",
+          "fix:tag": "41820"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingoptionexercisedates"
+          "fix:field": "nounderlyingoptionexercisedates",
+          "fix:tag": "41841"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseearliestdateoffsetdaytype"
+          "fix:field": "underlyingoptionexerciseearliestdateoffsetdaytype",
+          "fix:tag": "41823"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseearliestdateoffsetperiod"
+          "fix:field": "underlyingoptionexerciseearliestdateoffsetperiod",
+          "fix:tag": "41824"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseearliestdateoffsetunit"
+          "fix:field": "underlyingoptionexerciseearliestdateoffsetunit",
+          "fix:tag": "41825"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisefrequencyperiod"
+          "fix:field": "underlyingoptionexercisefrequencyperiod",
+          "fix:tag": "41826"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisefrequencyunit"
+          "fix:field": "underlyingoptionexercisefrequencyunit",
+          "fix:tag": "41827"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdateunadjusted"
+          "fix:field": "underlyingoptionexercisestartdateunadjusted",
+          "fix:tag": "41828"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdaterelativeto"
+          "fix:field": "underlyingoptionexercisestartdaterelativeto",
+          "fix:tag": "41829"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdateoffsetperiod"
+          "fix:field": "underlyingoptionexercisestartdateoffsetperiod",
+          "fix:tag": "41830"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdateoffsetunit"
+          "fix:field": "underlyingoptionexercisestartdateoffsetunit",
+          "fix:tag": "41831"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdateoffsetdaytype"
+          "fix:field": "underlyingoptionexercisestartdateoffsetdaytype",
+          "fix:tag": "41832"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisestartdateadjusted"
+          "fix:field": "underlyingoptionexercisestartdateadjusted",
+          "fix:tag": "41833"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseskip"
+          "fix:field": "underlyingoptionexerciseskip",
+          "fix:tag": "41834"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisenominationdeadline"
+          "fix:field": "underlyingoptionexercisenominationdeadline",
+          "fix:tag": "41835"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisefirstdateunadjusted"
+          "fix:field": "underlyingoptionexercisefirstdateunadjusted",
+          "fix:tag": "41836"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciselastdateunadjusted"
+          "fix:field": "underlyingoptionexerciselastdateunadjusted",
+          "fix:tag": "41837"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseearliesttime"
+          "fix:field": "underlyingoptionexerciseearliesttime",
+          "fix:tag": "41838"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciselatesttime"
+          "fix:field": "underlyingoptionexerciselatesttime",
+          "fix:tag": "41839"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexercisetimebusinesscenter"
+          "fix:field": "underlyingoptionexercisetimebusinesscenter",
+          "fix:tag": "41840"
         }
       }
     ]

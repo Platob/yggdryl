@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentscheduleratesource"
+          "fix:field": "underlyingpaymentscheduleratesource",
+          "fix:tag": "40705"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentscheduleratesourcetype"
+          "fix:field": "underlyingpaymentscheduleratesourcetype",
+          "fix:tag": "40706"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentschedulereferencepage"
+          "fix:field": "underlyingpaymentschedulereferencepage",
+          "fix:tag": "40707"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "streamasgnreqid"
+          "fix:field": "streamasgnreqid",
+          "fix:tag": "1497"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "streamasgnreqtype"
+          "fix:field": "streamasgnreqtype",
+          "fix:tag": "1498"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noasgnreqs"
+          "fix:field": "noasgnreqs",
+          "fix:tag": "1499"
         }
       },
       {

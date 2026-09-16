@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsymbol"
+          "fix:field": "underlyinglegsymbol",
+          "fix:tag": "1330"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsymbolsfx"
+          "fix:field": "underlyinglegsymbolsfx",
+          "fix:tag": "1331"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityid"
+          "fix:field": "underlyinglegsecurityid",
+          "fix:tag": "1332"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityidsource"
+          "fix:field": "underlyinglegsecurityidsource",
+          "fix:tag": "1333"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyinglegsecurityaltid"
+          "fix:field": "nounderlyinglegsecurityaltid",
+          "fix:tag": "1334"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegcficode"
+          "fix:field": "underlyinglegcficode",
+          "fix:tag": "1344"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecuritytype"
+          "fix:field": "underlyinglegsecuritytype",
+          "fix:tag": "1337"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecuritysubtype"
+          "fix:field": "underlyinglegsecuritysubtype",
+          "fix:tag": "1338"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegmaturitymonthyear"
+          "fix:field": "underlyinglegmaturitymonthyear",
+          "fix:tag": "1339"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegmaturitydate"
+          "fix:field": "underlyinglegmaturitydate",
+          "fix:tag": "1345"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegmaturitytime"
+          "fix:field": "underlyinglegmaturitytime",
+          "fix:tag": "1405"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegstrikeprice"
+          "fix:field": "underlyinglegstrikeprice",
+          "fix:tag": "1340"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegoptattribute"
+          "fix:field": "underlyinglegoptattribute",
+          "fix:tag": "1391"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegputorcall"
+          "fix:field": "underlyinglegputorcall",
+          "fix:tag": "1343"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityexchange"
+          "fix:field": "underlyinglegsecurityexchange",
+          "fix:tag": "1341"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecuritydesc"
+          "fix:field": "underlyinglegsecuritydesc",
+          "fix:tag": "1392"
         }
       }
     ]

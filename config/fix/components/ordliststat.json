@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid"
+          "fix:field": "clordid",
+          "fix:tag": "11"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid"
+          "fix:field": "orderid",
+          "fix:tag": "37"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid"
+          "fix:field": "secondaryclordid",
+          "fix:tag": "526"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "cumqty"
+          "fix:field": "cumqty",
+          "fix:tag": "14"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ordstatus"
+          "fix:field": "ordstatus",
+          "fix:tag": "39"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "workingindicator"
+          "fix:field": "workingindicator",
+          "fix:tag": "636"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "leavesqty"
+          "fix:field": "leavesqty",
+          "fix:tag": "151"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "cxlqty"
+          "fix:field": "cxlqty",
+          "fix:tag": "84"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "avgpx"
+          "fix:field": "avgpx",
+          "fix:tag": "6"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordrejreason"
+          "fix:field": "ordrejreason",
+          "fix:tag": "103"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       }
     ]

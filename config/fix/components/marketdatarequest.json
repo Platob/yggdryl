@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreqid"
+          "fix:field": "mdreqid",
+          "fix:tag": "262"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subscriptionrequesttype"
+          "fix:field": "subscriptionrequesttype",
+          "fix:tag": "263"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "marketdepth"
+          "fix:field": "marketdepth",
+          "fix:tag": "264"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdupdatetype"
+          "fix:field": "mdupdatetype",
+          "fix:tag": "265"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggregatedbook"
+          "fix:field": "aggregatedbook",
+          "fix:tag": "266"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "openclosesettlflag"
+          "fix:field": "openclosesettlflag",
+          "fix:tag": "286"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "scope"
+          "fix:field": "scope",
+          "fix:tag": "546"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdimplicitdelete"
+          "fix:field": "mdimplicitdelete",
+          "fix:tag": "547"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nomdentrytypes"
+          "fix:field": "nomdentrytypes",
+          "fix:tag": "267"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments"
+          "fix:field": "nomarketsegments",
+          "fix:tag": "1310"
         }
       },
       {
@@ -160,7 +171,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norelatedsym"
+          "fix:field": "norelatedsym",
+          "fix:tag": "146"
         }
       },
       {
@@ -180,7 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingsessions"
+          "fix:field": "notradingsessions",
+          "fix:tag": "386"
         }
       },
       {
@@ -200,7 +213,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueueaction"
+          "fix:field": "applqueueaction",
+          "fix:tag": "815"
         }
       },
       {
@@ -210,7 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueuemax"
+          "fix:field": "applqueuemax",
+          "fix:tag": "812"
         }
       },
       {
@@ -220,7 +235,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdquotetype"
+          "fix:field": "mdquotetype",
+          "fix:tag": "1070"
         }
       },
       {
@@ -230,7 +246,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketindicator"
+          "fix:field": "fastmarketindicator",
+          "fix:tag": "2447"
         }
       },
       {

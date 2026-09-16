@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendfxtriggerdatebusinesscenter"
+          "fix:field": "dividendfxtriggerdatebusinesscenter",
+          "fix:tag": "42273"
         }
       }
     ]

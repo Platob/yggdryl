@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementmaximumdays"
+          "fix:field": "legsettlratepostponementmaximumdays",
+          "fix:tag": "40903"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementsurvey"
+          "fix:field": "legsettlratepostponementsurvey",
+          "fix:tag": "40905"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementcalculationagent"
+          "fix:field": "legsettlratepostponementcalculationagent",
+          "fix:tag": "40906"
         }
       }
     ]

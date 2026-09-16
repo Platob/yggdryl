@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityaltid"
+          "fix:field": "underlyinglegsecurityaltid",
+          "fix:tag": "1335"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityaltidsource"
+          "fix:field": "underlyinglegsecurityaltidsource",
+          "fix:tag": "1336"
         }
       }
     ]

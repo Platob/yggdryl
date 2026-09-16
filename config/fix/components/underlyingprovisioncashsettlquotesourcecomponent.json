@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisioncashsettlquotesource"
+          "fix:field": "underlyingprovisioncashsettlquotesource",
+          "fix:tag": "42102"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisioncashsettlquotereferencepage"
+          "fix:field": "underlyingprovisioncashsettlquotereferencepage",
+          "fix:tag": "42103"
         }
       }
     ]

@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testactionreportid"
+          "fix:field": "testactionreportid",
+          "fix:tag": "3071"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testsuiterequestid"
+          "fix:field": "testsuiterequestid",
+          "fix:tag": "3062"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostrategyparameters"
+          "fix:field": "nostrategyparameters",
+          "fix:tag": "957"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noalgosystemmodules"
+          "fix:field": "noalgosystemmodules",
+          "fix:tag": "3025"
         }
       },
       {
@@ -80,7 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestscenarios"
+          "fix:field": "notestscenarios",
+          "fix:tag": "3028"
         }
       },
       {
@@ -100,7 +105,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuitestatus"
+          "fix:field": "testsuitestatus",
+          "fix:tag": "3070"
         }
       },
       {
@@ -110,7 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -120,7 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -130,7 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

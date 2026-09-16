@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartyid"
+          "fix:field": "provisionpartyid",
+          "fix:tag": "40175"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartyidsource"
+          "fix:field": "provisionpartyidsource",
+          "fix:tag": "40176"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartyrole"
+          "fix:field": "provisionpartyrole",
+          "fix:tag": "40177"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartyrolequalifier"
+          "fix:field": "provisionpartyrolequalifier",
+          "fix:tag": "2385"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noprovisionpartysubids"
+          "fix:field": "noprovisionpartysubids",
+          "fix:tag": "40178"
         }
       },
       {

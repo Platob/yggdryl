@@ -167,15 +167,11 @@ pub fn fix_schema_tags() -> Vec<i32> {
             }
         }
     };
+    let identity = |field: &Field| matches!(field.dtype(), DataType::Uuid | DataType::UInt64);
     push_group(&mut tags, &|field| field.dtype() == &CLOCK_DATATYPE);
+    push_group(&mut tags, &identity);
     push_group(&mut tags, &|field| {
-        field.dtype() == &super::identity::IDENTITY_DATATYPE
-            || crate_tag(field) == Some(super::CODE_TAG_NAME.0)
-    });
-    push_group(&mut tags, &|field| {
-        field.dtype() != &CLOCK_DATATYPE
-            && field.dtype() != &super::identity::IDENTITY_DATATYPE
-            && crate_tag(field) != Some(super::CODE_TAG_NAME.0)
+        field.dtype() != &CLOCK_DATATYPE && !identity(field)
     });
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
@@ -189,9 +185,20 @@ pub fn fix_schema_tags() -> Vec<i32> {
     tags
 }
 
-/// BeginString and the partition supplement the identity owner's replay bundle.
+/// The columns every row states: `BeginString`, which the builder fills
+/// where a line stated none, and the crate's own columns every message
+/// settles - its instant, its creation, its codes and its identity.
 fn is_required(tag: i32) -> bool {
-    tag == 8 || super::identity::is_mandatory(tag)
+    tag == 8
+        || [
+            super::UNIX_TAG_NAME.0,
+            super::CREATUNIX_TAG_NAME.0,
+            super::HASHCODE_TAG_NAME.0,
+            super::CROSSHASHCODE_TAG_NAME.0,
+            super::CURRUUID_TAG_NAME.0,
+            super::CROSSUUID_TAG_NAME.0,
+        ]
+        .contains(&tag)
 }
 
 /// The fixed root every message answers as.
@@ -200,9 +207,9 @@ fn is_required(tag: i32) -> bool {
 /// and code set - and built without reading a single message, so two
 /// captures that share a dictionary share a schema exactly.
 ///
-/// A parse lands here, an
-/// [enrichment](super::FixCodec::enrich_messages_arrow_reader) fills what
-/// each message implies, and a
+/// A parse lands here, filled with what each message implies, a
+/// [lifecycle](super::FixCodec::lifecycle_arrow_reader) walk states what
+/// each message follows, and a
 /// [format](super::FixCodec::format_arrow_reader) answers the same rows
 /// under whatever message field a consumer reads by.
 ///
@@ -216,6 +223,60 @@ fn is_required(tag: i32) -> bool {
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
     rooted(registry, fix_schema_tags(), name)
+}
+
+/// The fixed row as a store dumps it: the columns of [`fix_schema`] under
+/// the name and tag of [`FIXMSG_TAG_NAME`](super::FIXMSG_TAG_NAME), each
+/// column a reference to the scalar or group the registry holds under it -
+/// by name and by tag, so a reader resolves it by identity - and the
+/// arrival record inline, because no definition can reference a shape that
+/// contains itself. Written by [`FixRegistry::write_into`] as
+/// `components/fixmsg.json` and read past by every reader, since this
+/// crate is the row's one owner.
+///
+/// # Errors
+///
+/// Returns what [`fix_schema`] refuses, or the metadata grammar's refusal
+/// of a reference.
+pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
+    let (tag, name) = super::FIXMSG_TAG_NAME;
+    let schema = fix_schema(registry, name)?;
+    let mut members = Vec::with_capacity(schema.fields().len());
+    for column in schema.fields() {
+        let mut member = column.clone();
+        if column.name() != FIXENTRIES_COLUMN {
+            let group = column
+                .as_fix()
+                .counter()?
+                .and_then(|counter| registry.get_field_by_counter(counter))
+                .filter(|group| crate::types::folds_equal(group.name(), column.name()));
+            let scalar = column
+                .as_fix()
+                .tag()?
+                .and_then(|tag| registry.get_scalar_by_tag(tag))
+                .filter(|scalar| crate::types::folds_equal(scalar.name(), column.name()));
+            if let Some(group) = group {
+                member.as_fix_mut().set_group(group.name())?;
+            } else if let Some(scalar) = scalar {
+                member.as_fix_mut().set_field_ref(scalar.name())?;
+            }
+        }
+        members.push(member);
+    }
+    let mut root = Field::new_with_metadata(
+        schema.name(),
+        DataType::from_fields(members)?,
+        schema.is_nullable(),
+        schema.metadata.clone(),
+    );
+    root.as_fix_mut().set_tag(tag)?;
+    root.set_display("FixMsg")?;
+    root.set_description(
+        "The fixed row every message answers as: the crate's own columns, the standard header, \
+         the fields a financial consumer reads, the groups persisted whole, the trailer, and the \
+         arrival record that closes it.",
+    )?;
+    Ok(root)
 }
 
 /// One root over one tag list, closed by the arrival record.
@@ -244,9 +305,9 @@ pub(super) fn rooted(
         }
         // A crate column the registry files under neither door. A definition
         // is categorized by its shape - a Map is a group, a Struct a
-        // component - so `instids` is a component and no tag lookup reaches
-        // it. The crate's own listing is where it is, and a column of this
-        // crate's belongs in this crate's row whatever the catalog calls it.
+        // component - and a component is reached by no tag lookup. The
+        // crate's own listing is where it is, and a column of this crate's
+        // belongs in this crate's row whatever the catalog calls it.
         if super::is_crate_tag(tag)
             && registry.get_field_by_tag(tag).is_none()
             && registry.get_group_by_tag(tag).is_none()
@@ -280,9 +341,7 @@ pub(super) fn rooted(
     }
     fields.push(entries_field()?);
     let schema = DataType::from_fields(fields)?.required_field(name);
-    column_plan(&schema, registry)?
-        .identity
-        .require_bundle(&schema)?;
+    column_plan(&schema, registry)?;
     Ok(schema)
 }
 
@@ -404,10 +463,9 @@ pub(super) struct Column {
     counter: Option<i32>,
 }
 
-/// One schema's resolved projections and canonical content order.
+/// One schema's resolved projections.
 pub(super) struct Columns {
     columns: Box<[Column]>,
-    pub(super) identity: super::identity::Plan,
 }
 
 pub(super) type ColumnPlan = Arc<Columns>;
@@ -429,15 +487,18 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
     };
     let mut columns = Vec::with_capacity(fields.len());
     for column in fields.iter() {
+        let tag = super::identity::resolve_tag(column, registry)?;
+        if let Some(tag) = tag {
+            super::identity::validate_field(column, tag)?;
+        }
         columns.push(Column {
-            tag: super::identity::resolve_tag(column, registry)?,
+            tag,
             counter: column.as_fix().counter()?,
         });
     }
-    let columns = columns.into_boxed_slice();
-    let identity =
-        super::identity::Plan::new(schema, columns.iter().map(|column| column.tag), registry)?;
-    Ok(Arc::new(Columns { columns, identity }))
+    Ok(Arc::new(Columns {
+        columns: columns.into_boxed_slice(),
+    }))
 }
 
 thread_local! {
@@ -495,42 +556,28 @@ fn entries_field() -> Result<Field> {
     Ok(field)
 }
 
-/// The resolved canonical tag of the field an arrival named, `0` where none
-/// was resolved.
-const TAGNUM_COLUMN: (&str, &str) = ("tagnum", "TagNum");
+/// The resolved canonical tag of the field an entry states, `0` where no
+/// dictionary explains it.
+const TAG_COLUMN: (&str, &str) = ("tag", "Tag");
 
-/// The dictionary's name for that tag, translated when the message was
-/// parsed. Never null - see [`entry_name`] for what fills it when no
-/// dictionary explains the arrival.
-const TAGNAME_COLUMN: (&str, &str) = ("tagname", "TagName");
+/// The dictionary's canonical name for that tag, else the key as it
+/// arrived. Never null.
+const NAME_COLUMN: (&str, &str) = ("name", "Name");
 
-/// The value exactly as it arrived, untranslated.
-const TAGVALUE_COLUMN: (&str, &str) = ("tagvalue", "TagValue");
-
-/// The key exactly as it arrived, untranslated.
-const TAGKEY_COLUMN: (&str, &str) = ("tagkey", "TagKey");
+/// The value as the wire spells it; null for an entry that only heads
+/// others.
+const VALUE_COLUMN: (&str, &str) = ("value", "Value");
 
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fifth member is `fixentries` at every level and the meaning is
+/// The fourth member is `fixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
-/// deeper occurrences above [`ENTRY_DEPTH`], the folded text leaf at it. Every
-/// occurrence and every inner list is non-null: an empty child list means no
-/// children, and it needs no validity bitmap to say so. The leaf is nullable
+/// deeper entries above [`ENTRY_DEPTH`], the folded text leaf at it. Every
+/// entry and every inner list is non-null: an empty list means nothing
+/// nested, and it needs no validity bitmap to say so. The leaf is nullable
 /// instead, because "nothing was truncated" is an absence and a column that
 /// spells it as the empty string cannot be told from one that folded an empty
 /// subtree.
-///
-/// # What arrived and what it was read as
-///
-/// `tagkey` and `tagvalue` are the arrival: the ranges of the line the reader
-/// read, as the text a `utf8` column holds. `tagnum` and `tagname` are what a
-/// *dictionary* made of that key, resolved once when the message was parsed.
-/// Keeping the arrival key is what keeps
-/// [`into_bytes`](super::FixMsg::into_bytes) byte for byte over a message read
-/// back out of a row: a venue that wrote `Side=1` wrote `Side`, and a row
-/// that spelled only the canonical `side` would re-emit a line that was never
-/// sent.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
         DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
@@ -547,57 +594,13 @@ fn entry_item(level: usize) -> Result<Field> {
         Ok(field)
     };
     Ok(DataType::from_fields([
-        named(DataType::Int32, TAGNUM_COLUMN, false)?,
-        named(DataType::utf8(), TAGNAME_COLUMN, true)?,
-        named(DataType::utf8(), TAGVALUE_COLUMN, false)?,
-        named(DataType::utf8(), TAGKEY_COLUMN, false)?,
+        named(DataType::Int32, TAG_COLUMN, true)?,
+        named(DataType::utf8(), NAME_COLUMN, true)?,
+        named(DataType::utf8(), VALUE_COLUMN, false)?,
         tail,
     ])?
     .required_field(ENTRY_COMPONENT))
 }
-
-/// What the arrival record calls an entry whose key no dictionary explains.
-///
-/// `tagname` cannot be null, and the reason is the column's job: a consumer
-/// reading the record wants one column it can group, join and filter a wire
-/// name by without resolving every tag against a dictionary of its own. A
-/// null there would make every such consumer write the fallback itself, and
-/// they would not write the same one.
-///
-/// So the fallback is a *name*, in this order:
-///
-/// 1. the dictionary's canonical name for the entry's resolved tag;
-/// 2. the key exactly as it arrived, where no dictionary explains it - a
-///    venue's `VenueOwnThing`, an unregistered `9999`, and the `#ORDERID` a
-///    bridge marked as a restatement are each the only name that arrival
-///    has, and each is the name an operator will look for;
-/// 3. [`UNNAMED_ENTRY`], where an arrival carries no key at all - the
-///    row-header capture fills and the restatements, which are recorded
-///    with tag `0` and are named after no pair because no pair carried
-///    them.
-///
-/// Step 2 is why this is not simply the dictionary's answer: an unresolved
-/// arrival is exactly the one a reader most needs to see spelled.
-fn entry_name(registry: &FixRegistry, entry: &super::FixEntry) -> smol_str::SmolStr {
-    if entry.tag() > 0 {
-        if let Some(field) = registry.get_field_by_tag(entry.tag()) {
-            return smol_str::SmolStr::new(field.name());
-        }
-    }
-    let key = entry.key_text();
-    if key.is_empty() {
-        return smol_str::SmolStr::new_static(UNNAMED_ENTRY);
-    }
-    key
-}
-
-/// The name an arrival that carried no key at all is recorded under.
-///
-/// Spelled with the crate's own prefix so it can never collide with a
-/// dictionary name or a venue's own spelling, and so a consumer grouping by
-/// `tagname` sees the decision-8 and decision-20 fills as the one category
-/// they are.
-pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";
 
 /// One entry as the row value its materialization level takes.
 ///
@@ -607,62 +610,50 @@ pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";
 /// column holds, so one serializer and one parser answer for it; an entry
 /// that truncated nothing answers null there rather than an empty string,
 /// which is what tells "nothing was folded" from "an empty subtree was".
-fn entry_scalar(
-    registry: &FixRegistry,
-    entry: &super::FixEntry,
-    level: usize,
-) -> Result<crate::Scalar> {
+fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> {
     let tail = if level < ENTRY_DEPTH {
-        let children: Result<Vec<crate::Scalar>> = entry
-            .children()
+        let nested: Result<Vec<crate::Scalar>> = entry
+            .entries()
             .iter()
-            .map(|held| entry_scalar(registry, held, level + 1))
+            .map(|held| entry_scalar(held, level + 1))
             .collect();
-        crate::Scalar::from_sequence(children?)
-    } else if entry.children().is_empty() {
+        crate::Scalar::from_sequence(nested?)
+    } else if entry.entries().is_empty() {
         crate::Scalar::Null
     } else {
-        let folded: Vec<crate::Scalar> = entry
-            .children()
-            .iter()
-            .map(|held| folded_scalar(registry, held))
-            .collect();
+        let folded: Vec<crate::Scalar> = entry.entries().iter().map(folded_scalar).collect();
         let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
         crate::Scalar::from(rendered)
     };
-    // The key and the value are the ranges of the line the entry names, read
-    // as the text a `utf8` column holds - lossily where a data field's bytes
-    // are not text, which is the one place a row cannot say what arrived. It
-    // says that it cannot: the decode leaves the replacement character, and
-    // `anomalies()` reads it as the `Lossy` it is, on the parsed message and
-    // on one rebuilt from this row alike.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry_name(registry, entry)),
-        crate::Scalar::from(entry.value_text()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry.name()),
+        entry
+            .value()
+            .map_or(crate::Scalar::Null, crate::Scalar::from),
         tail,
     ]))
 }
 
 /// One truncated entry as the value the leaf's JSON stores.
 ///
-/// The same five members in the same order, children as a plain array, so a
-/// reader walks the decoded value exactly as it walks the materialized
-/// levels. Untyped on the way back in, because no finite field describes an
-/// unbounded subtree - and every member is an integer or UTF-8, so an untyped
-/// decode loses nothing.
-fn folded_scalar(registry: &FixRegistry, entry: &super::FixEntry) -> crate::Scalar {
+/// The same four members in the same order, the nested entries as a plain
+/// array, so a reader walks the decoded value exactly as it walks the
+/// materialized levels. Untyped on the way back in, because no finite field
+/// describes an unbounded subtree - and every member is an integer or
+/// UTF-8, so an untyped decode loses nothing.
+fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry_name(registry, entry)),
-        crate::Scalar::from(entry.value_text()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry.name()),
+        entry
+            .value()
+            .map_or(crate::Scalar::Null, crate::Scalar::from),
         crate::Scalar::from_sequence(
             entry
-                .children()
+                .entries()
                 .iter()
-                .map(|held| folded_scalar(registry, held))
+                .map(folded_scalar)
                 .collect::<Vec<_>>(),
         ),
     ])
@@ -706,9 +697,9 @@ fn entry_from_scalar(
 ) -> Result<super::FixEntry> {
     let held = pair
         .as_sequence()
-        .ok_or_else(|| entry_error(path, "a five-member arrival entry", pair.kind()))?;
-    let [tag, _name, value, key, tail] = held else {
-        return Err(entry_error(path, "five arrival members", held.len()));
+        .ok_or_else(|| entry_error(path, "a four-member entry", pair.kind()))?;
+    let [tag, name, value, tail] = held else {
+        return Err(entry_error(path, "four entry members", held.len()));
     };
     let tag = if tag.is_null() {
         0
@@ -718,29 +709,24 @@ fn entry_from_scalar(
             .filter(|value| *value >= 0)
             .ok_or_else(|| {
                 entry_error(
-                    &path.field(TAGNUM_COLUMN.0),
+                    &path.field(TAG_COLUMN.0),
                     "a nonnegative i32 tag or null",
                     format_args!("{tag:?}"),
                 )
             })?
     };
-    let text = |value: &crate::Scalar, name| {
-        if value.is_null() {
-            Ok(crate::media::text::TextBytes::new())
-        } else {
-            let text = value
-                .as_str()
-                .ok_or_else(|| entry_error(&path.field(name), "text or null", value.kind()))?;
-            crate::media::text::TextBytes::from_bytes(text)
-        }
+    let name = name
+        .as_str()
+        .ok_or_else(|| entry_error(&path.field(NAME_COLUMN.0), "text", name.kind()))?;
+    let value = if value.is_null() {
+        None
+    } else {
+        Some(smol_str::SmolStr::new(value.as_str().ok_or_else(|| {
+            entry_error(&path.field(VALUE_COLUMN.0), "text or null", value.kind())
+        })?))
     };
-    let children = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
-    let entry = super::FixEntry::new(
-        tag,
-        text(key, TAGKEY_COLUMN.0)?,
-        text(value, TAGVALUE_COLUMN.0)?,
-    );
-    Ok(entry.with_children(children))
+    let nested = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
+    Ok(super::FixEntry::new(tag, name, value).with_entries(nested))
 }
 
 fn entry_error(
@@ -787,50 +773,242 @@ fn entries_from_scalar(
         .collect()
 }
 
+/// The content row an arrival record rebuilds: one child per entry, typed
+/// through the dictionary as the builder types a pair, in the order the
+/// record holds them. Two entries one fold names keep the first.
+fn content_from_entries(
+    registry: &FixRegistry,
+    entries: &[super::FixEntry],
+) -> Result<(Vec<Field>, Vec<crate::Scalar>)> {
+    let mut fields: Vec<Field> = Vec::with_capacity(entries.len());
+    let mut values: Vec<crate::Scalar> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let (field, value) = child_from_entry(registry, entry, None)?;
+        push_child(registry, &mut fields, &mut values, field, value);
+    }
+    Ok((fields, values))
+}
+
+/// Adds one rebuilt child to a level, as the builder adds one: a group
+/// arrives behind its counter's own child, which the group entry's count
+/// fills, and two children one fold names keep the first.
+fn push_child(
+    registry: &FixRegistry,
+    fields: &mut Vec<Field>,
+    values: &mut Vec<crate::Scalar>,
+    field: Field,
+    value: crate::Scalar,
+) {
+    let taken = |fields: &[Field], name: &str| {
+        fields
+            .iter()
+            .any(|held| crate::types::folds_equal(held.name(), name))
+    };
+    if let Some(counter) = field.as_fix().counter().ok().flatten() {
+        if let Some(scalar) = registry.get_scalar_by_tag(counter) {
+            if !taken(fields, scalar.name()) {
+                let count = value.as_sequence().map_or(0, <[crate::Scalar]>::len);
+                let count = super::build::typed_spelling(scalar, &count.to_string());
+                let mut scalar = scalar.clone();
+                scalar.set_nullable(count.is_null());
+                fields.push(scalar);
+                values.push(count);
+            }
+        }
+    }
+    if taken(fields, field.name()) {
+        return;
+    }
+    fields.push(field);
+    values.push(value);
+}
+
+/// Whether one declared child is what an entry states: by tag where the
+/// entry carries one, by folded name where it carries none.
+fn declares(field: &Field, entry: &super::FixEntry) -> bool {
+    if entry.tag() != 0 {
+        return field.as_fix().tag().ok().flatten() == Some(entry.tag());
+    }
+    crate::types::folds_equal(field.name(), entry.name())
+}
+
+/// One entry as the child it states and the value under it.
+///
+/// `declared` is the field the enclosing level declares for it - a
+/// component's member, a group's occurrence member - where one does; else
+/// the dictionary answers by tag, then by name; an entry neither explains
+/// is the `utf8` child the builder keeps an unexplained key as. A group's
+/// occurrences hold the members they stated, in the order they stated
+/// them, as the builder lays them out; a component holds its stated
+/// members; a scalar types its wire spelling under its field, and a
+/// spelling that will not type is that child's null.
+fn child_from_entry(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+    declared: Option<&Field>,
+) -> Result<(Field, crate::Scalar)> {
+    // A declared nested member is what the level declares; a declared
+    // scalar is the dictionary's own field, as the builder states one,
+    // rather than the reference the level declares it through. Then the
+    // canonical name before the tag: a counter's tag names the counter and
+    // the group it heads, and the entry's name says which of the two it is.
+    let known = declared
+        .and_then(|held| {
+            if held.dtype().is_nested() {
+                return Some(held);
+            }
+            held.as_fix()
+                .tag()
+                .ok()
+                .flatten()
+                .and_then(|tag| registry.get_scalar_by_tag(tag))
+                .or(Some(held))
+        })
+        .or_else(|| registry.get_field_by_name(entry.name()))
+        .or_else(|| (entry.tag() != 0).then(|| registry.get_field_by_tag(entry.tag()))?);
+    let Some(known) = known else {
+        let mut field = DataType::utf8().nullable_field(entry.name());
+        if entry.tag() != 0 {
+            field.as_fix_mut().set_tag(entry.tag())?;
+        }
+        let value = entry
+            .value()
+            .map_or(crate::Scalar::Null, crate::Scalar::from);
+        return Ok((field, value));
+    };
+    match known.dtype() {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
+            let Some(item) = super::catalog::occurrence_of(known) else {
+                return Ok((known.clone(), crate::Scalar::Null));
+            };
+            let declared = item.dtype().as_fields().unwrap_or_default();
+            let mut union: Vec<Field> = Vec::new();
+            let mut stated: Vec<Vec<(Field, crate::Scalar)>> =
+                Vec::with_capacity(entry.entries().len());
+            for occurrence in entry.entries() {
+                let mut members = Vec::with_capacity(occurrence.entries().len());
+                let mut fields = Vec::with_capacity(occurrence.entries().len());
+                let mut values = Vec::with_capacity(occurrence.entries().len());
+                for member in occurrence.entries() {
+                    let slot = declared.iter().find(|held| declares(held, member));
+                    let (field, value) = child_from_entry(registry, member, slot)?;
+                    push_child(registry, &mut fields, &mut values, field, value);
+                }
+                for (field, value) in fields.into_iter().zip(values) {
+                    if !union
+                        .iter()
+                        .any(|held| crate::types::folds_equal(held.name(), field.name()))
+                    {
+                        let mut field = field.clone();
+                        field.set_nullable(true);
+                        union.push(field);
+                    }
+                    members.push((field, value));
+                }
+                stated.push(members);
+            }
+            let rows: Vec<crate::Scalar> = stated
+                .into_iter()
+                .map(|members| {
+                    crate::Scalar::from_sequence(
+                        union
+                            .iter()
+                            .map(|slot| {
+                                members
+                                    .iter()
+                                    .find(|(field, _)| {
+                                        crate::types::folds_equal(field.name(), slot.name())
+                                    })
+                                    .map_or(crate::Scalar::Null, |(_, value)| value.clone())
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
+            let occurrence = DataType::from_fields(union)?.required_field(item.name());
+            let dtype = match known.dtype() {
+                DataType::LargeList(_) => DataType::large_list(occurrence),
+                DataType::Map(map) => DataType::map(occurrence, map.keys_sorted())?,
+                _ => DataType::list(occurrence),
+            };
+            let field = Field::new_with_metadata(known.name(), dtype, true, known.metadata.clone());
+            Ok((field, crate::Scalar::from_sequence(rows)))
+        }
+        DataType::Struct(_) => {
+            let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
+            let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
+            for member in entry.entries() {
+                let slot = known.fields().iter().find(|held| declares(held, member));
+                let (field, value) = child_from_entry(registry, member, slot)?;
+                push_child(registry, &mut fields, &mut values, field, value);
+            }
+            let field = Field::new_with_metadata(
+                known.name(),
+                DataType::from_fields(fields)?,
+                false,
+                known.metadata.clone(),
+            );
+            Ok((field, crate::Scalar::from_sequence(values)))
+        }
+        _ => {
+            let value = entry.value().map_or(crate::Scalar::Null, |text| {
+                super::build::typed_spelling(known, text)
+            });
+            let mut field = known.clone();
+            field.set_nullable(value.is_null());
+            Ok((field, value))
+        }
+    }
+}
+
 impl super::FixMsg {
     /// The message a fixed row holds: the inverse of [`Self::into_row`].
     ///
     /// The root is `schema` and the value is `row`, checked and canonicalized
-    /// exactly as [`Self::with_registry`] checks one, so the columns are the
-    /// message's children under the names the schema gave them and every
-    /// lookup reaches them by tag as it reaches a parsed message's. The
-    /// branches are the schema's own `fix:branches`. The entries are rebuilt from
-    /// the [`FIXENTRIES_COLUMN`] - every level the row materialized, and the
-    /// leaf the deepest level folded into decoded through the crate's own
-    /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
-    /// read from, and a row without that column has no entries. Nothing is
-    /// parsed again: this is what makes a batch of rows a stream of messages
-    /// at the cost of the values it already holds.
+    /// exactly as [`Self::with_registry`] checks one. The typed facts - the
+    /// header, the event, the capture, the text and the metadata - are read
+    /// off the columns that hold them, and the content is rebuilt from the
+    /// [`FIXENTRIES_COLUMN`]: every level the row materialized, and the leaf
+    /// the deepest level folded into decoded through the crate's own JSON
+    /// reader, each entry typed through the dictionary exactly as the builder
+    /// types a pair, so every lookup reaches the rebuilt message as it
+    /// reaches a parsed one. A body column is the same content read once
+    /// more, so it is read past rather than read twice; a column no tag
+    /// names is a capture's own and stays. Nothing is parsed again: this is
+    /// what makes a batch of rows a stream of messages at the cost of the
+    /// values it already holds. A row without the entries column rebuilds a
+    /// message with the typed facts and no content.
     ///
-    /// The round trip is byte for byte over every capture this crate is
-    /// tested against, and it is exact for an entry whose bytes are text -
-    /// which is every entry a log wrote. It cannot be for one whose bytes are
-    /// not: the row spells a key and a value as `utf8` because a column a
-    /// reader can read is what a row is for, and a `data` field carrying
-    /// bytes no text holds reaches that column as the decode of them. A
-    /// message read from a line keeps the bytes and re-emits them; the same
-    /// message read back out of a row re-emits the decode, and
-    /// [`Self::anomalies`] reports the `Lossy` that says so on both.
+    /// The round trip is exact for an entry whose bytes are text - which is
+    /// every entry a log wrote. It cannot be for one whose bytes are not:
+    /// the row spells a value as `utf8` because a column a reader can read
+    /// is what a row is for, and a `data` field carrying bytes no text holds
+    /// reaches that column as the decode of them.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::graph::Element;
     /// # use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|";
+    /// let line = b"8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|11=A1|55=AAPL|9999=x|10=0|";
     /// let order = reader.parse_fix_line(line)?;
     ///
     /// let row = order.into_row(&schema)?;
     /// let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
     ///
-    /// // The same message, reached the same way and re-emitted byte for byte.
+    /// // The same message, reached the same way and emitted byte for byte as
+    /// // the parsed one emits itself - the fields the dictionary derived
+    /// // for it, `TimeInForce` on an order, included.
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
     /// assert_eq!(held.entries(), order.entries());
-    /// assert_eq!(held.into_bytes(b'|'), line);
+    /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
+    /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|11=A1|55=AAPL|"));
+    /// assert_eq!(held.get_hashcode(), order.get_hashcode());
     /// // And the row it came from is the row it makes.
     /// assert_eq!(held.into_row(&schema)?, row);
     /// # Ok(())
@@ -848,34 +1026,54 @@ impl super::FixMsg {
         schema: &Field,
         row: &crate::Scalar,
     ) -> Result<Self> {
-        let plan = column_plan_of(schema, &registry)?;
-        plan.identity.require_values(schema, row)?;
         let value = schema.canonicalize_value(row.clone())?;
-        let mut built = Self::settled_parts(
-            registry,
-            schema.clone(),
-            value,
-            Vec::new(),
-            super::identity::Assertions::STATED,
-        )?;
-        let entries = schema
-            .index_of(FIXENTRIES_COLUMN)
-            .and_then(|at| built.as_value().get(at))
-            .and_then(crate::Scalar::as_sequence)
-            .map(|held| {
+        let plan = column_plan_of(schema, &registry)?;
+        let mut members: Vec<Field> = Vec::with_capacity(schema.fields().len());
+        let mut values: Vec<crate::Scalar> = Vec::with_capacity(schema.fields().len());
+        let mut content: Option<(Vec<Field>, Vec<crate::Scalar>)> = None;
+        let held = value.as_sequence().unwrap_or_default();
+        for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
+            if column.name() == FIXENTRIES_COLUMN {
                 let root = crate::path::Path::root();
-                let path = root.field(FIXENTRIES_COLUMN);
-                held.iter()
-                    .enumerate()
-                    .map(|(index, entry)| {
-                        entry_from_scalar(entry, &path.child(crate::path::Segment::Index(index)))
-                    })
-                    .collect::<Result<Vec<_>>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
-        built.set_entries(entries);
-        Ok(built)
+                let entries = entries_from_scalar(value, &root.field(FIXENTRIES_COLUMN))?;
+                content = Some(content_from_entries(&registry, &entries)?);
+                continue;
+            }
+            if column.name() == NOFIXENTRIES_COLUMN {
+                continue;
+            }
+            match planned.tag {
+                Some(tag) if super::identity::is_typed_tag(tag) => {
+                    members.push(column.clone());
+                    values.push(value.clone());
+                }
+                Some(_) => {}
+                None if planned.counter.is_some() => {}
+                None => {
+                    members.push(column.clone());
+                    values.push(value.clone());
+                }
+            }
+        }
+        if let Some((fields, held)) = content {
+            for (field, value) in fields.into_iter().zip(held) {
+                if members
+                    .iter()
+                    .any(|known| crate::types::folds_equal(known.name(), field.name()))
+                {
+                    continue;
+                }
+                members.push(field);
+                values.push(value);
+            }
+        }
+        let root = Field::new_with_metadata(
+            schema.name(),
+            DataType::from_fields(members)?,
+            schema.is_nullable(),
+            schema.metadata.clone(),
+        );
+        Self::with_registry(registry, root, crate::Scalar::from_sequence(values))
     }
 
     /// This message as the fixed row a table holds.
@@ -910,12 +1108,12 @@ impl super::FixMsg {
     /// // The columns are the folded names, so `msgtype` is where the type is.
     /// let at = schema.index_of("msgtype").expect("the msgtype column");
     /// assert_eq!(held[at].as_str(), Some("D"));
-    /// // An unresolved numeric key stays in the one arrival record as tag zero.
+    /// // An unresolved numeric key stays in the one arrival record as tag zero,
+    /// // named after itself rather than nulled, with its value as it arrived.
     /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
-    /// let entry = entries.iter().find(|entry| entry.get(3).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
     /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
-    /// // And a key no dictionary explains is named after itself rather than nulled.
-    /// assert_eq!(entry.get(1).and_then(yggdryl::Scalar::as_str), Some("9999"));
+    /// assert_eq!(entry.get(2).and_then(yggdryl::Scalar::as_str), Some("x"));
     /// # Ok(())
     /// # }
     /// ```
@@ -933,9 +1131,7 @@ impl super::FixMsg {
     /// arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let plan = column_plan_of(schema, self.registry())?;
-        let mut values = self.row_values(schema, &plan, Vec::new())?;
-        plan.identity
-            .finalize(schema, &mut values, super::identity::Assertions::default())?;
+        let values = self.row_values(schema, &plan, Vec::new())?;
         Ok(crate::Scalar::from_sequence(values))
     }
 
@@ -952,7 +1148,6 @@ impl super::FixMsg {
         plan: &Columns,
         front: Vec<crate::Scalar>,
     ) -> Result<Vec<crate::Scalar>> {
-        plan.identity.require_bundle(schema)?;
         let columns = schema.fields();
         if front.len() > columns.len() {
             return Err(super::identity::refused(
@@ -976,7 +1171,7 @@ impl super::FixMsg {
                 FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
                         .iter()
-                        .map(|entry| entry_scalar(self.registry(), entry, 1))
+                        .map(|entry| entry_scalar(entry, 1))
                         .collect::<Result<Vec<_>>>()?,
                 ),
                 // The group's counter counts the occurrences beside it, as
@@ -991,27 +1186,29 @@ impl super::FixMsg {
                 // carries none is a capture's own column, and only a child
                 // spelled as it is - what a row read back through `from_row`
                 // holds - answers for it.
-                _ => {
-                    if let Some(counter) = planned.counter {
+                _ => match (planned.tag, planned.counter) {
+                    // A typed fact is its holder's, whatever shape its
+                    // column takes: the identifiers Map is the event's.
+                    (Some(tag), _) if super::identity::is_typed_tag(tag) => {
+                        self.column_value(tag, &mut derived)?
+                    }
+                    (_, Some(counter)) => {
                         let value = self
                             .index_of_group(counter)
                             .and_then(|index| self.as_value().get(index))
                             .cloned()
                             .unwrap_or(crate::Scalar::Null);
                         self.regrouped(counter, column, value)
-                    } else {
-                        match planned.tag {
-                            Some(tag) => {
-                                self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
-                            }
-                            None => self
-                                .index_of_name(column.name())
-                                .and_then(|at| self.as_value().get(at))
-                                .cloned()
-                                .unwrap_or(crate::Scalar::Null),
-                        }
                     }
-                }
+                    (Some(tag), None) => {
+                        self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
+                    }
+                    (None, None) => self
+                        .index_of_name(column.name())
+                        .and_then(|at| self.as_value().get(at))
+                        .cloned()
+                        .unwrap_or(crate::Scalar::Null),
+                },
             };
             values.push(fitted(column, value)?);
         }
@@ -1079,11 +1276,11 @@ impl super::FixMsg {
     /// forced: a buy order at a price is a party willing to pay it, so a bid
     /// lane it never wrote is still true of it, and a one-sided quote implies
     /// the side it never wrote either. Then the derived facts this crate
-    /// computes - the version, the ticker and the partition here, and every
-    /// crate column whose field declares a `fix:derivation` through the one
-    /// evaluator the [enriching pass](super::enrich) runs, so `isincode`,
-    /// `miccode` and `state` fill a row of an unenriched message exactly as
-    /// the pass would fill the message.
+    /// computes - `BeginString` here, and every crate column whose field
+    /// declares a `fix:derivation` through the one evaluator the
+    /// [enriching pass](super::enrich) runs, so `isincode`, `miccode` and
+    /// `state` fill a row of an unenriched message exactly as the pass
+    /// would fill the message.
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
@@ -1104,38 +1301,16 @@ impl super::FixMsg {
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
-            return Ok(held.clone());
+            return Ok(held);
         }
-        if let Some(facet) = DERIVED_FACETS
-            .iter()
-            .find_map(|(held, facet)| (*held == tag).then_some(*facet))
-        {
-            if let Some(held) = self.lifted(facet) {
-                return Ok(held.clone());
-            }
-        }
-        // The columns every row fills, derived here for a message built from
-        // a schema and a value exactly as the builder stamps one it parsed.
-        // A tuple's half is not a pattern, so the crate's tags are matched
-        // by name.
-        let is = |held: (i32, &str)| held.0 == tag;
+        // The version a message that states none is said to be read at,
+        // derived here for a message built from a schema and a value exactly
+        // as the builder stamps one it parsed.
         if tag == 8 {
-            let version = self.version().unwrap_or_else(super::build::default_version);
+            let version = super::build::default_version();
             return Ok(crate::Scalar::from(format!("FIX.{version}")));
         }
-        Ok(if is(super::VERSION_TAG_NAME) {
-            self.version().map_or(crate::Scalar::Null, |held| {
-                crate::Scalar::from(held.to_string())
-            })
-        } else if is(super::SYMBOLTICKER_TAG_NAME) {
-            self.symbol_ticker()
-        } else if is(super::SESSIONMSGID_TAG_NAME) {
-            self.session_scoped(&SESSION_MSG_PARTS)
-        } else if is(super::SESSIONMSGSEQID_TAG_NAME) {
-            self.session_scoped(&SESSION_MSG_SEQ_PARTS)
-        } else if is(super::INSTIDS_TAG_NAME) {
-            self.instrument_ids(derived)?
-        } else if tag == super::cfi::CFICODE_TAG {
+        Ok(if tag == super::cfi::CFICODE_TAG {
             // FIX's own tag rather than a column of this crate's: 461 is
             // already where a message states its classification, so filling
             // it to the maximum the message licenses is the whole job and a
@@ -1194,8 +1369,7 @@ impl super::FixMsg {
 /// Only a column that cannot be null keeps the refusal, and the two kinds of
 /// failure stay apart because of it: an unreadable value is a null, and a
 /// required column holding nothing is a broken contract that names itself.
-/// The identity bundle is exactly such a contract, and
-/// [`Plan::finalize`](super::identity::Plan) is where it is stated.
+/// A required crate column is exactly such a contract.
 fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     // Kept for the retry only where a retry has members to work on, and a
     // `Scalar`'s clone is a refcount rather than a copy of what it names.
@@ -1282,177 +1456,8 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     }
 }
 
-/// The columns a lift can fill that no message states.
-///
-/// Each is a tag whose facet derives rather than reads: the two quote lanes
-/// and their sizes come from an order's stated price, quantity and side, and
-/// a side comes back from a one-sided quote's single lane. The rules
-/// themselves live with the lift table, because they are what a facet *is* -
-/// this only says which column each of them lands in.
-const DERIVED_FACETS: [(i32, &str); 5] = [
-    (132, "bidpx"),
-    (133, "askpx"),
-    (134, "bidsize"),
-    (135, "asksize"),
-    (54, "side"),
-];
-
-/// The instrument identifiers a ticker is built from, in preference order.
-///
-/// `Symbol(55)` first, because a venue that states one means it. Then the
-/// identifier and its scheme, because an ISIN with `SecurityIDSource` is a
-/// stronger identity than a ticker even though it reads worse. `SecurityID`
-/// alone is last, because an identifier whose scheme is unstated could be
-/// anything.
-const TICKER_SOURCES: [i32; 2] = [55, 48];
-
-/// The tag FIX publishes a message's sequence number under.
-const MSGSEQNUM_TAG: i32 = 34;
-
-/// What joins the parts of a session-scoped name.
-///
-/// The colon the bridge itself writes between them in its row header, so a
-/// reader grepping a log for `e7254b20:9f015ed023` finds the same string the
-/// column holds.
-const SESSION_SEPARATOR: char = ':';
-
-/// The columns [`SESSIONMSGID_TAG_NAME`](super::SESSIONMSGID_TAG_NAME) joins,
-/// in the order the bridge's own bracket writes them.
-pub(super) const SESSION_MSG_PARTS: [i32; 2] = [
-    super::BRIDGESESSIONID_TAG_NAME.0,
-    super::MSGCTXID_TAG_NAME.0,
-];
-
-/// The columns
-/// [`SESSIONMSGSEQID_TAG_NAME`](super::SESSIONMSGSEQID_TAG_NAME) joins, which
-/// are [`SESSION_MSG_PARTS`] and the occurrence.
-pub(super) const SESSION_MSG_SEQ_PARTS: [i32; 3] = [
-    super::BRIDGESESSIONID_TAG_NAME.0,
-    super::MSGCTXID_TAG_NAME.0,
-    MSGSEQNUM_TAG,
-];
-
-impl super::FixMsg {
-    /// The parts of a session-scoped name, joined, or null where any is
-    /// missing.
-    ///
-    /// All or nothing rather than best effort, which is the opposite of how
-    /// most of this crate fills - and deliberately. A name with a hole in it
-    /// looks like a name, so two messages missing different parts would join
-    /// to each other; a null says outright that this message cannot be named
-    /// that way.
-    pub(super) fn session_scoped(&self, tags: &[i32]) -> crate::Scalar {
-        let mut held = String::new();
-        for tag in tags {
-            let Some(part) = self
-                .get_by_tag(*tag)
-                .filter(|held| !held.is_null())
-                .and_then(|value| {
-                    value
-                        .as_str()
-                        .map(str::to_owned)
-                        .or_else(|| value.as_i128().map(|held| held.to_string()))
-                })
-            else {
-                return crate::Scalar::Null;
-            };
-            if !held.is_empty() {
-                held.push(SESSION_SEPARATOR);
-            }
-            held.push_str(part.trim());
-        }
-        if held.is_empty() {
-            return crate::Scalar::Null;
-        }
-        crate::Scalar::from(held)
-    }
-
-    /// Every identifier this instrument is known by, as one struct value.
-    ///
-    /// Each member answers exactly as the column beside it does - through
-    /// [`Self::column_value`], the one place that says how an identifier
-    /// fills - rather than by reading whatever the message happens to hold.
-    /// A message and its own fixed-row projection must agree here: a row
-    /// carries `isincode` because the derivation filled it, and a struct
-    /// reading only stated columns would be empty on the message and full on
-    /// the row, which is two answers to one question. Null where the message
-    /// names the instrument in no way at all, because a struct of five nulls
-    /// is not a fact.
-    ///
-    /// # Errors
-    ///
-    /// Returns what [`Self::column_value`] returns for a member.
-    fn instrument_ids(
-        &self,
-        derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
-    ) -> Result<crate::Scalar> {
-        let members = [
-            super::cfi::CFICODE_TAG,
-            super::ISINCODE_TAG_NAME.0,
-            super::BLOOMBERGCODE_TAG_NAME.0,
-            super::CUSIPCODE_TAG_NAME.0,
-            super::SEDOLCODE_TAG_NAME.0,
-        ];
-        let mut held = Vec::with_capacity(members.len());
-        for tag in members {
-            held.push(self.column_value(tag, derived)?);
-        }
-        if held.iter().all(crate::Scalar::is_null) {
-            return Ok(crate::Scalar::Null);
-        }
-        Ok(crate::Scalar::from_sequence(held))
-    }
-}
-
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
 pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
 };
-
-impl super::FixMsg {
-    /// One instrument symbol that is the same across venues.
-    ///
-    /// Two venues name one instrument three ways, and a table keyed on
-    /// whichever they happened to send cannot be joined to itself. This picks
-    /// the strongest identity the message actually carries and renders it one
-    /// way: the exchange qualifies it where one is stated, and the scheme
-    /// qualifies an identifier that is not a plain ticker - so `AAPL` at
-    /// XNAS and `US0378331005` under ISIN are both readable and neither
-    /// collides with the other venue's `AAPL`.
-    ///
-    /// Derived on every call and stored nowhere, like every other lift.
-    #[must_use]
-    pub fn symbol_ticker(&self) -> crate::Scalar {
-        let Some((tag, held)) = TICKER_SOURCES
-            .iter()
-            .find_map(|tag| Some((*tag, self.get_by_tag(*tag)?)))
-            .filter(|(_, held)| !held.is_null())
-        else {
-            return crate::Scalar::Null;
-        };
-        let Some(base) = held.as_str() else {
-            return crate::Scalar::Null;
-        };
-        let mut rendered = String::with_capacity(base.len() + 16);
-        // The scheme leads an identifier that is not a plain ticker, because
-        // `US0378331005` says nothing about being an ISIN and two schemes
-        // number differently.
-        if tag != 55 {
-            if let Some(scheme) = self.get_by_tag(22).and_then(crate::Scalar::as_str) {
-                rendered.push_str(scheme);
-                rendered.push(':');
-            }
-        }
-        rendered.push_str(base);
-        // The exchange qualifies it where the message states one: one ticker
-        // at two venues is two instruments.
-        if let Some(venue) = self.get_by_tag(207).and_then(crate::Scalar::as_str) {
-            rendered.push('@');
-            rendered.push_str(venue);
-        }
-        crate::Scalar::from(rendered)
-    }
-}
-
-impl super::FixMsg {}

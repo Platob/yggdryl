@@ -1,0 +1,3544 @@
+[
+  {
+    "name": "effectivebusinessdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies an explicit business date for associated reference data or transaction. Used when an implicit date is not sufficiently specific.",
+      "display": "EffectiveBusinessDate",
+      "fix:tag": "2400"
+    }
+  },
+  {
+    "name": "listmanualorderindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates if the list of orders was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
+      "display": "ListManualOrderIndicator",
+      "fix:tag": "2401"
+    }
+  },
+  {
+    "name": "entitlementsubtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Subtype of an entitlement specified in EntitlementType(1775).",
+      "display": "EntitlementSubType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "OrderEntry",
+          "doc": "Order entry"
+        },
+        {
+          "value": "2",
+          "name": "HItLift",
+          "doc": "Hit/Lift"
+        },
+        {
+          "value": "3",
+          "name": "ViewIndicativePx",
+          "doc": "View indicative prices"
+        },
+        {
+          "value": "4",
+          "name": "ViewExecutablePx",
+          "doc": "View executable prices"
+        },
+        {
+          "value": "5",
+          "name": "SingleQuote",
+          "doc": "Single quote"
+        },
+        {
+          "value": "6",
+          "name": "StreamingQuotes",
+          "doc": "Streaming quotes"
+        },
+        {
+          "value": "7",
+          "name": "SingleBroker",
+          "doc": "Single broker"
+        },
+        {
+          "value": "8",
+          "name": "MultiBrokers",
+          "doc": "Multi brokers"
+        }
+      ],
+      "fix:tag": "2402"
+    }
+  },
+  {
+    "name": "quotemodeltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quote model type",
+      "display": "QuoteModelType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "QuoteEntry",
+          "doc": "Quote entry"
+        },
+        {
+          "value": "2",
+          "name": "QuoteModification",
+          "doc": "Quote modification"
+        }
+      ],
+      "fix:tag": "2403"
+    }
+  },
+  {
+    "name": "compliancetext",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Free text for compliance information required for regulatory reporting.",
+      "display": "ComplianceText",
+      "fix:tag": "2404"
+    }
+  },
+  {
+    "name": "execmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies how the transaction was executed, e.g. via an automated execution platform or other method.",
+      "display": "ExecMethod",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unspecified",
+          "doc": "Undefined/unspecified - (default when not specified)"
+        },
+        {
+          "value": "1",
+          "name": "Manual",
+          "doc": "Manual"
+        },
+        {
+          "value": "2",
+          "name": "Automated",
+          "doc": "Automated"
+        },
+        {
+          "value": "3",
+          "name": "VoiceBrokered",
+          "doc": "Voice brokered"
+        }
+      ],
+      "fix:tag": "2405"
+    }
+  },
+  {
+    "name": "allocregulatorylegrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "display": "AllocRegulatoryLegRefID",
+      "fix:tag": "2406"
+    }
+  },
+  {
+    "name": "complexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX spot rate.",
+      "display": "ComplexEventSpotRate",
+      "fix:tag": "2407"
+    }
+  },
+  {
+    "name": "complexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX forward points added to spot rate. May be a negative value.",
+      "display": "ComplexEventForwardPoints",
+      "fix:tag": "2408"
+    }
+  },
+  {
+    "name": "legcomplexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX spot rate.",
+      "display": "LegComplexEventSpotRate",
+      "fix:tag": "2409"
+    }
+  },
+  {
+    "name": "legcomplexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX forward points added to spot rate. May be a negative value.",
+      "display": "LegComplexEventForwardPoints",
+      "fix:tag": "2410"
+    }
+  },
+  {
+    "name": "regulatorylegrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "display": "RegulatoryLegRefID",
+      "fix:tag": "2411"
+    }
+  },
+  {
+    "name": "ratesourcereferencepageheading",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the page heading from the rate source.",
+      "display": "RateSourceReferencePageHeading",
+      "fix:names": [
+        "ratesourcereferemcepageheading"
+      ],
+      "fix:tag": "2412"
+    }
+  },
+  {
+    "name": "relatedtosecurityid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The security identifier of the instrument, instrument leg or underlying instrument with which the related instrument has correlation.",
+      "display": "RelatedToSecurityID",
+      "fix:tag": "2413"
+    }
+  },
+  {
+    "name": "relatedtosecurityidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies class or source of the RelatedToSecurityID(2413) value.",
+      "display": "RelatedToSecurityIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "2414"
+    }
+  },
+  {
+    "name": "relatedtostreamxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
+      "display": "RelatedToStreamXIDRef",
+      "fix:tag": "2415"
+    }
+  },
+  {
+    "name": "sideregulatorylegrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "display": "SideRegulatoryLegRefID",
+      "fix:tag": "2416"
+    }
+  },
+  {
+    "name": "relatedtodividendperiodxidref",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
+      "display": "RelatedToDividendPeriodXIDRef",
+      "fix:tag": "2417"
+    }
+  },
+  {
+    "name": "firmtradeeventid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An identifier created by the trading party for the life cycle event associated with this report.",
+      "display": "FirmTradeEventID",
+      "fix:tag": "2418"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX spot rate.",
+      "display": "UnderlyingComplexEventSpotRate",
+      "fix:tag": "2419"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "FX forward points added to spot rate. May be a negative value.",
+      "display": "UnderlyingComplexEventForwardPoints",
+      "fix:tag": "2420"
+    }
+  },
+  {
+    "name": "fillrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A reference to either the value of the FillExecID(1363) or an implicit position of a fills instance in the FillsGrp component.",
+      "display": "FillRefID",
+      "fix:tag": "2421"
+    }
+  },
+  {
+    "name": "orderrequestid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique message identifier for an order request as assigned by the submitter of the request.",
+      "display": "OrderRequestID",
+      "fix:tag": "2422"
+    }
+  },
+  {
+    "name": "massorderrequestid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique message identifier for a mass order request as assigned by the submitter of the orders.",
+      "display": "MassOrderRequestID",
+      "fix:tag": "2423"
+    }
+  },
+  {
+    "name": "massorderreportid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique message identifier for the response to a mass order request as assigned by the receiver of the orders.",
+      "display": "MassOrderReportID",
+      "fix:tag": "2424"
+    }
+  },
+  {
+    "name": "massorderrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of mass order request.",
+      "display": "MassOrderRequestStatus",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "2",
+          "name": "AcceptedWithAdditionalEvents",
+          "doc": "Accepted with additional events"
+        },
+        {
+          "value": "3",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "2425"
+    }
+  },
+  {
+    "name": "massorderrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Request result of mass order request.",
+      "display": "MassOrderRequestResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful"
+        },
+        {
+          "value": "1",
+          "name": "ResponseLevelNotSupported",
+          "doc": "Response level not supported"
+        },
+        {
+          "value": "2",
+          "name": "InvalidMarket",
+          "doc": "Invalid market"
+        },
+        {
+          "value": "3",
+          "name": "InvalidMarketSegment",
+          "doc": "Invalid market segment"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2426"
+    }
+  },
+  {
+    "name": "orderresponselevel",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The level of response requested from receiver of mass order messages. A default value should be bilaterally agreed.",
+      "display": "OrderResponseLevel",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NoAck",
+          "doc": "No acknowledgement"
+        },
+        {
+          "value": "1",
+          "name": "MinimumAck",
+          "doc": "Minimum acknowledgement"
+        },
+        {
+          "value": "2",
+          "name": "AckEach",
+          "doc": "Acknowledge each order"
+        },
+        {
+          "value": "3",
+          "name": "SummaryAck",
+          "doc": "Summary acknowledgement"
+        }
+      ],
+      "fix:tag": "2427"
+    }
+  },
+  {
+    "name": "noorderentries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of order entries.",
+      "display": "NoOrderEntries",
+      "fix:tag": "2428"
+    }
+  },
+  {
+    "name": "orderentryaction",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the action to be taken for the given order.",
+      "display": "OrderEntryAction",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Add",
+          "doc": "Add"
+        },
+        {
+          "value": "2",
+          "name": "Modify",
+          "doc": "Modify"
+        },
+        {
+          "value": "3",
+          "name": "Delete",
+          "doc": "Delete / Cancel"
+        },
+        {
+          "value": "4",
+          "name": "Suspend",
+          "doc": "Suspend"
+        },
+        {
+          "value": "5",
+          "name": "Release",
+          "doc": "Release"
+        }
+      ],
+      "fix:tag": "2429"
+    }
+  },
+  {
+    "name": "orderentryid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for an order within a single MassOrder(35=DJ) message that can be used as a reference in the MassOrderAck(35=DK) message.",
+      "display": "OrderEntryID",
+      "fix:tag": "2430"
+    }
+  },
+  {
+    "name": "exectypereason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The initiating event when an ExecutionReport(35=8) is sent.",
+      "display": "ExecTypeReason",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "OrdAddedOnRequest",
+          "doc": "Order added upon request"
+        },
+        {
+          "value": "2",
+          "name": "OrdReplacedOnRequest",
+          "doc": "Order replaced upon request"
+        },
+        {
+          "value": "3",
+          "name": "OrdCxldOnRequest",
+          "doc": "Order cancelled upon request"
+        },
+        {
+          "value": "4",
+          "name": "UnsolicitedOrdCxl",
+          "doc": "Unsolicited order cancellation"
+        },
+        {
+          "value": "5",
+          "name": "NonRestingOrdAddedOnRequest",
+          "doc": "Non-resting order added upon request"
+        },
+        {
+          "value": "6",
+          "name": "OrdReplacedWithNonRestingOrdOnRequest",
+          "doc": "Order replaced with non-resting order upon request"
+        },
+        {
+          "value": "7",
+          "name": "TriggerOrdReplacedOnRequest",
+          "doc": "Trigger order replaced upon request"
+        },
+        {
+          "value": "8",
+          "name": "SuspendedOrdReplacedOnRequest",
+          "doc": "Suspended order replaced upon request"
+        },
+        {
+          "value": "9",
+          "name": "SuspendedOrdCxldOnRequest",
+          "doc": "Suspended order canceled upon request"
+        },
+        {
+          "value": "10",
+          "name": "OrdCxlPending",
+          "doc": "Order cancellation pending"
+        },
+        {
+          "value": "11",
+          "name": "PendingCxlExecuted",
+          "doc": "Pending cancellation executed"
+        },
+        {
+          "value": "12",
+          "name": "RestingOrdTriggered",
+          "doc": "Resting order triggered"
+        },
+        {
+          "value": "13",
+          "name": "SuspendedOrdActivated",
+          "doc": "Suspended order activated"
+        },
+        {
+          "value": "14",
+          "name": "ActiveOrdSuspended",
+          "doc": "Active order suspended"
+        },
+        {
+          "value": "15",
+          "name": "OrdExpired",
+          "doc": "Order expired"
+        }
+      ],
+      "fix:tag": "2431"
+    }
+  },
+  {
+    "name": "totnoorderentries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Totals number of orders for a mass order or its acknowledgment being fragmented across multiple messages.",
+      "display": "TotNoOrderEntries",
+      "fix:tag": "2432"
+    }
+  },
+  {
+    "name": "notargetpartysubids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of target party sub IDs in the repeating group.",
+      "display": "NoTargetPartySubIDs",
+      "fix:tag": "2433"
+    }
+  },
+  {
+    "name": "targetpartysubid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Party sub-identifier value within a target party repeating group.",
+      "display": "TargetPartySubID",
+      "fix:tag": "2434"
+    }
+  },
+  {
+    "name": "targetpartysubidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of TargetPartySubID(2434) value.",
+      "display": "TargetPartySubIDType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Firm",
+          "doc": "Firm"
+        },
+        {
+          "value": "2",
+          "name": "Person",
+          "doc": "Person"
+        },
+        {
+          "value": "3",
+          "name": "System",
+          "doc": "System"
+        },
+        {
+          "value": "4",
+          "name": "Application",
+          "doc": "Application"
+        },
+        {
+          "value": "5",
+          "name": "FullLegalNameOfFirm",
+          "doc": "Full legal name of firm"
+        },
+        {
+          "value": "6",
+          "name": "PostalAddress",
+          "doc": "Postal address"
+        },
+        {
+          "value": "7",
+          "name": "PhoneNumber",
+          "doc": "Phone number"
+        },
+        {
+          "value": "8",
+          "name": "EmailAddress",
+          "doc": "Email address"
+        },
+        {
+          "value": "9",
+          "name": "ContactName",
+          "doc": "Contact name"
+        },
+        {
+          "value": "10",
+          "name": "SecuritiesAccountNumber",
+          "doc": "Securities account number (for settlement instructions)"
+        },
+        {
+          "value": "11",
+          "name": "RegistrationNumber",
+          "doc": "Registration number (for settlement instructions and confirmations)"
+        },
+        {
+          "value": "12",
+          "name": "RegisteredAddressForConfirmation",
+          "doc": "Registered address (for confirmation purposes)"
+        },
+        {
+          "value": "13",
+          "name": "RegulatoryStatus",
+          "doc": "Regulatory status (for confirmation purposes)"
+        },
+        {
+          "value": "14",
+          "name": "RegistrationName",
+          "doc": "Registration name (for settlement instructions)"
+        },
+        {
+          "value": "15",
+          "name": "CashAccountNumber",
+          "doc": "Cash account number (for settlement instructions)"
+        },
+        {
+          "value": "16",
+          "name": "BIC",
+          "doc": "BIC"
+        },
+        {
+          "value": "17",
+          "name": "CSDParticipantMemberCode",
+          "doc": "CSD participant member code"
+        },
+        {
+          "value": "18",
+          "name": "RegisteredAddress",
+          "doc": "Registered address"
+        },
+        {
+          "value": "19",
+          "name": "FundAccountName",
+          "doc": "Fund account name"
+        },
+        {
+          "value": "20",
+          "name": "TelexNumber",
+          "doc": "Telex number"
+        },
+        {
+          "value": "21",
+          "name": "FaxNumber",
+          "doc": "Fax number"
+        },
+        {
+          "value": "22",
+          "name": "SecuritiesAccountName",
+          "doc": "Securities account name"
+        },
+        {
+          "value": "23",
+          "name": "CashAccountName",
+          "doc": "Cash account name"
+        },
+        {
+          "value": "24",
+          "name": "Department",
+          "doc": "Department"
+        },
+        {
+          "value": "25",
+          "name": "LocationDesk",
+          "doc": "Location desk"
+        },
+        {
+          "value": "26",
+          "name": "PositionAccountType",
+          "doc": "Position account type"
+        },
+        {
+          "value": "27",
+          "name": "SecurityLocateID",
+          "doc": "Security locate ID"
+        },
+        {
+          "value": "28",
+          "name": "MarketMaker",
+          "doc": "Market maker"
+        },
+        {
+          "value": "29",
+          "name": "EligibleCounterparty",
+          "doc": "Eligible counterparty"
+        },
+        {
+          "value": "30",
+          "name": "ProfessionalClient",
+          "doc": "Professional client"
+        },
+        {
+          "value": "31",
+          "name": "Location",
+          "doc": "Location"
+        },
+        {
+          "value": "32",
+          "name": "ExecutionVenue",
+          "doc": "Execution venue"
+        },
+        {
+          "value": "33",
+          "name": "CurrencyDeliveryIdentifier",
+          "doc": "Currency delivery identifier"
+        },
+        {
+          "value": "34",
+          "name": "AddressCity",
+          "doc": "Address City"
+        },
+        {
+          "value": "35",
+          "name": "AddressStateOrProvince",
+          "doc": "Address State/Province"
+        },
+        {
+          "value": "36",
+          "name": "AddressPostalCode",
+          "doc": "Address Postal Code"
+        },
+        {
+          "value": "37",
+          "name": "AddressStreet",
+          "doc": "Address Street"
+        },
+        {
+          "value": "38",
+          "name": "AddressISOCountryCode",
+          "doc": "Address Country (ISO country code)"
+        },
+        {
+          "value": "39",
+          "name": "ISOCountryCode",
+          "doc": "ISO country code"
+        },
+        {
+          "value": "40",
+          "name": "MarketSegment",
+          "doc": "Market segment"
+        },
+        {
+          "value": "41",
+          "name": "CustomerAccountType",
+          "doc": "Customer account type"
+        },
+        {
+          "value": "42",
+          "name": "OmnibusAccount",
+          "doc": "Omnibus account"
+        },
+        {
+          "value": "43",
+          "name": "FundsSegregationType",
+          "doc": "Funds segregation type"
+        },
+        {
+          "value": "44",
+          "name": "GuaranteeFund",
+          "doc": "Guarantee fund"
+        },
+        {
+          "value": "45",
+          "name": "SwapDealer",
+          "doc": "Swap dealer"
+        },
+        {
+          "value": "46",
+          "name": "MajorParticipant",
+          "doc": "Major participant"
+        },
+        {
+          "value": "47",
+          "name": "FinancialEntity",
+          "doc": "Financial entity"
+        },
+        {
+          "value": "48",
+          "name": "USPerson",
+          "doc": "U.S. person"
+        },
+        {
+          "value": "49",
+          "name": "ReportingEntityIndicator",
+          "doc": "Reporting entity indicator"
+        },
+        {
+          "value": "50",
+          "name": "ElectedClearingRequirementException",
+          "doc": "Elected clearing requirement exception"
+        },
+        {
+          "value": "51",
+          "name": "BusinessCenter",
+          "doc": "Business center"
+        },
+        {
+          "value": "52",
+          "name": "ReferenceText",
+          "doc": "Reference text"
+        },
+        {
+          "value": "53",
+          "name": "ShortMarkingExemptAccount",
+          "doc": "Short-marking exempt account"
+        },
+        {
+          "value": "54",
+          "name": "ParentFirmIdentifier",
+          "doc": "Parent firm identifier"
+        },
+        {
+          "value": "55",
+          "name": "ParentFirmName",
+          "doc": "Parent firm name"
+        },
+        {
+          "value": "56",
+          "name": "DealIdentifier",
+          "doc": "Deal identifier"
+        },
+        {
+          "value": "57",
+          "name": "SystemTradeID",
+          "doc": "System trade identifier"
+        },
+        {
+          "value": "58",
+          "name": "SystemTradeSubID",
+          "doc": "System trade sub-identifier"
+        },
+        {
+          "value": "59",
+          "name": "FCMCode",
+          "doc": "Futures Commission Merchant (FCM) code"
+        },
+        {
+          "value": "60",
+          "name": "DlvryTrmlCode",
+          "doc": "Delivery terminal customer account/code"
+        },
+        {
+          "value": "61",
+          "name": "VolntyRptEntity",
+          "doc": "Voluntary reporting entity"
+        },
+        {
+          "value": "62",
+          "name": "RptObligJursdctn",
+          "doc": "Reporting obligation jurisdiction"
+        },
+        {
+          "value": "63",
+          "name": "VolntyRptJursdctn",
+          "doc": "Voluntary reporting jurisdiction"
+        },
+        {
+          "value": "64",
+          "name": "CompanyActivities",
+          "doc": "Company activities"
+        },
+        {
+          "value": "65",
+          "name": "EEAreaDomiciled",
+          "doc": "European Economic Area domiciled"
+        },
+        {
+          "value": "66",
+          "name": "ContractLinked",
+          "doc": "Contract linked to commercial or treasury financing for this counterparty"
+        },
+        {
+          "value": "67",
+          "name": "ContractAbove",
+          "doc": "Contract above clearing threshold for this counterparty"
+        },
+        {
+          "value": "68",
+          "name": "VolntyRptPty",
+          "doc": "Voluntary reporting party"
+        },
+        {
+          "value": "69",
+          "name": "EndUser",
+          "doc": "End user"
+        },
+        {
+          "value": "70",
+          "name": "LocationOrJurisdiction",
+          "doc": "Location or jurisdiction"
+        },
+        {
+          "value": "71",
+          "name": "DerivativesDealer",
+          "doc": "Derivatives dealer"
+        },
+        {
+          "value": "72",
+          "name": "Domicile",
+          "doc": "Domicile"
+        },
+        {
+          "value": "73",
+          "name": "ExemptFromRecognition",
+          "doc": "Exempt from recognition"
+        },
+        {
+          "value": "74",
+          "name": "Payer",
+          "doc": "Payer"
+        },
+        {
+          "value": "75",
+          "name": "Receiver",
+          "doc": "Receiver"
+        },
+        {
+          "value": "76",
+          "name": "SystematicInternaliser",
+          "doc": "Systematic Internaliser (SI)"
+        },
+        {
+          "value": "77",
+          "name": "PublishingEntityIndicator",
+          "doc": "Publishing entity indicator"
+        },
+        {
+          "value": "78",
+          "name": "FirstName",
+          "doc": "First name"
+        },
+        {
+          "value": "79",
+          "name": "Surname",
+          "doc": "Surname"
+        },
+        {
+          "value": "80",
+          "name": "DateOfBirth",
+          "doc": "Date of birth"
+        },
+        {
+          "value": "81",
+          "name": "OrderTransmittingFirm",
+          "doc": "Order transmitting firm"
+        },
+        {
+          "value": "82",
+          "name": "OrderTransmittingFirmBuyer",
+          "doc": "Order transmitting firm for buyer"
+        },
+        {
+          "value": "83",
+          "name": "OrderTransmitterSeller",
+          "doc": "Order transmitter for seller"
+        },
+        {
+          "value": "84",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal Entity Identifier (ISO 17442) LEI"
+        },
+        {
+          "value": "85",
+          "name": "SubSectorClassification",
+          "doc": "Sub-sector classification"
+        },
+        {
+          "value": "86",
+          "name": "PartySide",
+          "doc": "Party side"
+        },
+        {
+          "value": "87",
+          "name": "LegalRegistrationCountry",
+          "doc": "Legal registration country"
+        },
+        {
+          "value": "88",
+          "name": "AlgorithmVersion",
+          "doc": "Algorithm version"
+        },
+        {
+          "value": "89",
+          "name": "CertificateRegistrationStatus",
+          "doc": "Certificate registration status"
+        }
+      ],
+      "fix:tag": "2435"
+    }
+  },
+  {
+    "name": "transferinstructionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for the transfer instruction assigned by the submitter.",
+      "display": "TransferInstructionID",
+      "fix:tag": "2436"
+    }
+  },
+  {
+    "name": "transferid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique identifier assigned to the transfer entity once it is received, for example, by the CCP or the party governing the transfer process. Generally this same identifier for the transfer is used by all parties involved.",
+      "display": "TransferID",
+      "fix:tag": "2437"
+    }
+  },
+  {
+    "name": "transferreportid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for the transfer report message.",
+      "display": "TransferReportID",
+      "fix:tag": "2438"
+    }
+  },
+  {
+    "name": "transfertranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of transfer transaction.",
+      "display": "TransferTransType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "New",
+          "doc": "New"
+        },
+        {
+          "value": "1",
+          "name": "Replace",
+          "doc": "Replace"
+        },
+        {
+          "value": "2",
+          "name": "Cancel",
+          "doc": "Cancel"
+        }
+      ],
+      "fix:tag": "2439"
+    }
+  },
+  {
+    "name": "transfertype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of transfer request.",
+      "display": "TransferType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RequestTransfer",
+          "doc": "Request transfer"
+        },
+        {
+          "value": "1",
+          "name": "AcceptTransfer",
+          "doc": "Accept transfer"
+        },
+        {
+          "value": "2",
+          "name": "DeclineTransfer",
+          "doc": "Decline transfer"
+        }
+      ],
+      "fix:tag": "2440"
+    }
+  },
+  {
+    "name": "transferscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of transfer.",
+      "display": "TransferScope",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "InterFirmTransfer",
+          "doc": "Inter-firm transfer"
+        },
+        {
+          "value": "1",
+          "name": "IntraFirmTransfer",
+          "doc": "Intra-firm transfer"
+        },
+        {
+          "value": "2",
+          "name": "CMTA",
+          "doc": "Clearing Member Trade Assignment"
+        }
+      ],
+      "fix:tag": "2441"
+    }
+  },
+  {
+    "name": "transferstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of the transfer.",
+      "display": "TransferStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Received",
+          "doc": "Received"
+        },
+        {
+          "value": "1",
+          "name": "RejectedByIntermediary",
+          "doc": "Rejected by intermediary"
+        },
+        {
+          "value": "2",
+          "name": "AcceptPending",
+          "doc": "Accept pending"
+        },
+        {
+          "value": "3",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "4",
+          "name": "Declined",
+          "doc": "Declined"
+        },
+        {
+          "value": "5",
+          "name": "Cancelled",
+          "doc": "Cancelled"
+        }
+      ],
+      "fix:tag": "2442"
+    }
+  },
+  {
+    "name": "transferrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reason the transfer instruction was rejected.",
+      "display": "TransferRejectReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Success",
+          "doc": "Success"
+        },
+        {
+          "value": "1",
+          "name": "InvalidParty",
+          "doc": "Invalid party"
+        },
+        {
+          "value": "2",
+          "name": "UnknownInstrument",
+          "doc": "Unknown instrument"
+        },
+        {
+          "value": "3",
+          "name": "UnauthorizedToSubmitXfer",
+          "doc": "Not authorized to submit transfers"
+        },
+        {
+          "value": "4",
+          "name": "UnknownPosition",
+          "doc": "Unknown position"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2443"
+    }
+  },
+  {
+    "name": "transferreporttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of transfer report.",
+      "display": "TransferReportType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Submit",
+          "doc": "Submit"
+        },
+        {
+          "value": "1",
+          "name": "Alleged",
+          "doc": "Alleged"
+        }
+      ],
+      "fix:tag": "2444"
+    }
+  },
+  {
+    "name": "aggressortime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Timestamp of aggressive order or quote resulting in match event.",
+      "display": "AggressorTime",
+      "fix:tag": "2445"
+    }
+  },
+  {
+    "name": "aggressorside",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Side of aggressive order or quote resulting in match event.",
+      "display": "AggressorSide",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "doc": "Sell"
+        },
+        {
+          "value": "3",
+          "name": "BuyMinus",
+          "doc": "Buy minus"
+        },
+        {
+          "value": "4",
+          "name": "SellPlus",
+          "doc": "Sell plus"
+        },
+        {
+          "value": "5",
+          "name": "SellShort",
+          "doc": "Sell short"
+        },
+        {
+          "value": "6",
+          "name": "SellShortExempt",
+          "doc": "Sell short exempt"
+        },
+        {
+          "value": "7",
+          "name": "Undisclosed",
+          "doc": "Undisclosed"
+        },
+        {
+          "value": "8",
+          "name": "Cross",
+          "doc": "Cross (orders where counterparty is an exchange, valid for all messages except IOIs)"
+        },
+        {
+          "value": "9",
+          "name": "CrossShort",
+          "doc": "Cross short"
+        },
+        {
+          "value": "A",
+          "name": "CrossShortExempt",
+          "doc": "Cross short exempt"
+        },
+        {
+          "value": "B",
+          "name": "AsDefined",
+          "doc": "\"As Defined\" (for use with multileg instruments)"
+        },
+        {
+          "value": "C",
+          "name": "Opposite",
+          "doc": "\"Opposite\" (for use with multileg instruments)"
+        },
+        {
+          "value": "D",
+          "name": "Subscribe",
+          "doc": "Subscribe (e.g. CIV)"
+        },
+        {
+          "value": "E",
+          "name": "Redeem",
+          "doc": "Redeem (e.g. CIV)"
+        },
+        {
+          "value": "F",
+          "name": "Lend",
+          "doc": "Lend (FINANCING - identifies direction of collateral)"
+        },
+        {
+          "value": "G",
+          "name": "Borrow",
+          "doc": "Borrow (FINANCING - identifies direction of collateral)"
+        },
+        {
+          "value": "H",
+          "name": "SellUndisclosed",
+          "doc": "Sell undisclosed"
+        }
+      ],
+      "fix:tag": "2446"
+    }
+  },
+  {
+    "name": "fastmarketindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates if the instrument is in \"fast market\" state.",
+      "display": "FastMarketIndicator",
+      "fix:tag": "2447"
+    }
+  },
+  {
+    "name": "linkagehandlingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicate whether linkage handling is in effect for an instrument or not.",
+      "display": "LinkageHandlingIndicator",
+      "fix:tag": "2448"
+    }
+  },
+  {
+    "name": "numberofbuyorders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of buy orders involved in a trade.",
+      "display": "NumberOfBuyOrders",
+      "fix:tag": "2449"
+    }
+  },
+  {
+    "name": "numberofsellorders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of sell orders involved in a trade.",
+      "display": "NumberOfSellOrders",
+      "fix:tag": "2450"
+    }
+  },
+  {
+    "name": "settlpricedeterminationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Calculation method used to determine settlement price.",
+      "display": "SettlPriceDeterminationMethod",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
+        },
+        {
+          "value": "1",
+          "name": "LastTradePrice",
+          "doc": "Last trade price"
+        },
+        {
+          "value": "2",
+          "name": "LastBidPrice",
+          "doc": "Last bid price"
+        },
+        {
+          "value": "3",
+          "name": "LastOfferPrice",
+          "doc": "Last offer price"
+        },
+        {
+          "value": "4",
+          "name": "MidPrice",
+          "doc": "Mid price"
+        },
+        {
+          "value": "5",
+          "name": "AverageLastTradePrice",
+          "doc": "Average last trade price"
+        },
+        {
+          "value": "6",
+          "name": "AverageLastTradePeriod",
+          "doc": "Average last trade period"
+        },
+        {
+          "value": "7",
+          "name": "UnderlyingPrice",
+          "doc": "Underlying price"
+        },
+        {
+          "value": "8",
+          "name": "CalculatedPrice",
+          "doc": "Calculated price"
+        },
+        {
+          "value": "9",
+          "name": "ManualPrice",
+          "doc": "Manual price"
+        }
+      ],
+      "fix:tag": "2451"
+    }
+  },
+  {
+    "name": "mdstatisticreqid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Message identifier for a statistics request.",
+      "display": "MDStatisticReqID",
+      "fix:tag": "2452"
+    }
+  },
+  {
+    "name": "mdstatisticrptid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Message identifier for a statistics report.",
+      "display": "MDStatisticRptID",
+      "fix:tag": "2453"
+    }
+  },
+  {
+    "name": "mdstatisticname",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The short name or acronym for a set of statistic parameters.",
+      "display": "MDStatisticName",
+      "fix:tag": "2454"
+    }
+  },
+  {
+    "name": "mdstatisticdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Can be used to provide an optional textual description for a statistic.",
+      "display": "MDStatisticDesc",
+      "fix:tag": "2455"
+    }
+  },
+  {
+    "name": "mdstatistictype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of statistic value.",
+      "display": "MDStatisticType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Count",
+          "doc": "Count"
+        },
+        {
+          "value": "2",
+          "name": "AverageVolume",
+          "doc": "Average volume"
+        },
+        {
+          "value": "3",
+          "name": "TotalVolume",
+          "doc": "Total volume"
+        },
+        {
+          "value": "4",
+          "name": "Distribution",
+          "doc": "Distribution"
+        },
+        {
+          "value": "5",
+          "name": "Ratio",
+          "doc": "Ratio"
+        },
+        {
+          "value": "6",
+          "name": "Liquidity",
+          "doc": "Liquidity"
+        },
+        {
+          "value": "7",
+          "name": "VWAP",
+          "doc": "Volume weighted average price (VWAP)"
+        },
+        {
+          "value": "8",
+          "name": "Volatility",
+          "doc": "Volatility"
+        },
+        {
+          "value": "9",
+          "name": "Duration",
+          "doc": "Duration"
+        },
+        {
+          "value": "10",
+          "name": "Tick",
+          "doc": "Tick"
+        },
+        {
+          "value": "11",
+          "name": "AverageValue",
+          "doc": "Average value"
+        },
+        {
+          "value": "12",
+          "name": "TotalValue",
+          "doc": "Total value"
+        },
+        {
+          "value": "13",
+          "name": "High",
+          "doc": "High"
+        },
+        {
+          "value": "14",
+          "name": "Low",
+          "doc": "Low"
+        },
+        {
+          "value": "15",
+          "name": "Midpoint",
+          "doc": "Midpoint"
+        },
+        {
+          "value": "16",
+          "name": "First",
+          "doc": "First"
+        },
+        {
+          "value": "17",
+          "name": "Last",
+          "doc": "Last"
+        },
+        {
+          "value": "18",
+          "name": "Final",
+          "doc": "Final"
+        },
+        {
+          "value": "19",
+          "name": "ExchangeBest",
+          "doc": "Exchange best"
+        },
+        {
+          "value": "20",
+          "name": "ExchangeBestWithVolume",
+          "doc": "Exchange best with volume"
+        },
+        {
+          "value": "21",
+          "name": "ConsolidatedBest",
+          "doc": "Consolidated best"
+        },
+        {
+          "value": "22",
+          "name": "ConsolidatedBestWithVolume",
+          "doc": "Consolidated best with volume"
+        },
+        {
+          "value": "23",
+          "name": "TWAP",
+          "doc": "Time weighted average price (TWAP)"
+        },
+        {
+          "value": "24",
+          "name": "AverageDuration",
+          "doc": "Average duration"
+        },
+        {
+          "value": "25",
+          "name": "AveragePrice",
+          "doc": "Average price"
+        },
+        {
+          "value": "26",
+          "name": "TotalFees",
+          "doc": "Total fees"
+        },
+        {
+          "value": "27",
+          "name": "TotalBenefits",
+          "doc": "Total benefits"
+        },
+        {
+          "value": "28",
+          "name": "MedianValue",
+          "doc": "Median value"
+        },
+        {
+          "value": "29",
+          "name": "AverageLiquidity",
+          "doc": "Average liquidity"
+        },
+        {
+          "value": "30",
+          "name": "MedianDuration",
+          "doc": "Median duration"
+        }
+      ],
+      "fix:tag": "2456"
+    }
+  },
+  {
+    "name": "mdstatisticscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Entities used as basis for the statistics.",
+      "display": "MDStatisticScope",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "BidPrices",
+          "doc": "Bid prices"
+        },
+        {
+          "value": "2",
+          "name": "OfferPrices",
+          "doc": "Offer prices"
+        },
+        {
+          "value": "3",
+          "name": "BidDepth",
+          "doc": "Bid depth"
+        },
+        {
+          "value": "4",
+          "name": "OfferDepth",
+          "doc": "Offer depth"
+        },
+        {
+          "value": "5",
+          "name": "Orders",
+          "doc": "Orders"
+        },
+        {
+          "value": "6",
+          "name": "Quotes",
+          "doc": "Quotes"
+        },
+        {
+          "value": "7",
+          "name": "OrdersAndQuotes",
+          "doc": "Orders and Quotes"
+        },
+        {
+          "value": "8",
+          "name": "Trades",
+          "doc": "Trades"
+        },
+        {
+          "value": "9",
+          "name": "TradePrices",
+          "doc": "Trade prices"
+        },
+        {
+          "value": "10",
+          "name": "AuctionPrices",
+          "doc": "Auction prices"
+        },
+        {
+          "value": "11",
+          "name": "OpeningPrices",
+          "doc": "Opening prices"
+        },
+        {
+          "value": "12",
+          "name": "ClosingPrices",
+          "doc": "Closing prices"
+        },
+        {
+          "value": "13",
+          "name": "SettlementPrices",
+          "doc": "Settlement prices"
+        },
+        {
+          "value": "14",
+          "name": "UnderlyingPrices",
+          "doc": "Underlying prices"
+        },
+        {
+          "value": "15",
+          "name": "OpenInterest",
+          "doc": "Open interest"
+        },
+        {
+          "value": "16",
+          "name": "IndexValues",
+          "doc": "Index values"
+        },
+        {
+          "value": "17",
+          "name": "MarginRates",
+          "doc": "Margin rates"
+        },
+        {
+          "value": "18",
+          "name": "Outages",
+          "doc": "Outages"
+        },
+        {
+          "value": "19",
+          "name": "ScheduledAuctions",
+          "doc": "Scheduled auctions"
+        },
+        {
+          "value": "20",
+          "name": "ReferencePrices",
+          "doc": "Reference prices"
+        },
+        {
+          "value": "21",
+          "name": "TradeValue",
+          "doc": "Trade value"
+        },
+        {
+          "value": "22",
+          "name": "MarketDataFeeItems",
+          "doc": "Market data fee items"
+        },
+        {
+          "value": "23",
+          "name": "Rebates",
+          "doc": "Rebates"
+        },
+        {
+          "value": "24",
+          "name": "Discounts",
+          "doc": "Discounts"
+        },
+        {
+          "value": "25",
+          "name": "Payments",
+          "doc": "Payments"
+        },
+        {
+          "value": "26",
+          "name": "Taxes",
+          "doc": "Taxes"
+        },
+        {
+          "value": "27",
+          "name": "Levies",
+          "doc": "Levies"
+        },
+        {
+          "value": "28",
+          "name": "Benefits",
+          "doc": "Benefits"
+        },
+        {
+          "value": "29",
+          "name": "Fees",
+          "doc": "Fees"
+        },
+        {
+          "value": "30",
+          "name": "OrdersRFQs",
+          "doc": "Orders and RFQs (Request for quotes)"
+        },
+        {
+          "value": "31",
+          "name": "MarketMakers",
+          "doc": "Market makers"
+        },
+        {
+          "value": "32",
+          "name": "TradingInterruptions",
+          "doc": "Trading interruptions"
+        },
+        {
+          "value": "33",
+          "name": "TradingSuspensions",
+          "doc": "Trading suspensions"
+        },
+        {
+          "value": "34",
+          "name": "NoQuotes",
+          "doc": "No quotes"
+        },
+        {
+          "value": "35",
+          "name": "RequestForQuotes",
+          "doc": "Request for quotes"
+        },
+        {
+          "value": "36",
+          "name": "TradeVolume",
+          "doc": "Trade volume"
+        }
+      ],
+      "fix:tag": "2457"
+    }
+  },
+  {
+    "name": "mdstatisticsubscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Sub-scope of the statistics to further reduce the entities used as basis for the statistics.",
+      "display": "MDStatisticSubScope",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Visible",
+          "doc": "Visible"
+        },
+        {
+          "value": "2",
+          "name": "Hidden",
+          "doc": "Hidden"
+        },
+        {
+          "value": "3",
+          "name": "Indicative",
+          "doc": "Indicative"
+        },
+        {
+          "value": "4",
+          "name": "Tradeable",
+          "doc": "Tradeable"
+        },
+        {
+          "value": "5",
+          "name": "Passive",
+          "doc": "Passive"
+        },
+        {
+          "value": "6",
+          "name": "MarketConsensus",
+          "doc": "Market consensus"
+        },
+        {
+          "value": "7",
+          "name": "Power",
+          "doc": "Power"
+        },
+        {
+          "value": "8",
+          "name": "HardwareError",
+          "doc": "Hardware error"
+        },
+        {
+          "value": "9",
+          "name": "SoftwareError",
+          "doc": "Software error"
+        },
+        {
+          "value": "10",
+          "name": "NetworkError",
+          "doc": "Network error"
+        },
+        {
+          "value": "11",
+          "name": "Failed",
+          "doc": "Failed"
+        },
+        {
+          "value": "12",
+          "name": "Executed",
+          "doc": "Executed"
+        },
+        {
+          "value": "13",
+          "name": "Entered",
+          "doc": "Entered"
+        },
+        {
+          "value": "14",
+          "name": "Modified",
+          "doc": "Modified"
+        },
+        {
+          "value": "15",
+          "name": "Cancelled",
+          "doc": "Cancelled"
+        },
+        {
+          "value": "16",
+          "name": "MarketDataAccess",
+          "doc": "Market data access"
+        },
+        {
+          "value": "17",
+          "name": "TerminalAccess",
+          "doc": "Terminal access"
+        },
+        {
+          "value": "18",
+          "name": "Volume",
+          "doc": "Volume"
+        },
+        {
+          "value": "19",
+          "name": "Cleared",
+          "doc": "Cleared"
+        },
+        {
+          "value": "20",
+          "name": "Settled",
+          "doc": "Settled"
+        },
+        {
+          "value": "21",
+          "name": "Other",
+          "doc": "Other"
+        },
+        {
+          "value": "22",
+          "name": "Monetary",
+          "doc": "Monetary"
+        },
+        {
+          "value": "23",
+          "name": "NonMonetary",
+          "doc": "Non-monetary"
+        },
+        {
+          "value": "24",
+          "name": "Gross",
+          "doc": "Gross"
+        },
+        {
+          "value": "25",
+          "name": "LargeInScale",
+          "doc": "Large in scale"
+        },
+        {
+          "value": "26",
+          "name": "NeitherHiddenNorLargeInScale",
+          "doc": "Neither hidden nor large in scale"
+        },
+        {
+          "value": "27",
+          "name": "CorporateAction",
+          "doc": "Corporate action"
+        },
+        {
+          "value": "28",
+          "name": "VenueDecision",
+          "doc": "Venue decision"
+        },
+        {
+          "value": "29",
+          "name": "MinimumTimePeriod",
+          "doc": "Minimum time period"
+        },
+        {
+          "value": "30",
+          "name": "Open",
+          "doc": "Open"
+        },
+        {
+          "value": "31",
+          "name": "NotExecuted",
+          "doc": "Not executed"
+        },
+        {
+          "value": "32",
+          "name": "Aggressive",
+          "doc": "Aggressive"
+        },
+        {
+          "value": "33",
+          "name": "Directed",
+          "doc": "Directed"
+        }
+      ],
+      "fix:tag": "2458"
+    }
+  },
+  {
+    "name": "mdstatisticscopetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Scope details of the statistics to reduce the number of events being used as basis for the statistics.",
+      "display": "MDStatisticScopeType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "EntryRate",
+          "doc": "Entry rate"
+        },
+        {
+          "value": "2",
+          "name": "ModificationRate",
+          "doc": "Modification rate"
+        },
+        {
+          "value": "3",
+          "name": "CancelRate",
+          "doc": "Cancel rate"
+        },
+        {
+          "value": "4",
+          "name": "DownwardMove",
+          "doc": "Downward move"
+        },
+        {
+          "value": "5",
+          "name": "UpwardMove",
+          "doc": "Upward move"
+        }
+      ],
+      "fix:tag": "2459"
+    }
+  },
+  {
+    "name": "mdstatisticfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Dissemination frequency of statistics.",
+      "display": "MDStatisticFrequencyPeriod",
+      "fix:tag": "2460"
+    }
+  },
+  {
+    "name": "mdstatisticfrequencyunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit for MDStatisticFrequencyPeriod(2460).",
+      "display": "MDStatisticFrequencyUnit",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "TenthsOfASecond",
+          "doc": "Tenths of a second"
+        },
+        {
+          "value": "2",
+          "name": "HundredthsOfASecond",
+          "doc": "Hundredths of a second"
+        },
+        {
+          "value": "3",
+          "name": "Milliseconds",
+          "doc": "milliseconds"
+        },
+        {
+          "value": "4",
+          "name": "Microseconds",
+          "doc": "microseconds"
+        },
+        {
+          "value": "5",
+          "name": "Nanoseconds",
+          "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        }
+      ],
+      "fix:tag": "2461"
+    }
+  },
+  {
+    "name": "mdstatisticdelayperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of time units between the calculation of the statistic and its dissemination. Can be used to defer or delay publication.",
+      "display": "MDStatisticDelayPeriod",
+      "fix:tag": "2462"
+    }
+  },
+  {
+    "name": "mdstatisticdelayunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit for MDStatisticDelayPeriod(2462).",
+      "display": "MDStatisticDelayUnit",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "TenthsOfASecond",
+          "doc": "Tenths of a second"
+        },
+        {
+          "value": "2",
+          "name": "HundredthsOfASecond",
+          "doc": "Hundredths of a second"
+        },
+        {
+          "value": "3",
+          "name": "Milliseconds",
+          "doc": "milliseconds"
+        },
+        {
+          "value": "4",
+          "name": "Microseconds",
+          "doc": "microseconds"
+        },
+        {
+          "value": "5",
+          "name": "Nanoseconds",
+          "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        }
+      ],
+      "fix:tag": "2463"
+    }
+  },
+  {
+    "name": "mdstatisticintervaltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of interval over which statistic is calculated.",
+      "display": "MDStatisticIntervalType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "SlidingWindow",
+          "doc": "Sliding window"
+        },
+        {
+          "value": "2",
+          "name": "SlidingWindowPeak",
+          "doc": "Sliding window peak"
+        },
+        {
+          "value": "3",
+          "name": "FixedDateRange",
+          "doc": "Fixed date range"
+        },
+        {
+          "value": "4",
+          "name": "FixedTimeRange",
+          "doc": "Fixed time range"
+        },
+        {
+          "value": "5",
+          "name": "CurrentTimeUnit",
+          "doc": "Current time unit"
+        },
+        {
+          "value": "6",
+          "name": "PreviousTimeUnit",
+          "doc": "Previous time unit"
+        },
+        {
+          "value": "7",
+          "name": "MaximumRange",
+          "doc": "Maximum range"
+        },
+        {
+          "value": "8",
+          "name": "MaximumRangeUpToPreviousTimeUnit",
+          "doc": "Maximum range up to previous time unit"
+        }
+      ],
+      "fix:tag": "2464"
+    }
+  },
+  {
+    "name": "mdstatisticintervaltypeunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit for MDStatisticIntervalType(2464).",
+      "display": "MDStatisticIntervalTypeUnit",
+      "fix:codes": [
+        {
+          "value": "H",
+          "name": "Hour",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "doc": "Minute"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "doc": "Second"
+        },
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        },
+        {
+          "value": "Q",
+          "name": "Quarter",
+          "doc": "Quarter"
+        },
+        {
+          "value": "EOM",
+          "name": "EndOfMonth",
+          "doc": "End of Month"
+        },
+        {
+          "value": "F",
+          "name": "Flexible",
+          "doc": "Flexible"
+        }
+      ],
+      "fix:tag": "2465"
+    }
+  },
+  {
+    "name": "mdstatisticintervalperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Length of time over which the statistic is calculated. Special meaning for a value of zero to express that there is no aggregation over time. Can be used with other interval types expressing relative date and time ranges to combine them with sliding window peaks, e.g. highest volume across 1 minute intervals of the previous day.",
+      "display": "MDStatisticIntervalPeriod",
+      "fix:tag": "2466"
+    }
+  },
+  {
+    "name": "mdstatisticintervalunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit for MDStatisticIntervalPeriod(2466).",
+      "display": "MDStatisticIntervalUnit",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "TenthsOfASecond",
+          "doc": "Tenths of a second"
+        },
+        {
+          "value": "2",
+          "name": "HundredthsOfASecond",
+          "doc": "Hundredths of a second"
+        },
+        {
+          "value": "3",
+          "name": "Milliseconds",
+          "doc": "milliseconds"
+        },
+        {
+          "value": "4",
+          "name": "Microseconds",
+          "doc": "microseconds"
+        },
+        {
+          "value": "5",
+          "name": "Nanoseconds",
+          "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        }
+      ],
+      "fix:tag": "2467"
+    }
+  },
+  {
+    "name": "mdstatisticstartdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "First day of range for which statistical data is collected.",
+      "display": "MDStatisticStartDate",
+      "fix:tag": "2468"
+    }
+  },
+  {
+    "name": "mdstatisticenddate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Last day of range for which statistical data is collected.",
+      "display": "MDStatisticEndDate",
+      "fix:tag": "2469"
+    }
+  },
+  {
+    "name": "mdstatisticstarttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Start time of the time range for which statistical data is collected.",
+      "display": "MDStatisticStartTime",
+      "fix:tag": "2470"
+    }
+  },
+  {
+    "name": "mdstatisticendtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "End time of the time range for which statistical data is collected.",
+      "display": "MDStatisticEndTime",
+      "fix:tag": "2471"
+    }
+  },
+  {
+    "name": "mdstatisticratiotype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Ratios between various entities.",
+      "display": "MDStatisticRatioType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "BuyersToSellers",
+          "doc": "Buyers to sellers"
+        },
+        {
+          "value": "2",
+          "name": "UpticksToDownticks",
+          "doc": "Upticks to downticks"
+        },
+        {
+          "value": "3",
+          "name": "MarketMakerToNonMarketMaker",
+          "doc": "Market maker to non-market maker"
+        },
+        {
+          "value": "4",
+          "name": "AutomatedToNonAutomated",
+          "doc": "Automated to non-automated"
+        },
+        {
+          "value": "5",
+          "name": "OrdersToTrades",
+          "doc": "Orders to trades"
+        },
+        {
+          "value": "6",
+          "name": "QuotesToTrades",
+          "doc": "Quotes to trades"
+        },
+        {
+          "value": "7",
+          "name": "OrdersAndQuotesToTrades",
+          "doc": "Orders and quotes to trades"
+        },
+        {
+          "value": "8",
+          "name": "FailedToTotalTradedValue",
+          "doc": "Failed to total traded value"
+        },
+        {
+          "value": "9",
+          "name": "BenefitsToTotalTradedValue",
+          "doc": "Benefits to total traded value"
+        },
+        {
+          "value": "10",
+          "name": "FeesToTotalTradedValue",
+          "doc": "Fees to total traded value"
+        },
+        {
+          "value": "11",
+          "name": "TradeVolumeToTotalTradedVolume",
+          "doc": "Trade volume to total traded volume"
+        },
+        {
+          "value": "12",
+          "name": "OrdersToTotalNumberOrders",
+          "doc": "Orders to total number of orders"
+        }
+      ],
+      "fix:tag": "2472"
+    }
+  },
+  {
+    "name": "mdstatisticrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result returned in response to MarketDataStatisticsRequest (35=DO).",
+      "display": "MDStatisticRequestResult",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Successful",
+          "doc": "Successful (default)"
+        },
+        {
+          "value": "1",
+          "name": "InvalidOrUnknownMarket",
+          "doc": "Invalid or unknown market"
+        },
+        {
+          "value": "2",
+          "name": "InvalidOrUnknownMarketSegment",
+          "doc": "Invalid or unknown market segment"
+        },
+        {
+          "value": "3",
+          "name": "InvalidOrUnknownSecurityList",
+          "doc": "Invalid or unknown security list"
+        },
+        {
+          "value": "4",
+          "name": "InvalidOrUnknownInstruments",
+          "doc": "Invalid or unknown instrument(s)"
+        },
+        {
+          "value": "5",
+          "name": "InvalidParties",
+          "doc": "Invalid parties"
+        },
+        {
+          "value": "6",
+          "name": "TradeDateOutOfSupportedRange",
+          "doc": "Trade date out of supported range"
+        },
+        {
+          "value": "7",
+          "name": "UnsupportedStatisticType",
+          "doc": "Statistic type not supported"
+        },
+        {
+          "value": "8",
+          "name": "UnsupportedScopeOrSubScope",
+          "doc": "Scope or sub-scope not supported"
+        },
+        {
+          "value": "9",
+          "name": "UnsupportedScopeType",
+          "doc": "Scope type not supported"
+        },
+        {
+          "value": "10",
+          "name": "MarketDepthNotSupported",
+          "doc": "Market depth not supported"
+        },
+        {
+          "value": "11",
+          "name": "FrequencyNotSupported",
+          "doc": "Frequency not supported"
+        },
+        {
+          "value": "12",
+          "name": "UnsupportedStatisticInterval",
+          "doc": "Statistic interval not supported"
+        },
+        {
+          "value": "13",
+          "name": "UnsupportedStatisticDateRange",
+          "doc": "Statistic date range not supported"
+        },
+        {
+          "value": "14",
+          "name": "UnsupportedStatisticTimeRange",
+          "doc": "Statistic time range not supported"
+        },
+        {
+          "value": "15",
+          "name": "UnsupportedRatioType",
+          "doc": "Ratio type not supported"
+        },
+        {
+          "value": "16",
+          "name": "InvalidOrUnknownTradeInputSource",
+          "doc": "Invalid or unknown trade input source"
+        },
+        {
+          "value": "17",
+          "name": "InvalidOrUnknownTradingSession",
+          "doc": "Invalid or unknown trading session"
+        },
+        {
+          "value": "18",
+          "name": "UnauthorizedForStatisticRequest",
+          "doc": "Unauthorized for statistic request"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other (further information in Text (58) field)"
+        }
+      ],
+      "fix:tag": "2473"
+    }
+  },
+  {
+    "name": "nomdstatistics",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of market data statistics.",
+      "display": "NoMDStatistics",
+      "fix:tag": "2474"
+    }
+  },
+  {
+    "name": "mdstatisticid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for a statistic.",
+      "display": "MDStatisticID",
+      "fix:tag": "2475"
+    }
+  },
+  {
+    "name": "mdstatistictime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time of calculation of a statistic.",
+      "display": "MDStatisticTime",
+      "fix:tag": "2476"
+    }
+  },
+  {
+    "name": "mdstatisticstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status for a statistic to indicate its availability.",
+      "display": "MDStatisticStatus",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Active",
+          "doc": "Active (default)"
+        },
+        {
+          "value": "2",
+          "name": "Inactive",
+          "doc": "Inactive (not disseminated)"
+        }
+      ],
+      "fix:tag": "2477"
+    }
+  },
+  {
+    "name": "mdstatisticvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Statistical value.",
+      "display": "MDStatisticValue",
+      "fix:tag": "2478"
+    }
+  },
+  {
+    "name": "mdstatisticvaluetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of statistical value.",
+      "display": "MDStatisticValueType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Absolute",
+          "doc": "Absolute"
+        },
+        {
+          "value": "2",
+          "name": "Percentage",
+          "doc": "Percentage"
+        }
+      ],
+      "fix:tag": "2479"
+    }
+  },
+  {
+    "name": "mdstatisticvalueunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unit of time for statistical value.",
+      "display": "MDStatisticValueUnit",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "TenthsOfASecond",
+          "doc": "Tenths of a second"
+        },
+        {
+          "value": "2",
+          "name": "HundredthsOfASecond",
+          "doc": "Hundredths of a second"
+        },
+        {
+          "value": "3",
+          "name": "Milliseconds",
+          "doc": "milliseconds"
+        },
+        {
+          "value": "4",
+          "name": "Microseconds",
+          "doc": "microseconds"
+        },
+        {
+          "value": "5",
+          "name": "Nanoseconds",
+          "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        }
+      ],
+      "fix:tag": "2480"
+    }
+  },
+  {
+    "name": "encodedmdstatisticdesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedMDStatisticDesc(2482) field.",
+      "display": "EncodedMDStatisticDescLen",
+      "fix:tag": "2481"
+    }
+  },
+  {
+    "name": "encodedmdstatisticdesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the MDStatisticDesc(2455) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MDStatisticDesc(2455) field.",
+      "display": "EncodedMDStatisticDesc",
+      "fix:tag": "2482"
+    }
+  },
+  {
+    "name": "allocrisklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the status of the risk limit check performed on a trade for this allocation instance.",
+      "display": "AllocRiskLimitCheckStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted"
+        },
+        {
+          "value": "1",
+          "name": "Rejected",
+          "doc": "Rejected"
+        },
+        {
+          "value": "2",
+          "name": "ClaimRequired",
+          "doc": "Claim required"
+        },
+        {
+          "value": "3",
+          "name": "PreDefinedLimitCheckSucceeded",
+          "doc": "Pre-defined limit check succeeded"
+        },
+        {
+          "value": "4",
+          "name": "PreDefinedLimitCheckFailed",
+          "doc": "Pre-defined limit check failed"
+        },
+        {
+          "value": "5",
+          "name": "PreDefinedAutoAcceptRuleInvoked",
+          "doc": "Pre-defined auto-accept rule invoked"
+        },
+        {
+          "value": "6",
+          "name": "PreDefinedAutoRejectRuleInvoked",
+          "doc": "Pre-defined auto-reject rule invoked"
+        },
+        {
+          "value": "7",
+          "name": "AcceptedByClearingFirm",
+          "doc": "Accepted by clearing firm"
+        },
+        {
+          "value": "8",
+          "name": "RejectedByClearingFirm",
+          "doc": "Rejected by clearing firm"
+        },
+        {
+          "value": "9",
+          "name": "Pending",
+          "doc": "Pending"
+        },
+        {
+          "value": "10",
+          "name": "AcceptedByCreditHub",
+          "doc": "Accepted by credit hub"
+        },
+        {
+          "value": "11",
+          "name": "RejectedByCreditHub",
+          "doc": "Rejected by credit hub"
+        },
+        {
+          "value": "12",
+          "name": "PendingCreditHubCheck",
+          "doc": "Pending credit hub check"
+        },
+        {
+          "value": "13",
+          "name": "AcceptedByExecVenue",
+          "doc": "Accepted by execution venue"
+        },
+        {
+          "value": "14",
+          "name": "RejectedByExecVenue",
+          "doc": "Rejected by execution venue"
+        }
+      ],
+      "fix:tag": "2483"
+    }
+  },
+  {
+    "name": "firmtransactionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique transaction entity identifier assigned by the firm.",
+      "display": "FirmTransactionID",
+      "fix:tag": "2484"
+    }
+  },
+  {
+    "name": "transactionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unique transaction entity identifier.",
+      "display": "TransactionID",
+      "fix:tag": "2485"
+    }
+  },
+  {
+    "name": "wirereference",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The reference to a wire transfer associated with the transaction. Wire references done via wire services such as Fedwire Output Message Accountabilitty Data \"OMAD\" or SWIFT Output Sequence Number \"OSN\".",
+      "display": "WireReference",
+      "fix:tag": "2486"
+    }
+  },
+  {
+    "name": "collrptrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reject reason code for rejecting the collateral report.",
+      "display": "CollRptRejectReason",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "UnknownTrade",
+          "doc": "Unknown trade or transaction"
+        },
+        {
+          "value": "1",
+          "name": "UnknownInstrument",
+          "doc": "Unknown or invalid instrument"
+        },
+        {
+          "value": "2",
+          "name": "UnknownCounterparty",
+          "doc": "Unknown or invalid counterparty"
+        },
+        {
+          "value": "3",
+          "name": "UnknownPosition",
+          "doc": "Unknown or invalid position"
+        },
+        {
+          "value": "4",
+          "name": "UnacceptableCollateral",
+          "doc": "Unacceptable or invalid type of collateral"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "2487"
+    }
+  },
+  {
+    "name": "collrptstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The status of the collateral report.",
+      "display": "CollRptStatus",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Accepted",
+          "doc": "Accepted (successfully processed)"
+        },
+        {
+          "value": "1",
+          "name": "Received",
+          "doc": "Received (not yet processed)"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "doc": "Rejected"
+        }
+      ],
+      "fix:tag": "2488"
+    }
+  },
+  {
+    "name": "packageid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier assigned to a collection of trades so that they can be analyzed as one atomic unit for risk assessment and clearing.",
+      "display": "PackageID",
+      "fix:tag": "2489"
+    }
+  },
+  {
+    "name": "tradenumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Ordinal number of the trade within a series of related trades.",
+      "display": "TradeNumber",
+      "fix:tag": "2490"
+    }
+  },
+  {
+    "name": "underlyingassetgroup",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
+      "display": "UnderlyingAssetGroup",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Financials",
+          "doc": "Financials"
+        },
+        {
+          "value": "2",
+          "name": "Commodities",
+          "doc": "Commodities"
+        },
+        {
+          "value": "3",
+          "name": "AlternativeInvestments",
+          "doc": "Alternative investments"
+        }
+      ],
+      "fix:tag": "2491"
+    }
+  },
+  {
+    "name": "legdifferentialprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in pricing a group of individual Trade at Settlement (TAS) and Trade At Marker (TAM) contracts as an atomic unit. The value is the negotiated currency offset either at settlement (TAS) or at the time specified in the product definition (TAM). The final contract price is reported in LegLastPx(637).",
+      "display": "LegDifferentialPrice",
+      "fix:tag": "2492"
+    }
+  },
+  {
+    "name": "encodedlegdocumentationtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the LegDocumentationText(2505) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the LegDocumentationText(2505) field.",
+      "display": "EncodedLegDocumentationText",
+      "fix:tag": "2493"
+    }
+  },
+  {
+    "name": "encodedlegdocumentationtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedLegDocumentationText(2493) field.",
+      "display": "EncodedLegDocumentationTextLen",
+      "fix:tag": "2494"
+    }
+  },
+  {
+    "name": "legagreementcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
+      "display": "LegAgreementCurrency",
+      "fix:tag": "2495"
+    }
+  },
+  {
+    "name": "legagreementdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A reference to the date the underlying agreement specified by LegAgreementID(2498) and LegAgreementDesc(2497) was executed.",
+      "display": "LegAgreementDate",
+      "fix:tag": "2496"
+    }
+  },
+  {
+    "name": "legagreementdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
+      "display": "LegAgreementDesc",
+      "fix:tag": "2497"
+    }
+  },
+  {
+    "name": "legagreementid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
+      "display": "LegAgreementID",
+      "fix:tag": "2498"
+    }
+  },
+  {
+    "name": "legagreementversion",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The version of the master agreement.",
+      "display": "LegAgreementVersion",
+      "fix:tag": "2499"
+    }
+  }
+]

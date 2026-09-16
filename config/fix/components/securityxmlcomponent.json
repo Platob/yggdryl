@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxmllen"
+          "fix:field": "securityxmllen",
+          "fix:tag": "1184"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxml"
+          "fix:field": "securityxml",
+          "fix:tag": "1185"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxmlschema"
+          "fix:field": "securityxmlschema",
+          "fix:tag": "1186"
         }
       }
     ]

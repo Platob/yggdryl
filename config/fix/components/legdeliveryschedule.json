@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryscheduletype"
+          "fix:field": "legdeliveryscheduletype",
+          "fix:tag": "41409"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulexid"
+          "fix:field": "legdeliveryschedulexid",
+          "fix:tag": "41410"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulenotional"
+          "fix:field": "legdeliveryschedulenotional",
+          "fix:tag": "41411"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulenotionalunitofmeasure"
+          "fix:field": "legdeliveryschedulenotionalunitofmeasure",
+          "fix:tag": "41412"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulenotionalcommodityfrequency"
+          "fix:field": "legdeliveryschedulenotionalcommodityfrequency",
+          "fix:tag": "41413"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulenegativetolerance"
+          "fix:field": "legdeliveryschedulenegativetolerance",
+          "fix:tag": "41414"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulepositivetolerance"
+          "fix:field": "legdeliveryschedulepositivetolerance",
+          "fix:tag": "41415"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryscheduletoleranceunitofmeasure"
+          "fix:field": "legdeliveryscheduletoleranceunitofmeasure",
+          "fix:tag": "41416"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryscheduletolerancetype"
+          "fix:field": "legdeliveryscheduletolerancetype",
+          "fix:tag": "41417"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettlcountry"
+          "fix:field": "legdeliveryschedulesettlcountry",
+          "fix:tag": "41418"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettltimezone"
+          "fix:field": "legdeliveryschedulesettltimezone",
+          "fix:tag": "41419"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettlflowtype"
+          "fix:field": "legdeliveryschedulesettlflowtype",
+          "fix:tag": "41420"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettlholidaysprocessinginstruction"
+          "fix:field": "legdeliveryschedulesettlholidaysprocessinginstruction",
+          "fix:tag": "41421"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdeliveryschedulesettldays"
+          "fix:field": "nolegdeliveryschedulesettldays",
+          "fix:tag": "41422"
         }
       },
       {

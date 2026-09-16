@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontype"
+          "fix:field": "matchexceptiontype",
+          "fix:tag": "2773"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionelementtype"
+          "fix:field": "matchexceptionelementtype",
+          "fix:tag": "2774"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionelementname"
+          "fix:field": "matchexceptionelementname",
+          "fix:tag": "2775"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionallocvalue"
+          "fix:field": "matchexceptionallocvalue",
+          "fix:tag": "2776"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionconfirmvalue"
+          "fix:field": "matchexceptionconfirmvalue",
+          "fix:tag": "2777"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontolerancevalue"
+          "fix:field": "matchexceptiontolerancevalue",
+          "fix:tag": "2778"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontolerancevaluetype"
+          "fix:field": "matchexceptiontolerancevaluetype",
+          "fix:tag": "2779"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontext"
+          "fix:field": "matchexceptiontext",
+          "fix:tag": "2780"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmatchexceptiontextlen"
+          "fix:field": "encodedmatchexceptiontextlen",
+          "fix:tag": "2797"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmatchexceptiontext"
+          "fix:field": "encodedmatchexceptiontext",
+          "fix:tag": "2798"
         }
       }
     ]

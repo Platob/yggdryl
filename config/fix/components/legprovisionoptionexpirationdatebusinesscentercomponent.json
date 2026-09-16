@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdatebusinesscenter"
+          "fix:field": "legprovisionoptionexpirationdatebusinesscenter",
+          "fix:tag": "40500"
         }
       }
     ]

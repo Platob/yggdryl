@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskwarninglevelaction"
+          "fix:field": "riskwarninglevelaction",
+          "fix:tag": "1769"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskwarninglevelpercent"
+          "fix:field": "riskwarninglevelpercent",
+          "fix:tag": "1560"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskwarninglevelamount"
+          "fix:field": "riskwarninglevelamount",
+          "fix:tag": "1768"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskwarninglevelname"
+          "fix:field": "riskwarninglevelname",
+          "fix:tag": "1561"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "refcompid"
+          "fix:field": "refcompid",
+          "fix:tag": "930"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refsubid"
+          "fix:field": "refsubid",
+          "fix:tag": "931"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "locationid"
+          "fix:field": "locationid",
+          "fix:tag": "283"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deskid"
+          "fix:field": "deskid",
+          "fix:tag": "284"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "statusvalue"
+          "fix:field": "statusvalue",
+          "fix:tag": "928"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "statustext"
+          "fix:field": "statustext",
+          "fix:tag": "929"
         }
       }
     ]

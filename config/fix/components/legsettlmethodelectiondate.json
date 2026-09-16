@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateunadjusted"
+          "fix:field": "legsettlmethodelectiondateunadjusted",
+          "fix:tag": "42574"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondatebusinessdayconvention"
+          "fix:field": "legsettlmethodelectiondatebusinessdayconvention",
+          "fix:tag": "42575"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegsettlmethodelectiondatebusinesscenters"
+          "fix:field": "nolegsettlmethodelectiondatebusinesscenters",
+          "fix:tag": "42581"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondaterelativeto"
+          "fix:field": "legsettlmethodelectiondaterelativeto",
+          "fix:tag": "42576"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetperiod"
+          "fix:field": "legsettlmethodelectiondateoffsetperiod",
+          "fix:tag": "42577"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetunit"
+          "fix:field": "legsettlmethodelectiondateoffsetunit",
+          "fix:tag": "42578"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetdaytype"
+          "fix:field": "legsettlmethodelectiondateoffsetdaytype",
+          "fix:tag": "42579"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateadjusted"
+          "fix:field": "legsettlmethodelectiondateadjusted",
+          "fix:tag": "42580"
         }
       }
     ]

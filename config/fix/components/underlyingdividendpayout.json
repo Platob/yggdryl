@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpayoutratio"
+          "fix:field": "underlyingdividendpayoutratio",
+          "fix:tag": "42860"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpayoutconditions"
+          "fix:field": "underlyingdividendpayoutconditions",
+          "fix:tag": "42861"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdividendpayments"
+          "fix:field": "nounderlyingdividendpayments",
+          "fix:tag": "42855"
         }
       },
       {

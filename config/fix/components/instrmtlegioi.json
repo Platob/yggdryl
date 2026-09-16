@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legioiqty"
+          "fix:field": "legioiqty",
+          "fix:tag": "682"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations"
+          "fix:field": "nolegstipulations",
+          "fix:tag": "683"
         }
       },
       {

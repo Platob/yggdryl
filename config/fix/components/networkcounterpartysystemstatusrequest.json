@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkrequesttype"
+          "fix:field": "networkrequesttype",
+          "fix:tag": "935"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkrequestid"
+          "fix:field": "networkrequestid",
+          "fix:tag": "933"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocompids"
+          "fix:field": "nocompids",
+          "fix:tag": "936"
         }
       },
       {

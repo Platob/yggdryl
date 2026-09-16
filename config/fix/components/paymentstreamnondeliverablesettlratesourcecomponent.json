@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablesettlratesource"
+          "fix:field": "paymentstreamnondeliverablesettlratesource",
+          "fix:tag": "40371"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablesettlreferencepage"
+          "fix:field": "paymentstreamnondeliverablesettlreferencepage",
+          "fix:tag": "40372"
         }
       }
     ]

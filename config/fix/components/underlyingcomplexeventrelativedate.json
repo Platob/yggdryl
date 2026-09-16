@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateunadjusted"
+          "fix:field": "underlyingcomplexeventdateunadjusted",
+          "fix:tag": "41739"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdaterelativeto"
+          "fix:field": "underlyingcomplexeventdaterelativeto",
+          "fix:tag": "41740"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetperiod"
+          "fix:field": "underlyingcomplexeventdateoffsetperiod",
+          "fix:tag": "41741"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetunit"
+          "fix:field": "underlyingcomplexeventdateoffsetunit",
+          "fix:tag": "41742"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetdaytype"
+          "fix:field": "underlyingcomplexeventdateoffsetdaytype",
+          "fix:tag": "41743"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdatebusinessdayconvention"
+          "fix:field": "underlyingcomplexeventdatebusinessdayconvention",
+          "fix:tag": "41744"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcomplexeventdatebusinesscenters"
+          "fix:field": "nounderlyingcomplexeventdatebusinesscenters",
+          "fix:tag": "41737"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateadjusted"
+          "fix:field": "underlyingcomplexeventdateadjusted",
+          "fix:tag": "41745"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventfixingtime"
+          "fix:field": "underlyingcomplexeventfixingtime",
+          "fix:tag": "41746"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventfixingtimebusinesscenter"
+          "fix:field": "underlyingcomplexeventfixingtimebusinesscenter",
+          "fix:tag": "41747"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratepricebasis"
+          "fix:field": "legreturnratepricebasis",
+          "fix:tag": "42565"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnrateprice"
+          "fix:field": "legreturnrateprice",
+          "fix:tag": "42566"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratepricecurrency"
+          "fix:field": "legreturnratepricecurrency",
+          "fix:tag": "42567"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratepricetype"
+          "fix:field": "legreturnratepricetype",
+          "fix:tag": "42568"
         }
       }
     ]

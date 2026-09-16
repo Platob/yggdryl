@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartysubid"
+          "fix:field": "paymentsettlpartysubid",
+          "fix:tag": "40239"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartysubidtype"
+          "fix:field": "paymentsettlpartysubidtype",
+          "fix:tag": "40240"
         }
       }
     ]

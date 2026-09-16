@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrystatus"
+          "fix:field": "mdentrystatus",
+          "fix:tag": "3106"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentryid"
+          "fix:field": "mdentryid",
+          "fix:tag": "278"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrystatustext"
+          "fix:field": "mdentrystatustext",
+          "fix:tag": "3107"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdentrystatustextlen"
+          "fix:field": "encodedmdentrystatustextlen",
+          "fix:tag": "3108"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdentrystatustext"
+          "fix:field": "encodedmdentrystatustext",
+          "fix:tag": "3109"
         }
       },
       {

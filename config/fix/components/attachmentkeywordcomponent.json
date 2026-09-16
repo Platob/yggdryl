@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentkeyword"
+          "fix:field": "attachmentkeyword",
+          "fix:tag": "2114"
         }
       }
     ]

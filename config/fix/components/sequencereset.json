@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "gapfillflag"
+          "fix:field": "gapfillflag",
+          "fix:tag": "123"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "newseqno"
+          "fix:field": "newseqno",
+          "fix:tag": "36"
         }
       },
       {

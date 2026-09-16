@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdate"
+          "fix:field": "underlyingreturnratevaluationdate",
+          "fix:tag": "43072"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratevaluationdatetype"
+          "fix:field": "underlyingreturnratevaluationdatetype",
+          "fix:tag": "43073"
         }
       }
     ]

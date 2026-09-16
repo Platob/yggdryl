@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlquotesource"
+          "fix:field": "provisioncashsettlquotesource",
+          "fix:tag": "40112"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlquotereferencepage"
+          "fix:field": "provisioncashsettlquotereferencepage",
+          "fix:tag": "41406"
         }
       }
     ]

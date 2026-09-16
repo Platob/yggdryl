@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementindicator"
+          "fix:field": "entitlementindicator",
+          "fix:tag": "1774"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementtype"
+          "fix:field": "entitlementtype",
+          "fix:tag": "1775"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementsubtype"
+          "fix:field": "entitlementsubtype",
+          "fix:tag": "2402"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlementattrib"
+          "fix:field": "noentitlementattrib",
+          "fix:tag": "1777"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementid"
+          "fix:field": "entitlementid",
+          "fix:tag": "1776"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementplatform"
+          "fix:field": "entitlementplatform",
+          "fix:tag": "1784"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes"
+          "fix:field": "noinstrumentscopes",
+          "fix:tag": "1656"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments"
+          "fix:field": "nomarketsegments",
+          "fix:tag": "1310"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstartdate"
+          "fix:field": "entitlementstartdate",
+          "fix:tag": "1782"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementenddate"
+          "fix:field": "entitlementenddate",
+          "fix:tag": "1783"
         }
       }
     ]

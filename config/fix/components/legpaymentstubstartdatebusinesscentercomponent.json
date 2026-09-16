@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdatebusinesscenter"
+          "fix:field": "legpaymentstubstartdatebusinesscenter",
+          "fix:tag": "42505"
         }
       }
     ]

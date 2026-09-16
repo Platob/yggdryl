@@ -30,7 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesreqid"
+          "fix:field": "tradsesreqid",
+          "fix:tag": "335"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "notradingsessions"
+          "fix:field": "notradingsessions",
+          "fix:tag": "386"
         }
       },
       {

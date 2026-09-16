@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventtype"
+          "fix:field": "underlyingcomplexeventcrediteventtype",
+          "fix:tag": "41717"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventvalue"
+          "fix:field": "underlyingcomplexeventcrediteventvalue",
+          "fix:tag": "41718"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventcurrency"
+          "fix:field": "underlyingcomplexeventcrediteventcurrency",
+          "fix:tag": "41719"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventperiod"
+          "fix:field": "underlyingcomplexeventcrediteventperiod",
+          "fix:tag": "41720"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventunit"
+          "fix:field": "underlyingcomplexeventcrediteventunit",
+          "fix:tag": "41721"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventdaytype"
+          "fix:field": "underlyingcomplexeventcrediteventdaytype",
+          "fix:tag": "41722"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventratesource"
+          "fix:field": "underlyingcomplexeventcrediteventratesource",
+          "fix:tag": "41723"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcomplexeventcrediteventqualifiers"
+          "fix:field": "nounderlyingcomplexeventcrediteventqualifiers",
+          "fix:tag": "41724"
         }
       },
       {

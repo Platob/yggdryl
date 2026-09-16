@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodbusinesscenter"
+          "fix:field": "legdividendperiodbusinesscenter",
+          "fix:tag": "42387"
         }
       }
     ]

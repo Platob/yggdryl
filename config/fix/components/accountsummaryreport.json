@@ -30,7 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "accountsummaryreportid"
+          "fix:field": "accountsummaryreportid",
+          "fix:tag": "1699"
         }
       },
       {
@@ -40,7 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clearingbusinessdate"
+          "fix:field": "clearingbusinessdate",
+          "fix:tag": "715"
         }
       },
       {
@@ -50,7 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency"
+          "fix:field": "currency",
+          "fix:tag": "15"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totalnetvalue"
+          "fix:field": "totalnetvalue",
+          "fix:tag": "900"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginexcess"
+          "fix:field": "marginexcess",
+          "fix:tag": "899"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlsessid"
+          "fix:field": "settlsessid",
+          "fix:tag": "716"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlsesssubid"
+          "fix:field": "settlsesssubid",
+          "fix:tag": "717"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlementamounts"
+          "fix:field": "nosettlementamounts",
+          "fix:tag": "1700"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarginamt"
+          "fix:field": "nomarginamt",
+          "fix:tag": "1643"
         }
       },
       {
@@ -150,7 +160,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nopartyids"
+          "fix:field": "nopartyids",
+          "fix:tag": "453"
         }
       },
       {
@@ -170,7 +181,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocollateralamounts"
+          "fix:field": "nocollateralamounts",
+          "fix:tag": "1703"
         }
       },
       {
@@ -190,7 +202,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaycollects"
+          "fix:field": "nopaycollects",
+          "fix:tag": "1707"
         }
       },
       {
@@ -210,7 +223,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noposamt"
+          "fix:field": "noposamt",
+          "fix:tag": "753"
         }
       },
       {

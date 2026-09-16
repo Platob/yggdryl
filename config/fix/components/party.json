@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyid"
+          "fix:field": "partyid",
+          "fix:tag": "448"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyidsource"
+          "fix:field": "partyidsource",
+          "fix:tag": "447"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyrole"
+          "fix:field": "partyrole",
+          "fix:tag": "452"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyrolequalifier"
+          "fix:field": "partyrolequalifier",
+          "fix:tag": "2376"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartysubids"
+          "fix:field": "nopartysubids",
+          "fix:tag": "802"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryform"
+          "fix:field": "deliveryform",
+          "fix:tag": "668"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pctatrisk"
+          "fix:field": "pctatrisk",
+          "fix:tag": "869"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrattrib"
+          "fix:field": "noinstrattrib",
+          "fix:tag": "870"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commodityfinalpricetype"
+          "fix:field": "commodityfinalpricetype",
+          "fix:tag": "2736"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noindexrollmonths"
+          "fix:field": "noindexrollmonths",
+          "fix:tag": "2734"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nextindexrolldate"
+          "fix:field": "nextindexrolldate",
+          "fix:tag": "2738"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreferencedatadates"
+          "fix:field": "noreferencedatadates",
+          "fix:tag": "2746"
         }
       },
       {

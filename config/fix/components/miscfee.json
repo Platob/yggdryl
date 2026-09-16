@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeeamt"
+          "fix:field": "miscfeeamt",
+          "fix:tag": "137"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeecurr"
+          "fix:field": "miscfeecurr",
+          "fix:tag": "138"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeetype"
+          "fix:field": "miscfeetype",
+          "fix:tag": "139"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeequalifier"
+          "fix:field": "miscfeequalifier",
+          "fix:tag": "2712"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomiscfeesubtypes"
+          "fix:field": "nomiscfeesubtypes",
+          "fix:tag": "2633"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeebasis"
+          "fix:field": "miscfeebasis",
+          "fix:tag": "891"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeerate"
+          "fix:field": "miscfeerate",
+          "fix:tag": "2216"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeeamountdue"
+          "fix:field": "miscfeeamountdue",
+          "fix:tag": "2217"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeedesc"
+          "fix:field": "miscfeedesc",
+          "fix:tag": "2713"
         }
       }
     ]

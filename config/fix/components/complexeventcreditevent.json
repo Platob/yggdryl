@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventtype"
+          "fix:field": "complexeventcrediteventtype",
+          "fix:tag": "40998"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventvalue"
+          "fix:field": "complexeventcrediteventvalue",
+          "fix:tag": "40999"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventcurrency"
+          "fix:field": "complexeventcrediteventcurrency",
+          "fix:tag": "41000"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventperiod"
+          "fix:field": "complexeventcrediteventperiod",
+          "fix:tag": "41001"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventunit"
+          "fix:field": "complexeventcrediteventunit",
+          "fix:tag": "41002"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventdaytype"
+          "fix:field": "complexeventcrediteventdaytype",
+          "fix:tag": "41003"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventratesource"
+          "fix:field": "complexeventcrediteventratesource",
+          "fix:tag": "41004"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventcrediteventqualifiers"
+          "fix:field": "nocomplexeventcrediteventqualifiers",
+          "fix:tag": "41005"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdatebusinesscenter"
+          "fix:field": "paymentstubstartdatebusinesscenter",
+          "fix:tag": "42706"
         }
       }
     ]

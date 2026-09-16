@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "additionaltermconditionprecedentbondindicator"
+          "fix:field": "additionaltermconditionprecedentbondindicator",
+          "fix:tag": "40020"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "additionaltermdiscrepancyclauseindicator"
+          "fix:field": "additionaltermdiscrepancyclauseindicator",
+          "fix:tag": "40021"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noadditionaltermbondrefs"
+          "fix:field": "noadditionaltermbondrefs",
+          "fix:tag": "40000"
         }
       },
       {

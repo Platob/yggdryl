@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdatebusinessdayconvention"
+          "fix:field": "optionexerciseexpirationdatebusinessdayconvention",
+          "fix:tag": "41142"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexerciseexpirationdatebusinesscenters"
+          "fix:field": "nooptionexerciseexpirationdatebusinesscenters",
+          "fix:tag": "41140"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexerciseexpirationdates"
+          "fix:field": "nooptionexerciseexpirationdates",
+          "fix:tag": "41152"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdaterelativeto"
+          "fix:field": "optionexerciseexpirationdaterelativeto",
+          "fix:tag": "41143"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetperiod"
+          "fix:field": "optionexerciseexpirationdateoffsetperiod",
+          "fix:tag": "41144"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetunit"
+          "fix:field": "optionexerciseexpirationdateoffsetunit",
+          "fix:tag": "41145"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationfrequencyperiod"
+          "fix:field": "optionexerciseexpirationfrequencyperiod",
+          "fix:tag": "41146"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationfrequencyunit"
+          "fix:field": "optionexerciseexpirationfrequencyunit",
+          "fix:tag": "41147"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationrollconvention"
+          "fix:field": "optionexerciseexpirationrollconvention",
+          "fix:tag": "41148"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetdaytype"
+          "fix:field": "optionexerciseexpirationdateoffsetdaytype",
+          "fix:tag": "41149"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationtime"
+          "fix:field": "optionexerciseexpirationtime",
+          "fix:tag": "41150"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationtimebusinesscenter"
+          "fix:field": "optionexerciseexpirationtimebusinesscenter",
+          "fix:tag": "41151"
         }
       }
     ]

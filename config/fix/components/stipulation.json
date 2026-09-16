@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "stipulationtype"
+          "fix:field": "stipulationtype",
+          "fix:tag": "233"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "stipulationvalue"
+          "fix:field": "stipulationvalue",
+          "fix:tag": "234"
         }
       }
     ]

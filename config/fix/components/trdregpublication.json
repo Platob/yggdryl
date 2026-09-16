@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregpublicationtype"
+          "fix:field": "trdregpublicationtype",
+          "fix:tag": "2669"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregpublicationreason"
+          "fix:field": "trdregpublicationreason",
+          "fix:tag": "2670"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryassetclass"
+          "fix:field": "secondaryassetclass",
+          "fix:tag": "1977"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryassetsubclass"
+          "fix:field": "secondaryassetsubclass",
+          "fix:tag": "1978"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryassettype"
+          "fix:field": "secondaryassettype",
+          "fix:tag": "1979"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryassetsubtype"
+          "fix:field": "secondaryassetsubtype",
+          "fix:tag": "2741"
         }
       }
     ]

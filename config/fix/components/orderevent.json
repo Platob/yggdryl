@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventtype"
+          "fix:field": "ordereventtype",
+          "fix:tag": "1796"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventexecid"
+          "fix:field": "ordereventexecid",
+          "fix:tag": "1797"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventreason"
+          "fix:field": "ordereventreason",
+          "fix:tag": "1798"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventpx"
+          "fix:field": "ordereventpx",
+          "fix:tag": "1799"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventqty"
+          "fix:field": "ordereventqty",
+          "fix:tag": "1800"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventliquidityindicator"
+          "fix:field": "ordereventliquidityindicator",
+          "fix:tag": "1801"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordereventtext"
+          "fix:field": "ordereventtext",
+          "fix:tag": "1802"
         }
       }
     ]

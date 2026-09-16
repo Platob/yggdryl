@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualdefinition"
+          "fix:field": "legcontractualdefinition",
+          "fix:tag": "42199"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "biddescriptortype"
+          "fix:field": "biddescriptortype",
+          "fix:tag": "399"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "biddescriptor"
+          "fix:field": "biddescriptor",
+          "fix:tag": "400"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalueind"
+          "fix:field": "sidevalueind",
+          "fix:tag": "401"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquidityvalue"
+          "fix:field": "liquidityvalue",
+          "fix:tag": "404"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditynumsecurities"
+          "fix:field": "liquiditynumsecurities",
+          "fix:tag": "441"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditypctlow"
+          "fix:field": "liquiditypctlow",
+          "fix:tag": "402"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditypcthigh"
+          "fix:field": "liquiditypcthigh",
+          "fix:tag": "403"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "efptrackingerror"
+          "fix:field": "efptrackingerror",
+          "fix:tag": "405"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fairvalue"
+          "fix:field": "fairvalue",
+          "fix:tag": "406"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "outsideindexpct"
+          "fix:field": "outsideindexpct",
+          "fix:tag": "407"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "valueoffutures"
+          "fix:field": "valueoffutures",
+          "fix:tag": "408"
         }
       }
     ]

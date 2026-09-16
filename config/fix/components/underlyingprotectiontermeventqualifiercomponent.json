@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventqualifier"
+          "fix:field": "underlyingprotectiontermeventqualifier",
+          "fix:tag": "42086"
         }
       }
     ]

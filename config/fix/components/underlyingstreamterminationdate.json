@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdateunadjusted"
+          "fix:field": "underlyingstreamterminationdateunadjusted",
+          "fix:tag": "40548"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdatebusinessdayconvention"
+          "fix:field": "underlyingstreamterminationdatebusinessdayconvention",
+          "fix:tag": "40549"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingstreamterminationdatebusinesscenters"
+          "fix:field": "nounderlyingstreamterminationdatebusinesscenters",
+          "fix:tag": "40976"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdaterelativeto"
+          "fix:field": "underlyingstreamterminationdaterelativeto",
+          "fix:tag": "40551"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdateoffsetperiod"
+          "fix:field": "underlyingstreamterminationdateoffsetperiod",
+          "fix:tag": "40552"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdateoffsetunit"
+          "fix:field": "underlyingstreamterminationdateoffsetunit",
+          "fix:tag": "40553"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdateoffsetdaytype"
+          "fix:field": "underlyingstreamterminationdateoffsetdaytype",
+          "fix:tag": "40554"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdateadjusted"
+          "fix:field": "underlyingstreamterminationdateadjusted",
+          "fix:tag": "40555"
         }
       }
     ]

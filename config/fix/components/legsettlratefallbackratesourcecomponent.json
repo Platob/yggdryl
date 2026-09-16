@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratefallbackratesource"
+          "fix:field": "legsettlratefallbackratesource",
+          "fix:tag": "40366"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratefallbackreferencepage"
+          "fix:field": "legsettlratefallbackreferencepage",
+          "fix:tag": "40370"
         }
       }
     ]

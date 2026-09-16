@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendperiodbusinesscenter"
+          "fix:field": "dividendperiodbusinesscenter",
+          "fix:tag": "42295"
         }
       }
     ]

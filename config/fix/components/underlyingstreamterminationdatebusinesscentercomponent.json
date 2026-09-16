@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamterminationdatebusinesscenter"
+          "fix:field": "underlyingstreamterminationdatebusinesscenter",
+          "fix:tag": "40550"
         }
       }
     ]

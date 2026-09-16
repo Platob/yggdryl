@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendreinvestmentindicator"
+          "fix:field": "dividendreinvestmentindicator",
+          "fix:tag": "42245"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendentitlementevent"
+          "fix:field": "dividendentitlementevent",
+          "fix:tag": "42246"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendamounttype"
+          "fix:field": "dividendamounttype",
+          "fix:tag": "42247"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendunderlierrefid"
+          "fix:field": "dividendunderlierrefid",
+          "fix:tag": "42248"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodividendperiods"
+          "fix:field": "nodividendperiods",
+          "fix:tag": "42274"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "extraordinarydividendpartyside"
+          "fix:field": "extraordinarydividendpartyside",
+          "fix:tag": "42249"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "extraordinarydividendamounttype"
+          "fix:field": "extraordinarydividendamounttype",
+          "fix:tag": "42250"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "extraordinarydividendcurrency"
+          "fix:field": "extraordinarydividendcurrency",
+          "fix:tag": "42251"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "extraordinarydividenddeterminationmethod"
+          "fix:field": "extraordinarydividenddeterminationmethod",
+          "fix:tag": "42252"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualfixedrate"
+          "fix:field": "dividendaccrualfixedrate",
+          "fix:tag": "42253"
         }
       },
       {
@@ -150,7 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcompoundingmethod"
+          "fix:field": "dividendcompoundingmethod",
+          "fix:tag": "42254"
         }
       },
       {
@@ -160,7 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendnumofindexunits"
+          "fix:field": "dividendnumofindexunits",
+          "fix:tag": "42255"
         }
       },
       {
@@ -170,7 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcashpercentage"
+          "fix:field": "dividendcashpercentage",
+          "fix:tag": "42256"
         }
       },
       {
@@ -180,7 +193,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcashequivalentpercentage"
+          "fix:field": "dividendcashequivalentpercentage",
+          "fix:tag": "42257"
         }
       },
       {
@@ -190,7 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noncashdividendtreatment"
+          "fix:field": "noncashdividendtreatment",
+          "fix:tag": "42258"
         }
       },
       {
@@ -200,7 +215,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendcomposition"
+          "fix:field": "dividendcomposition",
+          "fix:tag": "42259"
         }
       },
       {
@@ -210,7 +226,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "specialdividendsindicator"
+          "fix:field": "specialdividendsindicator",
+          "fix:tag": "42260"
         }
       },
       {
@@ -220,7 +237,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "materialdividendsindicator"
+          "fix:field": "materialdividendsindicator",
+          "fix:tag": "42261"
         }
       },
       {
@@ -230,7 +248,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionsexchangedividendsindicator"
+          "fix:field": "optionsexchangedividendsindicator",
+          "fix:tag": "42262"
         }
       },
       {
@@ -240,7 +259,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "additionaldividendsindicator"
+          "fix:field": "additionaldividendsindicator",
+          "fix:tag": "42263"
         }
       },
       {
@@ -250,7 +270,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alldividendsindicator"
+          "fix:field": "alldividendsindicator",
+          "fix:tag": "42264"
         }
       }
     ]

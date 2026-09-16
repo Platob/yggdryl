@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collaction"
+          "fix:field": "collaction",
+          "fix:tag": "944"
         }
       }
     ]

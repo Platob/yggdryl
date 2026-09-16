@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexercisefixeddate"
+          "fix:field": "provisionoptionexercisefixeddate",
+          "fix:tag": "40143"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexercisefixeddatetype"
+          "fix:field": "provisionoptionexercisefixeddatetype",
+          "fix:tag": "40144"
         }
       }
     ]

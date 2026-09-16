@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimittype"
+          "fix:field": "risklimittype",
+          "fix:tag": "1530"
         }
       }
     ]

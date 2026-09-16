@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderid"
+          "fix:field": "relatedorderid",
+          "fix:tag": "2887"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderidsource"
+          "fix:field": "relatedorderidsource",
+          "fix:tag": "2888"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedordertime"
+          "fix:field": "relatedordertime",
+          "fix:tag": "2836"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderqty"
+          "fix:field": "relatedorderqty",
+          "fix:tag": "2889"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrelationship"
+          "fix:field": "orderrelationship",
+          "fix:tag": "2890"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderoriginationfirmid"
+          "fix:field": "orderoriginationfirmid",
+          "fix:tag": "2835"
         }
       }
     ]

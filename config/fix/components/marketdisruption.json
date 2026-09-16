@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionprovision"
+          "fix:field": "marketdisruptionprovision",
+          "fix:tag": "41087"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionevents"
+          "fix:field": "nomarketdisruptionevents",
+          "fix:tag": "41092"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackprovision"
+          "fix:field": "marketdisruptionfallbackprovision",
+          "fix:tag": "41088"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionfallbacks"
+          "fix:field": "nomarketdisruptionfallbacks",
+          "fix:tag": "41094"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionfallbackreferenceprices"
+          "fix:field": "nomarketdisruptionfallbackreferenceprices",
+          "fix:tag": "41096"
         }
       },
       {
@@ -90,7 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionmaximumdays"
+          "fix:field": "marketdisruptionmaximumdays",
+          "fix:tag": "41089"
         }
       },
       {
@@ -100,7 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionmaterialitypercentage"
+          "fix:field": "marketdisruptionmaterialitypercentage",
+          "fix:tag": "41090"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionminimumfuturescontracts"
+          "fix:field": "marketdisruptionminimumfuturescontracts",
+          "fix:tag": "41091"
         }
       }
     ]

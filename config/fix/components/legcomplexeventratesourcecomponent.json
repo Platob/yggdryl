@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventratesource"
+          "fix:field": "legcomplexeventratesource",
+          "fix:tag": "41383"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventratesourcetype"
+          "fix:field": "legcomplexeventratesourcetype",
+          "fix:tag": "41384"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventreferencepage"
+          "fix:field": "legcomplexeventreferencepage",
+          "fix:tag": "41385"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexevenreferencepageheading"
+          "fix:field": "legcomplexevenreferencepageheading",
+          "fix:tag": "41386"
         }
       }
     ]

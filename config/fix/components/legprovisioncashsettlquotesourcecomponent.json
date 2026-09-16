@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlquotesource"
+          "fix:field": "legprovisioncashsettlquotesource",
+          "fix:tag": "40470"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlquotereferencepage"
+          "fix:field": "legprovisioncashsettlquotereferencepage",
+          "fix:tag": "41407"
         }
       }
     ]

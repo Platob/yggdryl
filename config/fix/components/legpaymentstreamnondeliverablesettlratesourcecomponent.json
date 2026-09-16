@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablesettlratesource"
+          "fix:field": "legpaymentstreamnondeliverablesettlratesource",
+          "fix:tag": "40087"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablesettlreferencepage"
+          "fix:field": "legpaymentstreamnondeliverablesettlreferencepage",
+          "fix:tag": "40228"
         }
       }
     ]

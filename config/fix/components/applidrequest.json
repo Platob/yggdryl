@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplid"
+          "fix:field": "refapplid",
+          "fix:tag": "1355"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplreqid"
+          "fix:field": "refapplreqid",
+          "fix:tag": "1433"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applbegseqnum"
+          "fix:field": "applbegseqnum",
+          "fix:tag": "1182"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applendseqnum"
+          "fix:field": "applendseqnum",
+          "fix:tag": "1183"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids"
+          "fix:field": "nonestedpartyids",
+          "fix:tag": "539"
         }
       },
       {

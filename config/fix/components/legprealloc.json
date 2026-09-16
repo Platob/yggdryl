@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocaccount"
+          "fix:field": "legallocaccount",
+          "fix:tag": "671"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legindividualallocid"
+          "fix:field": "legindividualallocid",
+          "fix:tag": "672"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested2partyids"
+          "fix:field": "nonested2partyids",
+          "fix:tag": "756"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocqty"
+          "fix:field": "legallocqty",
+          "fix:tag": "673"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocacctidsource"
+          "fix:field": "legallocacctidsource",
+          "fix:tag": "674"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocsettlcurrency"
+          "fix:field": "legallocsettlcurrency",
+          "fix:tag": "1367"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocsettlcurrencycodesource"
+          "fix:field": "legallocsettlcurrencycodesource",
+          "fix:tag": "2928"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcustodiallotid"
+          "fix:field": "legcustodiallotid",
+          "fix:tag": "1756"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legversuspurchasedate"
+          "fix:field": "legversuspurchasedate",
+          "fix:tag": "1757"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legversuspurchaseprice"
+          "fix:field": "legversuspurchaseprice",
+          "fix:tag": "1758"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcurrentcostbasis"
+          "fix:field": "legcurrentcostbasis",
+          "fix:tag": "1759"
         }
       }
     ]

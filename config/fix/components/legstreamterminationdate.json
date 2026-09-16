@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateunadjusted"
+          "fix:field": "legstreamterminationdateunadjusted",
+          "fix:tag": "40257"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdatebusinessdayconvention"
+          "fix:field": "legstreamterminationdatebusinessdayconvention",
+          "fix:tag": "40258"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamterminationdatebusinesscenters"
+          "fix:field": "nolegstreamterminationdatebusinesscenters",
+          "fix:tag": "40943"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdaterelativeto"
+          "fix:field": "legstreamterminationdaterelativeto",
+          "fix:tag": "40260"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetperiod"
+          "fix:field": "legstreamterminationdateoffsetperiod",
+          "fix:tag": "40261"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetunit"
+          "fix:field": "legstreamterminationdateoffsetunit",
+          "fix:tag": "40262"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetdaytype"
+          "fix:field": "legstreamterminationdateoffsetdaytype",
+          "fix:tag": "40263"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateadjusted"
+          "fix:field": "legstreamterminationdateadjusted",
+          "fix:tag": "40264"
         }
       }
     ]

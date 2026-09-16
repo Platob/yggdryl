@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "distribpaymentmethod"
+          "fix:field": "distribpaymentmethod",
+          "fix:tag": "477"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "distribpercentage"
+          "fix:field": "distribpercentage",
+          "fix:tag": "512"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribcurr"
+          "fix:field": "cashdistribcurr",
+          "fix:tag": "478"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribagentname"
+          "fix:field": "cashdistribagentname",
+          "fix:tag": "498"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribagentcode"
+          "fix:field": "cashdistribagentcode",
+          "fix:tag": "499"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribagentacctnumber"
+          "fix:field": "cashdistribagentacctnumber",
+          "fix:tag": "500"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribpayref"
+          "fix:field": "cashdistribpayref",
+          "fix:tag": "501"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashdistribagentacctname"
+          "fix:field": "cashdistribagentacctname",
+          "fix:tag": "502"
         }
       }
     ]

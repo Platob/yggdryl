@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdaterelativeto"
+          "fix:field": "underlyingdividendfxtriggerdaterelativeto",
+          "fix:tag": "42846"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdateoffsetperiod"
+          "fix:field": "underlyingdividendfxtriggerdateoffsetperiod",
+          "fix:tag": "42847"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdateoffsetunit"
+          "fix:field": "underlyingdividendfxtriggerdateoffsetunit",
+          "fix:tag": "42848"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdateoffsetdaytype"
+          "fix:field": "underlyingdividendfxtriggerdateoffsetdaytype",
+          "fix:tag": "42849"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdateunadjusted"
+          "fix:field": "underlyingdividendfxtriggerdateunadjusted",
+          "fix:tag": "42850"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdatebusinessdayconvention"
+          "fix:field": "underlyingdividendfxtriggerdatebusinessdayconvention",
+          "fix:tag": "42851"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdividendfxtriggerdatebusinesscenters"
+          "fix:field": "nounderlyingdividendfxtriggerdatebusinesscenters",
+          "fix:tag": "42853"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdateadjusted"
+          "fix:field": "underlyingdividendfxtriggerdateadjusted",
+          "fix:tag": "42852"
         }
       }
     ]

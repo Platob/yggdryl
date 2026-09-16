@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollecttype"
+          "fix:field": "paycollecttype",
+          "fix:tag": "1708"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectcurrency"
+          "fix:field": "paycollectcurrency",
+          "fix:tag": "1709"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectcurrencycodesource"
+          "fix:field": "paycollectcurrencycodesource",
+          "fix:tag": "2955"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectfxrate"
+          "fix:field": "paycollectfxrate",
+          "fix:tag": "2094"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectfxratecalc"
+          "fix:field": "paycollectfxratecalc",
+          "fix:tag": "2095"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "payamount"
+          "fix:field": "payamount",
+          "fix:tag": "1710"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collectamount"
+          "fix:field": "collectamount",
+          "fix:tag": "1711"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectmarketsegmentid"
+          "fix:field": "paycollectmarketsegmentid",
+          "fix:tag": "1712"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectmarketid"
+          "fix:field": "paycollectmarketid",
+          "fix:tag": "1713"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingphysicalsettldeliverableobligations"
+          "fix:field": "nounderlyingphysicalsettldeliverableobligations",
+          "fix:tag": "42065"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlcurrency"
+          "fix:field": "underlyingphysicalsettlcurrency",
+          "fix:tag": "42061"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlbusinessdays"
+          "fix:field": "underlyingphysicalsettlbusinessdays",
+          "fix:tag": "42062"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlmaximumbusinessdays"
+          "fix:field": "underlyingphysicalsettlmaximumbusinessdays",
+          "fix:tag": "42063"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettltermxid"
+          "fix:field": "underlyingphysicalsettltermxid",
+          "fix:tag": "42064"
         }
       }
     ]

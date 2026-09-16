@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter"
+          "fix:field": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter",
+          "fix:tag": "40699"
         }
       }
     ]

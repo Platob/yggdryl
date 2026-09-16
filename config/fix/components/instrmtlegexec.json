@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty"
+          "fix:field": "legorderqty",
+          "fix:tag": "685"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legqty"
+          "fix:field": "legqty",
+          "fix:tag": "687"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmidpx"
+          "fix:field": "legmidpx",
+          "fix:tag": "2346"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype"
+          "fix:field": "legswaptype",
+          "fix:tag": "690"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations"
+          "fix:field": "nolegstipulations",
+          "fix:tag": "683"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legallocid"
+          "fix:field": "legallocid",
+          "fix:tag": "1366"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegallocs"
+          "fix:field": "nolegallocs",
+          "fix:tag": "670"
         }
       },
       {
@@ -110,7 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legaccount"
+          "fix:field": "legaccount",
+          "fix:tag": "2680"
         }
       },
       {
@@ -120,7 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legclearingaccounttype"
+          "fix:field": "legclearingaccounttype",
+          "fix:tag": "1817"
         }
       },
       {
@@ -130,7 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpositioneffect"
+          "fix:field": "legpositioneffect",
+          "fix:tag": "564"
         }
       },
       {
@@ -140,7 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcoveredoruncovered"
+          "fix:field": "legcoveredoruncovered",
+          "fix:tag": "565"
         }
       },
       {
@@ -150,7 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested3partyids"
+          "fix:field": "nonested3partyids",
+          "fix:tag": "948"
         }
       },
       {
@@ -170,7 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid"
+          "fix:field": "legrefid",
+          "fix:tag": "654"
         }
       },
       {
@@ -180,7 +193,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype"
+          "fix:field": "legsettltype",
+          "fix:tag": "587"
         }
       },
       {
@@ -190,7 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettldate"
+          "fix:field": "legsettldate",
+          "fix:tag": "588"
         }
       },
       {
@@ -200,7 +215,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastpx"
+          "fix:field": "leglastpx",
+          "fix:tag": "637"
         }
       },
       {
@@ -210,7 +226,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrency"
+          "fix:field": "legsettlcurrency",
+          "fix:tag": "675"
         }
       },
       {
@@ -220,7 +237,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrencycodesource"
+          "fix:field": "legsettlcurrencycodesource",
+          "fix:tag": "2900"
         }
       },
       {
@@ -230,7 +248,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastforwardpoints"
+          "fix:field": "leglastforwardpoints",
+          "fix:tag": "1073"
         }
       },
       {
@@ -240,7 +259,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcalculatedccylastqty"
+          "fix:field": "legcalculatedccylastqty",
+          "fix:tag": "1074"
         }
       },
       {
@@ -250,7 +270,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leggrosstradeamt"
+          "fix:field": "leggrosstradeamt",
+          "fix:tag": "1075"
         }
       },
       {
@@ -260,7 +281,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legshortsaleexemptionreason"
+          "fix:field": "legshortsaleexemptionreason",
+          "fix:tag": "1689"
         }
       },
       {
@@ -270,7 +292,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legvolatility"
+          "fix:field": "legvolatility",
+          "fix:tag": "1379"
         }
       },
       {
@@ -280,7 +303,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendyield"
+          "fix:field": "legdividendyield",
+          "fix:tag": "1381"
         }
       },
       {
@@ -290,7 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcurrencyratio"
+          "fix:field": "legcurrencyratio",
+          "fix:tag": "1383"
         }
       },
       {
@@ -300,7 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecinst"
+          "fix:field": "legexecinst",
+          "fix:tag": "1384"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastqty"
+          "fix:field": "leglastqty",
+          "fix:tag": "1418"
         }
       },
       {
@@ -320,7 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillrefid"
+          "fix:field": "fillrefid",
+          "fix:tag": "2421"
         }
       },
       {
@@ -330,7 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegratesources"
+          "fix:field": "nolegratesources",
+          "fix:tag": "3116"
         }
       },
       {

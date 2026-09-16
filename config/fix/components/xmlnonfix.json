@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noattachments"
+          "fix:field": "noattachments",
+          "fix:tag": "2104"
         }
       },
       {

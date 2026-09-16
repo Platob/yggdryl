@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventtype"
+          "fix:field": "complexeventtype",
+          "fix:tag": "1484"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutpayside"
+          "fix:field": "complexoptpayoutpayside",
+          "fix:tag": "2117"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutreceiveside"
+          "fix:field": "complexoptpayoutreceiveside",
+          "fix:tag": "2118"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutunderlier"
+          "fix:field": "complexoptpayoutunderlier",
+          "fix:tag": "2119"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutamount"
+          "fix:field": "complexoptpayoutamount",
+          "fix:tag": "1485"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutpercentage"
+          "fix:field": "complexoptpayoutpercentage",
+          "fix:tag": "2120"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayouttime"
+          "fix:field": "complexoptpayouttime",
+          "fix:tag": "2121"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutcurrency"
+          "fix:field": "complexoptpayoutcurrency",
+          "fix:tag": "2122"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexoptpayoutcurrencycodesource"
+          "fix:field": "complexoptpayoutcurrencycodesource",
+          "fix:tag": "2941"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventprice"
+          "fix:field": "complexeventprice",
+          "fix:tag": "1486"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventpricepercentage"
+          "fix:field": "complexeventpricepercentage",
+          "fix:tag": "2123"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventpriceboundarymethod"
+          "fix:field": "complexeventpriceboundarymethod",
+          "fix:tag": "1487"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventpriceboundaryprecision"
+          "fix:field": "complexeventpriceboundaryprecision",
+          "fix:tag": "1488"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventpricetimetype"
+          "fix:field": "complexeventpricetimetype",
+          "fix:tag": "1489"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcondition"
+          "fix:field": "complexeventcondition",
+          "fix:tag": "1490"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventdates"
+          "fix:field": "nocomplexeventdates",
+          "fix:tag": "1491"
         }
       },
       {
@@ -180,7 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcurrencyone"
+          "fix:field": "complexeventcurrencyone",
+          "fix:tag": "2124"
         }
       },
       {
@@ -190,7 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcurrencyonecodesource"
+          "fix:field": "complexeventcurrencyonecodesource",
+          "fix:tag": "2942"
         }
       },
       {
@@ -200,7 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcurrencytwo"
+          "fix:field": "complexeventcurrencytwo",
+          "fix:tag": "2125"
         }
       },
       {
@@ -210,7 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcurrencytwocodesource"
+          "fix:field": "complexeventcurrencytwocodesource",
+          "fix:tag": "2943"
         }
       },
       {
@@ -220,7 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventquotebasis"
+          "fix:field": "complexeventquotebasis",
+          "fix:tag": "2126"
         }
       },
       {
@@ -230,7 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventfixedfxrate"
+          "fix:field": "complexeventfixedfxrate",
+          "fix:tag": "2127"
         }
       },
       {
@@ -240,7 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventspotrate"
+          "fix:field": "complexeventspotrate",
+          "fix:tag": "2407"
         }
       },
       {
@@ -250,7 +273,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventforwardpoints"
+          "fix:field": "complexeventforwardpoints",
+          "fix:tag": "2408"
         }
       },
       {
@@ -260,7 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdeterminationmethod"
+          "fix:field": "complexeventdeterminationmethod",
+          "fix:tag": "2128"
         }
       },
       {
@@ -270,7 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcalculationagent"
+          "fix:field": "complexeventcalculationagent",
+          "fix:tag": "2129"
         }
       },
       {
@@ -280,7 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventstrikeprice"
+          "fix:field": "complexeventstrikeprice",
+          "fix:tag": "2130"
         }
       },
       {
@@ -290,7 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventstrikefactor"
+          "fix:field": "complexeventstrikefactor",
+          "fix:tag": "2131"
         }
       },
       {
@@ -300,7 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventstrikenumberofoptions"
+          "fix:field": "complexeventstrikenumberofoptions",
+          "fix:tag": "2132"
         }
       },
       {
@@ -310,7 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventratesources"
+          "fix:field": "nocomplexeventratesources",
+          "fix:tag": "41013"
         }
       },
       {
@@ -340,7 +370,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventperiods"
+          "fix:field": "nocomplexeventperiods",
+          "fix:tag": "41010"
         }
       },
       {
@@ -360,7 +391,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventsxidref"
+          "fix:field": "complexeventcrediteventsxidref",
+          "fix:tag": "2133"
         }
       },
       {
@@ -370,7 +402,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventnotifyingparty"
+          "fix:field": "complexeventcrediteventnotifyingparty",
+          "fix:tag": "2134"
         }
       },
       {
@@ -380,7 +413,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventbusinesscenter"
+          "fix:field": "complexeventcrediteventbusinesscenter",
+          "fix:tag": "2135"
         }
       },
       {
@@ -390,7 +424,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventstandardsources"
+          "fix:field": "complexeventcrediteventstandardsources",
+          "fix:tag": "2136"
         }
       },
       {
@@ -400,7 +435,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventminimumsources"
+          "fix:field": "complexeventcrediteventminimumsources",
+          "fix:tag": "2137"
         }
       },
       {
@@ -410,7 +446,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventcrediteventsources"
+          "fix:field": "nocomplexeventcrediteventsources",
+          "fix:tag": "41029"
         }
       },
       {
@@ -430,7 +467,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventcreditevents"
+          "fix:field": "nocomplexeventcreditevents",
+          "fix:tag": "40997"
         }
       },
       {
@@ -450,7 +488,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventfuturespricevaluation"
+          "fix:field": "complexeventfuturespricevaluation",
+          "fix:tag": "2597"
         }
       },
       {
@@ -460,7 +499,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventoptionspricevaluation"
+          "fix:field": "complexeventoptionspricevaluation",
+          "fix:tag": "2598"
         }
       },
       {
@@ -470,7 +510,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventpvfinalpriceelectionfallback"
+          "fix:field": "complexeventpvfinalpriceelectionfallback",
+          "fix:tag": "2599"
         }
       },
       {
@@ -480,7 +521,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventxid"
+          "fix:field": "complexeventxid",
+          "fix:tag": "2138"
         }
       },
       {
@@ -490,7 +532,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventxidref"
+          "fix:field": "complexeventxidref",
+          "fix:tag": "2139"
         }
       }
     ]

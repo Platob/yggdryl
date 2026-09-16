@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesbusinesscenter"
+          "fix:field": "legpaymentscheduleinterimexchangedatesbusinesscenter",
+          "fix:tag": "40409"
         }
       }
     ]

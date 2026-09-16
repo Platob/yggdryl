@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratepostponementmaximumdays"
+          "fix:field": "settlratepostponementmaximumdays",
+          "fix:tag": "40086"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratepostponementsurvey"
+          "fix:field": "settlratepostponementsurvey",
+          "fix:tag": "40088"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratepostponementcalculationagent"
+          "fix:field": "settlratepostponementcalculationagent",
+          "fix:tag": "40089"
         }
       }
     ]

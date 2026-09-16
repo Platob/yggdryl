@@ -20,7 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricedelta"
+          "fix:field": "pricedelta",
+          "fix:tag": "811"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "gamma"
+          "fix:field": "gamma",
+          "fix:tag": "2996"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rho"
+          "fix:field": "rho",
+          "fix:tag": "2997"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "theta"
+          "fix:field": "theta",
+          "fix:tag": "2998"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "vega"
+          "fix:field": "vega",
+          "fix:tag": "2999"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price"
+          "fix:field": "price",
+          "fix:tag": "44"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidpx"
+          "fix:field": "bidpx",
+          "fix:tag": "132"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerpx"
+          "fix:field": "offerpx",
+          "fix:tag": "133"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "volatilitytime"
+          "fix:field": "volatilitytime",
+          "fix:tag": "3000"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "volatility"
+          "fix:field": "volatility",
+          "fix:tag": "1188"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidvolatility"
+          "fix:field": "bidvolatility",
+          "fix:tag": "3001"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offervolatility"
+          "fix:field": "offervolatility",
+          "fix:tag": "3002"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "midvolatility"
+          "fix:field": "midvolatility",
+          "fix:tag": "3003"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelativevalues"
+          "fix:field": "norelativevalues",
+          "fix:tag": "2529"
         }
       },
       {

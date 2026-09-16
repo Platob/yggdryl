@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventaveragingobservationnumber"
+          "fix:field": "underlyingcomplexeventaveragingobservationnumber",
+          "fix:tag": "41714"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventaveragingweight"
+          "fix:field": "underlyingcomplexeventaveragingweight",
+          "fix:tag": "41715"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdateunadjusted"
+          "fix:field": "pricingdateunadjusted",
+          "fix:tag": "41232"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdatebusinessdayconvention"
+          "fix:field": "pricingdatebusinessdayconvention",
+          "fix:tag": "41233"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricingdatebusinesscenters"
+          "fix:field": "nopricingdatebusinesscenters",
+          "fix:tag": "41230"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdateadjusted"
+          "fix:field": "pricingdateadjusted",
+          "fix:tag": "41234"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingtime"
+          "fix:field": "pricingtime",
+          "fix:tag": "41235"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingtimebusinesscenter"
+          "fix:field": "pricingtimebusinesscenter",
+          "fix:tag": "41236"
         }
       }
     ]

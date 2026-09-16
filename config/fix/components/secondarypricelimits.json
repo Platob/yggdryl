@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarypricelimittype"
+          "fix:field": "secondarypricelimittype",
+          "fix:tag": "1305"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarylowlimitprice"
+          "fix:field": "secondarylowlimitprice",
+          "fix:tag": "1221"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryhighlimitprice"
+          "fix:field": "secondaryhighlimitprice",
+          "fix:tag": "1230"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarytradingreferenceprice"
+          "fix:field": "secondarytradingreferenceprice",
+          "fix:tag": "1240"
         }
       }
     ]

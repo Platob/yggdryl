@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvecurrency"
+          "fix:field": "legbenchmarkcurvecurrency",
+          "fix:tag": "676"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvecurrencycodesource"
+          "fix:field": "legbenchmarkcurvecurrencycodesource",
+          "fix:tag": "2951"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvename"
+          "fix:field": "legbenchmarkcurvename",
+          "fix:tag": "677"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvepoint"
+          "fix:field": "legbenchmarkcurvepoint",
+          "fix:tag": "678"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkprice"
+          "fix:field": "legbenchmarkprice",
+          "fix:tag": "679"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkpricetype"
+          "fix:field": "legbenchmarkpricetype",
+          "fix:tag": "680"
         }
       }
     ]

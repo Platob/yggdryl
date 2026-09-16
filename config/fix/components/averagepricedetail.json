@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepricetype"
+          "fix:field": "averagepricetype",
+          "fix:tag": "2763"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepricestarttime"
+          "fix:field": "averagepricestarttime",
+          "fix:tag": "2764"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepriceendtime"
+          "fix:field": "averagepriceendtime",
+          "fix:tag": "2765"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legnondeliverablefixingdate"
+          "fix:field": "legnondeliverablefixingdate",
+          "fix:tag": "40368"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legnondeliverablefixingdatetype"
+          "fix:field": "legnondeliverablefixingdatetype",
+          "fix:tag": "40369"
         }
       }
     ]

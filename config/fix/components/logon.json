@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "encryptmethod"
+          "fix:field": "encryptmethod",
+          "fix:tag": "98"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "heartbtint"
+          "fix:field": "heartbtint",
+          "fix:tag": "108"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdatalength"
+          "fix:field": "rawdatalength",
+          "fix:tag": "95"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdata"
+          "fix:field": "rawdata",
+          "fix:tag": "96"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "resetseqnumflag"
+          "fix:field": "resetseqnumflag",
+          "fix:tag": "141"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nextexpectedmsgseqnum"
+          "fix:field": "nextexpectedmsgseqnum",
+          "fix:tag": "789"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maxmessagesize"
+          "fix:field": "maxmessagesize",
+          "fix:tag": "383"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomsgtypes"
+          "fix:field": "nomsgtypes",
+          "fix:tag": "384"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmessageindicator"
+          "fix:field": "testmessageindicator",
+          "fix:tag": "464"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "username"
+          "fix:field": "username",
+          "fix:tag": "553"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "password"
+          "fix:field": "password",
+          "fix:tag": "554"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newpassword"
+          "fix:field": "newpassword",
+          "fix:tag": "925"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordmethod"
+          "fix:field": "encryptedpasswordmethod",
+          "fix:tag": "1400"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordlen"
+          "fix:field": "encryptedpasswordlen",
+          "fix:tag": "1401"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpassword"
+          "fix:field": "encryptedpassword",
+          "fix:tag": "1402"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpasswordlen"
+          "fix:field": "encryptednewpasswordlen",
+          "fix:tag": "1403"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpassword"
+          "fix:field": "encryptednewpassword",
+          "fix:tag": "1404"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sessionstatus"
+          "fix:field": "sessionstatus",
+          "fix:tag": "1409"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "defaultapplverid"
+          "fix:field": "defaultapplverid",
+          "fix:tag": "1137"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defaultapplextid"
+          "fix:field": "defaultapplextid",
+          "fix:tag": "1407"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defaultcstmapplverid"
+          "fix:field": "defaultcstmapplverid",
+          "fix:tag": "1408"
         }
       },
       {
@@ -240,7 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text"
+          "fix:field": "text",
+          "fix:tag": "58"
         }
       },
       {
@@ -250,7 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen"
+          "fix:field": "encodedtextlen",
+          "fix:tag": "354"
         }
       },
       {
@@ -260,7 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext"
+          "fix:field": "encodedtext",
+          "fix:tag": "355"
         }
       },
       {

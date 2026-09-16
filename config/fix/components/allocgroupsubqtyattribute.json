@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtytype"
+          "fix:field": "allocgroupsubqtytype",
+          "fix:tag": "2980"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtyvalue"
+          "fix:field": "allocgroupsubqtyvalue",
+          "fix:tag": "2981"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailsubid"
+          "fix:field": "relatedpartydetailsubid",
+          "fix:tag": "1567"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailsubidtype"
+          "fix:field": "relatedpartydetailsubidtype",
+          "fix:tag": "1568"
         }
       }
     ]

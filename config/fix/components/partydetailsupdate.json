@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction"
+          "fix:field": "listupdateaction",
+          "fix:tag": "1324"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails"
+          "fix:field": "nopartydetails",
+          "fix:tag": "1671"
         }
       },
       {

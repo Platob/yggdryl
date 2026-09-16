@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditybase"
+          "fix:field": "legstreamcommoditybase",
+          "fix:tag": "41648"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditytype"
+          "fix:field": "legstreamcommoditytype",
+          "fix:tag": "41649"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysecurityid"
+          "fix:field": "legstreamcommoditysecurityid",
+          "fix:tag": "41650"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysecurityidsource"
+          "fix:field": "legstreamcommoditysecurityidsource",
+          "fix:tag": "41651"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommodityaltids"
+          "fix:field": "nolegstreamcommodityaltids",
+          "fix:tag": "41674"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditydesc"
+          "fix:field": "legstreamcommoditydesc",
+          "fix:tag": "41652"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamcommoditydesclen"
+          "fix:field": "encodedlegstreamcommoditydesclen",
+          "fix:tag": "41653"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamcommoditydesc"
+          "fix:field": "encodedlegstreamcommoditydesc",
+          "fix:tag": "41654"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditydeliverypricingregion"
+          "fix:field": "legstreamcommoditydeliverypricingregion",
+          "fix:tag": "42588"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamassetattributes"
+          "fix:field": "nolegstreamassetattributes",
+          "fix:tag": "41452"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityunitofmeasure"
+          "fix:field": "legstreamcommodityunitofmeasure",
+          "fix:tag": "41655"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditycurrency"
+          "fix:field": "legstreamcommoditycurrency",
+          "fix:tag": "41656"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityexchange"
+          "fix:field": "legstreamcommodityexchange",
+          "fix:tag": "41657"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratesource"
+          "fix:field": "legstreamcommodityratesource",
+          "fix:tag": "41658"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratereferencepage"
+          "fix:field": "legstreamcommodityratereferencepage",
+          "fix:tag": "41659"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratereferencepageheading"
+          "fix:field": "legstreamcommodityratereferencepageheading",
+          "fix:tag": "41660"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamdataprovider"
+          "fix:field": "legstreamdataprovider",
+          "fix:tag": "41661"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditydatasources"
+          "fix:field": "nolegstreamcommoditydatasources",
+          "fix:tag": "41677"
         }
       },
       {
@@ -220,7 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditypricingtype"
+          "fix:field": "legstreamcommoditypricingtype",
+          "fix:tag": "41662"
         }
       },
       {
@@ -230,7 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditynearbysettldayperiod"
+          "fix:field": "legstreamcommoditynearbysettldayperiod",
+          "fix:tag": "41663"
         }
       },
       {
@@ -240,7 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditynearbysettldayunit"
+          "fix:field": "legstreamcommoditynearbysettldayunit",
+          "fix:tag": "41664"
         }
       },
       {
@@ -250,7 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldateunadjusted"
+          "fix:field": "legstreamcommoditysettldateunadjusted",
+          "fix:tag": "41665"
         }
       },
       {
@@ -260,7 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldatebusinessdayconvention"
+          "fix:field": "legstreamcommoditysettldatebusinessdayconvention",
+          "fix:tag": "41666"
         }
       },
       {
@@ -270,7 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettlbusinesscenters"
+          "fix:field": "nolegstreamcommoditysettlbusinesscenters",
+          "fix:tag": "41646"
         }
       },
       {
@@ -290,7 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldateadjusted"
+          "fix:field": "legstreamcommoditysettldateadjusted",
+          "fix:tag": "41667"
         }
       },
       {
@@ -300,7 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlmonth"
+          "fix:field": "legstreamcommoditysettlmonth",
+          "fix:tag": "41668"
         }
       },
       {
@@ -310,7 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaterollperiod"
+          "fix:field": "legstreamcommoditysettldaterollperiod",
+          "fix:tag": "41669"
         }
       },
       {
@@ -320,7 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaterollunit"
+          "fix:field": "legstreamcommoditysettldaterollunit",
+          "fix:tag": "41670"
         }
       },
       {
@@ -330,7 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaytype"
+          "fix:field": "legstreamcommoditysettldaytype",
+          "fix:tag": "41671"
         }
       },
       {
@@ -340,7 +369,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettlperiods"
+          "fix:field": "nolegstreamcommoditysettlperiods",
+          "fix:tag": "41686"
         }
       },
       {
@@ -360,7 +390,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityxid"
+          "fix:field": "legstreamcommodityxid",
+          "fix:tag": "41672"
         }
       },
       {
@@ -370,7 +401,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityxidref"
+          "fix:field": "legstreamcommodityxidref",
+          "fix:tag": "41673"
         }
       }
     ]

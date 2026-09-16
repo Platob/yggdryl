@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingdatesbusinesscenter"
+          "fix:field": "underlyingpaymentstreamcompoundingdatesbusinesscenter",
+          "fix:tag": "42916"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeoperator"
+          "fix:field": "instrumentscopeoperator",
+          "fix:tag": "1535"
         }
       },
       {

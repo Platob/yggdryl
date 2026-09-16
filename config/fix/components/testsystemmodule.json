@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmodulename"
+          "fix:field": "testsystemmodulename",
+          "fix:tag": "3050"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmoduleversion"
+          "fix:field": "testsystemmoduleversion",
+          "fix:tag": "3051"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmodulelastupdatetime"
+          "fix:field": "testsystemmodulelastupdatetime",
+          "fix:tag": "3081"
         }
       }
     ]

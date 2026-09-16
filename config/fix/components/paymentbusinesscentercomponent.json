@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentbusinesscenter"
+          "fix:field": "paymentbusinesscenter",
+          "fix:tag": "40221"
         }
       }
     ]

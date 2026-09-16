@@ -20,7 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listid"
+          "fix:field": "listid",
+          "fix:tag": "66"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "liststatustype"
+          "fix:field": "liststatustype",
+          "fix:tag": "429"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norpts"
+          "fix:field": "norpts",
+          "fix:tag": "82"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listorderstatus"
+          "fix:field": "listorderstatus",
+          "fix:tag": "431"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contingencytype"
+          "fix:field": "contingencytype",
+          "fix:tag": "1385"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listrejectreason"
+          "fix:field": "listrejectreason",
+          "fix:tag": "1386"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "rptseq"
+          "fix:field": "rptseq",
+          "fix:tag": "83"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liststatustext"
+          "fix:field": "liststatustext",
+          "fix:tag": "444"
         }
       },
       {
@@ -100,7 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedliststatustextlen"
+          "fix:field": "encodedliststatustextlen",
+          "fix:tag": "445"
         }
       },
       {
@@ -110,7 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedliststatustext"
+          "fix:field": "encodedliststatustext",
+          "fix:tag": "446"
         }
       },
       {
@@ -120,7 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime"
+          "fix:field": "transacttime",
+          "fix:tag": "60"
         }
       },
       {
@@ -130,7 +141,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnoorders"
+          "fix:field": "totnoorders",
+          "fix:tag": "68"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noorders"
+          "fix:field": "noorders",
+          "fix:tag": "73"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relativevaluetype"
+          "fix:field": "relativevaluetype",
+          "fix:tag": "2530"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relativevalue"
+          "fix:field": "relativevalue",
+          "fix:tag": "2531"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relativevalueside"
+          "fix:field": "relativevalueside",
+          "fix:tag": "2532"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relativevaluetimestamp"
+          "fix:field": "relativevaluetimestamp",
+          "fix:tag": "3004"
         }
       }
     ]

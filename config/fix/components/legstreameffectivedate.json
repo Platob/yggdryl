@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedateunadjusted"
+          "fix:field": "legstreameffectivedateunadjusted",
+          "fix:tag": "40249"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedatebusinessdayconvention"
+          "fix:field": "legstreameffectivedatebusinessdayconvention",
+          "fix:tag": "40250"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreameffectivedatebusinesscenters"
+          "fix:field": "nolegstreameffectivedatebusinesscenters",
+          "fix:tag": "40942"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedaterelativeto"
+          "fix:field": "legstreameffectivedaterelativeto",
+          "fix:tag": "40252"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedateoffsetperiod"
+          "fix:field": "legstreameffectivedateoffsetperiod",
+          "fix:tag": "40253"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedateoffsetunit"
+          "fix:field": "legstreameffectivedateoffsetunit",
+          "fix:tag": "40254"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedateoffsetdaytype"
+          "fix:field": "legstreameffectivedateoffsetdaytype",
+          "fix:tag": "40255"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedateadjusted"
+          "fix:field": "legstreameffectivedateadjusted",
+          "fix:tag": "40256"
         }
       }
     ]

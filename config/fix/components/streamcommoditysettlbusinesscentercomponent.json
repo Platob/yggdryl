@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlbusinesscenter"
+          "fix:field": "streamcommoditysettlbusinesscenter",
+          "fix:tag": "41250"
         }
       }
     ]

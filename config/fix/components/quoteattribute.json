@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteattributetype"
+          "fix:field": "quoteattributetype",
+          "fix:tag": "2707"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteattributevalue"
+          "fix:field": "quoteattributevalue",
+          "fix:tag": "2708"
         }
       }
     ]

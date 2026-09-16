@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulacurrency"
+          "fix:field": "paymentstreamformulacurrency",
+          "fix:tag": "42686"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulacurrencydeterminationmethod"
+          "fix:field": "paymentstreamformulacurrencydeterminationmethod",
+          "fix:tag": "42687"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulareferenceamount"
+          "fix:field": "paymentstreamformulareferenceamount",
+          "fix:tag": "42688"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamformulas"
+          "fix:field": "nopaymentstreamformulas",
+          "fix:tag": "42683"
         }
       },
       {

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingdate"
+          "fix:field": "legpaymentstreamcompoundingdate",
+          "fix:tag": "42406"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingdatetype"
+          "fix:field": "legpaymentstreamcompoundingdatetype",
+          "fix:tag": "42407"
         }
       }
     ]

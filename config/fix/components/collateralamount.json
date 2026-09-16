@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currentcollateralamount"
+          "fix:field": "currentcollateralamount",
+          "fix:tag": "1704"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralcurrency"
+          "fix:field": "collateralcurrency",
+          "fix:tag": "1705"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralcurrencycodesource"
+          "fix:field": "collateralcurrencycodesource",
+          "fix:tag": "2929"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamounttype"
+          "fix:field": "collateralamounttype",
+          "fix:tag": "2632"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralfxrate"
+          "fix:field": "collateralfxrate",
+          "fix:tag": "2090"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralfxratecalc"
+          "fix:field": "collateralfxratecalc",
+          "fix:tag": "2091"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateraltype"
+          "fix:field": "collateraltype",
+          "fix:tag": "1706"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamountmarketsegmentid"
+          "fix:field": "collateralamountmarketsegmentid",
+          "fix:tag": "2092"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamountmarketid"
+          "fix:field": "collateralamountmarketid",
+          "fix:tag": "2093"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "haircutindicator"
+          "fix:field": "haircutindicator",
+          "fix:tag": "1902"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralportfolioid"
+          "fix:field": "collateralportfolioid",
+          "fix:tag": "2350"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralpercentoverage"
+          "fix:field": "collateralpercentoverage",
+          "fix:tag": "2690"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralmarketprice"
+          "fix:field": "collateralmarketprice",
+          "fix:tag": "2689"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmentrate"
+          "fix:field": "collateralreinvestmentrate",
+          "fix:tag": "2840"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocollateralreinvestments"
+          "fix:field": "nocollateralreinvestments",
+          "fix:tag": "2845"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingrefid"
+          "fix:field": "underlyingrefid",
+          "fix:tag": "2841"
         }
       }
     ]

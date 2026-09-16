@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletype"
+          "fix:field": "deliveryscheduletype",
+          "fix:tag": "41038"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulexid"
+          "fix:field": "deliveryschedulexid",
+          "fix:tag": "41039"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotional"
+          "fix:field": "deliveryschedulenotional",
+          "fix:tag": "41040"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotionalunitofmeasure"
+          "fix:field": "deliveryschedulenotionalunitofmeasure",
+          "fix:tag": "41041"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotionalcommodityfrequency"
+          "fix:field": "deliveryschedulenotionalcommodityfrequency",
+          "fix:tag": "41042"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenegativetolerance"
+          "fix:field": "deliveryschedulenegativetolerance",
+          "fix:tag": "41043"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulepositivetolerance"
+          "fix:field": "deliveryschedulepositivetolerance",
+          "fix:tag": "41044"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletoleranceunitofmeasure"
+          "fix:field": "deliveryscheduletoleranceunitofmeasure",
+          "fix:tag": "41045"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletolerancetype"
+          "fix:field": "deliveryscheduletolerancetype",
+          "fix:tag": "41046"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlcountry"
+          "fix:field": "deliveryschedulesettlcountry",
+          "fix:tag": "41047"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettltimezone"
+          "fix:field": "deliveryschedulesettltimezone",
+          "fix:tag": "41048"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlflowtype"
+          "fix:field": "deliveryschedulesettlflowtype",
+          "fix:tag": "41049"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlholidaysprocessinginstruction"
+          "fix:field": "deliveryschedulesettlholidaysprocessinginstruction",
+          "fix:tag": "41050"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodeliveryschedulesettldays"
+          "fix:field": "nodeliveryschedulesettldays",
+          "fix:tag": "41051"
         }
       },
       {

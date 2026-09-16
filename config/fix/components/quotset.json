@@ -10,7 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quotesetid"
+          "fix:field": "quotesetid",
+          "fix:tag": "302"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesetvaliduntiltime"
+          "fix:field": "quotesetvaliduntiltime",
+          "fix:tag": "367"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnoquoteentries"
+          "fix:field": "totnoquoteentries",
+          "fix:tag": "304"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment"
+          "fix:field": "lastfragment",
+          "fix:tag": "893"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noquoteentries"
+          "fix:field": "noquoteentries",
+          "fix:tag": "295"
         }
       },
       {

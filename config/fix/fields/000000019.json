@@ -1,0 +1,4028 @@
+[
+  {
+    "name": "sideexecrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to reference the value from SideExecID(1427).",
+      "display": "SideExecRefID",
+      "fix:tag": "1900"
+    }
+  },
+  {
+    "name": "legexecrefid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to reference the value from LegExecID(1893).",
+      "display": "LegExecRefID",
+      "fix:tag": "1901"
+    }
+  },
+  {
+    "name": "haircutindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates, if \"Y\", that a stated valuation includes a haircut, e.g. that the stated value reflects the subtraction of the haircut. Note that a value of \"N\" does not imply a haircut is not applicable, only that the haircut (if any) is not reflected in the stated valuation.",
+      "display": "HaircutIndicator",
+      "fix:tag": "1902"
+    }
+  },
+  {
+    "name": "regulatorytradeid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "display": "RegulatoryTradeID",
+      "fix:tag": "1903"
+    }
+  },
+  {
+    "name": "regulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the event which caused origination of the identifier in RegulatoryTradeID(1903). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
+      "display": "RegulatoryTradeIDEvent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
+        },
+        {
+          "value": "1",
+          "name": "Allocation",
+          "doc": "Allocation"
+        },
+        {
+          "value": "2",
+          "name": "Clearing",
+          "doc": "Clearing"
+        },
+        {
+          "value": "3",
+          "name": "Compression",
+          "doc": "Compression"
+        },
+        {
+          "value": "4",
+          "name": "Novation",
+          "doc": "Novation"
+        },
+        {
+          "value": "5",
+          "name": "Termination",
+          "doc": "Termination"
+        },
+        {
+          "value": "6",
+          "name": "PostTrdVal",
+          "doc": "Post-trade valuation"
+        }
+      ],
+      "fix:tag": "1904"
+    }
+  },
+  {
+    "name": "regulatorytradeidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "display": "RegulatoryTradeIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "UniqueTransactionIdentifier",
+          "doc": "Unique Transaction Identifier (ISO 23897)"
+        }
+      ],
+      "fix:tag": "1905"
+    }
+  },
+  {
+    "name": "regulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of trade identifier provided in RegulatoryTradeID(1903).",
+      "display": "RegulatoryTradeIDType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
+        },
+        {
+          "value": "1",
+          "name": "Previous",
+          "doc": "Previous"
+        },
+        {
+          "value": "2",
+          "name": "Block",
+          "doc": "Block"
+        },
+        {
+          "value": "3",
+          "name": "Related",
+          "doc": "Related"
+        },
+        {
+          "value": "4",
+          "name": "ClearedBlockTrade",
+          "doc": "Cleared block trade"
+        },
+        {
+          "value": "5",
+          "name": "TradingVenueTransactionIdentifier",
+          "doc": "Trading venue transaction identifier"
+        },
+        {
+          "value": "6",
+          "name": "ReportTrackingNumber",
+          "doc": "Report tracking number"
+        }
+      ],
+      "fix:tag": "1906"
+    }
+  },
+  {
+    "name": "noregulatorytradeids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
+      "display": "NoRegulatoryTradeIDs",
+      "fix:tag": "1907"
+    }
+  },
+  {
+    "name": "noallocregulatorytradeids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
+      "display": "NoAllocRegulatoryTradeIDs",
+      "fix:tag": "1908"
+    }
+  },
+  {
+    "name": "allocregulatorytradeid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "display": "AllocRegulatoryTradeID",
+      "fix:tag": "1909"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "display": "AllocRegulatoryTradeIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "UniqueTransactionIdentifier",
+          "doc": "Unique Transaction Identifier (ISO 23897)"
+        }
+      ],
+      "fix:tag": "1910"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the event which caused the origination of the identifier in AllocRegulatoryTradeID(1909). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2(Clearing).",
+      "display": "AllocRegulatoryTradeIDEvent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
+        },
+        {
+          "value": "1",
+          "name": "Allocation",
+          "doc": "Allocation"
+        },
+        {
+          "value": "2",
+          "name": "Clearing",
+          "doc": "Clearing"
+        },
+        {
+          "value": "3",
+          "name": "Compression",
+          "doc": "Compression"
+        },
+        {
+          "value": "4",
+          "name": "Novation",
+          "doc": "Novation"
+        },
+        {
+          "value": "5",
+          "name": "Termination",
+          "doc": "Termination"
+        },
+        {
+          "value": "6",
+          "name": "PostTrdVal",
+          "doc": "Post-trade valuation"
+        }
+      ],
+      "fix:tag": "1911"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of trade identifier provided in AllocRegulatoryTradeID(1909), within the context of the hierarchy of trade events.",
+      "display": "AllocRegulatoryTradeIDType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
+        },
+        {
+          "value": "1",
+          "name": "Previous",
+          "doc": "Previous"
+        },
+        {
+          "value": "2",
+          "name": "Block",
+          "doc": "Block"
+        },
+        {
+          "value": "3",
+          "name": "Related",
+          "doc": "Related"
+        },
+        {
+          "value": "4",
+          "name": "ClearedBlockTrade",
+          "doc": "Cleared block trade"
+        },
+        {
+          "value": "5",
+          "name": "TradingVenueTransactionIdentifier",
+          "doc": "Trading venue transaction identifier"
+        },
+        {
+          "value": "6",
+          "name": "ReportTrackingNumber",
+          "doc": "Report tracking number"
+        }
+      ],
+      "fix:tag": "1912"
+    }
+  },
+  {
+    "name": "numofcompetitors",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of competing Respondents (e.g. dealers) to receive a quote request (either via the QuoteRequest(35=R) or via other means).",
+      "display": "NumOfCompetitors",
+      "fix:tag": "1913"
+    }
+  },
+  {
+    "name": "responsetime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The time by which a meaningful response should arrive back (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\").",
+      "display": "ResponseTime",
+      "fix:tag": "1914"
+    }
+  },
+  {
+    "name": "quotedisplaytime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time by which the quote will be displayed.",
+      "display": "QuoteDisplayTime",
+      "fix:tag": "1915"
+    }
+  },
+  {
+    "name": "exposuredurationunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit in which the ExposureDuration(1629) is expressed.",
+      "display": "ExposureDurationUnit",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Seconds",
+          "doc": "Seconds (default if not specified)"
+        },
+        {
+          "value": "1",
+          "name": "TenthsOfASecond",
+          "doc": "Tenths of a second"
+        },
+        {
+          "value": "2",
+          "name": "HundredthsOfASecond",
+          "doc": "Hundredths of a second"
+        },
+        {
+          "value": "3",
+          "name": "Milliseconds",
+          "doc": "milliseconds"
+        },
+        {
+          "value": "4",
+          "name": "Microseconds",
+          "doc": "microseconds"
+        },
+        {
+          "value": "5",
+          "name": "Nanoseconds",
+          "doc": "nanoseconds"
+        },
+        {
+          "value": "10",
+          "name": "Minutes",
+          "doc": "minutes"
+        },
+        {
+          "value": "11",
+          "name": "Hours",
+          "doc": "hours"
+        },
+        {
+          "value": "12",
+          "name": "Days",
+          "doc": "days"
+        },
+        {
+          "value": "13",
+          "name": "Weeks",
+          "doc": "weeks"
+        },
+        {
+          "value": "14",
+          "name": "Months",
+          "doc": "months"
+        },
+        {
+          "value": "15",
+          "name": "Years",
+          "doc": "years"
+        }
+      ],
+      "fix:tag": "1916"
+    }
+  },
+  {
+    "name": "coverprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The best quoted price received among those not traded.",
+      "display": "CoverPrice",
+      "fix:tag": "1917"
+    }
+  },
+  {
+    "name": "noclearingaccounttypes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of clearing account type entries.",
+      "display": "NoClearingAccountTypes",
+      "fix:tag": "1918"
+    }
+  },
+  {
+    "name": "nopricemovements",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of price movement entries.",
+      "display": "NoPriceMovements",
+      "fix:tag": "1919"
+    }
+  },
+  {
+    "name": "nopricemovementvalues",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of price movement value entries.",
+      "display": "NoPriceMovementValues",
+      "fix:tag": "1920"
+    }
+  },
+  {
+    "name": "pricemovementvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Value at specific price movement point.",
+      "display": "PriceMovementValue",
+      "fix:tag": "1921"
+    }
+  },
+  {
+    "name": "pricemovementpoint",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Price movement point up (positive integer) or down (negative integer) relative to the underlying price of the instrument.",
+      "display": "PriceMovementPoint",
+      "fix:tag": "1922"
+    }
+  },
+  {
+    "name": "pricemovementtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the format of the PriceMovementValue(1921).",
+      "display": "PriceMovementType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Amount",
+          "doc": "Amount"
+        },
+        {
+          "value": "1",
+          "name": "Percentage",
+          "doc": "Percentage"
+        }
+      ],
+      "fix:tag": "1923"
+    }
+  },
+  {
+    "name": "clearingintention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the party's or parties' intention to clear the trade.",
+      "display": "ClearingIntention",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "DoNotIntendToClear",
+          "doc": "Do not intend to clear"
+        },
+        {
+          "value": "1",
+          "name": "IntendToClear",
+          "doc": "Intend to clear"
+        }
+      ],
+      "fix:tag": "1924"
+    }
+  },
+  {
+    "name": "tradeclearinginstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the eligibility of this trade for clearing and central counterparty processing.",
+      "display": "TradeClearingInstruction",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ProcessNormally",
+          "doc": "Process normally"
+        },
+        {
+          "value": "1",
+          "name": "ExcludeFromAllNetting",
+          "doc": "Exclude from all netting"
+        },
+        {
+          "value": "2",
+          "name": "BilateralNettingOnly",
+          "doc": "Bilateral netting only"
+        },
+        {
+          "value": "3",
+          "name": "ExClearing",
+          "doc": "Ex clearing"
+        },
+        {
+          "value": "4",
+          "name": "SpecialTrade",
+          "doc": "Special trade"
+        },
+        {
+          "value": "5",
+          "name": "MultilateralNetting",
+          "doc": "Multilateral netting"
+        },
+        {
+          "value": "6",
+          "name": "ClearAgainstCentralCounterparty",
+          "doc": "Clear against central counterparty"
+        },
+        {
+          "value": "7",
+          "name": "ExcludeFromCentralCounterparty",
+          "doc": "Exclude from central counterparty"
+        },
+        {
+          "value": "8",
+          "name": "ManualMode",
+          "doc": "Manual mode (pre-posting and/or pre-giveup)"
+        },
+        {
+          "value": "9",
+          "name": "AutomaticPostingMode",
+          "doc": "Automatic posting mode (trade posting to the position account number specified)"
+        },
+        {
+          "value": "10",
+          "name": "AutomaticGiveUpMode",
+          "doc": "Automatic give-up mode (trade give-up to the give-up destination number specified)"
+        },
+        {
+          "value": "11",
+          "name": "QualifiedServiceRepresentativeQSR",
+          "doc": "Qualified Service Representative QSR"
+        },
+        {
+          "value": "12",
+          "name": "CustomerTrade",
+          "doc": "Customer trade"
+        },
+        {
+          "value": "13",
+          "name": "SelfClearing",
+          "doc": "Self clearing"
+        },
+        {
+          "value": "14",
+          "name": "BuyIn",
+          "doc": "Buy-in"
+        }
+      ],
+      "fix:tag": "1925"
+    }
+  },
+  {
+    "name": "backloadedtradeindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates that the trade being reported occurred in the past and is still in effect or active.",
+      "display": "BackloadedTradeIndicator",
+      "fix:tag": "1926"
+    }
+  },
+  {
+    "name": "confirmationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies how a trade was confirmed.",
+      "display": "ConfirmationMethod",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NonElectronic",
+          "doc": "Non-electronic"
+        },
+        {
+          "value": "1",
+          "name": "Electronic",
+          "doc": "Electronic"
+        },
+        {
+          "value": "2",
+          "name": "Unconfirmed",
+          "doc": "Unconfirmed"
+        }
+      ],
+      "fix:tag": "1927"
+    }
+  },
+  {
+    "name": "mandatoryclearingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An indication that the trade is flagged for mandatory clearing.",
+      "display": "MandatoryClearingIndicator",
+      "fix:tag": "1928"
+    }
+  },
+  {
+    "name": "mixedswapindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An indication that the trade is a mixed swap.",
+      "display": "MixedSwapIndicator",
+      "fix:tag": "1929"
+    }
+  },
+  {
+    "name": "offmarketpriceindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An indication that the price is off-market.",
+      "display": "OffMarketPriceIndicator",
+      "fix:tag": "1930"
+    }
+  },
+  {
+    "name": "verificationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indication of how a trade was verified.",
+      "display": "VerificationMethod",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NonElectronic",
+          "doc": "Non-electronic"
+        },
+        {
+          "value": "1",
+          "name": "Electronic",
+          "doc": "Electronic"
+        }
+      ],
+      "fix:tag": "1931"
+    }
+  },
+  {
+    "name": "clearingrequirementexception",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies whether a party to a swap is using an exception to a clearing requirement. In the US, one such clearing requirement is CFTC's rule pursuant to CEA Section 2(h)(1).",
+      "display": "ClearingRequirementException",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NoException",
+          "doc": "No exception"
+        },
+        {
+          "value": "1",
+          "name": "Exception",
+          "doc": "Exception"
+        },
+        {
+          "value": "2",
+          "name": "EndUserException",
+          "doc": "End-user exception"
+        },
+        {
+          "value": "3",
+          "name": "InterAffiliateException",
+          "doc": "Inter-affiliate exception"
+        },
+        {
+          "value": "4",
+          "name": "TreasuryAffiliateException",
+          "doc": "Treasury affiliate exception"
+        },
+        {
+          "value": "5",
+          "name": "CooperativeException",
+          "doc": "Cooperative exception"
+        }
+      ],
+      "fix:tag": "1932"
+    }
+  },
+  {
+    "name": "irsdirection",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to specify whether the principal is paying or receiving the fixed rate in an interest rate swap.",
+      "display": "IRSDirection",
+      "fix:codes": [
+        {
+          "value": "PAY",
+          "name": "Pay",
+          "doc": "Principal is paying fixed rate"
+        },
+        {
+          "value": "RCV",
+          "name": "Rcv",
+          "doc": "Principal is receiving fixed rate"
+        },
+        {
+          "value": "NA",
+          "name": "NA",
+          "doc": "Swap is float/float or fixed/fixed"
+        }
+      ],
+      "fix:tag": "1933"
+    }
+  },
+  {
+    "name": "regulatoryreporttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of regulatory report.",
+      "display": "RegulatoryReportType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RT",
+          "doc": "Real-time (RT)"
+        },
+        {
+          "value": "1",
+          "name": "PET",
+          "doc": "Primary economic terms (PET)"
+        },
+        {
+          "value": "2",
+          "name": "Snapshot",
+          "doc": "Snapshot"
+        },
+        {
+          "value": "3",
+          "name": "Confirmation",
+          "doc": "Confirmation"
+        },
+        {
+          "value": "4",
+          "name": "RTPET",
+          "doc": "Combination of RT and PET"
+        },
+        {
+          "value": "5",
+          "name": "PETConfirmation",
+          "doc": "Combination of PET and confirmation"
+        },
+        {
+          "value": "6",
+          "name": "RTPETConfirmation",
+          "doc": "Combination of RT, PET and confirmation"
+        },
+        {
+          "value": "7",
+          "name": "PostTrade",
+          "doc": "Post-trade valuation"
+        },
+        {
+          "value": "8",
+          "name": "Verification",
+          "doc": "Verification"
+        },
+        {
+          "value": "9",
+          "name": "PstTrdEvnt",
+          "doc": "Post-trade event"
+        },
+        {
+          "value": "10",
+          "name": "PstTrdEvntRTReportable",
+          "doc": "Post trade event RT reportable"
+        },
+        {
+          "value": "11",
+          "name": "LimitedDetailsTrade",
+          "aliases": [
+            "Lmtf"
+          ],
+          "doc": "Limited Details Trade"
+        },
+        {
+          "value": "12",
+          "name": "DailyAggregatedTrade",
+          "aliases": [
+            "Datf"
+          ],
+          "doc": "Daily Aggregated Trade"
+        },
+        {
+          "value": "13",
+          "name": "VolumeOmissionTrade",
+          "aliases": [
+            "Volo"
+          ],
+          "doc": "Volume Omission Trade"
+        },
+        {
+          "value": "14",
+          "name": "FourWeeksAggregationTrade",
+          "aliases": [
+            "Fwaf"
+          ],
+          "doc": "Four Weeks Aggregation Trade"
+        },
+        {
+          "value": "15",
+          "name": "IndefiniteAggregationTrade",
+          "aliases": [
+            "Idaf"
+          ],
+          "doc": "Indefinite Aggregation Trade"
+        },
+        {
+          "value": "16",
+          "name": "VolumeOmissionTradeEnrichment",
+          "aliases": [
+            "Volw"
+          ],
+          "doc": "Volume Omission Trade Eligible for Subsequent Aggregated Enrichment"
+        },
+        {
+          "value": "17",
+          "name": "FullDetailsLimitedDetailsTrade",
+          "aliases": [
+            "Fulf"
+          ],
+          "doc": "Full Details of \"Limited Details Trade\""
+        },
+        {
+          "value": "18",
+          "name": "FullDetailsDailyAggregatedTrade",
+          "aliases": [
+            "Fula"
+          ],
+          "doc": "Full Details of \"Daily Aggregated Trade\""
+        },
+        {
+          "value": "19",
+          "name": "FullDetailsVolumeOmissionTrade",
+          "aliases": [
+            "Fulv"
+          ],
+          "doc": "Full Details of \"Volume Omission Trade\""
+        },
+        {
+          "value": "20",
+          "name": "FullDetailsFourWeeksAggregationTrade",
+          "aliases": [
+            "Fulj"
+          ],
+          "doc": "Full Details of \"Four Weeks Aggregation Trade\""
+        },
+        {
+          "value": "21",
+          "name": "FullDetailsVolumeOmissionTradeEnrichment",
+          "aliases": [
+            "Coaf"
+          ],
+          "doc": "Full Details in Aggregated Form of \"Volume Omission Trade Eligible for Subsequent Aggregated Enrichment\""
+        },
+        {
+          "value": "22",
+          "name": "Order",
+          "doc": "Order"
+        },
+        {
+          "value": "23",
+          "name": "ChildOrder",
+          "doc": "Child order"
+        },
+        {
+          "value": "24",
+          "name": "OrderRoute",
+          "doc": "Order route"
+        },
+        {
+          "value": "25",
+          "name": "Trade",
+          "doc": "Trade"
+        },
+        {
+          "value": "26",
+          "name": "Quote",
+          "doc": "Quote"
+        },
+        {
+          "value": "27",
+          "name": "Supplement",
+          "doc": "Supplement"
+        },
+        {
+          "value": "28",
+          "name": "NewTransaction",
+          "doc": "New transaction"
+        },
+        {
+          "value": "29",
+          "name": "TransactionCorrection",
+          "doc": "Transaction correction"
+        },
+        {
+          "value": "30",
+          "name": "TransactionModification",
+          "doc": "Transaction modification"
+        },
+        {
+          "value": "31",
+          "name": "CollateralUpdate",
+          "doc": "Collateral update"
+        },
+        {
+          "value": "32",
+          "name": "MarginUpdate",
+          "doc": "Margin update"
+        },
+        {
+          "value": "33",
+          "name": "TransactionReportedInError",
+          "doc": "Transaction reported in error"
+        },
+        {
+          "value": "34",
+          "name": "TerminationEarlyTermination",
+          "doc": "Termination / Early termination"
+        }
+      ],
+      "fix:tag": "1934"
+    }
+  },
+  {
+    "name": "voluntaryregulatoryreport",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used in conjunction with RegulatoryReportType(1934) to indicate whether the trade report is a voluntary regulatory report. If not specified, the default for a regulatory report is \"N\".",
+      "display": "VoluntaryRegulatoryReport",
+      "fix:tag": "1935"
+    }
+  },
+  {
+    "name": "tradecollateralization",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies how the trade is collateralized.",
+      "display": "TradeCollateralization",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Uncollateralized",
+          "doc": "Uncollateralized"
+        },
+        {
+          "value": "1",
+          "name": "PartiallyCollateralized",
+          "doc": "Partially collateralized"
+        },
+        {
+          "value": "2",
+          "name": "OneWayCollaterallization",
+          "doc": "One-way collaterallization"
+        },
+        {
+          "value": "3",
+          "name": "FullyCollateralized",
+          "doc": "Fully collateralized"
+        },
+        {
+          "value": "4",
+          "name": "NetExposure",
+          "doc": "Net exposure"
+        }
+      ],
+      "fix:tag": "1936"
+    }
+  },
+  {
+    "name": "tradecontinuation",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the post-execution trade continuation or lifecycle event. Additional values may be used by mutual agreement of the counterparties.",
+      "display": "TradeContinuation",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Novation",
+          "doc": "Novation"
+        },
+        {
+          "value": "1",
+          "name": "PartialNovation",
+          "doc": "Partial novation"
+        },
+        {
+          "value": "2",
+          "name": "TradeUnwind",
+          "doc": "Trade unwind"
+        },
+        {
+          "value": "3",
+          "name": "PartialTradeUnwind",
+          "doc": "Partial trade unwind"
+        },
+        {
+          "value": "4",
+          "name": "Exercise",
+          "doc": "Exercise"
+        },
+        {
+          "value": "5",
+          "name": "Netting",
+          "doc": "Compression/Netting"
+        },
+        {
+          "value": "6",
+          "name": "FullNetting",
+          "doc": "Full netting"
+        },
+        {
+          "value": "7",
+          "name": "PartialNetting",
+          "doc": "Partial netting"
+        },
+        {
+          "value": "8",
+          "name": "Amendment",
+          "doc": "Amendment"
+        },
+        {
+          "value": "9",
+          "name": "Increase",
+          "doc": "Increase"
+        },
+        {
+          "value": "10",
+          "name": "CreditEvent",
+          "doc": "Credit event"
+        },
+        {
+          "value": "11",
+          "name": "StrategicRestructuring",
+          "doc": "Strategic restructuring"
+        },
+        {
+          "value": "12",
+          "name": "SuccessionEventReorganization",
+          "doc": "Succession event reorganization"
+        },
+        {
+          "value": "13",
+          "name": "SuccessionEventRenaming",
+          "doc": "Succession event renaming"
+        },
+        {
+          "value": "14",
+          "name": "Porting",
+          "doc": "Porting"
+        },
+        {
+          "value": "15",
+          "name": "Withdrawl",
+          "doc": "Withdrawal"
+        },
+        {
+          "value": "16",
+          "name": "Void",
+          "doc": "Void"
+        },
+        {
+          "value": "17",
+          "name": "AccountTransfer",
+          "doc": "Account transfer"
+        },
+        {
+          "value": "18",
+          "name": "GiveUp",
+          "doc": "Give up"
+        },
+        {
+          "value": "19",
+          "name": "TakeUp",
+          "doc": "TakeUp"
+        },
+        {
+          "value": "20",
+          "name": "AveragePricing",
+          "doc": "Average pricing"
+        },
+        {
+          "value": "21",
+          "name": "Reversal",
+          "doc": "Reversal"
+        },
+        {
+          "value": "22",
+          "name": "AllocTrdPosting",
+          "doc": "Allocation/Trade posting"
+        },
+        {
+          "value": "23",
+          "name": "Cascade",
+          "doc": "Cascade"
+        },
+        {
+          "value": "24",
+          "name": "Delivery",
+          "doc": "Delivery"
+        },
+        {
+          "value": "25",
+          "name": "OptionAsgn",
+          "doc": "Option assignment"
+        },
+        {
+          "value": "26",
+          "name": "Expiration",
+          "doc": "Expiration"
+        },
+        {
+          "value": "27",
+          "name": "Maturity",
+          "doc": "Maturity"
+        },
+        {
+          "value": "28",
+          "name": "EqualPosAdj",
+          "doc": "Equal position adjustment"
+        },
+        {
+          "value": "29",
+          "name": "UnequalPosAdj",
+          "doc": "Unequal position adjustment"
+        },
+        {
+          "value": "30",
+          "name": "Correction",
+          "doc": "Correction"
+        },
+        {
+          "value": "31",
+          "name": "EarlyTermination",
+          "doc": "Early termination"
+        },
+        {
+          "value": "32",
+          "name": "Rerate",
+          "doc": "Rerate"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other price-forming continuation data"
+        }
+      ],
+      "fix:tag": "1937"
+    }
+  },
+  {
+    "name": "assetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The broad asset category for assessing risk exposure.",
+      "display": "AssetClass",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "InterestRate",
+          "doc": "Interest rate"
+        },
+        {
+          "value": "2",
+          "name": "Currency",
+          "doc": "Currency"
+        },
+        {
+          "value": "3",
+          "name": "Credit",
+          "doc": "Credit"
+        },
+        {
+          "value": "4",
+          "name": "Equity",
+          "doc": "Equity"
+        },
+        {
+          "value": "5",
+          "name": "Commodity",
+          "doc": "Commodity"
+        },
+        {
+          "value": "6",
+          "name": "Other",
+          "doc": "Other"
+        },
+        {
+          "value": "7",
+          "name": "Cash",
+          "doc": "Cash"
+        },
+        {
+          "value": "8",
+          "name": "Debt",
+          "doc": "Debt"
+        },
+        {
+          "value": "9",
+          "name": "Fund",
+          "doc": "Fund"
+        },
+        {
+          "value": "10",
+          "name": "LoanFacility",
+          "doc": "Loan facility"
+        },
+        {
+          "value": "11",
+          "name": "Index",
+          "doc": "Index"
+        }
+      ],
+      "fix:tag": "1938"
+    }
+  },
+  {
+    "name": "assetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The subcategory description of the asset class.",
+      "display": "AssetSubClass",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "SingleCurrency",
+          "group": "Interest Rate",
+          "doc": "Single currency"
+        },
+        {
+          "value": "2",
+          "name": "CrossCurrency",
+          "group": "Interest Rate",
+          "doc": "Cross currency"
+        },
+        {
+          "value": "3",
+          "name": "Basket",
+          "group": "Currency",
+          "doc": "Basket [for multi-currency]"
+        },
+        {
+          "value": "4",
+          "name": "SingleName",
+          "group": "Credit",
+          "doc": "Single name"
+        },
+        {
+          "value": "5",
+          "name": "CreditIndex",
+          "group": "Credit",
+          "doc": "Credit index"
+        },
+        {
+          "value": "6",
+          "name": "IndexTranche",
+          "group": "Credit",
+          "doc": "Index tranche"
+        },
+        {
+          "value": "7",
+          "name": "CreditBasket",
+          "group": "Credit",
+          "doc": "Credit basket"
+        },
+        {
+          "value": "8",
+          "name": "Exotic",
+          "group": "Other",
+          "doc": "Exotic"
+        },
+        {
+          "value": "9",
+          "name": "Common",
+          "group": "Equity",
+          "doc": "Common"
+        },
+        {
+          "value": "10",
+          "name": "Preferred",
+          "group": "Equity",
+          "doc": "Preferred"
+        },
+        {
+          "value": "11",
+          "name": "EquityIndex",
+          "group": "Equity",
+          "doc": "Equity index"
+        },
+        {
+          "value": "12",
+          "name": "EquityBasket",
+          "group": "Equity",
+          "doc": "Equity basket"
+        },
+        {
+          "value": "13",
+          "name": "Metals",
+          "group": "Commodity",
+          "doc": "Metals"
+        },
+        {
+          "value": "14",
+          "name": "Bullion",
+          "group": "Commodity",
+          "doc": "Bullion"
+        },
+        {
+          "value": "15",
+          "name": "Energy",
+          "group": "Commodity",
+          "doc": "Energy"
+        },
+        {
+          "value": "16",
+          "name": "CommodityIndex",
+          "group": "Commodity",
+          "doc": "Commodity index"
+        },
+        {
+          "value": "17",
+          "name": "Agricultural",
+          "group": "Commodity",
+          "doc": "Agricultural"
+        },
+        {
+          "value": "18",
+          "name": "Environmental",
+          "group": "Commodity",
+          "doc": "Environmental"
+        },
+        {
+          "value": "19",
+          "name": "Freight",
+          "group": "Commodity",
+          "doc": "Freight"
+        },
+        {
+          "value": "20",
+          "name": "Government",
+          "group": "Debt",
+          "doc": "Government"
+        },
+        {
+          "value": "21",
+          "name": "Agency",
+          "group": "Debt",
+          "doc": "Agency"
+        },
+        {
+          "value": "22",
+          "name": "Corporate",
+          "group": "Debt",
+          "doc": "Corporate"
+        },
+        {
+          "value": "23",
+          "name": "Financing",
+          "group": "Debt",
+          "doc": "Financing"
+        },
+        {
+          "value": "24",
+          "name": "MoneyMarket",
+          "group": "Debt",
+          "doc": "Money market"
+        },
+        {
+          "value": "25",
+          "name": "Mortgage",
+          "group": "Debt",
+          "doc": "Mortgage"
+        },
+        {
+          "value": "26",
+          "name": "Municipal",
+          "group": "Debt",
+          "doc": "Municipal"
+        },
+        {
+          "value": "27",
+          "name": "MutualFund",
+          "group": "Fund",
+          "doc": "Mutual fund"
+        },
+        {
+          "value": "28",
+          "name": "CollectiveInvestmentVehicle",
+          "group": "Fund",
+          "doc": "Collective investment vehicle"
+        },
+        {
+          "value": "29",
+          "name": "InvestmentProgram",
+          "group": "Fund",
+          "doc": "Investment program"
+        },
+        {
+          "value": "30",
+          "name": "SpecializedAccountProgram",
+          "group": "Fund",
+          "doc": "Specialized account program"
+        },
+        {
+          "value": "31",
+          "name": "TermLoan",
+          "group": "Loan Facility",
+          "doc": "Term loan"
+        },
+        {
+          "value": "32",
+          "name": "BridgeLoan",
+          "group": "Loan Facility",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "33",
+          "name": "LetterOfCredit",
+          "group": "Loan Facility",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "34",
+          "name": "DividendIndex",
+          "group": "Equity",
+          "doc": "Dividend index"
+        },
+        {
+          "value": "35",
+          "name": "StockDividend",
+          "group": "Equity",
+          "doc": "Stock dividend"
+        },
+        {
+          "value": "36",
+          "name": "ExchangeTradedFund",
+          "group": "Equity",
+          "doc": "Exchange traded fund"
+        },
+        {
+          "value": "37",
+          "name": "VolatilityIndex",
+          "group": "Equity",
+          "doc": "Volatility index"
+        },
+        {
+          "value": "38",
+          "name": "FXCrossRates",
+          "group": "Currency",
+          "doc": "FX cross rates"
+        },
+        {
+          "value": "39",
+          "name": "FXEmergingMarkets",
+          "group": "Currency",
+          "doc": "FX emerging markets"
+        },
+        {
+          "value": "40",
+          "name": "FXMajors",
+          "group": "Currency",
+          "doc": "FX Majors"
+        },
+        {
+          "value": "41",
+          "name": "Fertilizer",
+          "group": "Commodity",
+          "doc": "Fertilizer"
+        },
+        {
+          "value": "42",
+          "name": "IndustrialProduct",
+          "group": "Commodity",
+          "doc": "Industrial product"
+        },
+        {
+          "value": "43",
+          "name": "Inflation",
+          "group": "Commodity",
+          "doc": "Inflation"
+        },
+        {
+          "value": "44",
+          "name": "Paper",
+          "group": "Commodity",
+          "doc": "Paper"
+        },
+        {
+          "value": "45",
+          "name": "Polypropylene",
+          "group": "Commodity",
+          "doc": "Polypropylene"
+        },
+        {
+          "value": "46",
+          "name": "OfficialEconomicStatistics",
+          "group": "Commodity",
+          "doc": "Official economic statistics"
+        },
+        {
+          "value": "47",
+          "name": "OtherC10",
+          "group": "Other",
+          "doc": "Other C10"
+        },
+        {
+          "value": "48",
+          "name": "Other",
+          "group": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1939"
+    }
+  },
+  {
+    "name": "assettype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to provide more specific description of the asset specified in AssetSubClass(1939). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "display": "AssetType",
+      "fix:tag": "1940"
+    }
+  },
+  {
+    "name": "swapclass",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The classification or type of swap. Additional values may be used by mutual agreement of the counterparties.",
+      "display": "SwapClass",
+      "fix:codes": [
+        {
+          "value": "BS",
+          "name": "BasisSwap",
+          "doc": "Basis swap"
+        },
+        {
+          "value": "IX",
+          "name": "IndexSwap",
+          "doc": "Index swap"
+        },
+        {
+          "value": "BB",
+          "name": "BroadBasedSecuritySwap",
+          "doc": "Broad-based security swap"
+        },
+        {
+          "value": "SK",
+          "name": "BasketSwap",
+          "doc": "Basket swap"
+        }
+      ],
+      "fix:tag": "1941"
+    }
+  },
+  {
+    "name": "nthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The Nth reference obligation to default in a CDS reference basket. If specified without MthToDefault(1943) the default will trigger a CDS payout. If MthToDefault(1943) is also present then payout occurs between the Nth and Mth obligations to default.",
+      "display": "NthToDefault",
+      "fix:tag": "1942"
+    }
+  },
+  {
+    "name": "mthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The Mth reference obligation to default in a CDS reference basket. When NthToDefault(1942) and MthToDefault(1943) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
+      "display": "MthToDefault",
+      "fix:tag": "1943"
+    }
+  },
+  {
+    "name": "settledentitymatrixsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Relevant settled entity matrix source.",
+      "display": "SettledEntityMatrixSource",
+      "fix:tag": "1944"
+    }
+  },
+  {
+    "name": "settledentitymatrixpublicationdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
+      "display": "SettledEntityMatrixPublicationDate",
+      "fix:tag": "1945"
+    }
+  },
+  {
+    "name": "coupontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Coupon type of the bond.",
+      "display": "CouponType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Zero",
+          "doc": "Zero"
+        },
+        {
+          "value": "1",
+          "name": "FixedRate",
+          "doc": "Fixed rate"
+        },
+        {
+          "value": "2",
+          "name": "FloatingRate",
+          "doc": "Floating rate"
+        },
+        {
+          "value": "3",
+          "name": "Structured",
+          "doc": "Structured"
+        }
+      ],
+      "fix:tag": "1946"
+    }
+  },
+  {
+    "name": "totalissuedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued securities.",
+      "display": "TotalIssuedAmount",
+      "fix:tag": "1947"
+    }
+  },
+  {
+    "name": "couponfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
+      "display": "CouponFrequencyPeriod",
+      "fix:tag": "1948"
+    }
+  },
+  {
+    "name": "couponfrequencyunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "display": "CouponFrequencyUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "doc": "Minute"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "doc": "Second"
+        },
+        {
+          "value": "T",
+          "name": "Term",
+          "doc": "Term"
+        }
+      ],
+      "fix:tag": "1949"
+    }
+  },
+  {
+    "name": "coupondaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security. Absence of this field for a bond or an interest bearing security transaction implies a \"flat\" trade, i.e. no accrued interest determined at time of the transaction.",
+      "display": "CouponDayCount",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "OneOne",
+          "doc": "1/1"
+        },
+        {
+          "value": "1",
+          "name": "ThirtyThreeSixtyUS",
+          "doc": "30/360 (30U/360 or Bond Basis)"
+        },
+        {
+          "value": "2",
+          "name": "ThirtyThreeSixtySIA",
+          "doc": "30/360 (SIA)"
+        },
+        {
+          "value": "3",
+          "name": "ThirtyThreeSixtyM",
+          "doc": "30/360M"
+        },
+        {
+          "value": "4",
+          "name": "ThirtyEThreeSixty",
+          "doc": "30E/360 (Eurobond Basis)"
+        },
+        {
+          "value": "5",
+          "name": "ThirtyEThreeSixtyISDA",
+          "doc": "30E/360 (ISDA)"
+        },
+        {
+          "value": "6",
+          "name": "ActThreeSixty",
+          "doc": "Act/360"
+        },
+        {
+          "value": "7",
+          "name": "ActThreeSixtyFiveFixed",
+          "doc": "Act/365 (FIXED)"
+        },
+        {
+          "value": "8",
+          "name": "ActActAFB",
+          "doc": "Act/Act (AFB)"
+        },
+        {
+          "value": "9",
+          "name": "ActActICMA",
+          "doc": "Act/Act (ICMA)"
+        },
+        {
+          "value": "10",
+          "name": "ActActISMAUltimo",
+          "doc": "Act/Act (ICMA Ultimo)"
+        },
+        {
+          "value": "11",
+          "name": "ActActISDA",
+          "doc": "Act/Act (ISDA)"
+        },
+        {
+          "value": "12",
+          "name": "BusTwoFiftyTwo",
+          "doc": "BUS/252"
+        },
+        {
+          "value": "13",
+          "name": "ThirtyEPlusThreeSixty",
+          "doc": "30E+/360"
+        },
+        {
+          "value": "14",
+          "name": "ActThreeSixtyFiveL",
+          "doc": "Act/365L"
+        },
+        {
+          "value": "15",
+          "name": "NLThreeSixtyFive",
+          "doc": "NL365"
+        },
+        {
+          "value": "16",
+          "name": "NLThreeSixty",
+          "doc": "NL360"
+        },
+        {
+          "value": "17",
+          "name": "Act364",
+          "doc": "Act/364"
+        },
+        {
+          "value": "18",
+          "name": "ThirtyThreeSixtyFive",
+          "doc": "30/365"
+        },
+        {
+          "value": "19",
+          "name": "ThirtyActual",
+          "doc": "30/Actual"
+        },
+        {
+          "value": "20",
+          "name": "ThirtyThreeSixtyICMA",
+          "doc": "30/360 (ICMA or basis rule)"
+        },
+        {
+          "value": "21",
+          "name": "ThirtyETwoThreeSixty",
+          "doc": "30E2/360 (Eurobond basis model two)"
+        },
+        {
+          "value": "22",
+          "name": "ThirtyEThreeThreeSixty",
+          "doc": "30E3/360 (Eurobond basis model three)"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1950"
+    }
+  },
+  {
+    "name": "convertiblebondequityid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the equity in which a convertible bond can be converted to.",
+      "display": "ConvertibleBondEquityID",
+      "fix:tag": "1951"
+    }
+  },
+  {
+    "name": "convertiblebondequityidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies class or source of the ConvertibleBondEquityID(1951) value.",
+      "display": "ConvertibleBondEquityIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "1952"
+    }
+  },
+  {
+    "name": "contractpricerefmonth",
+    "dtype": {
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference month if there is no applicable MaturityMonthYear(200) value for the contract or security.",
+      "display": "ContractPriceRefMonth",
+      "fix:tag": "1953"
+    }
+  },
+  {
+    "name": "lienseniority",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the seniority level of the lien in a loan.",
+      "display": "LienSeniority",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
+        },
+        {
+          "value": "1",
+          "name": "FirstLien",
+          "doc": "First lien"
+        },
+        {
+          "value": "2",
+          "name": "SecondLien",
+          "doc": "Second lien"
+        },
+        {
+          "value": "3",
+          "name": "ThirdLien",
+          "doc": "Third lien"
+        }
+      ],
+      "fix:tag": "1954"
+    }
+  },
+  {
+    "name": "loanfacility",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
+      "display": "LoanFacility",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BridgeLoan",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "1",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "2",
+          "name": "RevolvingLoan",
+          "doc": "Revolving loan"
+        },
+        {
+          "value": "3",
+          "name": "SwinglineFunding",
+          "doc": "Swingline funding"
+        },
+        {
+          "value": "4",
+          "name": "TermLoan",
+          "doc": "Term loan"
+        },
+        {
+          "value": "5",
+          "name": "TradeClaim",
+          "doc": "Trade claim"
+        }
+      ],
+      "fix:tag": "1955"
+    }
+  },
+  {
+    "name": "referenceentitytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
+      "display": "ReferenceEntityType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Asian",
+          "doc": "Asian"
+        },
+        {
+          "value": "2",
+          "name": "AustralianNewZealand",
+          "doc": "Australian and New Zealand"
+        },
+        {
+          "value": "3",
+          "name": "EuropeanEmergingMarkets",
+          "doc": "European emerging markets"
+        },
+        {
+          "value": "4",
+          "name": "Japanese",
+          "doc": "Japanese"
+        },
+        {
+          "value": "5",
+          "name": "NorthAmericanHighYield",
+          "doc": "North American high yield"
+        },
+        {
+          "value": "6",
+          "name": "NorthAmericanInsurance",
+          "doc": "North American insurance"
+        },
+        {
+          "value": "7",
+          "name": "NorthAmericanInvestmentGrade",
+          "doc": "North American investment grade"
+        },
+        {
+          "value": "8",
+          "name": "Singaporean",
+          "doc": "Singaporean"
+        },
+        {
+          "value": "9",
+          "name": "WesternEuropean",
+          "doc": "Western European"
+        },
+        {
+          "value": "10",
+          "name": "WesternEuropeanInsurance",
+          "doc": "Western European insurance"
+        }
+      ],
+      "fix:tag": "1956"
+    }
+  },
+  {
+    "name": "indexseries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The series identifier of a credit default swap index.",
+      "display": "IndexSeries",
+      "fix:tag": "1957"
+    }
+  },
+  {
+    "name": "indexannexversion",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The version of a credit default swap index annex.",
+      "display": "IndexAnnexVersion",
+      "fix:tag": "1958"
+    }
+  },
+  {
+    "name": "indexannexdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The date of a credit default swap index series annex.",
+      "display": "IndexAnnexDate",
+      "fix:tag": "1959"
+    }
+  },
+  {
+    "name": "indexannexsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The source of a credit default swap series annex.",
+      "display": "IndexAnnexSource",
+      "fix:tag": "1960"
+    }
+  },
+  {
+    "name": "agreementversion",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The version of the master agreement",
+      "display": "AgreementVersion",
+      "fix:tag": "1961"
+    }
+  },
+  {
+    "name": "masterconfirmationdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of master confirmation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-type for values.",
+      "display": "MasterConfirmationDesc",
+      "fix:tag": "1962"
+    }
+  },
+  {
+    "name": "masterconfirmationdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties.",
+      "display": "MasterConfirmationDate",
+      "fix:tag": "1963"
+    }
+  },
+  {
+    "name": "masterconfirmationannexdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of master confirmation annex executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-annex-type for values.",
+      "display": "MasterConfirmationAnnexDesc",
+      "fix:tag": "1964"
+    }
+  },
+  {
+    "name": "masterconfirmationannexdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The date that an annex to the master confirmation was executed between the parties.",
+      "display": "MasterConfirmationAnnexDate",
+      "fix:tag": "1965"
+    }
+  },
+  {
+    "name": "brokerconfirmationdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the type of broker confirmation executed between the parites. Can be used as an alterative to MasterConfirmationDesc(1962). See https://fpml.org/coding-scheme/broker-confirmation-type for values.",
+      "display": "BrokerConfirmationDesc",
+      "fix:tag": "1966"
+    }
+  },
+  {
+    "name": "creditsupportagreementdesc",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of ISDA Credit Support Agreement. See https://fpml.org/coding-scheme/credit-support-agreement-type for values.",
+      "display": "CreditSupportAgreementDesc",
+      "fix:tag": "1967"
+    }
+  },
+  {
+    "name": "creditsupportagreementdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties.",
+      "display": "CreditSupportAgreementDate",
+      "fix:tag": "1968"
+    }
+  },
+  {
+    "name": "creditsupportagreementid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A common reference or unique identifier to identify the ISDA Credit Support Agreement executed between the parties.",
+      "display": "CreditSupportAgreementID",
+      "fix:tag": "1969"
+    }
+  },
+  {
+    "name": "governinglaw",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identification of the law governing the transaction. See https://fpml.org/coding-scheme/governing-law for values.",
+      "display": "GoverningLaw",
+      "fix:tag": "1970"
+    }
+  },
+  {
+    "name": "nosideregulatorytradeids",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
+      "display": "NoSideRegulatoryTradeIDs",
+      "fix:tag": "1971"
+    }
+  },
+  {
+    "name": "sideregulatorytradeid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade identifier required by government regulators or other regulatory organziations for regulatory reporting purposes. For example, unique swap identifier (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "display": "SideRegulatoryTradeID",
+      "fix:tag": "1972"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "display": "SideRegulatoryTradeIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "UniqueTransactionIdentifier",
+          "doc": "Unique Transaction Identifier (ISO 23897)"
+        }
+      ],
+      "fix:tag": "1973"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the event which caused origination of the identifier in SideRegulatoryTradeID(1972). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
+      "display": "SideRegulatoryTradeIDEvent",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "InitialBlockTrade",
+          "doc": "Initial block trade"
+        },
+        {
+          "value": "1",
+          "name": "Allocation",
+          "doc": "Allocation"
+        },
+        {
+          "value": "2",
+          "name": "Clearing",
+          "doc": "Clearing"
+        },
+        {
+          "value": "3",
+          "name": "Compression",
+          "doc": "Compression"
+        },
+        {
+          "value": "4",
+          "name": "Novation",
+          "doc": "Novation"
+        },
+        {
+          "value": "5",
+          "name": "Termination",
+          "doc": "Termination"
+        },
+        {
+          "value": "6",
+          "name": "PostTrdVal",
+          "doc": "Post-trade valuation"
+        }
+      ],
+      "fix:tag": "1974"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of trade identifier provided in SideRegulatoryTradeID(1972), within the context of the hierarchy of trade events.",
+      "display": "SideRegulatoryTradeIDType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Current",
+          "doc": "Current"
+        },
+        {
+          "value": "1",
+          "name": "Previous",
+          "doc": "Previous"
+        },
+        {
+          "value": "2",
+          "name": "Block",
+          "doc": "Block"
+        },
+        {
+          "value": "3",
+          "name": "Related",
+          "doc": "Related"
+        },
+        {
+          "value": "4",
+          "name": "ClearedBlockTrade",
+          "doc": "Cleared block trade"
+        },
+        {
+          "value": "5",
+          "name": "TradingVenueTransactionIdentifier",
+          "doc": "Trading venue transaction identifier"
+        },
+        {
+          "value": "6",
+          "name": "ReportTrackingNumber",
+          "doc": "Report tracking number"
+        }
+      ],
+      "fix:tag": "1975"
+    }
+  },
+  {
+    "name": "nosecondaryassetclasses",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of secondary asset classes in the repeating group.",
+      "display": "NoSecondaryAssetClasses",
+      "fix:tag": "1976"
+    }
+  },
+  {
+    "name": "secondaryassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "display": "SecondaryAssetClass",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "InterestRate",
+          "doc": "Interest rate"
+        },
+        {
+          "value": "2",
+          "name": "Currency",
+          "doc": "Currency"
+        },
+        {
+          "value": "3",
+          "name": "Credit",
+          "doc": "Credit"
+        },
+        {
+          "value": "4",
+          "name": "Equity",
+          "doc": "Equity"
+        },
+        {
+          "value": "5",
+          "name": "Commodity",
+          "doc": "Commodity"
+        },
+        {
+          "value": "6",
+          "name": "Other",
+          "doc": "Other"
+        },
+        {
+          "value": "7",
+          "name": "Cash",
+          "doc": "Cash"
+        },
+        {
+          "value": "8",
+          "name": "Debt",
+          "doc": "Debt"
+        },
+        {
+          "value": "9",
+          "name": "Fund",
+          "doc": "Fund"
+        },
+        {
+          "value": "10",
+          "name": "LoanFacility",
+          "doc": "Loan facility"
+        },
+        {
+          "value": "11",
+          "name": "Index",
+          "doc": "Index"
+        }
+      ],
+      "fix:tag": "1977"
+    }
+  },
+  {
+    "name": "secondaryassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "An indication of the general description of the asset class.",
+      "display": "SecondaryAssetSubClass",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "SingleCurrency",
+          "group": "Interest Rate",
+          "doc": "Single currency"
+        },
+        {
+          "value": "2",
+          "name": "CrossCurrency",
+          "group": "Interest Rate",
+          "doc": "Cross currency"
+        },
+        {
+          "value": "3",
+          "name": "Basket",
+          "group": "Currency",
+          "doc": "Basket [for multi-currency]"
+        },
+        {
+          "value": "4",
+          "name": "SingleName",
+          "group": "Credit",
+          "doc": "Single name"
+        },
+        {
+          "value": "5",
+          "name": "CreditIndex",
+          "group": "Credit",
+          "doc": "Credit index"
+        },
+        {
+          "value": "6",
+          "name": "IndexTranche",
+          "group": "Credit",
+          "doc": "Index tranche"
+        },
+        {
+          "value": "7",
+          "name": "CreditBasket",
+          "group": "Credit",
+          "doc": "Credit basket"
+        },
+        {
+          "value": "8",
+          "name": "Exotic",
+          "group": "Other",
+          "doc": "Exotic"
+        },
+        {
+          "value": "9",
+          "name": "Common",
+          "group": "Equity",
+          "doc": "Common"
+        },
+        {
+          "value": "10",
+          "name": "Preferred",
+          "group": "Equity",
+          "doc": "Preferred"
+        },
+        {
+          "value": "11",
+          "name": "EquityIndex",
+          "group": "Equity",
+          "doc": "Equity index"
+        },
+        {
+          "value": "12",
+          "name": "EquityBasket",
+          "group": "Equity",
+          "doc": "Equity basket"
+        },
+        {
+          "value": "13",
+          "name": "Metals",
+          "group": "Commodity",
+          "doc": "Metals"
+        },
+        {
+          "value": "14",
+          "name": "Bullion",
+          "group": "Commodity",
+          "doc": "Bullion"
+        },
+        {
+          "value": "15",
+          "name": "Energy",
+          "group": "Commodity",
+          "doc": "Energy"
+        },
+        {
+          "value": "16",
+          "name": "CommodityIndex",
+          "group": "Commodity",
+          "doc": "Commodity index"
+        },
+        {
+          "value": "17",
+          "name": "Agricultural",
+          "group": "Commodity",
+          "doc": "Agricultural"
+        },
+        {
+          "value": "18",
+          "name": "Environmental",
+          "group": "Commodity",
+          "doc": "Environmental"
+        },
+        {
+          "value": "19",
+          "name": "Freight",
+          "group": "Commodity",
+          "doc": "Freight"
+        },
+        {
+          "value": "20",
+          "name": "Government",
+          "group": "Debt",
+          "doc": "Government"
+        },
+        {
+          "value": "21",
+          "name": "Agency",
+          "group": "Debt",
+          "doc": "Agency"
+        },
+        {
+          "value": "22",
+          "name": "Corporate",
+          "group": "Debt",
+          "doc": "Corporate"
+        },
+        {
+          "value": "23",
+          "name": "Financing",
+          "group": "Debt",
+          "doc": "Financing"
+        },
+        {
+          "value": "24",
+          "name": "MoneyMarket",
+          "group": "Debt",
+          "doc": "Money market"
+        },
+        {
+          "value": "25",
+          "name": "Mortgage",
+          "group": "Debt",
+          "doc": "Mortgage"
+        },
+        {
+          "value": "26",
+          "name": "Municipal",
+          "group": "Debt",
+          "doc": "Municipal"
+        },
+        {
+          "value": "27",
+          "name": "MutualFund",
+          "group": "Fund",
+          "doc": "Mutual fund"
+        },
+        {
+          "value": "28",
+          "name": "CollectiveInvestmentVehicle",
+          "group": "Fund",
+          "doc": "Collective investment vehicle"
+        },
+        {
+          "value": "29",
+          "name": "InvestmentProgram",
+          "group": "Fund",
+          "doc": "Investment program"
+        },
+        {
+          "value": "30",
+          "name": "SpecializedAccountProgram",
+          "group": "Fund",
+          "doc": "Specialized account program"
+        },
+        {
+          "value": "31",
+          "name": "TermLoan",
+          "group": "Loan Facility",
+          "doc": "Term loan"
+        },
+        {
+          "value": "32",
+          "name": "BridgeLoan",
+          "group": "Loan Facility",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "33",
+          "name": "LetterOfCredit",
+          "group": "Loan Facility",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "34",
+          "name": "DividendIndex",
+          "group": "Equity",
+          "doc": "Dividend index"
+        },
+        {
+          "value": "35",
+          "name": "StockDividend",
+          "group": "Equity",
+          "doc": "Stock dividend"
+        },
+        {
+          "value": "36",
+          "name": "ExchangeTradedFund",
+          "group": "Equity",
+          "doc": "Exchange traded fund"
+        },
+        {
+          "value": "37",
+          "name": "VolatilityIndex",
+          "group": "Equity",
+          "doc": "Volatility index"
+        },
+        {
+          "value": "38",
+          "name": "FXCrossRates",
+          "group": "Currency",
+          "doc": "FX cross rates"
+        },
+        {
+          "value": "39",
+          "name": "FXEmergingMarkets",
+          "group": "Currency",
+          "doc": "FX emerging markets"
+        },
+        {
+          "value": "40",
+          "name": "FXMajors",
+          "group": "Currency",
+          "doc": "FX Majors"
+        },
+        {
+          "value": "41",
+          "name": "Fertilizer",
+          "group": "Commodity",
+          "doc": "Fertilizer"
+        },
+        {
+          "value": "42",
+          "name": "IndustrialProduct",
+          "group": "Commodity",
+          "doc": "Industrial product"
+        },
+        {
+          "value": "43",
+          "name": "Inflation",
+          "group": "Commodity",
+          "doc": "Inflation"
+        },
+        {
+          "value": "44",
+          "name": "Paper",
+          "group": "Commodity",
+          "doc": "Paper"
+        },
+        {
+          "value": "45",
+          "name": "Polypropylene",
+          "group": "Commodity",
+          "doc": "Polypropylene"
+        },
+        {
+          "value": "46",
+          "name": "OfficialEconomicStatistics",
+          "group": "Commodity",
+          "doc": "Official economic statistics"
+        },
+        {
+          "value": "47",
+          "name": "OtherC10",
+          "group": "Other",
+          "doc": "Other C10"
+        },
+        {
+          "value": "48",
+          "name": "Other",
+          "group": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1978"
+    }
+  },
+  {
+    "name": "secondaryassettype",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to provide more specific description of the asset specified in SecondaryAssetSubClass(1978). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "display": "SecondaryAssetType",
+      "fix:tag": "1979"
+    }
+  },
+  {
+    "name": "blocktrdallocindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indication that a block trade will be allocated.",
+      "display": "BlockTrdAllocIndicator",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BlockToBeAllocated",
+          "doc": "Block to be allocated"
+        },
+        {
+          "value": "1",
+          "name": "BlockNotToBeAllocated",
+          "doc": "Block not to be allocated"
+        },
+        {
+          "value": "2",
+          "name": "AllocatedTrade",
+          "doc": "Allocated trade"
+        }
+      ],
+      "fix:tag": "1980"
+    }
+  },
+  {
+    "name": "nounderlyingevents",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of events in the repeating group.",
+      "display": "NoUnderlyingEvents",
+      "fix:tag": "1981"
+    }
+  },
+  {
+    "name": "underlyingeventtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Code to represent the type of event.",
+      "display": "UnderlyingEventType",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Put",
+          "doc": "Put"
+        },
+        {
+          "value": "2",
+          "name": "Call",
+          "doc": "Call"
+        },
+        {
+          "value": "3",
+          "name": "Tender",
+          "doc": "Tender"
+        },
+        {
+          "value": "4",
+          "name": "SinkingFundCall",
+          "doc": "Sinking fund call"
+        },
+        {
+          "value": "5",
+          "name": "Activation",
+          "doc": "Activation"
+        },
+        {
+          "value": "6",
+          "name": "Inactiviation",
+          "doc": "Inactivation"
+        },
+        {
+          "value": "7",
+          "name": "LastEligibleTradeDate",
+          "doc": "Last eligible trade date"
+        },
+        {
+          "value": "8",
+          "name": "SwapStartDate",
+          "doc": "Swap start date"
+        },
+        {
+          "value": "9",
+          "name": "SwapEndDate",
+          "doc": "Swap end date"
+        },
+        {
+          "value": "10",
+          "name": "SwapRollDate",
+          "doc": "Swap roll date"
+        },
+        {
+          "value": "11",
+          "name": "SwapNextStartDate",
+          "doc": "Swap next start date"
+        },
+        {
+          "value": "12",
+          "name": "SwapNextRollDate",
+          "doc": "Swap next roll date"
+        },
+        {
+          "value": "13",
+          "name": "FirstDeliveryDate",
+          "doc": "First delivery date"
+        },
+        {
+          "value": "14",
+          "name": "LastDeliveryDate",
+          "doc": "Last delivery date"
+        },
+        {
+          "value": "15",
+          "name": "InitialInventoryDueDate",
+          "doc": "Initial inventory due date"
+        },
+        {
+          "value": "16",
+          "name": "FinalInventoryDueDate",
+          "doc": "Final inventory due date"
+        },
+        {
+          "value": "17",
+          "name": "FirstIntentDate",
+          "doc": "First intent date"
+        },
+        {
+          "value": "18",
+          "name": "LastIntentDate",
+          "doc": "Last intent date"
+        },
+        {
+          "value": "19",
+          "name": "PositionRemovalDate",
+          "doc": "Position removal date"
+        },
+        {
+          "value": "20",
+          "name": "MinimumNotice",
+          "doc": "Minimum notice"
+        },
+        {
+          "value": "21",
+          "name": "DeliveryStartTime",
+          "doc": "Delivery start time"
+        },
+        {
+          "value": "22",
+          "name": "DeliveryEndTime",
+          "doc": "Delivery end time"
+        },
+        {
+          "value": "23",
+          "name": "FirstNoticeDate",
+          "doc": "First notice date"
+        },
+        {
+          "value": "24",
+          "name": "LastNoticeDate",
+          "doc": "Last notice date"
+        },
+        {
+          "value": "25",
+          "name": "FirstExerciseDate",
+          "doc": "First exercise date"
+        },
+        {
+          "value": "26",
+          "name": "RedemptionDate",
+          "doc": "Redemption date"
+        },
+        {
+          "value": "27",
+          "name": "TrdCntntnEfctvDt",
+          "doc": "Trade continuation effective date"
+        },
+        {
+          "value": "28",
+          "name": "FrontMonth",
+          "doc": "Front month"
+        },
+        {
+          "value": "29",
+          "name": "LeadMonth",
+          "doc": "Lead month"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1982"
+    }
+  },
+  {
+    "name": "underlyingeventdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The date of the event.",
+      "display": "UnderlyingEventDate",
+      "fix:tag": "1983"
+    }
+  },
+  {
+    "name": "underlyingeventtime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The time of the event. To be used in combination with UnderlyingEventDate(1983).",
+      "display": "UnderlyingEventTime",
+      "fix:tag": "1984"
+    }
+  },
+  {
+    "name": "underlyingeventtimeunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the event.",
+      "display": "UnderlyingEventTimeUnit",
+      "fix:tag": "1985"
+    }
+  },
+  {
+    "name": "underlyingeventtimeperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the event.",
+      "display": "UnderlyingEventTimePeriod",
+      "fix:tag": "1986"
+    }
+  },
+  {
+    "name": "underlyingeventpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Predetermined price of issue at event, if applicable.",
+      "display": "UnderlyingEventPx",
+      "fix:tag": "1987"
+    }
+  },
+  {
+    "name": "underlyingconstituentweight",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For a basket, or pool, describes the weight of each of the constituents within the basket. If not provided, it is assumed to be equal weighted.",
+      "display": "UnderlyingConstituentWeight",
+      "fix:tag": "1988"
+    }
+  },
+  {
+    "name": "underlyingcoupontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the coupon type of the underlying bond.",
+      "display": "UnderlyingCouponType",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Zero",
+          "doc": "Zero"
+        },
+        {
+          "value": "1",
+          "name": "FixedRate",
+          "doc": "Fixed rate"
+        },
+        {
+          "value": "2",
+          "name": "FloatingRate",
+          "doc": "Floating rate"
+        },
+        {
+          "value": "3",
+          "name": "Structured",
+          "doc": "Structured"
+        }
+      ],
+      "fix:tag": "1989"
+    }
+  },
+  {
+    "name": "underlyingtotalissuedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued security.",
+      "display": "UnderlyingTotalIssuedAmount",
+      "fix:tag": "1990"
+    }
+  },
+  {
+    "name": "underlyingcouponfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
+      "display": "UnderlyingCouponFrequencyPeriod",
+      "fix:tag": "1991"
+    }
+  },
+  {
+    "name": "underlyingcouponfrequencyunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "display": "UnderlyingCouponFrequencyUnit",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "doc": "Day"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "doc": "Week"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "doc": "Month"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "doc": "Year"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "doc": "Minute"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "doc": "Second"
+        },
+        {
+          "value": "T",
+          "name": "Term",
+          "doc": "Term"
+        }
+      ],
+      "fix:tag": "1992"
+    }
+  },
+  {
+    "name": "underlyingcoupondaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "display": "UnderlyingCouponDayCount",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "OneOne",
+          "doc": "1/1"
+        },
+        {
+          "value": "1",
+          "name": "ThirtyThreeSixtyUS",
+          "doc": "30/360 (30U/360 or Bond Basis)"
+        },
+        {
+          "value": "2",
+          "name": "ThirtyThreeSixtySIA",
+          "doc": "30/360 (SIA)"
+        },
+        {
+          "value": "3",
+          "name": "ThirtyThreeSixtyM",
+          "doc": "30/360M"
+        },
+        {
+          "value": "4",
+          "name": "ThirtyEThreeSixty",
+          "doc": "30E/360 (Eurobond Basis)"
+        },
+        {
+          "value": "5",
+          "name": "ThirtyEThreeSixtyISDA",
+          "doc": "30E/360 (ISDA)"
+        },
+        {
+          "value": "6",
+          "name": "ActThreeSixty",
+          "doc": "Act/360"
+        },
+        {
+          "value": "7",
+          "name": "ActThreeSixtyFiveFixed",
+          "doc": "Act/365 (FIXED)"
+        },
+        {
+          "value": "8",
+          "name": "ActActAFB",
+          "doc": "Act/Act (AFB)"
+        },
+        {
+          "value": "9",
+          "name": "ActActICMA",
+          "doc": "Act/Act (ICMA)"
+        },
+        {
+          "value": "10",
+          "name": "ActActISMAUltimo",
+          "doc": "Act/Act (ICMA Ultimo)"
+        },
+        {
+          "value": "11",
+          "name": "ActActISDA",
+          "doc": "Act/Act (ISDA)"
+        },
+        {
+          "value": "12",
+          "name": "BusTwoFiftyTwo",
+          "doc": "BUS/252"
+        },
+        {
+          "value": "13",
+          "name": "ThirtyEPlusThreeSixty",
+          "doc": "30E+/360"
+        },
+        {
+          "value": "14",
+          "name": "ActThreeSixtyFiveL",
+          "doc": "Act/365L"
+        },
+        {
+          "value": "15",
+          "name": "NLThreeSixtyFive",
+          "doc": "NL365"
+        },
+        {
+          "value": "16",
+          "name": "NLThreeSixty",
+          "doc": "NL360"
+        },
+        {
+          "value": "17",
+          "name": "Act364",
+          "doc": "Act/364"
+        },
+        {
+          "value": "18",
+          "name": "ThirtyThreeSixtyFive",
+          "doc": "30/365"
+        },
+        {
+          "value": "19",
+          "name": "ThirtyActual",
+          "doc": "30/Actual"
+        },
+        {
+          "value": "20",
+          "name": "ThirtyThreeSixtyICMA",
+          "doc": "30/360 (ICMA or basis rule)"
+        },
+        {
+          "value": "21",
+          "name": "ThirtyETwoThreeSixty",
+          "doc": "30E2/360 (Eurobond basis model two)"
+        },
+        {
+          "value": "22",
+          "name": "ThirtyEThreeThreeSixty",
+          "doc": "30E3/360 (Eurobond basis model three)"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "doc": "Other"
+        }
+      ],
+      "fix:tag": "1993"
+    }
+  },
+  {
+    "name": "underlyingobligationid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For a CDS basket or pool identifies the reference obligation.",
+      "display": "UnderlyingObligationID",
+      "fix:tag": "1994"
+    }
+  },
+  {
+    "name": "underlyingobligationidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the source scheme of the UnderlyingObligationID(1994).",
+      "display": "UnderlyingObligationIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "1995"
+    }
+  },
+  {
+    "name": "underlyingequityid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the equity in which a convertible bond can be converted.",
+      "display": "UnderlyingEquityID",
+      "fix:tag": "1996"
+    }
+  },
+  {
+    "name": "underlyingequityidsource",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the source of the UnderlyingEquityID(1996).",
+      "display": "UnderlyingEquityIDSource",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "doc": "SEDOL"
+        },
+        {
+          "value": "3",
+          "name": "QUIK",
+          "doc": "QUIK"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "doc": "ISIN"
+        },
+        {
+          "value": "5",
+          "name": "RICCode",
+          "doc": "RIC"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "7",
+          "name": "ISOCountryCode",
+          "doc": "ISO Country Code"
+        },
+        {
+          "value": "8",
+          "name": "ExchangeSymbol",
+          "doc": "Exchange symbol"
+        },
+        {
+          "value": "9",
+          "name": "ConsolidatedTapeAssociation",
+          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
+        },
+        {
+          "value": "A",
+          "name": "BloombergSymbol",
+          "doc": "Bloomberg Symbol"
+        },
+        {
+          "value": "B",
+          "name": "Wertpapier",
+          "doc": "Wertpapier"
+        },
+        {
+          "value": "C",
+          "name": "Dutch",
+          "doc": "Dutch"
+        },
+        {
+          "value": "D",
+          "name": "Valoren",
+          "doc": "Valoren"
+        },
+        {
+          "value": "E",
+          "name": "Sicovam",
+          "doc": "Sicovam"
+        },
+        {
+          "value": "F",
+          "name": "Belgian",
+          "doc": "Belgian"
+        },
+        {
+          "value": "G",
+          "name": "Common",
+          "doc": "\"Common\" (Clearstream and Euroclear)"
+        },
+        {
+          "value": "H",
+          "name": "ClearingHouse",
+          "doc": "Clearing house / Clearing organization"
+        },
+        {
+          "value": "I",
+          "name": "ISDAFpMLSpecification",
+          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
+        },
+        {
+          "value": "J",
+          "name": "OptionPriceReportingAuthority",
+          "doc": "Option Price Reporting Authority"
+        },
+        {
+          "value": "K",
+          "name": "ISDAFpMLURL",
+          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
+        },
+        {
+          "value": "L",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "M",
+          "name": "MarketplaceAssignedIdentifier",
+          "doc": "Marketplace-assigned Identifier"
+        },
+        {
+          "value": "N",
+          "name": "MarkitREDEntityCLIP",
+          "doc": "Markit RED entity CLIP"
+        },
+        {
+          "value": "P",
+          "name": "MarkitREDPairCLIP",
+          "doc": "Markit RED pair CLIP"
+        },
+        {
+          "value": "Q",
+          "name": "CFTCCommodityCode",
+          "doc": "CFTC commodity code"
+        },
+        {
+          "value": "R",
+          "name": "ISDACommodityReferencePrice",
+          "doc": "ISDA Commodity Reference Price"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "T",
+          "name": "LegalEntityIdentifier",
+          "doc": "Legal entity identifier"
+        },
+        {
+          "value": "U",
+          "name": "Synthetic",
+          "doc": "Synthetic"
+        },
+        {
+          "value": "V",
+          "name": "FidessaInstrumentMnemonic",
+          "doc": "Fidessa Instrument Mnemonic (FIM)"
+        },
+        {
+          "value": "W",
+          "name": "IndexName",
+          "doc": "Index name"
+        },
+        {
+          "value": "X",
+          "name": "UniformSymbol",
+          "doc": "Uniform Symbol (UMTF Symbol)"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
+      "fix:tag": "1997"
+    }
+  },
+  {
+    "name": "underlyinglienseniority",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the seniority level of the lien in a loan.",
+      "display": "UnderlyingLienSeniority",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unknown",
+          "doc": "Unknown"
+        },
+        {
+          "value": "1",
+          "name": "FirstLien",
+          "doc": "First lien"
+        },
+        {
+          "value": "2",
+          "name": "SecondLien",
+          "doc": "Second lien"
+        },
+        {
+          "value": "3",
+          "name": "ThirdLien",
+          "doc": "Third lien"
+        }
+      ],
+      "fix:tag": "1998"
+    }
+  },
+  {
+    "name": "underlyingloanfacility",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
+      "display": "UnderlyingLoanFacility",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BridgeLoan",
+          "doc": "Bridge loan"
+        },
+        {
+          "value": "1",
+          "name": "LetterOfCredit",
+          "doc": "Letter of credit"
+        },
+        {
+          "value": "2",
+          "name": "RevolvingLoan",
+          "doc": "Revolving loan"
+        },
+        {
+          "value": "3",
+          "name": "SwinglineFunding",
+          "doc": "Swingline funding"
+        },
+        {
+          "value": "4",
+          "name": "TermLoan",
+          "doc": "Term loan"
+        },
+        {
+          "value": "5",
+          "name": "TradeClaim",
+          "doc": "Trade claim"
+        }
+      ],
+      "fix:tag": "1999"
+    }
+  }
+]

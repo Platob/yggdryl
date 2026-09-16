@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collinquiryqualifier"
+          "fix:field": "collinquiryqualifier",
+          "fix:tag": "896"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisebusinessdayconvention"
+          "fix:field": "legoptionexercisebusinessdayconvention",
+          "fix:tag": "41493"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegoptionexercisebusinesscenters"
+          "fix:field": "nolegoptionexercisebusinesscenters",
+          "fix:tag": "41491"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegoptionexercisedates"
+          "fix:field": "nolegoptionexercisedates",
+          "fix:tag": "41512"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseearliestdateoffsetdaytype"
+          "fix:field": "legoptionexerciseearliestdateoffsetdaytype",
+          "fix:tag": "41494"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseearliestdateoffsetperiod"
+          "fix:field": "legoptionexerciseearliestdateoffsetperiod",
+          "fix:tag": "41495"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseearliestdateoffsetunit"
+          "fix:field": "legoptionexerciseearliestdateoffsetunit",
+          "fix:tag": "41496"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisefrequencyperiod"
+          "fix:field": "legoptionexercisefrequencyperiod",
+          "fix:tag": "41497"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisefrequencyunit"
+          "fix:field": "legoptionexercisefrequencyunit",
+          "fix:tag": "41498"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdateunadjusted"
+          "fix:field": "legoptionexercisestartdateunadjusted",
+          "fix:tag": "41499"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdaterelativeto"
+          "fix:field": "legoptionexercisestartdaterelativeto",
+          "fix:tag": "41500"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdateoffsetperiod"
+          "fix:field": "legoptionexercisestartdateoffsetperiod",
+          "fix:tag": "41501"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdateoffsetunit"
+          "fix:field": "legoptionexercisestartdateoffsetunit",
+          "fix:tag": "41502"
         }
       },
       {
@@ -150,7 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdateoffsetdaytype"
+          "fix:field": "legoptionexercisestartdateoffsetdaytype",
+          "fix:tag": "41503"
         }
       },
       {
@@ -160,7 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisestartdateadjusted"
+          "fix:field": "legoptionexercisestartdateadjusted",
+          "fix:tag": "41504"
         }
       },
       {
@@ -170,7 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseskip"
+          "fix:field": "legoptionexerciseskip",
+          "fix:tag": "41505"
         }
       },
       {
@@ -180,7 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisenominationdeadline"
+          "fix:field": "legoptionexercisenominationdeadline",
+          "fix:tag": "41506"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisefirstdateunadjusted"
+          "fix:field": "legoptionexercisefirstdateunadjusted",
+          "fix:tag": "41507"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciselastdateunadjusted"
+          "fix:field": "legoptionexerciselastdateunadjusted",
+          "fix:tag": "41508"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseearliesttime"
+          "fix:field": "legoptionexerciseearliesttime",
+          "fix:tag": "41509"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciselatesttime"
+          "fix:field": "legoptionexerciselatesttime",
+          "fix:tag": "41510"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisetimebusinesscenter"
+          "fix:field": "legoptionexercisetimebusinesscenter",
+          "fix:tag": "41511"
         }
       }
     ]

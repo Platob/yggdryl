@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositionid"
+          "fix:field": "relatedpositionid",
+          "fix:tag": "1862"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositionidsource"
+          "fix:field": "relatedpositionidsource",
+          "fix:tag": "1863"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositiondate"
+          "fix:field": "relatedpositiondate",
+          "fix:tag": "1864"
         }
       }
     ]

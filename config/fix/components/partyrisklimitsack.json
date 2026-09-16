@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction"
+          "fix:field": "listupdateaction",
+          "fix:tag": "1324"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitstatus"
+          "fix:field": "risklimitstatus",
+          "fix:tag": "1763"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitresult"
+          "fix:field": "risklimitresult",
+          "fix:tag": "1764"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails"
+          "fix:field": "nopartydetails",
+          "fix:tag": "1671"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norisklimits"
+          "fix:field": "norisklimits",
+          "fix:tag": "1669"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitid"
+          "fix:field": "risklimitid",
+          "fix:tag": "1670"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckmodeltype"
+          "fix:field": "risklimitcheckmodeltype",
+          "fix:tag": "2339"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext"
+          "fix:field": "rejecttext",
+          "fix:tag": "1328"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen"
+          "fix:field": "encodedrejecttextlen",
+          "fix:tag": "1664"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext"
+          "fix:field": "encodedrejecttext",
+          "fix:tag": "1665"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyrisklimitstatus"
+          "fix:field": "partyrisklimitstatus",
+          "fix:tag": "2355"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlcurrency"
+          "fix:field": "underlyingcashsettlcurrency",
+          "fix:tag": "42042"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlvaluationfirstbusinessdayoffset"
+          "fix:field": "underlyingcashsettlvaluationfirstbusinessdayoffset",
+          "fix:tag": "42043"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlvaluationsubsequentbusinessdaysoffset"
+          "fix:field": "underlyingcashsettlvaluationsubsequentbusinessdaysoffset",
+          "fix:tag": "42044"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlnumofvaluationdates"
+          "fix:field": "underlyingcashsettlnumofvaluationdates",
+          "fix:tag": "42045"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlvaluationtime"
+          "fix:field": "underlyingcashsettlvaluationtime",
+          "fix:tag": "42046"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlbusinesscenter"
+          "fix:field": "underlyingcashsettlbusinesscenter",
+          "fix:tag": "42047"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlquotemethod"
+          "fix:field": "underlyingcashsettlquotemethod",
+          "fix:tag": "42048"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlquoteamount"
+          "fix:field": "underlyingcashsettlquoteamount",
+          "fix:tag": "42049"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlquotecurrency"
+          "fix:field": "underlyingcashsettlquotecurrency",
+          "fix:tag": "42050"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlminimumquoteamount"
+          "fix:field": "underlyingcashsettlminimumquoteamount",
+          "fix:tag": "42051"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlminimumquotecurrency"
+          "fix:field": "underlyingcashsettlminimumquotecurrency",
+          "fix:tag": "42052"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcashsettldealers"
+          "fix:field": "nounderlyingcashsettldealers",
+          "fix:tag": "42039"
         }
       },
       {
@@ -140,7 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlpricesource"
+          "fix:field": "underlyingcashsettlpricesource",
+          "fix:tag": "42797"
         }
       },
       {
@@ -150,7 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlpricedefault"
+          "fix:field": "underlyingcashsettlpricedefault",
+          "fix:tag": "42798"
         }
       },
       {
@@ -160,7 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlbusinessdays"
+          "fix:field": "underlyingcashsettlbusinessdays",
+          "fix:tag": "42053"
         }
       },
       {
@@ -170,7 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlamount"
+          "fix:field": "underlyingcashsettlamount",
+          "fix:tag": "42054"
         }
       },
       {
@@ -190,7 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlrecoveryfactor"
+          "fix:field": "underlyingcashsettlrecoveryfactor",
+          "fix:tag": "42055"
         }
       },
       {
@@ -200,7 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlfixedtermindicator"
+          "fix:field": "underlyingcashsettlfixedtermindicator",
+          "fix:tag": "42056"
         }
       },
       {
@@ -210,7 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlaccruedinterestindicator"
+          "fix:field": "underlyingcashsettlaccruedinterestindicator",
+          "fix:tag": "42057"
         }
       },
       {
@@ -220,7 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettlvaluationmethod"
+          "fix:field": "underlyingcashsettlvaluationmethod",
+          "fix:tag": "42058"
         }
       },
       {
@@ -230,7 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettltermxid"
+          "fix:field": "underlyingcashsettltermxid",
+          "fix:tag": "42059"
         }
       }
     ]

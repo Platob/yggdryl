@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyrelationship"
+          "fix:field": "partyrelationship",
+          "fix:tag": "1515"
         }
       }
     ]

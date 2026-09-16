@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventperiodtype"
+          "fix:field": "legcomplexeventperiodtype",
+          "fix:tag": "41380"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventbusinesscenter"
+          "fix:field": "legcomplexeventbusinesscenter",
+          "fix:tag": "41381"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventschedules"
+          "fix:field": "nolegcomplexeventschedules",
+          "fix:tag": "41400"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventperioddatetimes"
+          "fix:field": "nolegcomplexeventperioddatetimes",
+          "fix:tag": "41376"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventaveragingobservations"
+          "fix:field": "nolegcomplexeventaveragingobservations",
+          "fix:tag": "41363"
         }
       },
       {

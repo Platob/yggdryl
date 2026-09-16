@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "valuechecktype"
+          "fix:field": "valuechecktype",
+          "fix:tag": "1869"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "valuecheckaction"
+          "fix:field": "valuecheckaction",
+          "fix:tag": "1870"
         }
       }
     ]

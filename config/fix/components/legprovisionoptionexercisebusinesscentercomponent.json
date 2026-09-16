@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisebusinesscenter"
+          "fix:field": "legprovisionoptionexercisebusinesscenter",
+          "fix:tag": "40477"
         }
       }
     ]

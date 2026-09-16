@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldealer"
+          "fix:field": "cashsettldealer",
+          "fix:tag": "40032"
         }
       }
     ]

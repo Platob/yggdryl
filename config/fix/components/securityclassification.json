@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityclassificationreason"
+          "fix:field": "securityclassificationreason",
+          "fix:tag": "1583"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityclassificationvalue"
+          "fix:field": "securityclassificationvalue",
+          "fix:tag": "1584"
         }
       }
     ]

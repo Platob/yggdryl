@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventperioddate"
+          "fix:field": "legcomplexeventperioddate",
+          "fix:tag": "41377"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventperiodtime"
+          "fix:field": "legcomplexeventperiodtime",
+          "fix:tag": "41378"
         }
       }
     ]

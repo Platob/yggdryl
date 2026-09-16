@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulaimagelength"
+          "fix:field": "legpaymentstreamformulaimagelength",
+          "fix:tag": "42451"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulaimage"
+          "fix:field": "legpaymentstreamformulaimage",
+          "fix:tag": "42452"
         }
       }
     ]

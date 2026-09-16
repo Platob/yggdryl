@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityaltid"
+          "fix:field": "legstreamcommodityaltid",
+          "fix:tag": "41675"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityaltidsource"
+          "fix:field": "legstreamcommodityaltidsource",
+          "fix:tag": "41676"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertype"
+          "fix:field": "triggertype",
+          "fix:tag": "1100"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggeraction"
+          "fix:field": "triggeraction",
+          "fix:tag": "1101"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerscope"
+          "fix:field": "triggerscope",
+          "fix:tag": "1628"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerprice"
+          "fix:field": "triggerprice",
+          "fix:tag": "1102"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersymbol"
+          "fix:field": "triggersymbol",
+          "fix:tag": "1103"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecurityid"
+          "fix:field": "triggersecurityid",
+          "fix:tag": "1104"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecurityidsource"
+          "fix:field": "triggersecurityidsource",
+          "fix:tag": "1105"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecuritydesc"
+          "fix:field": "triggersecuritydesc",
+          "fix:tag": "1106"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricetype"
+          "fix:field": "triggerpricetype",
+          "fix:tag": "1107"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricetypescope"
+          "fix:field": "triggerpricetypescope",
+          "fix:tag": "1108"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricedirection"
+          "fix:field": "triggerpricedirection",
+          "fix:tag": "1109"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggernewprice"
+          "fix:field": "triggernewprice",
+          "fix:tag": "1110"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerordertype"
+          "fix:field": "triggerordertype",
+          "fix:tag": "1111"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggernewqty"
+          "fix:field": "triggernewqty",
+          "fix:tag": "1112"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertradingsessionid"
+          "fix:field": "triggertradingsessionid",
+          "fix:tag": "1113"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertradingsessionsubid"
+          "fix:field": "triggertradingsessionsubid",
+          "fix:tag": "1114"
         }
       }
     ]

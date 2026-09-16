@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesource"
+          "fix:field": "legratesource",
+          "fix:tag": "3117"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcetype"
+          "fix:field": "legratesourcetype",
+          "fix:tag": "3118"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreferencepage"
+          "fix:field": "legreferencepage",
+          "fix:tag": "3119"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcereferencepageheading"
+          "fix:field": "legratesourcereferencepageheading",
+          "fix:tag": "3120"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcesymbol"
+          "fix:field": "legratesourcesymbol",
+          "fix:tag": "3121"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmark"
+          "fix:field": "legfxbenchmark",
+          "fix:tag": "3122"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarkdate"
+          "fix:field": "legfxbenchmarkdate",
+          "fix:tag": "3123"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarktime"
+          "fix:field": "legfxbenchmarktime",
+          "fix:tag": "3124"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarkbusinesscenter"
+          "fix:field": "legfxbenchmarkbusinesscenter",
+          "fix:tag": "3125"
         }
       }
     ]

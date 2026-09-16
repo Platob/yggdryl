@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventschedulestartdate"
+          "fix:field": "underlyingcomplexeventschedulestartdate",
+          "fix:tag": "41751"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventscheduleenddate"
+          "fix:field": "underlyingcomplexeventscheduleenddate",
+          "fix:tag": "41752"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventschedulefrequencyperiod"
+          "fix:field": "underlyingcomplexeventschedulefrequencyperiod",
+          "fix:tag": "41753"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventschedulefrequencyunit"
+          "fix:field": "underlyingcomplexeventschedulefrequencyunit",
+          "fix:tag": "41754"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventschedulerollconvention"
+          "fix:field": "underlyingcomplexeventschedulerollconvention",
+          "fix:tag": "41755"
         }
       }
     ]

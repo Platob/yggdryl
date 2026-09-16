@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperiodbusinesscenter"
+          "fix:field": "underlyingstreamcalculationperiodbusinesscenter",
+          "fix:tag": "40557"
         }
       }
     ]

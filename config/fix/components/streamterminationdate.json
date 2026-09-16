@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateunadjusted"
+          "fix:field": "streamterminationdateunadjusted",
+          "fix:tag": "40065"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdatebusinessdayconvention"
+          "fix:field": "streamterminationdatebusinessdayconvention",
+          "fix:tag": "40066"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamterminationdatebusinesscenters"
+          "fix:field": "nostreamterminationdatebusinesscenters",
+          "fix:tag": "40961"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdaterelativeto"
+          "fix:field": "streamterminationdaterelativeto",
+          "fix:tag": "40068"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetperiod"
+          "fix:field": "streamterminationdateoffsetperiod",
+          "fix:tag": "40069"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetunit"
+          "fix:field": "streamterminationdateoffsetunit",
+          "fix:tag": "40070"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetdaytype"
+          "fix:field": "streamterminationdateoffsetdaytype",
+          "fix:tag": "40071"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateadjusted"
+          "fix:field": "streamterminationdateadjusted",
+          "fix:tag": "40072"
         }
       }
     ]

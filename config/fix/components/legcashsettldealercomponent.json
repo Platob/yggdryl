@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldealer"
+          "fix:field": "legcashsettldealer",
+          "fix:tag": "41343"
         }
       }
     ]

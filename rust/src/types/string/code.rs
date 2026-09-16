@@ -102,6 +102,13 @@ impl Currency {
     /// ISO 4217's code for no currency.
     const NONE: &str = "XXX";
 
+    /// The currency stated as none: ISO 4217's `XXX`, which a merge takes
+    /// the other currency over.
+    #[must_use]
+    pub fn none() -> Self {
+        Self(SmolStr::new_static(Self::NONE))
+    }
+
     /// The better of two currencies: this one, unless it is `XXX`.
     fn merged(self, other: &Self) -> Self {
         if self.as_str() == Self::NONE {
@@ -115,6 +122,13 @@ impl Currency {
 impl Mic {
     /// ISO 10383's code for no market.
     const NONE: &str = "XXXX";
+
+    /// The market stated as none: ISO 10383's `XXXX`, which a merge takes
+    /// the other market over.
+    #[must_use]
+    pub fn none() -> Self {
+        Self(SmolStr::new_static(Self::NONE))
+    }
 
     /// The better of two markets: this one, unless it is `XXXX`.
     fn merged(self, other: &Self) -> Self {
@@ -631,6 +645,13 @@ impl Side {
     /// The spelling of a side stated as none.
     const UNKNOWN: &str = "UNKNOWN";
 
+    /// The side stated as none: `UNKNOWN`, which takes no lane and which a
+    /// merge takes the other side over.
+    #[must_use]
+    pub fn unknown() -> Self {
+        Self(SmolStr::new_static(Self::UNKNOWN))
+    }
+
     /// The sides that take the bid lane of a quote: a party willing to pay.
     ///
     /// Domain knowledge, written where a reviewer can check it: Orchestra
@@ -795,6 +816,13 @@ static SIDE_NAMES: &[(&str, &str)] = &[
 ];
 
 impl State {
+    /// The state stated as none: `00UNKNOWN`, rank zero, which every other
+    /// state is further along than.
+    #[must_use]
+    pub fn unknown() -> Self {
+        Self(SmolStr::new_static("00UNKNOWN"))
+    }
+
     /// The better of two states: this one, unless it reached none - rank
     /// `00` - or the other reached further.
     fn merged(self, other: &Self) -> Self {

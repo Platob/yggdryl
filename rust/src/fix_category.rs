@@ -11,17 +11,15 @@ use crate::{Error, Result};
 /// category for it.
 ///
 /// ```
-/// use yggdryl::{DataType, FixCategory, FixRegistry};
+/// use yggdryl::{DataType, FixRegistry};
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut registry = FixRegistry::new();
 /// let component = DataType::from_fields([])?.required_field("Party");
-/// registry.create_definition(FixCategory::Components, component)?;
-/// // Beside the crate's own `instids`, which every registry holds from
-/// // construction as it holds the crate's own fields: a definition is
-/// // filed by the shape it has, and a Struct column of this crate's is a
-/// // component like any other.
-/// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
-/// assert!(registry.get_field("Party").is_none());
+/// registry.insert(component)?;
+/// // A definition is filed by the shape it has: a Struct is a component,
+/// // and every shape is reached through the one set of field doors.
+/// assert_eq!(registry.field_by_name("Party")?.dtype(), &DataType::from_fields([])?);
+/// assert!(registry.get_field_by_tag(448).is_none());
 /// # Ok(())
 /// # }
 /// ```

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdatebusinessdayconvention"
+          "fix:field": "legoptionexerciseexpirationdatebusinessdayconvention",
+          "fix:tag": "41517"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegoptionexerciseexpirationdatebusinesscenters"
+          "fix:field": "nolegoptionexerciseexpirationdatebusinesscenters",
+          "fix:tag": "41515"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegoptionexerciseexpirationdates"
+          "fix:field": "nolegoptionexerciseexpirationdates",
+          "fix:tag": "41527"
         }
       },
       {
@@ -60,7 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdaterelativeto"
+          "fix:field": "legoptionexerciseexpirationdaterelativeto",
+          "fix:tag": "41518"
         }
       },
       {
@@ -70,7 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdateoffsetperiod"
+          "fix:field": "legoptionexerciseexpirationdateoffsetperiod",
+          "fix:tag": "41519"
         }
       },
       {
@@ -80,7 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdateoffsetunit"
+          "fix:field": "legoptionexerciseexpirationdateoffsetunit",
+          "fix:tag": "41520"
         }
       },
       {
@@ -90,7 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationfrequencyperiod"
+          "fix:field": "legoptionexerciseexpirationfrequencyperiod",
+          "fix:tag": "41521"
         }
       },
       {
@@ -100,7 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationfrequencyunit"
+          "fix:field": "legoptionexerciseexpirationfrequencyunit",
+          "fix:tag": "41522"
         }
       },
       {
@@ -110,7 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationrollconvention"
+          "fix:field": "legoptionexerciseexpirationrollconvention",
+          "fix:tag": "41523"
         }
       },
       {
@@ -120,7 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdateoffsetdaytype"
+          "fix:field": "legoptionexerciseexpirationdateoffsetdaytype",
+          "fix:tag": "41524"
         }
       },
       {
@@ -130,7 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationtime"
+          "fix:field": "legoptionexerciseexpirationtime",
+          "fix:tag": "41525"
         }
       },
       {
@@ -140,7 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationtimebusinesscenter"
+          "fix:field": "legoptionexerciseexpirationtimebusinesscenter",
+          "fix:tag": "41526"
         }
       }
     ]

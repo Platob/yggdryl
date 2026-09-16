@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampricingdayofweek"
+          "fix:field": "legpaymentstreampricingdayofweek",
+          "fix:tag": "41597"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampricingdaynumber"
+          "fix:field": "legpaymentstreampricingdaynumber",
+          "fix:tag": "41598"
         }
       }
     ]

@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfinancingtermsupplementdesc"
+          "fix:field": "legfinancingtermsupplementdesc",
+          "fix:tag": "42201"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfinancingtermsupplementdate"
+          "fix:field": "legfinancingtermsupplementdate",
+          "fix:tag": "42202"
         }
       }
     ]

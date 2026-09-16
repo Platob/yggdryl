@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecurityaltid"
+          "fix:field": "instrumentscopesecurityaltid",
+          "fix:tag": "1541"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecurityaltidsource"
+          "fix:field": "instrumentscopesecurityaltidsource",
+          "fix:tag": "1542"
         }
       }
     ]

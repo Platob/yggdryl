@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businessdayconvention"
+          "fix:field": "businessdayconvention",
+          "fix:tag": "40921"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobusinesscenters"
+          "fix:field": "nobusinesscenters",
+          "fix:tag": "40278"
         }
       },
       {
@@ -40,7 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "daterollconvention"
+          "fix:field": "daterollconvention",
+          "fix:tag": "40922"
         }
       }
     ]

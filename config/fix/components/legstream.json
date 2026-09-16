@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamtype"
+          "fix:field": "legstreamtype",
+          "fix:tag": "40242"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamxid"
+          "fix:field": "legstreamxid",
+          "fix:tag": "41700"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamdesc"
+          "fix:field": "legstreamdesc",
+          "fix:tag": "40243"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamversion"
+          "fix:field": "legstreamversion",
+          "fix:tag": "42583"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamversioneffectivedate"
+          "fix:field": "legstreamversioneffectivedate",
+          "fix:tag": "42584"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreampayside"
+          "fix:field": "legstreampayside",
+          "fix:tag": "40244"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamreceiveside"
+          "fix:field": "legstreamreceiveside",
+          "fix:tag": "40245"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionalxidref"
+          "fix:field": "legstreamnotionalxidref",
+          "fix:tag": "41702"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotional"
+          "fix:field": "legstreamnotional",
+          "fix:tag": "40246"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcurrency"
+          "fix:field": "legstreamcurrency",
+          "fix:tag": "40247"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionaldeterminationmethod"
+          "fix:field": "legstreamnotionaldeterminationmethod",
+          "fix:tag": "42585"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionaladjustments"
+          "fix:field": "legstreamnotionaladjustments",
+          "fix:tag": "42586"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionalfrequencyperiod"
+          "fix:field": "legstreamnotionalfrequencyperiod",
+          "fix:tag": "41703"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionalfrequencyunit"
+          "fix:field": "legstreamnotionalfrequencyunit",
+          "fix:tag": "41704"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionalcommodityfrequency"
+          "fix:field": "legstreamnotionalcommodityfrequency",
+          "fix:tag": "41705"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamnotionalunitofmeasure"
+          "fix:field": "legstreamnotionalunitofmeasure",
+          "fix:tag": "41706"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamtotalnotional"
+          "fix:field": "legstreamtotalnotional",
+          "fix:tag": "41707"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamtotalnotionalunitofmeasure"
+          "fix:field": "legstreamtotalnotionalunitofmeasure",
+          "fix:tag": "41708"
         }
       },
       {
@@ -240,7 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentschedules"
+          "fix:field": "nolegpaymentschedules",
+          "fix:tag": "40374"
         }
       },
       {
@@ -260,7 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstubs"
+          "fix:field": "nolegpaymentstubs",
+          "fix:tag": "40418"
         }
       },
       {
@@ -290,7 +310,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdeliveryschedules"
+          "fix:field": "nolegdeliveryschedules",
+          "fix:tag": "41408"
         }
       },
       {
@@ -310,7 +331,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamtext"
+          "fix:field": "legstreamtext",
+          "fix:tag": "40248"
         }
       },
       {
@@ -320,7 +342,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamtextlen"
+          "fix:field": "encodedlegstreamtextlen",
+          "fix:tag": "40978"
         }
       },
       {
@@ -330,7 +353,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamtext"
+          "fix:field": "encodedlegstreamtext",
+          "fix:tag": "40979"
         }
       }
     ]

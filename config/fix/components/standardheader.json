@@ -10,7 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "beginstring"
+          "fix:field": "beginstring",
+          "fix:tag": "8"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bodylength"
+          "fix:field": "bodylength",
+          "fix:tag": "9"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "msgtype"
+          "fix:field": "msgtype",
+          "fix:tag": "35"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applverid"
+          "fix:field": "applverid",
+          "fix:tag": "1128"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applextid"
+          "fix:field": "applextid",
+          "fix:tag": "1156"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cstmapplverid"
+          "fix:field": "cstmapplverid",
+          "fix:tag": "1129"
         }
       },
       {
@@ -70,7 +76,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "sendercompid"
+          "fix:field": "sendercompid",
+          "fix:tag": "49"
         }
       },
       {
@@ -80,7 +87,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "targetcompid"
+          "fix:field": "targetcompid",
+          "fix:tag": "56"
         }
       },
       {
@@ -90,7 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "onbehalfofcompid"
+          "fix:field": "onbehalfofcompid",
+          "fix:tag": "115"
         }
       },
       {
@@ -100,7 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "delivertocompid"
+          "fix:field": "delivertocompid",
+          "fix:tag": "128"
         }
       },
       {
@@ -110,7 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securedatalen"
+          "fix:field": "securedatalen",
+          "fix:tag": "90"
         }
       },
       {
@@ -120,7 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securedata"
+          "fix:field": "securedata",
+          "fix:tag": "91"
         }
       },
       {
@@ -130,7 +142,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "msgseqnum"
+          "fix:field": "msgseqnum",
+          "fix:tag": "34"
         }
       },
       {
@@ -140,7 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sendersubid"
+          "fix:field": "sendersubid",
+          "fix:tag": "50"
         }
       },
       {
@@ -150,7 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "senderlocationid"
+          "fix:field": "senderlocationid",
+          "fix:tag": "142"
         }
       },
       {
@@ -160,7 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "targetsubid"
+          "fix:field": "targetsubid",
+          "fix:tag": "57"
         }
       },
       {
@@ -170,7 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "targetlocationid"
+          "fix:field": "targetlocationid",
+          "fix:tag": "143"
         }
       },
       {
@@ -180,7 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "onbehalfofsubid"
+          "fix:field": "onbehalfofsubid",
+          "fix:tag": "116"
         }
       },
       {
@@ -190,7 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "onbehalfoflocationid"
+          "fix:field": "onbehalfoflocationid",
+          "fix:tag": "144"
         }
       },
       {
@@ -200,7 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "delivertosubid"
+          "fix:field": "delivertosubid",
+          "fix:tag": "129"
         }
       },
       {
@@ -210,7 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "delivertolocationid"
+          "fix:field": "delivertolocationid",
+          "fix:tag": "145"
         }
       },
       {
@@ -220,7 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "possdupflag"
+          "fix:field": "possdupflag",
+          "fix:tag": "43"
         }
       },
       {
@@ -230,7 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "possresend"
+          "fix:field": "possresend",
+          "fix:tag": "97"
         }
       },
       {
@@ -240,7 +263,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "sendingtime"
+          "fix:field": "sendingtime",
+          "fix:tag": "52"
         }
       },
       {
@@ -250,7 +274,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origsendingtime"
+          "fix:field": "origsendingtime",
+          "fix:tag": "122"
         }
       },
       {
@@ -260,7 +285,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "xmldatalen"
+          "fix:field": "xmldatalen",
+          "fix:tag": "212"
         }
       },
       {
@@ -270,7 +296,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "xmldata"
+          "fix:field": "xmldata",
+          "fix:tag": "213"
         }
       },
       {
@@ -280,7 +307,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "messageencoding"
+          "fix:field": "messageencoding",
+          "fix:tag": "347"
         }
       },
       {
@@ -290,7 +318,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastmsgseqnumprocessed"
+          "fix:field": "lastmsgseqnumprocessed",
+          "fix:tag": "369"
         }
       },
       {
@@ -300,7 +329,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nohops"
+          "fix:field": "nohops",
+          "fix:tag": "627"
         }
       },
       {

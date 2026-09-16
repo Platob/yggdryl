@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedorigclordid"
+          "fix:field": "affectedorigclordid",
+          "fix:tag": "1824"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedorderid"
+          "fix:field": "affectedorderid",
+          "fix:tag": "535"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedsecondaryorderid"
+          "fix:field": "affectedsecondaryorderid",
+          "fix:tag": "536"
         }
       }
     ]

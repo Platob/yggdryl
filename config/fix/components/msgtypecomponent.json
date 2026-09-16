@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refmsgtype"
+          "fix:field": "refmsgtype",
+          "fix:tag": "372"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "msgdirection"
+          "fix:field": "msgdirection",
+          "fix:tag": "385"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplverid"
+          "fix:field": "refapplverid",
+          "fix:tag": "1130"
         }
       },
       {
@@ -40,7 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplextid"
+          "fix:field": "refapplextid",
+          "fix:tag": "1406"
         }
       },
       {
@@ -50,7 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refcstmapplverid"
+          "fix:field": "refcstmapplverid",
+          "fix:tag": "1131"
         }
       },
       {
@@ -60,7 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defaultverindicator"
+          "fix:field": "defaultverindicator",
+          "fix:tag": "1410"
         }
       }
     ]

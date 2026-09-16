@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeoperator"
+          "fix:field": "instrumentscopeoperator",
+          "fix:tag": "1535"
         }
       },
       {
@@ -30,7 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskinstrumentmultiplier"
+          "fix:field": "riskinstrumentmultiplier",
+          "fix:tag": "1558"
         }
       }
     ]

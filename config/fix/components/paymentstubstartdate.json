@@ -10,7 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdateunadjusted"
+          "fix:field": "paymentstubstartdateunadjusted",
+          "fix:tag": "42698"
         }
       },
       {
@@ -20,7 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdatebusinessdayconvention"
+          "fix:field": "paymentstubstartdatebusinessdayconvention",
+          "fix:tag": "42699"
         }
       },
       {
@@ -30,7 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstubstartdatebusinesscenters"
+          "fix:field": "nopaymentstubstartdatebusinesscenters",
+          "fix:tag": "42705"
         }
       },
       {
@@ -50,7 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdaterelativeto"
+          "fix:field": "paymentstubstartdaterelativeto",
+          "fix:tag": "42700"
         }
       },
       {
@@ -60,7 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdateoffsetperiod"
+          "fix:field": "paymentstubstartdateoffsetperiod",
+          "fix:tag": "42701"
         }
       },
       {
@@ -70,7 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdateoffsetunit"
+          "fix:field": "paymentstubstartdateoffsetunit",
+          "fix:tag": "42702"
         }
       },
       {
@@ -80,7 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdateoffsetdaytype"
+          "fix:field": "paymentstubstartdateoffsetdaytype",
+          "fix:tag": "42703"
         }
       },
       {
@@ -90,7 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubstartdateadjusted"
+          "fix:field": "paymentstubstartdateadjusted",
+          "fix:tag": "42704"
         }
       }
     ]
