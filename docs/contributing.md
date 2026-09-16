@@ -1,15 +1,15 @@
 # Contributing
 
-Run the checks for what you changed; code, tests, and documentation agree before handoff. `AGENTS.md` is the normative version of everything below.
+Smoke what you changed while you are changing it, then push and let CI run the matrix. The loop is the narrowest command that executes the new code - one test target, one filter, a debug build - and it is seconds; the commands below are what to run once before pushing. `AGENTS.md` is the normative version of everything here.
 
 === "Rust"
 
     ```bash
-    cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets --features "parquet iceberg" -- -D warnings
-    cargo test --workspace --all-targets --features "parquet iceberg"
-    python scripts/check_docs_examples.py
-    python -m mkdocs build --strict
+    cargo test -p yggdryl --test <theme> <filter>   # the loop, while you write
+    cargo fmt --all
+    cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+    cargo test -p yggdryl --all-targets
+    cargo test -p yggdryl --doc
     ```
 
 === "Python"
@@ -26,8 +26,12 @@ Run the checks for what you changed; code, tests, and documentation agree before
     ```bash
     npm ci --prefix node
     npm run --prefix node build:debug
+    node --test node/tests/<area>/<file>.test.js   # the loop, while you write
+    npm run --prefix node test:package:debug
     npm test --prefix node
     ```
+
+CI runs the rest on the pushed branch: both feature lanes, the 1.85 and 1.94 MSRVs, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages. Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
 
 ## Where things go
 
