@@ -488,7 +488,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
     // A bridge configuration is read the same way a frame is: the namespace,
     // the ObjectName's type and the answer keys are all found in the caller's
     // bytes, so classifying a document costs no allocation either. It
-    // classifies as `application/json` now (decision 17) - what makes one a
+    // classifies as `application/json` now - what makes one a
     // configuration is a shape the codec probes at the offset this scan
     // already found, so nothing is looked for twice and the cost is the same.
     const PLUGIN: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
@@ -504,7 +504,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
     });
     // The rules are compiled once with the reading; applying them to the
     // prose in front of a payload costs nothing per line, whether one code
-    // matches, two do, or none (decision 15).
+    // matches, two do, or none.
     for line in [
         b"sending >> 8=FIX.4.4|35=D|10=0|".as_slice(),
         b"2026-08-14 03:03:13.314 [23] [Jolokia] (DEBUG) Response: 8=FIX.4.4|35=0|10=0|",
@@ -558,7 +558,7 @@ fn parsed_plugin_wildcards_iterate_without_allocating_results() {
         let document = Scalar::from_record([("value", values)]).unwrap();
 
         // Reading a document cannot fail: one that names no plugin answers
-        // none, and answering none is what it answers (decision 17), so there
+        // none, and answering none is what it answers, so there
         // is no validation pass in front of the walk and nothing to unwrap.
         let (first_allocations, first) = counted(|| {
             yggdryl::Plugin::from_json_scalar(black_box(&document))
@@ -614,7 +614,7 @@ fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
     // line: the source holds the row's entries and re-enters the frame
     // reader where each opens, so draining is proportional to the messages
     // and never to the line - which is what a collection of the results
-    // would break (decision 16).
+    // would break.
     // Settle the shared schema/registry plan before counting the repeated path.
     // Cold plan construction belongs to the boundary, not to each frame.
     black_box(read(1));
@@ -2008,7 +2008,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 
 /// What unpacking one packed occurrence costs, by how many members it packs.
 ///
-/// The path decision 5 is about, and the one the plain frame above never
+/// The path packing is about, and the one the plain frame above never
 /// reaches. A bridge writes a whole occurrence into one value and the reader
 /// unpacks it into `NOPARTYIDS[0].MEMBER0000` and its siblings, which are
 /// keys no range of the line names - so they are the one thing on this path
@@ -2018,7 +2018,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// the whole reason a rendered key is not a `TextBytes` - wrapping one in a
 /// counted page of its own is three, the rendered vector, a copy of it and
 /// the page, and the page is then only ever borrowed back as a slice. Two
-/// more per member, measured, on the very path decision 5 names the cost of.
+/// more per member, measured, on the very path whose cost is named above.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
 /// and the rest of it is the row a wider group builds. The codec reads a
@@ -2307,7 +2307,7 @@ fn keeping_every_line_costs_its_windows_and_not_its_lines() {
 
 #[test]
 fn a_declared_charset_costs_its_transport_and_nothing_a_line() {
-    // The claim decision 12 makes for the transport: nothing per line. The
+    // The claim the charset layer makes for the transport: nothing per line. The
     // same lines, once as the UTF-8 they are and once as windows-1252 under
     // a handle that declares it, differ by the transport alone.
     for (rows, each) in DECLARED_COSTS {
@@ -2502,8 +2502,8 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
         .expect("a message");
     // The first message a registry enriches pays the registry's compile:
     // every derivation parsed, the working schema built and every term
-    // bound against it, once, for every message and every shape after
-    // (decision 38). Thousands of allocations, and the reason it is paid
+    // bound against it, once, for every message and every shape after.
+    // Thousands of allocations, and the reason it is paid
     // per registry rather than per message or per shape.
     let (cold, enriched) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
     let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
@@ -2604,7 +2604,7 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
     // and nothing else over the second; the second and the third cost the
     // same allocation for allocation, because nothing is bound or kept per
     // shape: each message pays its clone, its working row, its sweeps and
-    // its rebuilds, whatever shape came before it (decision 38).
+    // its rebuilds, whatever shape came before it.
     let corpus = std::fs::read(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"),
     )
@@ -2682,7 +2682,7 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     // the refusal as it would keep the compiled list, so the second ask
     // pays the clone (2), restatement's rebuild of the parsed message (21)
     // and the refusal's two strings - both handles to text the registry
-    // holds, so nothing - and nothing of a compile (decision 38).
+    // holds, so nothing - and nothing of a compile.
     let (cold, refused) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
     assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
     let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));

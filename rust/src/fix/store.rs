@@ -329,7 +329,7 @@ fn is_crate_field(field: &Field) -> bool {
 ///
 /// `pluginconfig` is to the components what the crate's own fields are to
 /// the fields: a store writes it so a dump is the whole dictionary, and a
-/// reader holding it from construction reads that copy past (decision 19).
+/// reader holding it from construction reads that copy past.
 fn is_crate_message(field: &Field) -> bool {
     field.name() == super::PLUGINCONFIG_CODE_NAME.1
 }

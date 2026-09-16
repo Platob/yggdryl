@@ -862,7 +862,7 @@ change to `media/iceberg/`.
   ISO 8859-1 scalar, and bytes offered as UTF-8 or as US-ASCII that are not
   what they were offered as by one rule written once in the layer, every
   valid UTF-8 run kept and every other byte read as WHATWG windows-1252 with
-  the five holes as C1 controls, per invalid run (decision 12) - and is what a
+  the five holes as C1 controls, per invalid run - and is what a
   `string(...)` column's values arrive through. There is no lossy *encode*: a
   scalar a charset cannot spell is unrepresentable input, which fails.
   `encoded_len` answers the stored length without building the bytes, and it
@@ -880,7 +880,7 @@ change to `media/iceberg/`.
   have to carry that state into the resume index before it could be added.
 - There is no charset option on the text record reader: `media/text` reads
   the charset a handle's media type declares, once, where it builds the
-  transport (decision 12), and a whole resource in one charset is `Transcoded`,
+  transport, and a whole resource in one charset is `Transcoded`,
   not a second option on every reader.
 
 ## Strings

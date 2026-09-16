@@ -71,7 +71,7 @@ const CAPTURE = [
 
 // The capture lines that carry a message. A line that opens no frame, states
 // no bridge pair and carries no document carries nothing to read
-// (decision 16): `After Enrichment ->` and `heartbeat emitted seq=7` write
+//: `After Enrichment ->` and `heartbeat emitted seq=7` write
 // their pairs into a sentence, which names no separator for them, so they are
 // prose that happens to hold an `=`, and the other three hold no pair at all.
 const CARRYING = [0, 1, 2, 3, 4, 5, 6, 9, 10].map((at) => CAPTURE[at])
@@ -791,7 +791,7 @@ test('a row reads back into the message that made it', () => {
   const named = fix.FixMsg.fromRow(schema, plain, registry)
   assert.deepEqual(named.arrivals(), parsed.arrivals())
   assert.ok(named.byTag(55).equals(parsed.byTag(55)))
-  // The row's msghash names the row's content (decision 26), so it is the msghash
+  // The row's msghash names the row's content, so it is the msghash
   // the native row read back as, not the parsed message's own.
   assert.ok(named.msghash().equals(held.msghash()))
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)

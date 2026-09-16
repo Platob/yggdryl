@@ -8,7 +8,7 @@
 //! the one row shape the dictionary decides before a byte is read. This is
 //! the acceptance test for that composition: the schema never depends on the
 //! data, a message in is a row out - a line carrying none is no row and a
-//! line carrying two frames is two (decision 16) - the capture's own columns
+//! line carrying two frames is two - the capture's own columns
 //! lead each row and the captures named after fields fill them instead,
 //! every row keeps its event clock independently of its header, attributes land
 //! typed on the bridge's own tags, and the batched read agrees with the line
@@ -69,8 +69,8 @@ const CAPTURE: [&str; 11] = [
     "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_CLIENT_1003) without any route so using not persisted route: [UNDEFINED] --> [Broker_DarkPool_TradeCapture]",
 ];
 
-/// Which capture lines carry a message, in the order they carry them
-/// (decision 16). Six of the eleven carry none, and each for the same
+/// Which capture lines carry a message, in the order they carry them.
+/// Six of the eleven carry none, and each for the same
 /// reason - the line opens no frame, states no bridge pair and carries no
 /// document. Lines 1 and 2 hold runs of named pairs -
 /// `name=Router_TradeCapture,plugin-type=FIX,type=Plugin` and
@@ -279,7 +279,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "{once} is one column"
         );
     }
-    // Which way a line moved is FIX's own `msgdirection` (decision 14).
+    // Which way a line moved is FIX's own `msgdirection`.
     assert!(names.contains(&"msgdirection"), "{names:?}");
     assert!(!names.contains(&"direction"), "{names:?}");
     assert_eq!(names.last(), Some(&"fixentries"));
@@ -312,7 +312,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     assert!(!stamp.is_nullable(), "every row is stamped");
 
     // A capture whose lines carry no message is no rows and so no batch at
-    // all (decision 16): the first two lines state runs of named pairs whose
+    // all: the first two lines state runs of named pairs whose
     // only separators are a comma and a space - never a separator a line
     // names - and open no frame, so the batch door answers nothing for
     // either. They used to be two rows holding an entry-less `unknown`.
@@ -342,7 +342,7 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let read = read(&CAPTURE);
     let stage = text_stage(&CAPTURE);
 
-    // Per line, what the line carries (decision 16): the Jolokia answer's
+    // Per line, what the line carries: the Jolokia answer's
     // document, three framed messages and the bridge row, and nothing at all
     // for the other six. The `URI:` and `Request:` lines name no separator
     // for their runs of pairs - a comma and a space are never one, and the
@@ -441,14 +441,14 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // A bridge configuration line is JSON, which is what it is: a classifier
     // that named it anything else would have read the body far enough to know
     // it was a Jolokia answer, and that reading is the codec's rather than
-    // the classifier's (decision 17).
+    // the classifier's.
     assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("application/json"));
     assert_eq!(mimetype[HEARTBEAT_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[FILL_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[RELAY_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[ROUTED_ROW].as_deref(), Some("text/ullink"));
     // What a line is classified as and whether it carries a message are two
-    // different answers (decision 16). The text reader still calls line 1
+    // different answers. The text reader still calls line 1
     // `application/octet-stream` and line 2 `text/key-value` - a run of named
     // pairs is what a classifier can see without parsing - and neither line
     // carries a message, so neither reaches the batch: the five rows here are
@@ -458,11 +458,11 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(classified[1].as_deref(), Some("text/key-value"));
     assert_eq!(mimetype.len(), MESSAGES);
 
-    // Which way each message moved is FIX's own tag 385 (decision 14): the
+    // Which way each message moved is FIX's own tag 385: the
     // verb in front of the frame, and the `Response:` Jolokia wrote in front
-    // of the document (decision 15). The codec's pin for a line that states
+    // of the document. The codec's pin for a line that states
     // no direction has nothing left to fill on this capture - the lines that
-    // stated none were the sentences, and a sentence is no row (decision 16)
+    // stated none were the sentences, and a sentence is no row
     // - so every row here states the direction its own line spelled.
     let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0);
     assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("S"));
@@ -485,12 +485,11 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         "a bridge row names its type"
     );
     // `unknown` names a frame, a bridge row or a document that states no
-    // type - never a line that states no frame (decision 16). The capture's
+    // type - never a line that states no frame. The capture's
     // sentences used to be `unknown` rows and are now no rows at all, which
     // is what the five-row count says. The Jolokia answer used to be one
     // too: it states no type of its own, and now the crate states one for
-    // it, because a plugin configuration is a message the crate registered
-    // (decision 19).
+    // it, because a plugin configuration is a message the crate registered.
     assert_eq!(
         msgtype[RESPONSE_ROW].as_deref(),
         Some("UCFG"),
@@ -597,8 +596,7 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     // Every row says which FIX it was read as: the wire's own `BeginString`
     // where the frame stated one, and `FIX.` and the version the row was read
     // at where it did not - the routed row, keyed by name, and the Jolokia
-    // document. A sentence answers no version because it answers no row
-    // (decision 16).
+    // document. A sentence answers no version because it answers no row.
     let version = tag_text(&read, 8);
     for (row, held) in version.iter().enumerate() {
         assert!(held.is_some(), "row {row} states a version");
@@ -624,7 +622,7 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
     assert_eq!(registry.dialects(), [yggdryl::PLUGIN_DIALECT.to_owned()]);
     // `PLUGIN_TAG_MIN` is the floor of the range this dictionary claims,
     // not the smallest tag it happens to define: 20001 to 20004 carried the
-    // Jolokia envelope, which decision 17 deleted, and they are retired
+    // Jolokia envelope, since deleted, and they are retired
     // rather than reused - a capture written before it holds `MBean` on
     // 20001, so nothing else may answer to that tag. The smallest tag defined
     // is `SessionInterface` on 20010, above the floor and not equal to it.
@@ -712,7 +710,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // A configuration message is the plugin's attributes and nothing the
     // Jolokia answer wrapped them in: what the transport asked (`MBean`,
     // `Operation`) and how the asking went (`Status`, `Error`) state nothing
-    // about the plugin, so their four tags hold nothing here (decision 17).
+    // about the plugin, so their four tags hold nothing here.
     states_no_envelope(&message);
     // What the read named this plugin by is the `SessionInterface` attribute,
     // which is where it always belonged, and it types like every other one.
@@ -877,7 +875,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // comes back byte for byte behind the prose the text reader left in
     // front of it - the routed row too, because what the row filled from its
     // header is not an entry and so is not re-emitted. One line is written
-    // per message, not per source line (decision 16), so the six lines that
+    // per message, not per source line, so the six lines that
     // carried none write nothing and eleven lines come back as five.
     let mut written: Vec<u8> = Vec::new();
     let emitting = codec.clone().with_separator(b'|');
@@ -924,7 +922,7 @@ const SECOND_FRAME: &str =
 fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
     let read = read(&BATCHED);
 
-    // A row yields none, one or many (decision 16). The first line holds two
+    // A row yields none, one or many. The first line holds two
     // frames - the second opens at the `8=` behind the first's `10=` checksum
     // - and the second line is a sentence with no frame and no pair in it, so
     // it holds none. Two lines in, two rows out, and neither count is the

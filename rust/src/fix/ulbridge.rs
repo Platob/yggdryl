@@ -1,7 +1,7 @@
 //! ULBridge's own log line, which is the product's and not a plugin's.
 //!
-//! Decision 18 made the reading of a plugin FIX's, generic over the bridge
-//! that reports it, and this is what stayed behind: the shape of the line
+//! The reading of a plugin is FIX's, generic over the bridge that reports
+//! it, and this is what stayed behind: the shape of the line
 //! ULBridge writes, which no other bridge writes. A plugin is the same
 //! wherever it is hosted; a log line is whoever wrote it.
 

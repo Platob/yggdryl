@@ -1,4 +1,4 @@
-//! Decisions 26–27: one normalized transition and first-created live incarnations.
+//! One normalized transition and first-created live incarnations.
 
 use std::cell::Cell;
 use std::rc::Rc;

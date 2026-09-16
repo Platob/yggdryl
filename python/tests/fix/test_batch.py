@@ -79,7 +79,7 @@ CAPTURE = [
 
 # The capture lines that carry a message. A line that opens no frame, states
 # no bridge pair and carries no document carries nothing to read
-# (decision 16): `After Enrichment ->` and `heartbeat emitted seq=7` write
+#: `After Enrichment ->` and `heartbeat emitted seq=7` write
 # their pairs into a sentence, which names no separator for them, so they are
 # prose that happens to hold an `=`, and the other three hold no pair at all.
 CARRYING = [CAPTURE[at] for at in (0, 1, 2, 3, 4, 5, 6, 9, 10)]

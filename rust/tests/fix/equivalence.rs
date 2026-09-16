@@ -425,7 +425,7 @@ fn frames() -> Vec<Vec<u8>> {
         )
         .into_bytes(),
     );
-    // A row is read for every message it carries (decision 16). Appended at
+    // A row is read for every message it carries. Appended at
     // the end because the unread assertion names the earlier ones by index:
     // two frames on one line, a checksum-less frame the next one closes, a
     // bridge row the bridge marked in front of a frame, and a marked `#8=`
@@ -444,8 +444,8 @@ fn frames() -> Vec<Vec<u8>> {
 ///
 /// The last line is appended rather than filed beside the document, because
 /// the indices above are what the records are keyed by: a JSON body that is
-/// not a Jolokia answer, which names no plugin and so answers no message
-/// (decision 17). It is here so that a body this reader cannot read turning
+/// not a Jolokia answer, which names no plugin and so answers no message.
+/// It is here so that a body this reader cannot read turning
 /// back into a row - or into a refusal - shows in the golden file.
 fn bridge() -> Vec<Vec<u8>> {
     owned(&[

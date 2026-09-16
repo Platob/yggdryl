@@ -239,7 +239,7 @@ def test_a_derivation_crosses_as_canonical_text() -> None:
         field.fix.derivation = "orderqty -"
     assert field.fix.derivation == "orderqty - cumqty"
 
-    # An edited derivation is what the reader fills by (decision 38).
+    # An edited derivation is what the reader fills by.
     registry = FixRegistry.from_handle(SEED)
     leaves = registry.get_field_by_tag(151)
     leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
@@ -2063,7 +2063,7 @@ def test_a_configuration_is_a_message_the_crate_registered(bridge: FixRegistry) 
 
     # Registering it is nobody's choice: a registry that never asked for the
     # plugin fields still holds the message, because a component holds its
-    # members by value and the code is the crate's own (decision 19).
+    # members by value and the code is the crate's own.
     plain = FixRegistry()
     assert plain.msgtype("UCFG").name == "pluginconfig"
     held = plain.definition("components", "pluginconfig")
@@ -2081,7 +2081,7 @@ def test_a_configuration_is_a_message_the_crate_registered(bridge: FixRegistry) 
 
     # A built child, not a pair: the document sent no `35=`, so the arrival
     # record holds none and the wire re-emits exactly as it did before the
-    # type existed (decision 17 still holds).
+    # type existed.
     wire = message.into_bytes(ord("|"))
     assert b"35=" not in wire
     assert b"MsgType" not in wire
@@ -2107,7 +2107,7 @@ def test_the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_
     assert bare.get_by_tag(56) is None
 
     # Behind the configuration that named it, the same row takes the
-    # session's two ends (decision 19).
+    # session's two ends.
     filled = list(codec.enrich_messages([config, one(_plugin_row(named))]))
     assert filled[0].field.name == "pluginconfig"
     assert filled[1].by_tag(49).as_py() == "CLI.PROD.TRD"
@@ -2837,7 +2837,7 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     # capture whose folded name a fixed column takes is not carried in front,
     # it fills that column: `SenderSessionId` and `msgseqnum` are both spelled
     # for fields, so only the clock rides in front. No fixed column is named
-    # `timestamp`, so the capture's clock is carried as context (decision 26).
+    # `timestamp`, so the capture's clock is carried as context.
     assert names[:2] == ["timestamp", "body"]
     assert names[2:5] == ["updatedat", "prevupdatedat", "createdat"]
     header = names.index("beginstring")

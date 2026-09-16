@@ -297,8 +297,7 @@ pub struct FixRegistry {
     /// this registry - or the refusal that compile answered, kept the same
     /// way so a registry whose rules do not compile refuses every ask and
     /// compiles once; emptied by every change to the fields or the catalog,
-    /// so an edited derivation is the one the next reader evaluates
-    /// (decision 38).
+    /// so an edited derivation is the one the next reader evaluates.
     derivations:
         OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
 }
@@ -366,7 +365,7 @@ impl FixRegistry {
         // The crate's own message type, beside the crate's own fields: a
         // codec meeting a plugin configuration cannot write a shared
         // registry, so `pluginconfig` has to be here before the first
-        // document arrives (decision 19). Its members are held by value, so
+        // document arrives. Its members are held by value, so
         // this states the shape of a `UCFG` message without registering the
         // plugin attributes as fields of this dictionary.
         match super::plugin::fix_plugin_message().and_then(|message| {
@@ -934,7 +933,7 @@ impl FixRegistry {
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
-    /// // `Instrument`, beside the crate's own `pluginconfig` (decision 19)
+    /// // `Instrument`, beside the crate's own `pluginconfig`
     /// // and its `instids`, which is a component for the same reason.
     /// assert_eq!(registry.definitions(FixCategory::Components).count(), 3);
     /// # Ok(())
@@ -1595,7 +1594,7 @@ impl Eq for FixRegistry {}
 
 impl FixRegistry {
     /// The registry's reading of tag 385: its code set and which code the
-    /// prose in front of a payload names (decision 14).
+    /// prose in front of a payload names.
     ///
     /// Built from what the registry holds when asked, so a code set edited
     /// on tag 385 is the set the next reading answers; a codec compiles it
@@ -1605,8 +1604,7 @@ impl FixRegistry {
         super::MsgDirection::from_registry(self)
     }
 
-    /// The `fix:derivation` of every field, compiled once and shared
-    /// (decision 38).
+    /// The `fix:derivation` of every field, compiled once and shared.
     ///
     /// Built from what the registry holds on the first ask and kept until a
     /// field or a definition changes, so a stream of a million messages

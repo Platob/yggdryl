@@ -201,7 +201,7 @@ fn dated_line(
 
 /// The sole message a fixture carrying one is read into.
 ///
-/// A row yields none, one or many (decision 16), so a fixture that carries
+/// A row yields none, one or many, so a fixture that carries
 /// exactly one says so here: what the assertions below are about is that one
 /// message, and a fixture that grew a second would otherwise be read as its
 /// first with nobody noticing.
@@ -251,7 +251,7 @@ impl SoleMessage for yggdryl::FixCodec {
 ///
 /// `MBean`, `Operation`, `Status` and `Error` were what the transport asked
 /// and how the asking went, never a fact about the plugin the answer carried,
-/// so decision 17 deleted the four of them. They are retired rather than
+/// so the four of them are gone. They are retired rather than
 /// reused - a capture written last year holds `MBean` on 20001 - so what the
 /// suites below assert about them is absence: no field in the dictionary, no
 /// entry on a message, and no reader handing one back.
@@ -266,7 +266,7 @@ const RETIRED_ENVELOPE_NAMES: [&str; 4] = ["MBean", "Operation", "Status", "Erro
 /// dictionary defines no field on 20001 to 20004 any more, so an entry a
 /// reader still wrote under the key `MBean` would resolve to no tag at all
 /// and slip past a tag-only check. The name is the falsifiable half; the tag
-/// is the one a capture written before decision 17 would collide on.
+/// is the one a capture written before they went would collide on.
 fn states_no_envelope(message: &yggdryl::FixMsg) {
     for name in RETIRED_ENVELOPE_NAMES {
         assert!(message.get_by_name(name).is_none(), "{name}");
@@ -288,7 +288,7 @@ const SESSIONINTERFACE_TAG: i32 = 20_010;
 /// How many message types every registry holds before a test registers one.
 ///
 /// The crate's own, which `FixRegistry::new` seeds beside its fields exactly
-/// as it seeds `pluginid`: `pluginconfig` is the one of them (decision 19).
+/// as it seeds `pluginid`: `pluginconfig` is the one of them.
 /// Counted rather than spelled `1`, the way [`crated_fields`] counts the fields, so
 /// every total below stays true of the next one.
 fn crated_messages() -> usize {

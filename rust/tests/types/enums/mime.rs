@@ -176,7 +176,7 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
         assert_eq!(mime.extension(), None);
     }
     // A bridge configuration is JSON and reads as JSON - it is named
-    // `application/json` now (decision 17), so it is the JSON row below that
+    // `application/json` now, so it is the JSON row below that
     // pins it and no line type of its own; a FIX frame carrying XML in a tag
     // is not a document and does not read as one.
     assert_eq!(MimeType::FIXML.format(), None);

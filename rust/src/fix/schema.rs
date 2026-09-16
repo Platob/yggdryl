@@ -572,9 +572,9 @@ fn entry_item(level: usize) -> Result<Field> {
 ///    bridge marked as a restatement are each the only name that arrival
 ///    has, and each is the name an operator will look for;
 /// 3. [`UNNAMED_ENTRY`], where an arrival carries no key at all - the
-///    row-header capture fills of decision 8 and the restatements of
-///    decision 20, which are recorded with tag `0` and are named after no
-///    pair because no pair carried them.
+///    row-header capture fills and the restatements, which are recorded
+///    with tag `0` and are named after no pair because no pair carried
+///    them.
 ///
 /// Step 2 is why this is not simply the dictionary's answer: an unresolved
 /// arrival is exactly the one a reader most needs to see spelled.
@@ -1083,7 +1083,7 @@ impl super::FixMsg {
     /// crate column whose field declares a `fix:derivation` through the one
     /// evaluator the [enriching pass](super::enrich) runs, so `isincode`,
     /// `miccode` and `state` fill a row of an unenriched message exactly as
-    /// the pass would fill the message (decision 38).
+    /// the pass would fill the message.
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.

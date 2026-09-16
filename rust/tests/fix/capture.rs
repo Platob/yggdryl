@@ -8,7 +8,7 @@
 //!
 //! It is the acceptance test for the layers under it. Where a unit test says
 //! one rule works, this says the rules compose: the text reader answers a row
-//! per line and the codec a row per message (decision 16), so the two counts
+//! per line and the codec a row per message, so the two counts
 //! are read apart here; the codec's dialect choice survives enrichment; and
 //! enrichment leaves the wire exactly as it arrived so the round trip still
 //! closes.
@@ -49,12 +49,12 @@ const PLUGIN: &str = concat!(
 ///
 /// It opens no frame, holds no pair and carries no document, so it states
 /// nothing and yields no message - not even the entry-less `unknown` it used
-/// to build (decision 16).
+/// to build.
 const PROSE: &str = "no level printed by this plugin, and no pairs either";
 
 /// A sentence whose prose carries an `=`, which is not a pair it separated.
 ///
-/// The shape decision 16 is named for. The run of named pairs is a bridge row
+/// The shape the none-one-or-many rule is named for. The run of named pairs is a bridge row
 /// only where the line named a separator for it - a pipe, a `SOH`, one of the
 /// spellings a log escapes it with, never whitespace - or the bridge marked a
 /// key with `#`. This line does neither, so `seq=7` is prose and the line
@@ -169,7 +169,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let codec = super::fixed_codec(Arc::clone(&registry));
 
     // Line by line: the text reader answers lines, and every line is read for
-    // the messages its own body spells - none, one or many (decision 16) -
+    // the messages its own body spells - none, one or many -
     // the dialect chosen per line, never per capture.
     let lines = lines_of(&source);
     assert_eq!(lines.len(), CAPTURE.len(), "a line in is a line out");
@@ -205,7 +205,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
         .collect();
     let rows: usize = batched.iter().map(arrow_array::RecordBatch::num_rows).sum();
     // The batch door answers a row per message rather than per line, so the
-    // two lines that state none yield no row there either (decision 16).
+    // two lines that state none yield no row there either.
     assert_eq!(rows, MESSAGES, "the batch path reads the same messages");
     // One batch, because the capture is far under the 128 MiB target.
     assert_eq!(batched.len(), 1);
@@ -274,7 +274,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // carrying an `=` is the separator the line named for it - the pipe - and
     // the `#` the bridge marked its counter with. Named neither way, the same
     // shape of run is prose: whitespace names no separator, so the line states
-    // no message at all (decision 16).
+    // no message at all.
     let paired = codec
         .sole_line(b"ACCOUNT=A1|SIDE=1", true)
         .expect("a bridge row the pipe separated");
@@ -323,7 +323,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     );
     assert_eq!(config.as_field().as_fix().branches().count(), 0);
     // A configuration message is the plugin's attributes and nothing the
-    // Jolokia answer wrapped them in (decision 17). `MBean`, `Operation`,
+    // Jolokia answer wrapped them in. `MBean`, `Operation`,
     // `Status` and `Error` were the transport's question and how the asking
     // went, so 20001 to 20004 name no field in the dictionary and hold no
     // value on the message - and they stay retired rather than being reused.
@@ -353,7 +353,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // A line that is not a message states no message at all - never an error,
     // and no longer the empty `unknown` it used to state: it opens no frame,
     // states no bridge pair and carries no document, so there is nothing in it
-    // to read (decision 16). It reads without failing, which is the fact that
+    // to read. It reads without failing, which is the fact that
     // matters: one such line must not end a run over ten million.
     for line in [PROSE, CHATTER] {
         assert!(
@@ -424,7 +424,7 @@ fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
         .expect("the capture writes");
     // One line written per message, and the two lines that state none reach
     // the writer as no row at all, so the capture comes back two lines shorter
-    // than it went in (decision 16).
+    // than it went in.
     assert_eq!(rows, MESSAGES as u64);
 
     // The two framed reports come back exactly as they arrived, filled or not.
@@ -457,9 +457,9 @@ fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
         .expect("a batch")
         .expect("a batch");
 
-    // Which way a message moved is FIX's own tag 385 (decision 14), a code of
+    // Which way a message moved is FIX's own tag 385, a code of
     // its set, retained once per row and shared by every message that row
-    // states (decision 16).
+    // states.
     let directions = tag_column(&batch, 385);
     // A direction per message, not per line: the prose holds no pair and the
     // chatter's pair was separated by whitespace, so neither states a message
@@ -469,7 +469,7 @@ fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
     // transport wrote wins over everything else.
     assert_eq!(directions[3].as_str(), Some("R"));
     // A bare configuration document states nothing of which way it moved
-    // (decision 15): no prose in front of it, so the batch door's pin fills
+    //: no prose in front of it, so the batch door's pin fills
     // it, the codec's default `Send`.
     assert_eq!(directions[5].as_str(), Some("S"));
 
@@ -513,7 +513,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
     // transport writes behind it is prose too. What the classifier answers is
     // `application/json`, which is what the document is: what makes one *this*
     // reader's is a shape, and a shape is the codec's to recognize rather than
-    // a classifier's to name (decision 17).
+    // a classifier's to name.
     assert_eq!(
         yggdryl::MimeType::infer_bytes(LOGGED.as_bytes()),
         yggdryl::MimeType::JSON
@@ -560,7 +560,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
     // member is quoted, or an array of those, does - and the document that
     // did open is the one this message came out of, which it says by naming
     // the ObjectName its read selected. That name is the `SessionInterface`
-    // attribute now, and no envelope restates it (decision 17).
+    // attribute now, and no envelope restates it.
     assert_eq!(
         message
             .get_by_tag(SESSIONINTERFACE_TAG)
@@ -620,7 +620,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
     // document stated that state something - an empty string states nothing
     // and never did - in the order the dictionary holds them. Nothing the
     // Jolokia answer wrapped them in is here, because the envelope was never
-    // one of the entries that arrived (decision 17).
+    // one of the entries that arrived.
     let wire = String::from_utf8(message.into_bytes(b'|')).expect("the wire is text here");
     assert_eq!(
         wire,
@@ -645,7 +645,7 @@ fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
     // beside what was asked, keyed by ObjectNames in the ULBridge namespace -
     // and a body that is not that names no plugin. Naming none is what it
     // answers: being unable to read a body is not an error in the codec,
-    // which is what the codec is for (decision 17). The classifier says only
+    // which is what the codec is for. The classifier says only
     // what a stranger to this bridge would say, which is that it is JSON.
     assert_eq!(
         yggdryl::MimeType::infer_bytes(STRANGER.as_bytes()),
@@ -680,7 +680,7 @@ fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
     );
 
     // And on the batch door a row that carried nothing to read is no row at
-    // all, exactly as a prose line is (decision 16): the one configuration
+    // all, exactly as a prose line is: the one configuration
     // beside it is the only row that comes back.
     let field = yggdryl::DataType::from_fields([
         yggdryl::DataType::Int64.required_field("rownum"),
@@ -708,7 +708,7 @@ fn a_document_that_names_no_plugin_answers_none_rather_than_refusing() {
     // Reading is not refusing. Every one of these is a body a row really
     // carried and no answer this reader knows, so each names no plugin -
     // through the parsed door and the byte door alike, and neither has a
-    // `Result` left to unwrap (decision 17).
+    // `Result` left to unwrap.
     for body in [
         "null",
         "true",
@@ -780,7 +780,7 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
         // pattern the request selected by and the status the answer came back
         // with are the transport's, so the envelope that used to restate them
         // on 20001 to 20004 is gone and the ObjectName stands where it always
-        // belonged, on `SessionInterface` (decision 17).
+        // belonged, on `SessionInterface`.
         assert_eq!(
             message.by_name("SessionInterface").unwrap().as_str(),
             Some(object_name),

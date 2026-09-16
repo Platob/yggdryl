@@ -1,5 +1,5 @@
 //! Which way a message moved: FIX's tag 385, read by the registry (decision
-//! 14) through the rules the dictionary carries on it (decision 15).
+//! 14) through the rules the dictionary carries on it.
 
 use std::sync::Arc;
 
@@ -27,8 +27,8 @@ fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
     }
 
     // The verb in front of the payload is the verb, and the English `in` or
-    // `out` beside it is no marker that can contradict it (decision 15):
-    // these two answered nothing under decision 14's table.
+    // `out` beside it is no marker that can contradict it:
+    // these two answered nothing under the old table.
     assert_eq!(reading.read_text("sending in session 3"), Some("S"));
     assert_eq!(reading.read_text("received out of order"), Some("R"));
 
@@ -239,7 +239,7 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
     // A wildcard read that selected one plugin, so the document names one:
     // an answer keys its `value` by the ObjectName of every plugin it
     // selected, and that ObjectName is the only thing that names a
-    // configuration (decision 17).
+    // configuration.
     const ANSWERED: &str = concat!(
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"#,
         r#""value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,"#,
@@ -253,7 +253,7 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
     const ASKED: &str = r#"{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}"#;
     let reading = reading();
     // The envelope is prose in front of the payload, read by a default rule
-    // like every other prose (decision 15); the echoed `request` key states
+    // like every other prose; the echoed `request` key states
     // nothing.
     assert_eq!(reading.read_text(ANSWERED), None);
     assert_eq!(reading.read_text(EMPTY), None);
@@ -303,7 +303,7 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
     // A direction is the line's, and a message is the document's: the two
     // are read apart, so a read that selected nothing and a request that
     // has not been answered yet both state no message at all - there is no
-    // envelope left to make a row out of (decision 17) - while the prose in
+    // envelope left to make a row out of - while the prose in
     // front of each still names the half it moved.
     for (body, half) in [(EMPTY, "R"), (ASKED, "S")] {
         assert!(

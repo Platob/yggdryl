@@ -116,7 +116,7 @@ fn two_unknown_keys_carrying_one_value_are_two_messages() {
     // A message that recorded no arrival digests as the empty walk - correct,
     // because none of them arrived - whichever door built it: pairs a caller
     // handed in stating nothing, and a document stating no attribute. A line
-    // that states no message states none at all now (decision 16), so it is
+    // that states no message states none at all now, so it is
     // no longer one of the doors that can answer an empty message.
     let empty = reader.parse_pairs(std::iter::empty()).unwrap();
     assert!(empty.entries().is_empty());
@@ -373,7 +373,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // its name, and a dictionary member it is not.
     // Strictly increasing rather than contiguous: a retired slot is never
     // reused, so the block has holes where one was. 65000 held the original
-    // `msghash` (decision 26), 65004 held `timepartition`, which went when
+    // `msghash`, 65004 held `timepartition`, which went when
     // how a layout is cut became the target's, and 65016 held `instuuid`,
     // which went when the instrument became a scope rather than a column.
     let tags: Vec<i32> = held
@@ -440,7 +440,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
-    // `msghash` is a live name again - on 65017, not on the 65000 decision 26
+    // `msghash` is a live name again - on 65017, not on the 65000 that was
     // retired and this crate still does not reuse - and the spellings it
     // replaced are the retired ones now.
     for retired in [

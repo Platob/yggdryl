@@ -1111,7 +1111,7 @@ fn the_classification_column_reads_the_line_and_leaves_the_body() {
     options.parse_mimetype = true;
 
     // The columns a classifying read declares, in order. A direction is
-    // FIX's fact and not the reader's (decision 14): no column carries one.
+    // FIX's fact and not the reader's: no column carries one.
     let field = options.source_field().unwrap();
     let names: Vec<&str> = field
         .dtype()

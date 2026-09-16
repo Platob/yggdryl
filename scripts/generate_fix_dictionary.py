@@ -12,7 +12,7 @@ needs no network at all.
 
 Orchestra's fields, components and groups each have their own directory of
 native Field documents; a message is a component carrying ``fix:msgtype`` and
-is written into ``components/`` beside the others (decision 13). Only wire
+is written into ``components/`` beside the others. Only wire
 fields have tags. A group references its ordinary int32 counter and contains
 a non-null component. Each field stores its enum records directly in
 fix:codes metadata. Datatypes resolve through the crate's logical-name table.
@@ -162,11 +162,11 @@ LOGICAL_NAMES = {
 # is stored. Tags 39 and 150 are the order's state: their two code sets agree
 # on every value they share, and the crate's own `state` type reads either.
 # Tag 385, `MsgDirection`, is typed as any coded field is - text carrying its
-# code set - and the registry reads it (decision 14).
+# code set - and the registry reads it.
 CODED_TAGS = {39: "state", 54: "side", 150: "state"}
 
 # FIX Latest's order, quote, execution, trade and allocation identifier
-# families (decision 21). Suffixes admit side/leg/ref/orig/affected forms;
+# families. Suffixes admit side/leg/ref/orig/affected forms;
 # neither a general ID nor an administrative ReportID is an identifier here.
 # Meanings: https://fiximate.fixtrading.org/en/FIX.Latest/tag11.html,
 # tag19.html, tag1903.html and tag467.html. Source revisions stay pinned above.
@@ -960,7 +960,7 @@ def attach_replacements(
 #
 # Every field a message implies but need not carry declares how it derives,
 # as one term of the crate's expression grammar in its `fix:derivation`
-# (decision 38): the enriching pass evaluates the terms to a fixpoint, so a
+#: the enriching pass evaluates the terms to a fixpoint, so a
 # chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
 # the fields fall. A term reads fields by their canonical folded names, a
 # group by its name (`secaltidgrp[securityaltidsource = '4'][0].securityaltid`
@@ -1785,7 +1785,7 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
     Assignment walks components, then groups, then messages, each by name,
     so the tag a definition gets depends on the dictionary and not on the
     order a source file happened to list it in. Messages are written into
-    ``components/`` (decision 13) but are still assigned last: the order is
+    ``components/`` but are still assigned last: the order is
     what places every tag the dictionary already states, and a message that
     moved folders keeps the tag it stated.
     """
@@ -1820,7 +1820,7 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
         f"fields/{shard}.json": held for shard, held in sorted(shards.items())
     }
     # A message is a component carrying `fix:msgtype`: its document lives in
-    # `components/` beside every other component (decision 13).
+    # `components/` beside every other component.
     for category, folder in (("components", "components"), ("groups", "groups"), ("messages", "components")):
         for field in catalog[category]:
             path = f"{folder}/{field['name']}.json"
@@ -1851,7 +1851,7 @@ def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
             if relative not in documents:
                 stale.unlink()
         # The retired trees, `messages/` among them: a message document lives
-        # in `components/` (decision 13).
+        # in `components/`.
         if tree in {"messages", "primitive", "nested"}:
             try:
                 (out / tree).rmdir()

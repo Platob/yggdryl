@@ -158,10 +158,10 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Sixty-six: decision 14 retired `msgdirection` (discriminant 58, never
-  // reused), so `url` keeps its byte 59 and sits one index earlier, decision
-  // 34 appended `timezone`, `mimetype` and `mediatype` after it, decision
-  // 38 appended `cusip` and `sedol` as code datatypes of their own, and
+  // Sixty-six: `msgdirection` was retired (discriminant 58, never reused),
+  // so `url` keeps its byte 59 and sits one index earlier; `timezone`,
+  // `mimetype` and `mediatype` were appended after it, then `cusip` and
+  // `sedol` as code datatypes of their own, and
   // `bloomberg` was appended after them - the one code whose width is only a
   // bound, because a ticker, a market and a yellow key have no fixed length
   // between them.

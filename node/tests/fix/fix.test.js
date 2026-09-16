@@ -202,7 +202,7 @@ test('a derivation crosses as canonical text', () => {
   })
   assert.equal(field.fix.derivation, 'orderqty - cumqty')
 
-  // An edited derivation is what the reader fills by (decision 38).
+  // An edited derivation is what the reader fills by.
   const registry = fix.FixRegistry.fromHandle(SEED)
   const leaves = registry.getFieldByTag(151)
   leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
@@ -1474,7 +1474,7 @@ test('a configuration is a message the crate registered', () => {
 
   // Registering it is nobody's choice: a registry that never asked for the
   // plugin fields still holds the message, because a component holds its
-  // members by value and the code is the crate's own (decision 19).
+  // members by value and the code is the crate's own.
   const plain = new fix.FixRegistry()
   assert.equal(plain.msgtype('UCFG').name, 'pluginconfig')
   const held = plain.definition('components', 'pluginconfig')
@@ -1495,7 +1495,7 @@ test('a configuration is a message the crate registered', () => {
 
   // A built child, not a pair: the document sent no `35=`, so the arrival
   // record holds none and the wire re-emits exactly as it did before the
-  // type existed (decision 17 still holds).
+  // type existed.
   const wire = message.intoBytes('|'.charCodeAt(0)).toString()
   assert.equal(wire.includes('35='), false)
   assert.equal(wire.includes('MsgType'), false)
@@ -1515,7 +1515,7 @@ test('the enriching stream fills a row from the configuration that named its plu
   assert.equal(bare.getByTag(56), null)
 
   // Behind the configuration that named it, the same row takes the session's
-  // two ends (decision 19).
+  // two ends.
   const filled = [...codec.enrichMessages([config, one(pluginRow(named))])]
   assert.equal(filled[0].field.name, 'pluginconfig')
   assert.equal(filled[1].byTag(49).asJs(), 'CLI.PROD.TRD')
@@ -1914,7 +1914,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.ok(message.updatedat().equals(SENDING))
   assert.equal(native.at(schema.indexOf('msghash')).id, 'fixed_size_binary')
   // The row's msghash names the row's own content: padding and derived columns
-  // may move it (decision 26), the row read back verifies it, and projection
+  // may move it, the row read back verifies it, and projection
   // leaves the message's own msghash alone. The chain name, msgphash, keeps its code.
   const before = message.msghash()
   const replayed = fix.FixMsg.fromRow(schema, native, registry)
@@ -2447,7 +2447,7 @@ test('a CBlock is read for what it says, and a truncated one is refused', () => 
   )
 })
 
-// Decision 28: one arrival record, with tag 0 reserved for what the dictionary
+// One arrival record, with tag 0 reserved for what the dictionary
 // did not resolve. Parity with `rust/tests/fix/zero_entries.rs`.
 
 test('an unresolved arrival keeps tag 0, its raw key, its value and its place', () => {

@@ -46,10 +46,10 @@ const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
 /// The lines that read as no row at all.
 ///
 /// Mostly the bridge's own prose, which states no frame, no bridge pair and
-/// no document, so it carries no message (decision 16). Line 99 is the one
+/// no document, so it carries no message. Line 99 is the one
 /// that is not prose: a Jolokia answer that came back with an error and no
 /// `value`, which names no plugin - and a read that answers no plugin answers
-/// no message, rather than an envelope with nothing inside it (decision 17).
+/// no message, rather than an envelope with nothing inside it.
 /// It used to be a row carrying `Error` on tag 20004 and nothing else.
 ///
 /// A line is still a line - the text reader answers every one of them - and
@@ -499,7 +499,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
             for &(index, tag, projected_at) in &fixed {
                 if index == direction {
                     // The batch door fills the codec's pin where a line states
-                    // no direction; the line door leaves it unsaid (decision 14).
+                    // no direction; the line door leaves it unsaid.
                     continue;
                 }
                 if index == source {
@@ -1143,7 +1143,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     );
     // The line classifies as the JSON it is: what makes a document *this*
     // reader's is a shape the codec recognizes rather than a name the
-    // classifier gives it (decision 17).
+    // classifier gives it.
     assert_eq!(mimetype(document).as_deref(), Some(MimeType::JSON.as_str()));
     let message = read(document);
     // The message is the plugin's attributes and nothing the Jolokia answer
@@ -1190,7 +1190,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     // An error answer names no plugin, so it states no message: what failed
     // is how the asking went and never a configuration, and a read that
     // answers no plugin answers nothing rather than an envelope with nothing
-    // inside it (decision 17). The line is still a line, still classified as
+    // inside it. The line is still a line, still classified as
     // JSON, and it is the FIX reader that has nothing to say about it.
     let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
     assert_eq!(mimetype(error).as_deref(), Some(MimeType::JSON.as_str()));
@@ -1256,13 +1256,13 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     );
 
     // A marked frame states its direction in front of it, and the row
-    // carries it as FIX's own tag 385 (decision 14).
+    // carries it as FIX's own tag 385.
     let marked = find("|11=OD9EOEDJ401|55=HOLN|54=1|38=50|");
     assert_eq!(rows[row_of(marked)][column(35)].as_str(), Some("D"));
     assert_eq!(rows[row_of(marked)][column(385)].as_str(), Some("S"));
 
     // A line with nothing after its header carries no message, so the FIX
-    // batch holds no row for it at all (decision 16): what a line was is the
+    // batch holds no row for it at all: what a line was is the
     // text reader's answer, and it still holds every one of them.
     let empty = text
         .iter()
@@ -1964,7 +1964,7 @@ fn the_forwarded_reject_row_reads_its_marked_packed_and_composed_keys() {
         enriched.anomalies().collect::<Vec<_>>()
     );
 
-    // Composed keys (decision 20): a namespace's last segment fills the
+    // Composed keys: a namespace's last segment fills the
     // absent dictionary field it names - `OMSVENDOR.ORDERQTY` fills
     // `OrderQty`, `OMSVENDOR.TIMEINFORCE` fills `TimeInForce` - and the
     // filled field takes its tag while the pair the bridge wrote stays the

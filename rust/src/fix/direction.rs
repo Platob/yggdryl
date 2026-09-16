@@ -1,13 +1,13 @@
 //! Which way a message moved: FIX's own tag 385, read by the registry.
 //!
-//! A direction is a FIX fact and nothing else in the crate has one
-//! (decision 14). The specification publishes it at tag 385, `MsgDirection`,
+//! A direction is a FIX fact and nothing else in the crate has one.
+//! The specification publishes it at tag 385, `MsgDirection`,
 //! with the code set `R = Receive`, `S = Send`, and the dictionary types the
 //! field as it types every coded field. What this module adds is the
 //! *reading*: which code the prose a transport wrote in front of a payload
 //! names - `sending >>`, `recv`, `[OUT]`, a Jolokia `Response:`. The rules
 //! are the dictionary's, carried on tag 385's field as
-//! [`fix:directions`](super::directions) (decision 15), and the defaults
+//! [`fix:directions`](super::directions), and the defaults
 //! below answer where the field carries none. The registry answers the
 //! reading through [`FixRegistry::msgdirection`], and a codec compiles it
 //! once when it takes its registry, so no row builds a regex and no row asks

@@ -418,7 +418,7 @@ pub(crate) fn decoded(bytes: TextBytes) -> Result<(TextBytes, u64)> {
     // the input length: a floor every stray byte overruns by one or two
     // bytes, so a `String::new()` would grow once at the first of them. The
     // line already knows it holds at least one; sixteen bytes of slack keep a
-    // line with a handful at the one allocation decision 10 states.
+    // line with a handful at the one allocation a text line costs.
     let mut text = String::with_capacity(held.len() + 16);
     let count = crate::charset::utf8_transcribe_into(held, &mut text) as u64;
     let page = TextBytes::from_whole_page(Arc::new(text.into_bytes()))?;

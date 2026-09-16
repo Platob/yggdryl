@@ -208,7 +208,7 @@ pub const fn is_crate_tag(tag: i32) -> bool {
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 
 /// How `isincode` derives from the message where it states none, as the
-/// crate field declares it in its `fix:derivation` (decision 38): the
+/// crate field declares it in its `fix:derivation`: the
 /// primary identifier under the ISIN source, else the alternate identifier
 /// whose source says ISIN - the primary first, so a message stating both
 /// states its ISIN in `SecurityID` and the alternate answers only where the
@@ -221,7 +221,7 @@ pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 /// One shape for all four, because there is only one rule: the message's own
 /// `SecurityID` when its source says this is what it is, else the first
 /// `SecurityAltID` occurrence whose source says so. `isincode` has read this
-/// way since decision 38; `cusipcode`, `sedolcode` and `bloombergcode` are
+/// way already; `cusipcode`, `sedolcode` and `bloombergcode` are
 /// the same sentence with a different letter in it, and writing them as a
 /// second mechanism in Rust would be four hand-maintained copies of a
 /// declaration the registry already evaluates.
@@ -363,7 +363,7 @@ fn crated(
 
 /// One field the message implies where it states none, deriving as
 /// `derivation` spells it in the expression grammar over the message's
-/// fields (decision 38).
+/// fields.
 fn derived(
     identity: (i32, &str),
     display: &str,

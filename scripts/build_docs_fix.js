@@ -309,7 +309,7 @@ function counts(records, catalog, row, dialects) {
     codes,
     aliases,
     alternates,
-    // A message is a component carrying `fix:msgtype` (decision 13).
+    // A message is a component carrying `fix:msgtype`.
     messages: catalog.components.filter((field) => field.metadata?.['fix:msgtype'] !== undefined).length,
     components: catalog.components.length,
     columns: row.columns.length,
@@ -347,7 +347,7 @@ function fixedRow(registry) {
  *
  * Every corpus line here carries exactly one message: a line carries one per
  * frame and none where it states no frame, no bridge pair and no document
- * (decision 16), so a sample that answered none or two would be showing the
+ *, so a sample that answered none or two would be showing the
  * reader a message the package never built. `After Enrichment -> ACCOUNT=…`
  * and `no level printed by this plugin` were such samples and are gone; the
  * enriched row is now written the way a bridge writes one, separated.
@@ -377,7 +377,7 @@ function frameCase(registry, reader, schema, key, label, line) {
   }).filter((column) => column !== null)
 
   const ticker = held.symbolTicker()
-  // The settled grid clock every message carries (decision 26).
+  // The settled grid clock every message carries.
   const clock = held.updatedat()
   // The instant a snapshot of this chain was taken at, which an ordinary read
   // never is, so it is empty here and says so.
@@ -395,7 +395,7 @@ function frameCase(registry, reader, schema, key, label, line) {
     mime: String(MimeType.inferBytes(bytes)),
     msgtype: msgtypeOf(bytes),
     // Which way the line moved is FIX's own tag 385, filled by the codec's
-    // reading of the prose in front of the frame (decision 14).
+    // reading of the prose in front of the frame.
     direction: held.getByTag(385)?.asJs() ?? null,
     size: held.size,
     columns,

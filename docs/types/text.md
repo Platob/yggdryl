@@ -1063,7 +1063,7 @@ intake is total by construction and unrecognized text answers the default base.
 - `Scalar::from("USD")` and a value read out of an `ascii` column are one value; `Str` equality, order and hash read the characters alone.
 - `string_parameters` on a code, `bytes_parameters` on a UUID -> `None`; `fixed_byte_width` answers for a fixed string, fixed bytes, a UUID and the numbers, and a code answers `code_width`, the maximum its standard fixes over the text it stores.
 - A `yggdryl.string` or `yggdryl.bytes` document over a storage it does not describe -> imports as the storage.
-- A stored column carrying `yggdryl.msgdirection` or `yggdryl.direction` -> imports as the `fixed_size_binary(4)` it is: the datatype was retired with decision 14, and which way a message moved is FIX's tag 385, text over its code set.
+- A stored column carrying `yggdryl.msgdirection` or `yggdryl.direction` -> imports as the `fixed_size_binary(4)` it is: the datatype was retired, and which way a message moved is FIX's tag 385, text over its code set.
 - Arrow JS rows carry no extension identity, so a `fixed_ascii(n)` column arrives as its padded bytes through `readRecords`; declare `utf8` to read text.
 - A `StringIngest` or `BytesIngest` refusal under `safe` -> null, which a required column then fills with the default; under strict -> `field "<name>" row <n>: expected ..., got ...`.
 - Avro and Iceberg -> a string with text storage (UTF-8 or US-ASCII) crosses as `string`, a fixed one trimmed of padding; any other charset is refused by name; a bounded byte column crosses unbounded, the bound enforced where values enter.

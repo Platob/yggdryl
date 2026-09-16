@@ -132,7 +132,7 @@ impl MimeType {
     /// document is [`Self::XML`] or [`Self::JSON`] - a bridge configuration
     /// document is JSON, which is what it is, and what makes one a
     /// configuration is a shape the codec reads rather than a name this scan
-    /// gives it (decision 17); one that is still `key=value` throughout is
+    /// gives it; one that is still `key=value` throughout is
     /// [`Self::KEYVALUE`]; anything else is [`Self::OCTET_STREAM`].
     ///
     /// The scan reads no message and allocates nothing.
@@ -614,7 +614,7 @@ impl MimeType {
         match self.0 {
             // A FIX frame carrying XML in a tag is not a document and does
             // not read as one; a bridge configuration document is JSON, and
-            // is answered as the JSON it is (decision 17).
+            // is answered as the JSON it is.
             MimeTypeValue::Json => Some(Format::Json),
             MimeTypeValue::JsonLines => Some(Format::JsonLines),
             MimeTypeValue::Yaml => Some(Format::Yaml),

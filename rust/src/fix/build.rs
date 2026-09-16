@@ -352,7 +352,7 @@ impl FixPair {
 /// disagree about what it is called.
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
 /// The name a row states the direction its line moved under: tag 385's own
-/// (decision 14), so a stated `msgdirection` column is read as the direction
+///, so a stated `msgdirection` column is read as the direction
 /// and never as a fill.
 pub(super) const DIRECTION_COLUMN: &str = super::MSGDIRECTION_TAG_NAME.1;
 
@@ -387,14 +387,14 @@ pub(super) struct RowExtras<'row> {
     /// The row's own columns, resolved to the fields they fill.
     pub(super) fills: &'row [Fill<'row>],
     /// The direction the row stated, as a code of tag 385's set: it outranks
-    /// the reading of the line (decision 14).
+    /// the reading of the line.
     pub(super) direction: Option<&'row str>,
     /// The code a line stating no direction takes - the codec's pin on the
     /// batch door - and nothing on the line door, where silence is silence.
     pub(super) direction_pin: Option<&'row str>,
     /// The message type the reader supplies where the payload states none of
     /// its own: a plugin configuration is `UCFG` because the crate says so,
-    /// never because the document did (decision 19). A `35=` or `MSGTYPE=`
+    /// never because the document did. A `35=` or `MSGTYPE=`
     /// on the wire outranks it, as a stated value always does.
     pub(super) msgtype: Option<&'row (&'static str, &'static str)>,
 }

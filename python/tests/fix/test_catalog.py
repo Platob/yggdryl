@@ -110,7 +110,7 @@ def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> N
     assert set(document) == {"fields", "components", "groups"}
     with pytest.raises(ValueError):
         registry.definitions("codesets")
-    # A message is a component carrying `fix:msgtype` (decision 13): the
+    # A message is a component carrying `fix:msgtype`: the
     # fourth category is refused by name.
     with pytest.raises(ValueError):
         registry.definitions("messages")
@@ -135,14 +135,14 @@ def test_category_iterators_and_singletons_pin_their_registry() -> None:
     registry = _catalog()
     iterator = registry.definitions("components")
     assert iter(iterator) is iterator
-    # A message is a component (decision 13): the two iterate together, in
+    # A message is a component: the two iterate together, in
     # name order.
     assert next(iterator).name == "NewOrderSingle"
     assert next(iterator).name == "Party"
     # The crate's own are behind them, in name order: `instids`, the Struct
     # that joins an instrument's identifiers, then the `pluginconfig` message
     # every registry carries as it carries the crate's own fields
-    # (decision 19).
+    #.
     assert next(iterator).name == "instids"
     assert next(iterator).name == "pluginconfig"
     assert next(iterator, None) is None
@@ -178,7 +178,7 @@ def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -
     registry.create_definition("components", _message("NewOrderSingle", "D"))
     registry.create_definition("components", _message("BridgeReport", "P Report Ack"))
     # In name order, and the crate's own `pluginconfig` iterates among them:
-    # every registry has it before a caller creates anything (decision 19).
+    # every registry has it before a caller creates anything.
     values = list(registry.msgtypes())
     assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D"), ("pluginconfig", "UCFG")]
     assert registry.msgtype("D").name == "NewOrderSingle"

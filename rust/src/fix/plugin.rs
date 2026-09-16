@@ -4,7 +4,7 @@
 //! A plugin is a FIX session endpoint: which venue it talks to, over which
 //! host and port, at which sequence numbers, in which state. That is a fact
 //! about a FIX session and not about whoever reports it, so the reading here
-//! is generic over the bridge (decision 18) - ULBridge's Jolokia answer is
+//! is generic over the bridge - ULBridge's Jolokia answer is
 //! one producer of such a report, and its document is what
 //! [`Plugin::from_json_bytes`] reads. FIX publishes almost none of these
 //! fields; what it does publish, a report spells under FIX's own names, so
@@ -40,7 +40,7 @@
 //! `SessionInterface` the ObjectName the read answered for, and the
 //! attributes ordinary scalar fields. What the Jolokia exchange wrapped them
 //! in is the transport's and no part of the configuration, so nothing states
-//! it (decision 17). No synthetic collection or count field is introduced.
+//! it. No synthetic collection or count field is introduced.
 //!
 //! ```
 //! # fn main() -> yggdryl::Result<()> {
@@ -76,7 +76,7 @@ pub const PLUGIN_DIALECT: &str = "plugin";
 /// venues actually crowd, and the 30000s this crate's own fields sit in.
 ///
 /// The floor of the range rather than the smallest tag defined in it:
-/// 20001 to 20004 carried the Jolokia envelope, which decision 17 deleted,
+/// 20001 to 20004 carried the Jolokia envelope, since deleted,
 /// and they are retired rather than reused - a capture written before it
 /// holds `MBean` on 20001, and a dictionary giving 20001 to something else
 /// would read that column as the new field.
@@ -418,7 +418,7 @@ static MESSAGE: std::sync::LazyLock<Option<Field>> = std::sync::LazyLock::new(||
 ///
 /// The specification reserves every type opening with `U` for messages it
 /// does not define, so a code here collides with no dictionary's own and
-/// needs no dictionary edited to be read (decision 19).
+/// needs no dictionary edited to be read.
 pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");
 
 /// The `pluginconfig` component: what a configuration message is made of.
@@ -461,7 +461,7 @@ fn message() -> Result<Field> {
 /// A message states its type, and a registry that holds only the crate's own
 /// fields names no tag 35 to hang it on. The code the crate supplies is the
 /// crate's, so the field it lands in is the crate's too rather than
-/// something a dictionary has to publish first (decision 19).
+/// something a dictionary has to publish first.
 static MSGTYPE_FIELD: std::sync::LazyLock<Option<Field>> = std::sync::LazyLock::new(|| {
     let mut field = DataType::utf8().nullable_field(super::MSGTYPE_TAG_NAME.1);
     field.as_fix_mut().set_tag(super::MSGTYPE_TAG_NAME.0).ok()?;
@@ -503,7 +503,7 @@ impl super::FixRegistry {
         self.add_fields(fix_plugin_fields()?.iter().cloned())?;
         // The message type is registered beside the fields, where it belongs
         // - and by `FixRegistry::new` too, so a registry that never came
-        // through here still has it (decision 19). Whichever ran first, the
+        // through here still has it. Whichever ran first, the
         // component is already there and this is not a second one.
         if self.get_msgtype(PLUGINCONFIG_CODE_NAME.0).is_none() {
             self.create_definition(
@@ -521,7 +521,7 @@ impl super::FixRegistry {
 /// duration behind it, and the namespace scan knows where both stop. Bytes
 /// carrying no document at all are handed on unchanged, because a body that
 /// is not a Jolokia answer names no plugin either way and reading is not
-/// refusing (decision 17).
+/// refusing.
 fn document_in(body: &[u8]) -> &[u8] {
     crate::mime_type::line::plugin_span(body).map_or(body, |span| &body[span])
 }
@@ -610,7 +610,7 @@ fn rendered(value: &Scalar) -> Result<Option<Vec<u8>>> {
 /// assert_eq!(held[0].mbean_type(), Some("Plugin"));
 ///
 /// // A body that is not a Jolokia answer names no plugin, and naming none
-/// // is what it answers: reading is not refusing (decision 17).
+/// // is what it answers: reading is not refusing.
 /// assert_eq!(Plugin::from_json_bytes(br#"{"a":1}"#).count(), 0);
 /// # Ok(())
 /// # }
@@ -622,7 +622,7 @@ pub struct Plugin {
     /// A wildcard answer keys it beside the attributes and a single read
     /// states it in the request, so the two are read from different places
     /// and name the same thing. An answer naming none names no plugin at all
-    /// and is walked past (decision 17), so a plugin this crate reads always
+    /// and is walked past, so a plugin this crate reads always
     /// carries one; the option is for a caller building one by hand.
     mbean: Option<SmolStr>,
     /// The attributes as the document stated them, sorted by name.
@@ -651,7 +651,7 @@ impl std::hash::Hash for Plugin {
 
 impl Plugin {
     /// The deterministic hash of this configuration: what it is named and
-    /// what it states, which is all of it (decision 17).
+    /// what it states, which is all of it.
     /// Uses one allocation for the shared XXH3 state, independent of value size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
@@ -662,7 +662,7 @@ impl Plugin {
     /// answer named it by, and its attributes.
     ///
     /// What the Jolokia exchange wrapped them in is the transport's and no
-    /// part of the configuration (decision 17).
+    /// part of the configuration.
     #[must_use]
     pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self {
         Self {
@@ -680,7 +680,7 @@ impl Plugin {
     ///
     /// Bytes that are not a Jolokia answer name no plugin, and naming none is
     /// what they answer: reading is not refusing, and a row carrying a body
-    /// FIX cannot read said nothing FIX can read (decision 17). That covers
+    /// FIX cannot read said nothing FIX can read. That covers
     /// bytes that are not JSON at all.
     #[must_use]
     pub fn from_json_bytes(body: &[u8]) -> Plugins {
@@ -692,7 +692,7 @@ impl Plugin {
     /// [`Self::from_json_bytes`] finds the document inside a line first; this
     /// is the same reading for a caller whose own scan already found it, so
     /// the namespace, the opener and the close are looked for once for the
-    /// whole reading (decision 17).
+    /// whole reading.
     fn from_json_document(document: &[u8]) -> Plugins {
         let Ok(parsed) = crate::from_json_scalar(document) else {
             return Plugins::none();
@@ -706,8 +706,8 @@ impl Plugin {
     /// per ObjectName its value keys, or the one its request selected. A
     /// document that is neither, an answer that came back empty, and an
     /// error-only answer all name none, which is what they answer: the
-    /// envelope is the transport's and no configuration of its own
-    /// (decision 17). A bulk array is traversed lazily without collecting
+    /// envelope is the transport's and no configuration of its own.
+    /// A bulk array is traversed lazily without collecting
     /// its results.
     #[must_use]
     pub fn from_json_scalar(document: &Scalar) -> Plugins {
@@ -726,7 +726,7 @@ impl Plugin {
     /// two properties read out of it, because [`Self::into_fixmsg`] writes
     /// all three from `mbean` rather than from the attributes. Every other
     /// entry is an attribute the document stated - a message states nothing
-    /// of the exchange that carried it (decision 17), so there is nothing
+    /// of the exchange that carried it, so there is nothing
     /// else to leave out. A synthesized SendingTime is intake context, not
     /// an attribute: only the document's own arrival may export tag 52.
     pub fn from_fixmsg(message: &super::FixMsg) -> Result<Self> {
@@ -776,7 +776,7 @@ impl Plugin {
     pub fn into_fixmsg(&self, codec: &super::FixCodec) -> Result<super::FixMsg> {
         // The attributes and nothing the answer wrapped them in: the
         // ObjectName the read named this plugin by is the `SessionInterface`
-        // attribute, which is where it always belonged (decision 17).
+        // attribute, which is where it always belonged.
         let mut pairs = Vec::new();
         push_attributes(&mut pairs, self.mbean.as_deref(), &self.attributes)?;
         let borrowed: Vec<super::codec::SpelledPair<'_>> = pairs
@@ -791,7 +791,7 @@ impl Plugin {
         let mut extras = RowStamp::held(self.stamp.as_ref(), &fills);
         // What this message is, said by the crate rather than by the
         // document: a configuration carries `35=UCFG` as a built child and
-        // reads as `pluginconfig` (decision 19).
+        // reads as `pluginconfig`.
         extras.msgtype = Some(&PLUGINCONFIG_CODE_NAME);
         codec.build_pairs_with(&borrowed, extras)
     }
@@ -890,7 +890,7 @@ impl Plugin {
 /// materialized. A response that named no configuration - a request with no
 /// value, an error-only answer, a member that is not a Jolokia answer at all -
 /// is walked past rather than yielded, because there is nothing of the
-/// plugin's in it (decision 17).
+/// plugin's in it.
 #[derive(Clone, Debug)]
 pub struct Plugins {
     document: Scalar,
@@ -933,7 +933,7 @@ impl Iterator for Plugins {
             // A Jolokia answer, and nothing else: an object stating what was
             // asked beside what came back. Anything else the row happened to
             // carry names no configuration, and a document that names none
-            // answers none (decision 17).
+            // answers none.
             let Some(root) = answer.as_record() else {
                 self.response += 1;
                 self.after = None;
@@ -1034,7 +1034,7 @@ impl super::FixCodec {
     ///
     /// It refuses nothing: a body that is not a Jolokia answer - `{"a":1}`,
     /// or bytes that are not JSON at all - names no configuration, and
-    /// naming none is what it answers (decision 17). A conversion's own
+    /// naming none is what it answers. A conversion's own
     /// refusal is an item of the iterator.
     #[must_use]
     pub fn parse_plugin_line(&self, body: &[u8]) -> super::FixMessages {

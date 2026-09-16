@@ -44,7 +44,7 @@ const CAPTURE: &[&str] = &[
     "heartbeat emitted seq=7",
 ];
 
-/// The capture rows that carry no message at all (decision 16): a row that
+/// The capture rows that carry no message at all: a row that
 /// opens no frame, states no bridge pair and carries no document states
 /// nothing to read. `After Enrichment ->` and `heartbeat emitted seq=7`
 /// write their pairs into a sentence, and a sentence names no separator for

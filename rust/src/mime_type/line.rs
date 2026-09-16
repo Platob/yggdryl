@@ -23,9 +23,9 @@ const XML_DATA_TAG: i32 = 213;
 /// One vendor string is what locates the payload: it is how a brace-heavy
 /// line full of `=` is known to be a document rather than pairs, and where
 /// inside the line that document opens and closes. It does not name a media
-/// type - a Jolokia answer and any other JSON are both `application/json`
-/// (decision 17) - and it has to be naming an MBean rather than merely
-/// spelling a class, which is what [`object_names`] holds it to.
+/// type - a Jolokia answer and any other JSON are both `application/json` -
+/// and it has to be naming an MBean rather than merely spelling a class,
+/// which is what [`object_names`] holds it to.
 const ULBRIDGE_NAMESPACE: &[u8] = b"com.ullink.ulbridge";
 
 /// The ObjectName property naming what one MBean is.
@@ -89,7 +89,7 @@ pub(crate) struct LineInference<'line> {
     /// a brace-heavy line full of `=` is known to be a document rather than
     /// pairs. Every other JSON document reaches its media type through
     /// [`document_type`] instead; what a document is *for* is not this
-    /// scan's to say either way (decision 17).
+    /// scan's to say either way.
     names_namespace: bool,
     tag_msgtype: Option<&'line [u8]>,
     name_msgtype: Option<&'line [u8]>,
@@ -118,7 +118,7 @@ impl<'line> LineInference<'line> {
             // JSON readings do: what a bridge wrote inside its own
             // configuration is that document's content, never a field. What
             // the document is *for* is the codec's reading and not a name
-            // this scan gives it (decision 17), so it answers the JSON it is.
+            // this scan gives it, so it answers the JSON it is.
             (false, false) if self.names_namespace => MimeType::JSON,
             (false, false) if self.has_pairs => MimeType::KEYVALUE,
             (false, false) => MimeType::OCTET_STREAM,
@@ -1116,11 +1116,11 @@ pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
 /// Whether the line named a separator for the run of pairs its payload
 /// opens with.
 ///
-/// Decision 1's second amendment: a frame is a run of pairs the line named a
+/// A frame is a run of pairs the line named a
 /// separator for - a `SOH` raw or escaped, or a pipe - and whitespace names
 /// none. A run of *named* keys is a bridge row where the line separated it
 /// and prose carrying an `=` where it did not, which is what tells
-/// `heartbeat emitted seq=7` from `ACCOUNT=A1|SIDE=1` (decision 16). A
+/// `heartbeat emitted seq=7` from `ACCOUNT=A1|SIDE=1`. A
 /// numeric frame is FIX whatever separated it, so the codec asks this only
 /// of a run it did not already read as tags.
 pub(crate) fn names_separator(line: &[u8]) -> bool {

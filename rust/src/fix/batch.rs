@@ -107,8 +107,7 @@ impl FixCodec {
     /// its source row's carried columns. Tag 385, the column
     /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names, takes
     /// the row's stated `msgdirection`, else the reading over the prose in
-    /// front of its payload, else [`Self::try_with_direction`]'s pin
-    /// (decision 14).
+    /// front of its payload, else [`Self::try_with_direction`]'s pin.
     ///
     /// Batches close on the raw bytes of the payload column, read once per
     /// input batch from its offsets and spread over the batch's rows, against
@@ -217,7 +216,7 @@ impl FixCodec {
     /// messages a batch holds, through the stage, into [`Self::arrow_reader`]
     /// under the schema read off the batch. There are two such stages now,
     /// not three: restatement is the first step of the enriching pass rather
-    /// than a stage of its own (decision 20).
+    /// than a stage of its own.
     pub fn messages(
         &self,
         source: BatchReader,
@@ -296,7 +295,7 @@ impl FixCodec {
     /// answer more than the narrow row did. What the record cannot say it
     /// does not say: a bridge's packed occurrence, a composed key and a
     /// row-header capture are the codec's readings of a dialect, recorded as
-    /// the pairs the bridge wrote (decisions 8 and 20), so a row that dropped
+    /// the pairs the bridge wrote, so a row that dropped
     /// their columns has dropped them.
     ///
     /// Nothing is parsed again and nothing is collected: the iterator is the
@@ -720,7 +719,7 @@ impl Rows {
         let payload = payload_bytes(&self.columns.dtypes[at], batch.column(at), row)?;
         let beginstring = stated(self.columns.beginstring)?;
         // The direction a row states outranks any reading of its line, and
-        // the codec's pin fills what neither states (decision 14).
+        // the codec's pin fills what neither states.
         let direction = stated(self.columns.direction)?
             .and_then(|held| {
                 held.as_str()

@@ -954,7 +954,7 @@ fn a_coupled_value_of_every_width_reads_back_through_its_datatype() {
 /// and they sort as the instants do - including across the epoch, where the
 /// two's-complement bytes of [`TxHash::into_bytes`] sort the other way.
 ///
-/// Decision 38: this is what a FIX identity column holds, so the ordering is
+/// This is what a FIX identity column holds, so the ordering is
 /// the column's ordering and the digest is not the lossy 58 bits
 /// [`TxHash::into_uuid`] keeps.
 #[test]

@@ -205,7 +205,7 @@ const WINDOWS_1252_C1_ROW: [char; 32] = [
 
 #[test]
 fn bytes_offered_as_utf8_read_by_one_rule_per_invalid_run() {
-    // Decision 10's lines, once the text line's own, read at the layer now
+    // The lines that were once the text line's own read at the layer now
     // and unmoved in value: a stray byte among UTF-8, a wholly Windows-1252
     // line, each of the five holes, and a character a byte limit cut in two.
     assert_eq!(

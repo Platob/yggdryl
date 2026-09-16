@@ -104,7 +104,7 @@ impl FixMsg {
     /// value because the entries do not change, and a cached digest is a fact
     /// that a later edit makes a lie - the invalidation rule that would
     /// prevent it costs more than the walk it saves. A direction is the
-    /// opposite case and *is* stored - as tag 385 on the row, decision 14 -
+    /// opposite case and *is* stored - as tag 385 on the row -
     /// because the bytes it is read from are gone by the time anyone could
     /// ask again.
     ///

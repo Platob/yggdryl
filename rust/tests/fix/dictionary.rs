@@ -396,25 +396,24 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     assert_eq!(utc, 74, "instants stated in UTC");
 }
 
-/// The committed dictionary's hash, pinned as a literal (decision 13).
+/// The committed dictionary's hash, pinned as a literal.
 ///
 /// The registry hash walks scalar fields, then `[Components, Groups]` with
 /// the messages among the components in name order, so a change to that walk
 /// or to any shipped document moves this number on purpose, in the commit that
-/// says why. Decision 19 moved it: every registry now carries the crate's
-/// own `pluginconfig` beside the shipped dictionary's own components, as
-/// every registry already carries the crate's own fields. Decision 21 adds
-/// the builtin altids group and generated component identifier declarations.
-/// Decision 22 renames the three lifecycle identities and types them as UUIDs.
-/// Decision 23 describes the chain's scoped lifecycle recipe in its field.
-/// Decision 24 adds the previous clock and UUID declarations.
-/// Decision 26 retires msghash, renames updatedat, adds createdat/code/snapshotat,
-/// and replaces the identity recipes in the crate declarations. The shipped
-/// SendingTime/TransactTime definitions already supply the standard clock seeds.
-/// Decision 38 renames the previous clock to `prevupdatedat` and the partition
-/// to `timepartition`, types the partition as the hour instant, marks it as
-/// the partition column and declares its derivation as an expression; it
-/// then moves the enrichment rules out of Rust onto the 29 shipped fields
+/// says why. It moved when every registry began to carry the crate's own
+/// `pluginconfig` beside the shipped dictionary's own components, as every
+/// registry already carries the crate's own fields; for the builtin altids
+/// group and the generated component identifier declarations; for the three
+/// lifecycle identities renamed and typed as UUIDs; for the chain's scoped
+/// lifecycle recipe described in its field; for the previous clock and UUID
+/// declarations; when msghash was retired, updatedat renamed,
+/// createdat/code/snapshotat added and the identity recipes in the crate
+/// declarations replaced - the shipped SendingTime/TransactTime definitions
+/// already supply the standard clock seeds. It moved when the previous clock
+/// became `prevupdatedat` and the partition `timepartition`, typed as the
+/// hour instant, marked as the partition column and deriving by an
+/// expression, and when the enrichment rules left Rust for the 29 shipped fields
 /// that carry a `fix:derivation`, and onto the three crate columns that
 /// derive - `CountryOfIssue` listing the crate's 249 ISO 3166 codes,
 /// `OrderQty` reading a canceled quantity outright, `isincode` reading each

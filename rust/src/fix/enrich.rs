@@ -22,7 +22,7 @@
 //!
 //! # The rules are the registry's, not this module's
 //!
-//! Each of those tables is one field's `fix:derivation` (decision 38): one
+//! Each of those tables is one field's `fix:derivation`: one
 //! term in the crate's expression grammar over the message's fields, spelled
 //! by their canonical folded names, carried by the field it fills and read
 //! with [`FixField::derivation`](crate::FixField::derivation). Nothing here
@@ -197,7 +197,7 @@ impl Input {
     }
 }
 
-/// Every `fix:derivation` a registry carries, compiled once (decision 38).
+/// Every `fix:derivation` a registry carries, compiled once.
 ///
 /// Built by [`FixRegistry::derivations`] and kept on the registry until a
 /// field changes; every codec and every message reading that registry
@@ -483,8 +483,7 @@ impl Refused {
 /// at startup, and then writes lines that name only the plugin. Those lines
 /// are about a session whose two ends the reader has already read, so the
 /// pass that fills what a message left unsaid can fill them too - from the
-/// configuration, by name, and never over a value the message stated
-/// (decision 19).
+/// configuration, by name, and never over a value the message stated.
 ///
 /// The memory is one entry per plugin, replaced when a later configuration
 /// names it again, and it dies with the iterator that holds it.
@@ -499,7 +498,7 @@ pub(super) struct Remembered {
 ///
 /// Not `BeginString`: every built message fills tag 8 non-null from the
 /// version its row was read at, so a configuration's would never find a
-/// message stating none (decision 19).
+/// message stating none.
 const REMEMBERED_TAGS: [i32; 2] = [49, 56];
 
 impl Remembered {
@@ -593,7 +592,7 @@ impl Remembered {
 /// one pair the codec resolved onto another field, and a row-header capture
 /// never arrived on the wire at all - the record keeps each as the bridge
 /// wrote it, under tag zero where nothing resolved it, because an arrival is
-/// what arrived (decisions 8 and 20). Those readings are the codec's, so a
+/// what arrived. Those readings are the codec's, so a
 /// row that drops their columns has dropped them.
 pub(super) fn lifted(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     recovered(registry, msg)
@@ -715,7 +714,7 @@ fn occurrences_of(group: &Field, entries: &[super::FixEntry]) -> Option<Scalar> 
 
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
-/// Four steps in order (decision 20, decision 38): what the row's projection
+/// Four steps in order: what the row's projection
 /// dropped comes back off the arrival record; the message is restated under
 /// the dictionary the registry holds; the registry's derivations fill what the
 /// message implies, to a fixpoint; and the component's identifier
@@ -729,11 +728,11 @@ fn occurrences_of(group: &Field, entries: &[super::FixEntry]) -> Option<Scalar> 
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
     // What the row's projection dropped comes back off the arrival record
     // first, because restatement reads what the document stated and a row
-    // states only its columns (decision 20).
+    // states only its columns.
     let msg = recovered(registry, msg);
     // Restatement next, and not as a step a caller may skip: every
     // derivation reads by canonical name, and a child stored under an alias
-    // is invisible until it has been canonicalized (decision 20).
+    // is invisible until it has been canonicalized.
     let mut held = super::latest::restate(msg)?;
     // The derivations, compiled and bound once per registry; a refused
     // compile is the pass's to report, since a dictionary whose rules do not

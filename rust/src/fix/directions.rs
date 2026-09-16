@@ -4,7 +4,7 @@
 //! A transport writes which way a message moved in front of it -
 //! `sending >>`, `recv <<`, `[OUT]`, a Jolokia `Response:` - and which words
 //! mean which code is a fact about the code set, so it travels on the field
-//! that declares the set (decision 15). `fix:directions` is that document: one
+//! that declares the set. `fix:directions` is that document: one
 //! [canonical document](super::document) with an entry per code, in the
 //! order the dictionary lists them, each holding the `regex::bytes` patterns
 //! applied to the prefix. A code matches where any of its patterns matches;

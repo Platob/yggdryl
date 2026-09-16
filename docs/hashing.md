@@ -1333,7 +1333,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
 ## Performance
 
-The numbers come from containerized x86_64 Linux runs on one host (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB): rustc 1.94.1 release with thin LTO, CPython 3.11.15, Node 22.22.2, fixtures built outside every measured loop ([benchmarks](benchmarks.md)). They were measured before decision 25, when the drivers were `rust/benchmarks/xxhash.rs`, `rust/benchmarks/txhash.rs`, `node/benchmarks/xxhash.js`, and `node/benchmarks/txhash.js`; the move to `rust/benchmarks/hashing/` and `node/benchmarks/hashing/` kept every case name, fixture byte, and cost assertion, and nothing was rerun, so each regenerate command below runs the same cases under the new driver. The `into_uuid` case in `txhash_value` postdates these runs and has no row.
+The numbers come from containerized x86_64 Linux runs on one host (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB): rustc 1.94.1 release with thin LTO, CPython 3.11.15, Node 22.22.2, fixtures built outside every measured loop ([benchmarks](benchmarks.md)). They were measured earlier, when the drivers were `rust/benchmarks/xxhash.rs`, `rust/benchmarks/txhash.rs`, `node/benchmarks/xxhash.js`, and `node/benchmarks/txhash.js`; the move to `rust/benchmarks/hashing/` and `node/benchmarks/hashing/` kept every case name, fixture byte, and cost assertion, and nothing was rerun, so each regenerate command below runs the same cases under the new driver. The `into_uuid` case in `txhash_value` postdates these runs and has no row.
 
 The Arrow groups report rows per second for missing or default holders, preserved populated holders, and forced recomputation. The JavaScript rows include the IPC copy that binding requires.
 

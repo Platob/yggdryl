@@ -317,7 +317,7 @@ fn a_data_field_that_is_not_text_reaches_a_row_as_the_decode_a_row_can_hold() {
 
 #[test]
 fn the_same_line_read_as_text_is_the_decode_of_the_wire_and_says_nothing_of_it() {
-    // Decision 10: a text line is text before the codec reads it. The bytes
+    // A text line is text before the codec reads it. The bytes
     // that were not UTF-8 read as the Windows-1252 characters they are, so
     // the stated length - a count of wire bytes - reaches no boundary the
     // frame stated and is not honoured: the value stays what the frame cut,

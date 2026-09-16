@@ -404,7 +404,7 @@ impl<'field> FixField<'field> {
     }
 
     /// Walks the rules naming a code of this field's set from the prose in
-    /// front of a payload, in document order (decision 15).
+    /// front of a payload, in document order.
     ///
     /// Tag 385's field carries them; the reading
     /// [`FixRegistry::msgdirection`](crate::FixRegistry::msgdirection)
@@ -436,7 +436,7 @@ impl<'field> FixField<'field> {
     }
 
     /// The term this field's value is derived from the message with, where
-    /// the message states none (decision 38).
+    /// the message states none.
     ///
     /// One term in the crate's expression grammar over the message's fields,
     /// spelled by their canonical folded names - `orderqty`, `cumqty`,
@@ -1009,7 +1009,7 @@ impl FixFieldMut<'_> {
     }
 
     /// Records the rules naming a code of this field's set from the prose in
-    /// front of a payload (decision 15).
+    /// front of a payload.
     ///
     /// Entries are rendered canonically in the order given. A rule's code is
     /// any spelling of a code of the set this field declares - the value or
@@ -1123,8 +1123,7 @@ impl FixFieldMut<'_> {
             .map(Some)
     }
 
-    /// Records the term this field's value is derived from the message with
-    /// (decision 38).
+    /// Records the term this field's value is derived from the message with.
     ///
     /// The term is stored as its canonical text, so what is read back is
     /// what was written whatever spelling the caller parsed it from, and a

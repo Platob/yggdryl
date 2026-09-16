@@ -188,15 +188,14 @@ test('inline codes and the complete native catalog survive snapshots', () => {
 test('native category cursors release holds on exhaustion and early close', () => {
   const registry = catalog()
   const cursor = registry.definitions('components')[Symbol.iterator]()
-  // A message is a component (decision 13): the two iterate together, in
+  // A message is a component: the two iterate together, in
   // name order.
   assert.equal(cursor.next().value.name, 'NewOrderSingle')
   assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
   assert.equal(cursor.next().value.name, 'Party')
   // The crate's own are behind them, in name order: `instids`, the Struct
   // that joins an instrument's identifiers, then the `pluginconfig` message
-  // every registry carries as it carries the crate's own fields
-  // (decision 19).
+  // every registry carries as it carries the crate's own fields.
   assert.equal(cursor.next().value.name, 'instids')
   assert.equal(cursor.next().value.name, 'pluginconfig')
   assert.equal(cursor.next().done, true)
@@ -216,7 +215,7 @@ test('message singleton indices distinguish names from another wire code', () =>
   registry.createDefinition('components', message('NewOrderSingle', 'D'))
   registry.createDefinition('components', message('BridgeReport', 'P Report Ack'))
   // In name order, and the crate's own `pluginconfig` iterates among them:
-  // every registry has it before a caller creates anything (decision 19).
+  // every registry has it before a caller creates anything.
   const values = [...registry.msgtypes()]
   assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D'], ['pluginconfig', 'UCFG']])
   assert.equal(registry.msgtype('D').name, 'NewOrderSingle')

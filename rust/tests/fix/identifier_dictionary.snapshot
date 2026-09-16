@@ -1,4 +1,4 @@
-# Decision 21: every shipped component; '-' means no fix:identifiers property.
+# Every shipped component; '-' means no fix:identifiers property.
 # Literal census, updated only alongside a decision changing these memberships.
 accountsummaryreport	-
 additionalterm	-

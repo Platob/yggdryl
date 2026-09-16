@@ -8,7 +8,7 @@ use crate::{Error, Result};
 /// The independently named categories in a FIX registry.
 ///
 /// A message is a component carrying `fix:msgtype`; there is no fourth
-/// category for it (decision 13).
+/// category for it.
 ///
 /// ```
 /// use yggdryl::{DataType, FixCategory, FixRegistry};
@@ -18,7 +18,7 @@ use crate::{Error, Result};
 /// registry.create_definition(FixCategory::Components, component)?;
 /// // Beside the crate's own `pluginconfig` and `instids`, which every
 /// // registry holds from construction as it holds the crate's own fields
-/// // (decision 19): a definition is filed by the shape it has, and a Struct
+/// //: a definition is filed by the shape it has, and a Struct
 /// // column of this crate's is a component like any other.
 /// assert_eq!(registry.definitions(FixCategory::Components).count(), 3);
 /// assert!(registry.get_field("Party").is_none());

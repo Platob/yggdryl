@@ -5,7 +5,7 @@
 // `intervalNs`, and the first creation instant a live chain carries.
 //
 // Every rule is the core's, pinned in `rust/tests/fix/lifecycle_grid.rs`
-// (decisions 26 and 27); what these check is the crossing - the interval as a
+//; what these check is the crossing - the interval as a
 // `bigint` or an exact number, the refusals that arrive located, the stream a
 // JavaScript iterable feeds one message at a time, and the lifecycle that
 // stream owns once it is answered.

@@ -64,7 +64,7 @@ pub(super) fn stated_identity(name: &str, held: &Scalar) -> Result<Identity> {
 /// The sixteen bytes as the lowercase hex a name spells them with.
 ///
 /// A chain code scopes an identifier under the instrument it reached
-/// (decision 22); the scope is now bytes rather than an RFC identifier, so
+///; the scope is now bytes rather than an RFC identifier, so
 /// the name carries the bytes the way every binary literal in this crate is
 /// written - thirty-two lowercase hex digits, no separators.
 pub(super) struct IdentityText(pub(super) Identity);

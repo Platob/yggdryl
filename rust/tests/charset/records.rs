@@ -1,6 +1,6 @@
 //! Record reads over payloads that are not UTF-8.
 //!
-//! The charset a line is read in is what its handle declares (decision 12):
+//! The charset a line is read in is what its handle declares:
 //! the record reader lays the declaration over its transport, below the line
 //! splitter, and the writer follows the same declaration back out.
 
@@ -123,7 +123,7 @@ fn a_declared_charset_is_read_below_the_splitter_and_an_undeclared_one_is_the_wi
 
 #[test]
 fn two_latin_1_letters_are_told_from_one_utf_8_scalar_by_the_declaration() {
-    // What decision 10 could not tell and decision 12 can: `C3 A9` is one
+    // What a declaration tells and an undeclared read cannot: `C3 A9` is one
     // UTF-8 `é` where nothing is declared, and two windows-1252 letters where
     // windows-1252 is.
     let wire = b"caf\xc3\xa9\n".to_vec();
@@ -418,7 +418,7 @@ fn a_surrogate_pair_straddling_a_chunk_edge_is_joined_under_a_declaration() {
 #[test]
 fn a_byte_limit_that_cuts_inside_a_decoded_scalar_leaves_stray_bytes_the_line_counts() {
     // The limit counts decoded bytes and is not backed off to a character
-    // boundary (decision 10's edge, unmoved): a limit of 2 over `Zürich`
+    // boundary: a limit of 2 over `Zürich`
     // keeps `Z` and the first byte of `ü`, and that stray byte is read and
     // counted exactly as on an undeclared read. `0` is what a declared line
     // counts when the limit did not cut inside a scalar.

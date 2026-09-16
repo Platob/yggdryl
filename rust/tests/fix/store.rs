@@ -670,7 +670,7 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
         "[]",
         r#"{"fields":[],"components":[]}"#,
         r#"{"fields":[],"components":[],"groups":[],"branches":[],"codesets":[]}"#,
-        // A message is a component (decision 13): a snapshot written with a
+        // A message is a component: a snapshot written with a
         // fourth category is refused by that key's name.
         r#"{"fields":[],"messages":[],"components":[],"groups":[]}"#,
     ] {
@@ -1125,7 +1125,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
     assert_eq!(registry.len(), 6241 + super::crated_fields());
-    // The census decision 13 rests on: 747 components and 181 messages fold
+    // The census the one namespace rests on: 747 components and 181 messages fold
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
         (
@@ -1225,7 +1225,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
     // Every spelling the fold reads as one name: another case, and a
     // separator the fold drops. Built one definition at a time, so in
     // dependency order: the component, the group over it, then the message
-    // over the group - a message is a component (decision 13), so name order
+    // over the group - a message is a component, so name order
     // alone would put `NewOrderSingle` before the `Parties` it references.
     let source = |respell: fn(&str) -> String| {
         let mut source = FixRegistry::from_fields(original.iter().cloned()).unwrap();
@@ -1950,7 +1950,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
 #[test]
 fn message_types_require_non_null_structs_and_complete_non_control_codes() {
     let mut registry = FixRegistry::new();
-    // A Struct stating no message type is a plain component (decision 13):
+    // A Struct stating no message type is a plain component:
     // it is accepted, and no code reaches it.
     let missing = DataType::from_fields([]).unwrap().required_field("Missing");
     registry
@@ -1986,7 +1986,7 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
     assert!(refused.as_fix_mut().set_msgtype("A\nB").is_err());
 }
 
-/// A message is a component carrying `fix:msgtype` (decision 13): the marker
+/// A message is a component carrying `fix:msgtype`: the marker
 /// is a property the component gains or loses through an ordinary update,
 /// and the message index follows it rather than a category move.
 #[test]

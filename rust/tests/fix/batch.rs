@@ -20,8 +20,7 @@ const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioni
 
 fn config_registry() -> Arc<FixRegistry> {
     let mut registry = FixRegistry::new().with_plugin_fields().unwrap();
-    // Tag 385 as the dictionary types it: text carrying its code set
-    // (decision 14).
+    // Tag 385 as the dictionary types it: text carrying its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
     direction
@@ -178,7 +177,7 @@ fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
         assert_eq!(batch.num_rows(), 1);
         assert_eq!(first_value(&batch, "rownum"), Scalar::from(42_i64));
         // A stated column is a spelling of a code of the set, stored as
-        // the code (decision 14).
+        // the code.
         assert_eq!(first_tag_value(&batch, 385).as_str(), Some("R"));
     }
 }
@@ -265,7 +264,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
 fn a_capture_answers_one_row_per_message_not_one_per_line() {
     let batches = batches(codec().parse_text_arrow_reader(source()).unwrap());
     // A FIX batch answers one row per *message*, and five of the fourteen
-    // lines carry none, so they carry no row either (decision 16) - the text
+    // lines carry none, so they carry no row either - the text
     // reader is the one that answers a row per line. The silent five, and
     // why each states no message:
     //
@@ -289,7 +288,7 @@ fn a_capture_answers_one_row_per_message_not_one_per_line() {
 
     // A row that states no type is still a row, named `unknown` - but only a
     // bridge row or a document ever is, never a sentence, because a sentence
-    // is not a row at all (decision 16).
+    // is not a row at all.
     let first = &batches[0];
     let msgtype = tag_column(first, 35);
     assert!(msgtype.is_valid(0), "a framed row states its type");
@@ -603,8 +602,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     // line holds its bytes as a typed field, so there is no column to name
     // wrongly and no cell that could hold a number instead. A line carrying
     // no bytes carries no message either: an empty payload column is a row
-    // that had nothing to read, not a row holding an empty message
-    // (decision 16).
+    // that had nothing to read, not a row holding an empty message.
     let mut silent = codec
         .parse_text_line(&TextLine::from_bytes(0, TextBytes::default()).unwrap())
         .unwrap();
@@ -653,7 +651,7 @@ fn a_refused_line_ends_the_batch_stream_after_the_completed_prefix() {
 
     // The capture door has no refusal to make and no empty row to answer
     // with: the empty cell is a row that carried no payload, so it yields no
-    // row at all and the two framed lines come through as two (decision 16).
+    // row at all and the two framed lines come through as two.
     let read: Vec<_> = codec
         .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
         .unwrap()
@@ -910,7 +908,7 @@ fn messages_and_arrow_reader_invert_each_other() {
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     // The stream is over messages, not lines: the five lines of the corpus
-    // that state no message contribute none to it (decision 16).
+    // that state no message contribute none to it.
     assert_eq!(
         parsed.len(),
         9,
@@ -975,7 +973,7 @@ fn byte_in_byte_out_over_the_whole_corpus() {
 
     // One written line per *message*, not per source line: the five lines of
     // the corpus that open no frame, state no bridge pair and carry no
-    // document are silent, so nine of the fourteen come back (decision 16).
+    // document are silent, so nine of the fourteen come back.
     // The line each message came from, paired with the pairs it should be
     // written as, so the written lines zip against the lines that carried a
     // message rather than against every line.
@@ -1399,7 +1397,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
 
     // Named at a column that is not a payload, the same source answers
     // nothing: `msgtype` holds `D`, which opens no frame, states no bridge
-    // pair and carries no document, so neither row is a row (decision 16).
+    // pair and carries no document, so neither row is a row.
     let typed = codec
         .clone()
         .with_payload_column("msgtype")
@@ -1618,7 +1616,7 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
         .collect();
     // Read as the payload it is, `venue` is one word: it opens no frame,
     // states no bridge pair and carries no document, so it states no message
-    // at all (decision 16). It used to answer an empty `unknown`; that it now
+    // at all. It used to answer an empty `unknown`; that it now
     // answers nothing is the same proof, that the column was read as a
     // payload and never as the plugin its spelling names.
     assert!(

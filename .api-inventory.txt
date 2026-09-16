@@ -233,7 +233,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 66] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended)
+  pub const ALL: [Self; 66] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -520,7 +520,7 @@ impl<'field> FixField<'field>
   pub fn replacements(&self) -> FixReplacements<'field>
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's fix:directions rules in document order; nothing where absent, which reads by the defaults)
   pub fn is_transient(&self) -> Result<bool>  (the fix:transient flag, true where absent: whether this column travels from one message of a chain to the next, so a column settled to one message says false)
-  pub fn derivation(&self) -> Result<Option<Term>>  (the fix:derivation term: how this field's value is derived from the message where the message states none, one expression over the message's fields by canonical folded name, parsed through Term::from_str and budget-checked; None where absent; InvalidMetadataValue naming fix:derivation for a text that is not a term or one past the budget; decision 38)
+  pub fn derivation(&self) -> Result<Option<Term>>  (the fix:derivation term: how this field's value is derived from the message where the message states none, one expression over the message's fields by canonical folded name, parsed through Term::from_str and budget-checked; None where absent; InvalidMetadataValue naming fix:derivation for a text that is not a term or one past the budget)
   impl FixFieldMut<'_>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
   pub fn add_branch(&mut self, dialect: &str) -> Result<()>
@@ -627,7 +627,7 @@ pub struct FixCodec
   pub const fn default_sending_time(&self) -> Option<&Scalar>
   pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()>
   pub fn try_with_default_sending_time(self, value: Option<Scalar>) -> Result<Self>  (exact ns/UTC or None; initial intake only)
-  pub fn direction(&self) -> Option<&str>  (the code of tag 385's set an unmarked line takes on the batch door; the set's Send code by default; decision 14)
+  pub fn direction(&self) -> Option<&str>  (the code of tag 385's set an unmarked line takes on the batch door; the set's Send code by default)
   pub fn msgdirection(&self) -> &MsgDirection  (the registry's reading of tag 385, the field's fix:directions or the defaults, every pattern compiled once when the codec is built)
   pub const fn batch_byte_size(&self) -> u64
   pub fn payload_column(&self) -> &str
@@ -641,24 +641,24 @@ pub struct FixCodec
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
-  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per configuration a bulk answer named, and none at all where the row opens no frame, states no bridge pair and carries no document a Jolokia answer names a configuration in; decisions 16 and 17)
+  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per configuration a bulk answer named, and none at all where the row opens no frame, states no bridge pair and carries no document a Jolokia answer names a configuration in)
   pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item; fuses source exhaustion)
-  pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`; decision 16)
+  pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`)
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
   pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
   pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine>  (owned or borrowed lines and either Result; borrows without cloning, moves errors unchanged, fuses source exhaustion)
-  pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills licensed by the specification. Namespace composition already ran at initial intake before clock defaults. Settled clocks are retained and identities recomputed atomically; decisions 20 and 26)
-  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill; decision 20)
-  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instrument-scoped identifiers; grid/history semantics of decision 26)
+  pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills licensed by the specification. Namespace composition already ran at initial intake before clock defaults. Settled clocks are retained and identities recomputed atomically)
+  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill)
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instrument-scoped identifiers; grid/history semantics)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
-  pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, restated and filled FIX rows out under the same schema; no re-parse; the same pass `enrich_message` runs; one memory of the configurations passed crosses every batch, because a capture split into batches is one capture; decisions 19 and 20)
+  pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, restated and filled FIX rows out under the same schema; no re-parse; the same pass `enrich_message` runs; one memory of the configurations passed crosses every batch, because a capture split into batches is one capture)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row`; batches close on the arrival record's raw bytes; completed prefix then error and fusion)
   pub fn format_messages<'codec, 'field, I>(&'codec self, messages: I, field: &'field Field) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (each message through `FixMsg::into_row` under one message field of the registry; a column the message does not carry is lifted off its arrival record; a packed occurrence, a composed key and a row-header capture are the codec's readings and are not in the record to lift)
@@ -682,7 +682,7 @@ impl FixMsg
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
-  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per configuration a bulk answer named; nothing collected either way; fused after exhaustion or the first error; decision 16)
+  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per configuration a bulk answer named; nothing collected either way; fused after exhaustion or the first error)
   impl FusedIterator for FixMessages
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
@@ -806,16 +806,16 @@ pub struct FixAnomalies<'msg>
 ### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
 pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
 pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
-pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read; decision 19)
+pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read)
 pub fn fix_plugin_fields() -> Result<&'static [Field]>
-pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for; decision 19)
+pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for)
 impl FixRegistry
   pub fn with_plugin_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
+  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
-pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype; decision 13)
+pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype)
   pub const ALL: [Self; 3]
   pub const fn as_str(self) -> &'static str
   pub fn from_str(value: &str) -> Result<Self>
@@ -824,7 +824,7 @@ pub enum FixCategory { Fields, Components, Groups }  (a message is a component c
 ### yggdryl::fix::MsgDirection  [rust\src\fix\direction.rs]
 pub const SEND_PATTERNS: [&str; 3]  (the default patterns naming the set's Send code where tag 385's field carries no fix:directions: the spelled verbs, the bracketed bare word, the Jolokia request: prose; re-exported at yggdryl::fix beside RECEIVE_PATTERNS)
 pub const RECEIVE_PATTERNS: [&str; 3]  (the mirror for the Receive code: the spelled verbs, the bracketed bare word, the Jolokia response: prose)
-pub struct MsgDirection  (the registry's reading of tag 385: its code set and the rules naming one code from the prose in front of a payload - the field's fix:directions, the defaults built in where it carries none; decisions 14 and 15. Built by FixRegistry::msgdirection, every pattern compiled once into a regex::bytes::Regex by FixRegistry::msgdirection / FixCodec::new; no public constructor)
+pub struct MsgDirection  (the registry's reading of tag 385: its code set and the rules naming one code from the prose in front of a payload - the field's fix:directions, the defaults built in where it carries none. Built by FixRegistry::msgdirection, every pattern compiled once into a regex::bytes::Regex by FixRegistry::msgdirection / FixCodec::new; no public constructor)
   pub const fn field(&self) -> &Field  (tag 385 as a built message carries it: the dictionary's field non-null, else a utf8 field carrying the tag)
   pub fn sent(&self) -> &str  (the set's `Send` code, else `S`)
   pub fn recv(&self) -> &str  (the set's `Receive` code, else `R`)
@@ -870,7 +870,7 @@ impl FixRegistry
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
   pub fn stable_hash(&self) -> u64
-  pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now - its set and its fix:directions rules, the defaults where the field carries none; decisions 14 and 15)
+  pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now - its set and its fix:directions rules, the defaults where the field carries none)
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
@@ -928,16 +928,16 @@ impl FixRegistry
 ### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
 pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
 pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
-pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read; decision 19)
+pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read)
 pub fn fix_plugin_fields() -> Result<&'static [Field]>
-pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for; decision 19)
+pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for)
 impl FixRegistry
   pub fn with_plugin_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
+  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing)
 
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: timestamp, thread bracket, pluginid, level; kept ULBridge's because the line shape is the product's, where the plugin reading is not; decision 18)
+pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: timestamp, thread bracket, pluginid, level; kept ULBridge's because the line shape is the product's, where the plugin reading is not)
 
 ### yggdryl::hashing  [rust\src\hashing\mod.rs]
 pub mod txhash;

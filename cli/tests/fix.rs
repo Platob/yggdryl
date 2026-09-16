@@ -122,7 +122,7 @@ fn categories_expose_all_crud_operations_and_examples() {
         assert!(create_help.contains("--input"));
         assert!(create_help.contains("Examples:"));
     }
-    // A message is a component carrying a message type (decision 13): the
+    // A message is a component carrying a message type: the
     // tree that named a fourth category is gone with it.
     for retired in ["list", "show", "set", "rm", "codesets", "messages"] {
         workspace.failure(&[retired]);

@@ -20,7 +20,7 @@
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
 //! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
 //! | directions | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
-//! | derivation | `fix:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint (decision 38) |
+//! | derivation | `fix:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!

@@ -1,4 +1,4 @@
-//! Decision 21's complete shipped identifier declarations, including absences.
+//! The complete shipped identifier declarations, including absences.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

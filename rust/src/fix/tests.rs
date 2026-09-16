@@ -87,7 +87,7 @@ fn seeded_fields() -> usize {
 
 /// How many message types every registry holds before a test registers one:
 /// the crate's own, which `FixRegistry::new` seeds beside its fields.
-/// `pluginconfig` is the one of them (decision 19), and counting rather than
+/// `pluginconfig` is the one of them, and counting rather than
 /// spelling `1` keeps every total below true of the next one too.
 fn crated_messages() -> usize {
     usize::from(crate::fix_plugin_message().is_ok())
@@ -264,7 +264,7 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         (
             // A bridge configuration document is JSON, which is what it is:
             // what makes one *this* reader's is a shape the codec recognizes
-            // and never a name the scan gives it (decision 17). The namespace
+            // and never a name the scan gives it. The namespace
             // still says whose, and the first ObjectName's `type=` is what the
             // entry is - `plugin-type=` shares its last five bytes without
             // being it.
@@ -378,7 +378,7 @@ fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_documen
     const ASKED: &[u8] =
         br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
 
-    // A document states nothing of which way it moved (decision 15): the
+    // A document states nothing of which way it moved: the
     // words inside it - `send`, `outgoing`, `in` - are its own payload rather
     // than a transport marker, and the echoed `request` key is the answer's
     // shape, not a direction. Without the bound the words would answer, and
@@ -403,7 +403,7 @@ fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_documen
     let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
     assert_eq!(reading.read_bytes(write), None);
     // A configuration document classifies as the JSON it is: the reading that
-    // makes one a bridge's is the codec's, not a media type (decision 17).
+    // makes one a bridge's is the codec's, not a media type.
     assert_eq!(MimeType::infer_bytes(write), MimeType::JSON);
     assert_eq!(FixCodec::infer_msgtype_bytes(write), Some(&b"Bridge"[..]));
 
@@ -487,7 +487,7 @@ const PLUGIN_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sess
 ///
 /// `MBean` and `Operation` were what the transport asked, `Status` and `Error`
 /// how the asking went, and none of them is a fact about the plugin the answer
-/// carried (decision 17). Tags 20001 to 20004 are retired rather than reused,
+/// carried. Tags 20001 to 20004 are retired rather than reused,
 /// so a message answering under one of them would be answering for a field
 /// this dictionary no longer defines.
 fn assert_states_no_envelope(message: &crate::FixMsg) {
@@ -628,7 +628,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     // dropping it: a venue sends fields no dictionary has. And a registry
     // that never registered the plugin fields still types these, because
     // `pluginconfig` is the crate's own and every registry has it, and a
-    // component holds its members by value (decision 19).
+    // component holds its members by value.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
         .parse_line(PLUGIN_WILDCARD)
@@ -666,7 +666,7 @@ fn plugin_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     assert_eq!(configurations.size_hint(), (0, None));
     // The first answer failed, so it named no plugin, and a read that
     // answers no plugin answers no message: the array's two responses yield
-    // one configuration, which is the one that came back (decision 17).
+    // one configuration, which is the one that came back.
     let value = configurations.next().unwrap();
     assert_eq!(value.name(), Some("Bridge"));
     assert!(configurations.next().is_none());
@@ -697,7 +697,7 @@ fn plugin_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
 
     // The same fact one layer up: a line whose whole document is an answer
     // that failed is a row yielding no message at all, rather than a row
-    // carrying an envelope with nothing inside it (decisions 16 and 17).
+    // carrying an envelope with nothing inside it.
     let failed = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":404,"error":"missing"}"#;
     assert!(codec.parse_line(failed).unwrap().next().is_none());
     assert!(codec.parse_plugin_line(failed).next().is_none());
@@ -736,7 +736,7 @@ fn a_selected_plugin_identity_excludes_other_mbeans_and_the_exchange() {
     // What a plugin is named and what it states is the whole of it: how the
     // asking went never was part of the configuration, so the same answer
     // arriving with a 503 in front of it is the same plugin, and so is the
-    // same one a different operation asked for (decision 17).
+    // same one a different operation asked for.
     for changed_exchange in [
         document.replace("\"status\":200", "\"status\":503"),
         document.replace("\"type\":\"read\"", "\"type\":\"exec\""),
@@ -777,7 +777,7 @@ fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
     // `value` beside what was asked, keyed by ObjectNames of this namespace -
     // names no plugin, and naming none is what it answers: the row carried
     // bytes this reader cannot read, which is a statement and not an error
-    // in the codec (decision 17).
+    // in the codec.
     let codec = plugin_codec();
     for body in [
         b"null".as_slice(),
@@ -844,7 +844,7 @@ fn a_configuration_is_a_message_the_crate_registered() {
 
     // A built child, not a pair: the document sent no `35=`, so the arrival
     // record does not hold one and the wire re-emits exactly as it did
-    // before the type existed (decision 17 still holds).
+    // before the type existed.
     assert!(
         msg.entries().iter().all(|entry| entry.tag() != 35),
         "{:?}",
@@ -873,7 +873,7 @@ fn the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_plugin
     assert_eq!(bare.get_by_tag(49), None);
 
     // Behind the configuration that named it, the same row takes the
-    // session's two ends (decision 19).
+    // session's two ends.
     let filled: Vec<crate::FixMsg> = codec
         .enrich_messages([config.clone(), one(&plugin_row(named))])
         .collect::<crate::Result<Vec<_>>>()
@@ -944,20 +944,20 @@ fn a_fill_never_overwrites_and_a_later_configuration_replaces_the_one_before_it(
 fn plugin_fields_are_a_dictionary_of_their_own() {
     let held = crate::fix_plugin_fields().unwrap();
     // The membership is text, and text is hashed: a registry carrying these
-    // fields digests to this and to nothing else, so the one value decision
-    // 18's rename moved is stated here rather than left to be discovered.
-    // Decision 19 moved it again, and for the same reason: every registry
-    // now also carries the `pluginconfig` component, which is more text.
+    // fields digests to this and to nothing else, so the one value the
+    // dialect's rename moved is stated here rather than left to be
+    // discovered. It moved again, and for the same reason, when every
+    // registry began to carry the `pluginconfig` component, which is more
+    // text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    // Decisions 21–23 add altids, the identity types and the scoped chain
-    // description; decision 24 adds the previous clock and identity
-    // declarations.
-    // Decision 26 changes the clock/code/identity declarations and seeds standard clocks.
-    // Decision 38 renames the partition and previous-clock columns,
-    // registers the cusip and sedol codes beside isin, and declares how
+    // It moved for altids, the identity types and the scoped chain
+    // description; for the previous clock and identity declarations; for
+    // the clock/code/identity declarations and the seeded standard clocks;
+    // for the renamed partition and previous-clock columns, the cusip and
+    // sedol codes registered beside isin, and the declaration of how
     // `isincode`, `miccode` and `state` derive on the fields themselves -
     // `isincode` reading each identifier through `try_cast(... as isin)` -
-    // and finally types the four identity columns as `fixed_size_binary(16)`
+    // and for the four identity columns typed as `fixed_size_binary(16)`
     // rather than `uuid` - the Arrow type, which no two lake engines read
     // alike. The crate's own `sourceurl` and `nofixentries` moved it after
     // that: where a line was read from is a column of the row, and the
@@ -987,7 +987,7 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // 20001 is the floor of the range this dictionary claims, not the
     // smallest tag it defines: 20001 to 20004 carried the Jolokia envelope
     // and are retired rather than reused, because a capture written before
-    // decision 17 holds `MBean` on 20001 and a dictionary handing 20001 to
+    // the envelope went holds `MBean` on 20001 and a dictionary handing 20001 to
     // something else would read that column as the new field.
     let smallest = held
         .iter()
@@ -4516,7 +4516,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     assert_eq!(groups.len(), 581);
     assert_eq!(entries.len(), 580);
     // The shipped dictionary's own, beside the crate's `pluginconfig`,
-    // which every registry carries (decision 19).
+    // which every registry carries.
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
         928 + crated_messages() + crated_components()
@@ -5003,7 +5003,7 @@ fn a_composed_key_fills_the_field_its_last_segment_names() {
     let enriched = |row: &str| codec.enrich_message(one(row)).unwrap();
 
     // A bridge writes a field under its own namespace, and the fact is the
-    // field's however the writer spelled the key (decision 20).
+    // field's however the writer spelled the key.
     let filled = enriched("MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|");
     assert_eq!(
         filled.by_name("Account").unwrap().as_str(),

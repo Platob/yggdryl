@@ -622,7 +622,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         // rank moves: this ordering is total, not a wire contract, and a
         // renumbering would change how every unrelated pair sorts.
         DataType::Side => 53,
-        // 54 was `msgdirection`, retired with decision 14; the rank stays
+        // 54 was `msgdirection`, since retired; the rank stays
         // unused so no other pair moves.
         DataType::State => 55,
         DataType::TimeInForce => 56,

@@ -23,14 +23,14 @@ enum Source {
         /// Where the next frame opens.
         at: usize,
         /// What the row stated, retained once for every message it answers
-        /// for (decision 8).
+        /// for.
         stamp: Option<Arc<RowStamp>>,
     },
 }
 
 /// Messages from one captured line or record.
 ///
-/// A row yields none, one or many (decision 16): a line carrying several
+/// A row yields none, one or many: a line carrying several
 /// frames yields one per frame, re-entering the frame reader where each
 /// opens over the page the row already holds, and a bulk plugin configuration
 /// document yields one item for each configuration, retaining only the

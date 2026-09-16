@@ -1,6 +1,6 @@
 'use strict'
 
-// Settled clocks and named-content identity (decision 26): the default
+// Settled clocks and named-content identity: the default
 // SendingTime a codec settles undated messages with, the four readers every
 // message answers without a lookup - `updatedat`, `createdat`, `msghash`,
 // `msgphash` - and the replay fields no write, removal or row can take away.

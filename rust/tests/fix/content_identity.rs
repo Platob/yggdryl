@@ -1,4 +1,4 @@
-//! Decision 26: settled clocks and canonical named content own identity.
+//! Settled clocks and canonical named content own identity.
 
 use std::sync::Arc;
 

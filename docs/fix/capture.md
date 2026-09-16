@@ -1428,7 +1428,7 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 
 ## Performance
 
-`fix/plugin`, a bulk configuration document read as the dictionary of its own it is: one Jolokia wildcard answer holding 1, 32 and 256 configurations, walked into them and each read into a message. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit). The run is from before a message stopped carrying the Jolokia envelope (decision 17) - a configuration is built from four fewer pairs than it was, and its stable hash is taken over two parts rather than three - so the `messages` and `stable_hash` rows are that reading's and the table is due the regeneration below.
+`fix/plugin`, a bulk configuration document read as the dictionary of its own it is: one Jolokia wildcard answer holding 1, 32 and 256 configurations, walked into them and each read into a message. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit). The run is from before a message stopped carrying the Jolokia envelope - a configuration is built from four fewer pairs than it was, and its stable hash is taken over two parts rather than three - so the `messages` and `stable_hash` rows are that reading's and the table is due the regeneration below.
 
 | case | estimate |
 | --- | --- |

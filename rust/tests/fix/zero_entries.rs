@@ -1,4 +1,4 @@
-//! Decision 28: one arrival tree, with zero reserved for unresolved keys.
+//! One arrival tree, with zero reserved for unresolved keys.
 
 use std::sync::Arc;
 

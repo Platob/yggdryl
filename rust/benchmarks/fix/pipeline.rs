@@ -265,7 +265,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The same pass over one shape a thousand times: the corpus above is
     // every shape a bridge writes, this is the stream a venue writes, and
     // the two cost the same per message because nothing is bound or kept
-    // per shape (decision 38).
+    // per shape.
     let report = messages
         .iter()
         .find(|message| message.as_field().name() == "executionreport")

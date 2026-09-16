@@ -1,4 +1,4 @@
-//! Decision 22: UUID layouts belong to the UUID value, not a protocol.
+//! UUID layouts belong to the UUID value, not a protocol.
 
 use yggdryl::types::Uuid;
 use yggdryl::{DataType, Error, Scalar};

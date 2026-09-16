@@ -1,4 +1,4 @@
-//! Decision 21: identifiers are a declaration, and their values a Map group.
+//! Identifiers are a declaration, and their values a Map group.
 
 use std::sync::Arc;
 

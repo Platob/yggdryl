@@ -343,7 +343,7 @@ impl DataTypeId {
     /// Every variant states its discriminant, and it is a wire contract:
     /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
     /// a number is never reused and never moves. A retired variant leaves its
-    /// number unused - 58 was `msgdirection`, retired with decision 14 - so
+    /// number unused - 58 was `msgdirection`, since retired - so
     /// the byte is no longer the variant's position in [`Self::ALL`]; the
     /// test pinning every value is what makes a moved number a failure rather
     /// than a surprise.
@@ -737,7 +737,7 @@ mod tests {
     fn every_discriminant_is_stated_and_pinned() {
         // The byte `Scalar::write_bytes` writes as a value's tag. Every
         // variant states its number, a retired one leaves its number unused
-        // (58 was `msgdirection`, decision 14), and this pins every byte so a
+        // (58 was `msgdirection`, since retired), and this pins every byte so a
         // moved or reused number is a failure rather than a surprise.
         let pinned = [
             (DataTypeId::Null, 0),

@@ -47,7 +47,7 @@ impl DefinitionField {
         }
     }
 
-    /// A component carrying `fix:msgtype` is a message (decision 13): the
+    /// A component carrying `fix:msgtype` is a message: the
     /// marker, not the category, decides whether it compiles as one.
     fn from_field(category: FixCategory, field: Field) -> Result<Self> {
         match category {
@@ -397,7 +397,7 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
 ///
 /// A repeating group holds non-null Struct occurrences, in a List or a Map,
 /// and every Struct is a component, a message among them
-/// being the component whose `fix:msgtype` names a wire code (decision 13).
+/// being the component whose `fix:msgtype` names a wire code.
 /// The shape alone answers; the marker is a property of the component. A
 /// nested datatype that is neither is no definition at all, and answers
 /// nothing.
@@ -741,7 +741,7 @@ impl FixRegistry {
         }
         // A group a derivation reads through is a column of the widened
         // root, so what was compiled before this definition landed is
-        // forgotten with it (decision 38).
+        // forgotten with it.
         self.forget_derivations();
         self.catalog.insert(category, field)
     }
@@ -1325,7 +1325,7 @@ impl FixRegistry {
         // A derivation is read at every enrichment and never re-checked, so
         // a text that is not a term, or one past the budget, is refused here
         // naming the field that carries it - at insert, update and load
-        // alike (decision 38).
+        // alike.
         view.derivation().map_err(|error| Error::InvalidRecord {
             path: field.name().into(),
             reason: format_smolstr!("{error}"),

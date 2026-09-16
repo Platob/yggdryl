@@ -53,7 +53,7 @@
 //! will not split stays whole; a document in `XmlData` that will not parse
 //! stays the bytes it is. A line that states no message at all - no frame,
 //! no bridge pair, no document - states none, and reads as no message
-//! rather than as an empty one (decision 16): a sentence carrying an `=` is
+//! rather than as an empty one: a sentence carrying an `=` is
 //! a sentence. What is left - input that is not a row at all - is an `Err`
 //! item carrying it, and the stream continues, because one corrupt line must
 //! not end a run over ten million.
@@ -367,7 +367,7 @@ enum CaptureRole {
     Version,
     /// A capture whose name reaches a field, beside the field it fills.
     /// A capture named `msgdirection` is one of these: tag 385 is a field
-    /// like any other (decision 14), and a fill never overrides what the
+    /// like any other, and a fill never overrides what the
     /// line stated.
     Fill(Field, i32),
     /// A capture this codec has no use for, which is most of them.
@@ -409,8 +409,7 @@ pub struct FixCodec {
     /// The code a line with no verb in front of its payload takes on the
     /// batch door: a code of tag 385's set, or none.
     direction: Option<SmolStr>,
-    /// The registry's reading of tag 385, its rules compiled once
-    /// (decisions 14 and 15).
+    /// The registry's reading of tag 385, its rules compiled once.
     msgdirection: Arc<super::MsgDirection>,
     /// The raw bytes one Arrow batch of messages targets.
     batch_byte_size: u64,
@@ -725,10 +724,10 @@ impl FixCodec {
     /// Parses one log line into an iterator of the messages it carries,
     /// selecting the dialect from its frame.
     ///
-    /// A row yields none, one or many (decision 16): one per frame the line
+    /// A row yields none, one or many: one per frame the line
     /// holds, one per configuration a bulk UL answer named, and none at all
     /// for a line that states no message - which a document naming no
-    /// configuration is, as much as a sentence is (decision 17).
+    /// configuration is, as much as a sentence is.
     ///
     /// # A message is the frame; the line is still the line
     ///
@@ -814,7 +813,7 @@ impl FixCodec {
     /// consumer of batches has no row to put a refused line in. A caller
     /// wanting a row per *line* reads the capture through the text reader;
     /// a FIX batch answers one row per message, so a line stating none
-    /// answers no row (decision 16).
+    /// answers no row.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -900,7 +899,7 @@ impl FixCodec {
         };
         let page = line.body_bytes();
         if page.is_empty() {
-            // A row with no payload at all carries no message (decision 16).
+            // A row with no payload at all carries no message.
             return Ok(FixMessages::none());
         }
         self.parse_page_with(page, extras)
@@ -938,11 +937,10 @@ impl FixCodec {
     /// A row's content can never fail the batch it arrives in: a payload
     /// nobody could read is a row holding an empty message, dated and
     /// versioned by what the row itself said. A row that carried no message
-    /// to read is a different fact and answers no message at all
-    /// (decision 16).
+    /// to read is a different fact and answers no message at all.
     pub(super) fn parse_bytes_with(&self, extras: RowExtras<'_>, bytes: &[u8]) -> FixMessages {
         if bytes.is_empty() {
-            // A row with no payload at all carries no message (decision 16).
+            // A row with no payload at all carries no message.
             return FixMessages::none();
         }
         // Page capacity is a materialization bound, never malformed syntax.
@@ -957,7 +955,7 @@ impl FixCodec {
     }
 
     /// What a byte door states beside the line it was handed whole: the
-    /// direction the reading names, and nothing else (decision 14).
+    /// direction the reading names, and nothing else.
     ///
     /// The single-dialect doors take one frame as bytes and locate it
     /// themselves, so the reading locates it once more here; they are not
@@ -973,8 +971,8 @@ impl FixCodec {
     /// A payload nobody could read, which is still a row - dated and
     /// versioned as every row is, by what the row itself stated.
     ///
-    /// A row that carried nothing to read is not this: it answers no message
-    /// (decision 16). This is the payload that was there and would not
+    /// A row that carried nothing to read is not this: it answers no message.
+    /// This is the payload that was there and would not
     /// parse, which a batch must not fail on.
     fn empty_with(&self, extras: RowExtras<'_>) -> Result<FixMsg> {
         self.build_pairs_with(&[], extras)
@@ -1007,15 +1005,14 @@ impl FixCodec {
         // A row that located no frame may carry a document instead, and the
         // namespace scan that finds one is run here and nowhere else: the
         // span is kept whole, so where the payload opens and where the
-        // document closes are the one answer (decision 17).
+        // document closes are the one answer.
         let document = frame_at.is_none().then(|| line::plugin_span(row)).flatten();
         let opens = frame_at
             .or_else(|| document.as_ref().map(|span| span.start))
             .unwrap_or(row.len());
         // The row's stated direction, else the reading over the prose in
-        // front of the payload, else the pin the door supplied (decisions 14
-        // and 15). Resolved here, where the payload was located, so the
-        // frame is located once.
+        // front of the payload, else the pin the door supplied. Resolved
+        // here, where the payload was located, so the frame is located once.
         let direction = extras
             .direction
             .or_else(|| self.msgdirection.read_prefix(&row[..opens.min(row.len())]));
@@ -1028,7 +1025,7 @@ impl FixCodec {
         // Where the payload opens among the row's own entries, and where the
         // row's first message does: the bridge's own row in front of a frame
         // is a message of its own where the bridge marked one of its keys,
-        // and the transport's prose otherwise (decisions 3 and 16).
+        // and the transport's prose otherwise.
         let payload = entries.as_slice().len() - framed.len();
         let opened = entries.as_slice()[..payload]
             .iter()
@@ -1077,7 +1074,7 @@ impl FixCodec {
         // separator for it or the bridge marked one of its keys, and prose
         // carrying an `=` where it did neither: a row that opens no frame,
         // states no bridge pair and carries no document yields nothing at
-        // all (decision 16).
+        // all.
         // The row is the whole run of pairs the line held: a key the bridge
         // marked is the bridge's own spelling, so a `#8=` the scanner read
         // as a tag relocated the payload past pairs that are the row's.
@@ -1104,7 +1101,7 @@ impl FixCodec {
     /// bounded by [`frame_end`]; a run opening on a name is the bridge row in
     /// front of the next frame. Every message of the row is built over the
     /// one page behind those entries and owns only its own ranges, so each
-    /// re-emits its own bytes (decision 16).
+    /// re-emits its own bytes.
     pub(super) fn message_at(
         &self,
         entries: &TextEntries,
@@ -1615,7 +1612,7 @@ impl FixCodec {
 
     /// Restates one message and fills what it implies but did not carry.
     ///
-    /// The one enriching pass, three steps in order (decision 20). First the
+    /// The one enriching pass, three steps in order. First the
     /// message is restated: every child canonicalized to the field its tag,
     /// name, alias or decimal spelling reaches, children reaching one field
     /// merged, and `fix:replacements` applied. The crate `version` is left as
@@ -1638,7 +1635,7 @@ impl FixCodec {
     /// and typed. The component's identifier declaration fills the sorted
     /// `altids` Map at the message's own level, without flattening groups.
     /// Then, on the stream doors, the plugin configuration this
-    /// stream has already passed (decision 19).
+    /// stream has already passed.
     ///
     /// Only the row is filled. The entries are what arrived and are carried
     /// through untouched, so [`FixMsg::into_bytes`] re-emits the received line
@@ -1664,8 +1661,8 @@ impl FixCodec {
     ///
     /// What the stream remembers is every `pluginconfig` it passes, by the
     /// plugin's `Name`: a later message naming that plugin takes its
-    /// `SenderCompID` and `TargetCompID` where it stated none of its own
-    /// (decision 19). Not its `BeginString` - every built message already
+    /// `SenderCompID` and `TargetCompID` where it stated none of its own.
+    /// Not its `BeginString` - every built message already
     /// fills tag 8 from the version its row was read at, so there is never
     /// one absent to fill. A bridge says a session's two ends once, in
     /// the configuration it printed at startup, and every line after it names
@@ -1769,7 +1766,7 @@ impl FixCodec {
         let stated_version = extras.version;
         let version = stated_version.or_else(|| self.infer_version(pairs));
         // What the payload spelled, else the code the reader supplies for a
-        // payload that states none of its own (decision 19). A stated one
+        // payload that states none of its own. A stated one
         // wins, as a stated value always does.
         let stated = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
         let supplied = stated.is_none().then_some(extras.msgtype).flatten();
@@ -1813,7 +1810,7 @@ impl FixCodec {
         // arrival record is what the payload stated, and the payload sent no
         // `35=`. The root then takes the name the crate registered the code
         // under, where a spelling the wire wrote is kept as the wire's own
-        // word (decision 19).
+        // word.
         if let Some((code, name)) = supplied {
             let value = Scalar::from(*code);
             // The dictionary's own `MsgType` where it publishes one, else
@@ -1843,7 +1840,7 @@ impl FixCodec {
         // What the row stated under a namespace of its own is what the row
         // stated, so it is read here rather than left to the enriching pass:
         // a child the dictionary does not name has no column, so one read
-        // any later would be invisible to the batch door (decision 20).
+        // any later would be invisible to the batch door.
         built.compose(&self.registry)?;
         let stated = built
             .index_of_tag(52, &self.registry)
@@ -2128,7 +2125,7 @@ fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
 /// What a byte door answers a body holding a second message.
 ///
 /// The doors take one frame; a caller holding two holds a row, and a row is
-/// what [`FixCodec::parse_line`] reads (decision 16). `Error::Parse` prints
+/// what [`FixCodec::parse_line`] reads. `Error::Parse` prints
 /// the byte itself, so the reason names what was expected and nothing else.
 fn second_frame(target: &'static str, position: usize) -> Error {
     Error::Parse {
@@ -2167,7 +2164,7 @@ pub(super) struct RowMessage {
 ///
 /// One past its checksum, which is what closes a frame; else where the next
 /// frame opens, because a frame stating no checksum ends where the next one
-/// begins; else the run's end (decision 16). Only an unmarked `8=` closes an
+/// begins; else the run's end. Only an unmarked `8=` closes an
 /// open frame: a frame's own `35=` stands behind its `8=`, so a second one
 /// inside it is a duplicate tag and not a new message.
 fn frame_end(entries: &[TextEntry]) -> usize {
