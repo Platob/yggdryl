@@ -109,7 +109,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## A reader is the whole parse surface
 
-The verb is `parse`, and no reader takes a flag: what happens to a message once it is built - [filling](#what-a-message-implied-is-filled-in), [restating](message.md#restated-at-the-dictionarys-newest-version), [stamping](lifecycle.md) - is a call over the stream, never an argument to the parse.
+The verb is `parse`, and no reader takes a flag: what happens to a message once it is built - [filling](#what-a-message-implied-is-filled-in), [restating](message.md#restated-under-the-dictionary), [stamping](lifecycle.md) - is a call over the stream, never an argument to the parse.
 
 | Reader | Takes | Answers |
 | --- | --- | --- |
@@ -421,7 +421,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
 
 These columns are filled when a message is built, whatever its line carried, and none of them becomes an entry unless the wire sent it - so `into_bytes` still re-emits the wire byte for byte.
 
-`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the dictionary's newest, else 4.4. A codec pins none - a version is what a line or the transport around it said, never a caller's statement about a whole run. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
+`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the crate's own 4.4. The dictionary states no version to lend: it holds every tag ever defined and filters by none. A codec pins none - a version is what a line or the transport around it said, never a caller's statement about a whole run. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
 
 `version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
 
@@ -457,13 +457,11 @@ The root's children are the standard header in its declared order, the body as i
     let default = Scalar::datetime64(1_704_190_530_000_000_000, TimeUnit::Nanosecond, Timezone::UTC)?;
     let reader = FixCodec::new(Arc::clone(&registry))
         .try_with_default_sending_time(Some(default.clone()))?;
-    let newest = registry.newest().expect("the seed's newest").version().to_string();
-
     // A frame stating neither its version nor a clock is still versioned - at
-    // the dictionary's newest - and dated by the codec's default sending time.
+    // the crate's own 4.4 - and dated by the codec's default sending time.
     let bare = reader.parse_line(b"35=D|55=AAPL|10=0|")?.next().expect("one frame")?;
-    assert_eq!(bare.by_tag(8)?.as_str(), Some(format!("FIX.{newest}").as_str()));
-    assert_eq!(bare.version().map(|version| version.to_string()), Some(newest));
+    assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
+    assert_eq!(bare.version().map(|version| version.to_string()), Some("4.4".to_owned()));
     assert_eq!(bare.by_tag(52)?, &default);
     assert_eq!(bare.updatedat(), &default);
     assert_eq!(bare.createdat(), &default);
@@ -518,7 +516,7 @@ The root's children are the standard header in its declared order, the body as i
     reader = FixCodec(registry, default_sending_time=default)
 
     # A frame stating neither its version nor a clock is still versioned - at
-    # the dictionary's newest - and dated by the codec's default sending time.
+    # the crate's own 4.4 - and dated by the codec's default sending time.
     bare = next(reader.parse_line(b"35=D|55=AAPL|10=0|"))
     assert bare.by_tag(8).as_py() == f"FIX.{bare.by_name('version').as_py()}"
     assert bare.by_tag(52).as_py() == default
@@ -568,7 +566,7 @@ The root's children are the standard header in its declared order, the body as i
     })
 
     // A frame stating neither its version nor a clock is still versioned - at
-    // the dictionary's newest - and dated by the codec's default sending time.
+    // the crate's own 4.4 - and dated by the codec's default sending time.
     const bare = reader.parseLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
     assert.equal(bare.byTag(8).toJSON(), `FIX.${bare.byName('version').toJSON()}`)
     assert.ok(bare.byTag(52).equals(reader.defaultSendingTime))
@@ -593,7 +591,7 @@ The root's children are the standard header in its declared order, the body as i
 
 A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, which fills a message from what an earlier one in the stream said too, [remembering the plugin configurations it passed](#a-stream-remembers-the-configurations-it-passed); and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again. Those three are the whole of it: there is one enriching pass, and they are its doors.
 
-The pass is four steps on one message, and their order is the pass's own rather than something a caller composes. What the row's projection dropped comes back off the arrival record first. It then **restates** - the row [re-expressed at the dictionary's newest version](message.md#restated-at-the-dictionarys-newest-version) - because every derivation below reads by canonical name, and a child a session spelled under an alias is invisible until it has been canonicalized. It then **derives** what the message implies and did not state, from what its fields declare: every field carrying a [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived) is a column the pass fills, by evaluating that field's own term over the message, and the derivations are swept to a fixpoint. Then the component's identifier declaration fills the `altids` Map, and on the stream doors the plugin configurations this stream has already passed - in that order, because each may feed the next.
+The pass is four steps on one message, and their order is the pass's own rather than something a caller composes. What the row's projection dropped comes back off the arrival record first. It then **restates** - the row [re-expressed under the dictionary](message.md#restated-under-the-dictionary) - because every derivation below reads by canonical name, and a child a session spelled under an alias is invisible until it has been canonicalized. It then **derives** what the message implies and did not state, from what its fields declare: every field carrying a [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived) is a column the pass fills, by evaluating that field's own term over the message, and the derivations are swept to a fixpoint. Then the component's identifier declaration fills the `altids` Map, and on the stream doors the plugin configurations this stream has already passed - in that order, because each may feed the next.
 
 Completion writes nothing because a spelling is a way of asking rather than a thing to store. A consumer addressing `lastshares` finds the `lastqty` the message states: `get_by_name` resolves the spelling through the registry, which answers a field for any alias it holds. No alias twin is added as a second child, and the reason is not economy. Two of the forty-two shipped aliases are another field's canonical name - `quoteackstatus` is an alias of `QuoteStatus(297)` and the name of tag 1865, `tradetype` an alias of `BidTradeType(418)` and the name of tag 3006 - so a message stating both would hold two children of one name, and the root the pass builds would be refused whole. A twin could not cross the batch door either: [`fix_schema`](#the-columns-are-the-folded-names) names a column for a canonical field and for no alias, so `enrich_messages_arrow_reader` would discard on the way out what `enrich_messages` had just added, and the two doors would stop being one pass. And `get_by_tag` answers the earliest child on a tag, so where the twin was placed would silently decide what every column, every derivation, every lift and the lifecycle read.
 

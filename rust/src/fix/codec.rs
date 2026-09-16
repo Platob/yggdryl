@@ -1618,8 +1618,8 @@ impl FixCodec {
     /// The one enriching pass, three steps in order (decision 20). First the
     /// message is restated: every child canonicalized to the field its tag,
     /// name, alias or decimal spelling reaches, children reaching one field
-    /// merged, `fix:replacements` applied, the crate `version` stamped with
-    /// the registry's newest. That is not a step a caller may skip, because
+    /// merged, and `fix:replacements` applied. The crate `version` is left as
+    /// the line stated it. That is not a step a caller may skip, because
     /// every rule below reads by tag and a child stored under an alias with
     /// no tag is invisible until it has been canonicalized.
     ///
@@ -1881,7 +1881,7 @@ impl FixCodec {
     /// resolved from the row's own pairs before anything is pushed - a
     /// `BeginString` states what the session speaks, and the row inside a data
     /// field is routinely written to a later FIX than that. It states none of
-    /// its own, so the inference lands on the dictionary's newest, which is
+    /// its own, so the inference lands on the crate's own default, which is
     /// the best reading of a row nothing dates - unless the line's row or
     /// the caller `pinned` one, which dates the nested row too.
     ///

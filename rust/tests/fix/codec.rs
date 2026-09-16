@@ -2486,10 +2486,11 @@ fn every_generated_message_carries_the_version_the_read_used() {
     );
     assert_eq!(dated.version(), Some(Version::new(4, 4, 0)));
 
-    // A row that dates itself not at all is undated: the dictionary is
-    // version-blind and lends none. The `BeginString` it never stated is
-    // filled from the crate's stated default rather than from a guess.
+    // A row that dates itself not at all is read at the crate's stated
+    // default: the dictionary is version-blind and lends none, so the builder
+    // fills both the `version` column and the `BeginString` it never stated
+    // from 4.4 rather than from a guess the dictionary made.
     let bare = reader().sole_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
-    assert_eq!(bare.version(), None);
+    assert_eq!(bare.version(), Some(Version::new(4, 4, 0)));
     assert_eq!(bare.by_tag(8).unwrap().as_str(), Some("FIX.4.4"));
 }

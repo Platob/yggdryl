@@ -16,7 +16,7 @@
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
 | Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../media/json/index.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
-| Restated | the [enriching pass's first step](#restated-at-the-dictionarys-newest-version) re-expresses the row at the registry's newest version from the dictionary alone; the entries never change |
+| Restated | the [enriching pass's first step](#restated-under-the-dictionary) re-expresses the row under the dictionary the registry holds; the entries never change |
 | Bindings | Rust, Python, JavaScript |
 
 ## Use
@@ -502,7 +502,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 `from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The row must carry the seven settled values - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - each non-null in its exact layout, and its `msghash` and `msgphash` must be the ones its content computes; nothing is defaulted and no clock is read back out of those sixteen bytes. The entries are rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. The [example above](#written-into-the-row) ends with that round trip.
 
-## Restated at the dictionary's newest version
+## Restated under the dictionary
 
 A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. The [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates the message once as its first step, from what the dictionary itself says: the registry's field for every tag, the aliases that reach it, and the [`fix:replacements`](registry.md#a-field-carries-what-replaced-it) each retired field or value carries - and then fills what the restated row implies by the [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived) each derived field carries. Nothing in Rust holds a table of rules, so a registry edit is a rule edit.
 
@@ -515,10 +515,10 @@ Restatement is a step of that pass and not a door of its own: the order is the p
 | Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
 | Restates | each child whose field carries `fix:replacements`, in ascending tag order, by the first entry whose `msgtypes`, `in` and `when` hold; a group fill makes or completes one occurrence and sets its counter |
 | All or nothing | every target an entry fills is computed and checked before any is written; one target that cannot take its value blocks the whole entry, and no later entry fills in for it |
-| Never overwrites | a stated current value: a target takes a value only when it is absent, null, already equal, or holds a code its set no longer declares at the registry's newest version; the source field itself is the one exception, because it is what is being restated |
+| Never overwrites | a value the message stated: a target takes a value only when it is absent, null or already equal; the source field itself is the one exception, because it is what is being restated |
 | Keeps | a removed field the specification named no replacement for, and the source of every rule that did not write it - the row says what was sent and what it means |
 | Levels | the root, then every occurrence of every repeating group to any depth, each canonicalized and restated in turn; `in` is compared with the occurrence's group, `msgtypes` with the root's `MsgType(35)` |
-| Stamps | the crate's `version` (65001) with `registry.newest()`, replacing a stated one or appending; a registry no field dates stamps nothing |
+| Leaves the version | the crate's `version` (65001) is what the line said and the pass does not pin one |
 | Idempotent | a second pass answers an equal message: what one pass wrote is what the next finds stated |
 | Batch | inside the enriching [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), which the caller composes over `messages` and `arrow_reader` before the lifecycle stamp, so the fills read a restated row and the chain reads a filled one |
 | Bindings | reached through `enrich_message`, `enrich_messages` and `enrich_messages_arrow_reader` in all three languages; there is no door of its own |
@@ -548,10 +548,12 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
 
     let latest = reader.enrich_message(read.clone())?;
 
-    // ExecTransType Cancel wrote ExecType TradeCancel over the retired
-    // PartiallyFilled before ExecType's own rule read it; the source stays.
-    let cancel = State::from_spelling("H").expect("a lifecycle code");
-    assert_eq!(latest.by_tag(150)?.as_str(), Some(cancel.as_str()));
+    // ExecTransType Cancel states TradeCancel, but ExecType already stated
+    // PartiallyFilled and a stated value stands - so the rule that answers
+    // 150 is ExecType's own, folding the partial fill into Trade. The source
+    // stays as it arrived.
+    let trade = State::from_spelling("F").expect("a lifecycle code");
+    assert_eq!(latest.by_tag(150)?.as_str(), Some(trade.as_str()));
     assert_eq!(latest.by_tag(20)?.as_str(), Some("1"));
     // Rule80A A is an agency order.
     assert_eq!(latest.by_tag(528)?.as_str(), Some("A"));
@@ -566,10 +568,9 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
     assert_eq!(latest.by_tag(32)?, &Scalar::from(100.0_f64));
     assert_eq!(latest.by_name("LastShares")?, latest.by_tag(32)?);
 
-    // The version is the dictionary's newest; what the message said of
-    // itself, the entries and the wire are untouched.
-    let newest = registry.newest().expect("a dated dictionary").version();
-    assert_eq!(latest.version(), Some(newest));
+    // The version is what the line said; what the message said of itself,
+    // the entries and the wire are untouched.
+    assert_eq!(latest.by_name("version")?.as_str(), Some("4.2"));
     assert_eq!(latest.by_tag(8)?.as_str(), Some("FIX.4.2"));
     assert_eq!(latest.entries(), read.entries());
     assert_eq!(latest.into_bytes(b'|'), line);
@@ -595,9 +596,10 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
 
     latest = reader.enrich_message(read)
 
-    # ExecTransType Cancel wrote ExecType TradeCancel over the retired
-    # PartiallyFilled before ExecType's own rule read it; the source stays.
-    assert latest.by_tag(150).as_py() == "40TRDCXL"
+    # ExecTransType Cancel states TradeCancel, but ExecType already stated
+    # PartiallyFilled and a stated value stands, so ExecType's own rule folds
+    # the partial fill into Trade. The source stays as it arrived.
+    assert latest.by_tag(150).as_py() == "40TRADE"
     assert latest.by_tag(20).as_py() == "1"
     # Rule80A A is an agency order.
     assert latest.by_tag(528).as_py() == "A"
@@ -612,9 +614,9 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares") == latest.by_tag(32)
 
-    # The version is the dictionary's newest; what the message said of
-    # itself, the entries and the wire are untouched.
-    assert latest.by_name("version").as_py() == "5.0.2"
+    # The version is what the line said; what the message said of itself,
+    # the entries and the wire are untouched.
+    assert latest.by_name("version").as_py() == "4.2"
     assert latest.by_tag(8).as_py() == "FIX.4.2"
     assert latest.entries() == read.entries()
     assert latest.into_bytes(ord("|")) == line
@@ -640,9 +642,10 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
 
     const latest = reader.enrichMessage(read)
 
-    // ExecTransType Cancel wrote ExecType TradeCancel over the retired
-    // PartiallyFilled before ExecType's own rule read it; the source stays.
-    assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
+    // ExecTransType Cancel states TradeCancel, but ExecType already stated
+    // PartiallyFilled and a stated value stands, so ExecType's own rule folds
+    // the partial fill into Trade. The source stays as it arrived.
+    assert.equal(latest.byTag(150).toJSON(), '40TRADE')
     assert.equal(latest.byTag(20).toJSON(), '1')
     // Rule80A A is an agency order.
     assert.equal(latest.byTag(528).toJSON(), 'A')
@@ -657,9 +660,9 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
     assert.equal(latest.byTag(32).toJSON(), 100)
     assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
 
-    // The version is the dictionary's newest; what the message said of
-    // itself and the wire are untouched.
-    assert.equal(latest.byName('version').toJSON(), '5.0.2')
+    // The version is what the line said; what the message said of itself
+    // and the wire are untouched.
+    assert.equal(latest.byName('version').toJSON(), '4.2')
     assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
     assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
     assert.ok(reader.enrichMessage(latest).equals(latest), 'a second pass changes nothing')
@@ -700,7 +703,7 @@ A value written into a target is re-typed for the target's field through the cod
 - A `join` with a part unstated (`205=5` and no `200`) or a `from` whose tag is absent -> the entry fills nothing.
 - A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the counter unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
 - A rule scoped by `msgtypes` on a message stating no `MsgType(35)` -> does not apply; one scoped by `in` at the root -> does not apply.
-- A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and `get_field_at(4.4, 51)` still answers none.
+- A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and the registry still holds it under its own tag.
 - Over a batch -> restatement is no call of its own: `enrich_messages_arrow_reader` runs it between `messages` and `arrow_reader` as the pass's first step, so the only order left to compose is enrichment before the lifecycle, and the chain reads a row already restated and filled.
 
 ## Commands

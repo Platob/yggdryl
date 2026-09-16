@@ -1739,7 +1739,7 @@ impl<'registry> Builder<'registry> {
         }
         // The version the read used, on every message it produced: the
         // codec's target where the caller pinned one, else what the line's
-        // own frame implied, else the dictionary's newest. `BeginString` is
+        // own frame implied, else the crate's own default. `BeginString` is
         // what the message says about itself and is left exactly as it
         // arrived; this is what answered it, and the two differ every time a
         // session carries a row written to a later FIX than it speaks.

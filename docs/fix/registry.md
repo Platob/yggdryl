@@ -14,7 +14,7 @@
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it as a `fix:aliases` entry, and a field FIX retired is still in the dictionary under its own tag |
-| Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
+| Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message under the dictionary; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Identifiers | `fix:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and List/LargeList groups carry a `fix:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
@@ -730,7 +730,7 @@ metadata documents remain on the field and round-trip through both bindings.
 
 ## A field carries what replaced it
 
-The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that the [enriching pass's restatement](message.md#restated-at-the-dictionarys-newest-version) applies. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
+The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that the [enriching pass's restatement](message.md#restated-under-the-dictionary) applies. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
 
 Entries are in **document order**, and the order is semantic: the first entry whose conditions a held value meets answers, so a catch-all entry stating no `when` comes last.
 

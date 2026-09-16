@@ -726,8 +726,8 @@ fn occurrences_of(
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
 /// Four steps in order (decision 20, decision 38): what the row's projection
-/// dropped comes back off the arrival record; the message is restated at the
-/// dictionary's newest version; the registry's derivations fill what the
+/// dropped comes back off the arrival record; the message is restated under
+/// the dictionary the registry holds; the registry's derivations fill what the
 /// message implies, to a fixpoint; and the component's identifier
 /// declaration fills the sorted `altids` Map. Every answer lands in the row
 /// alone, typed by the dictionary's own field for the tag, so a derived

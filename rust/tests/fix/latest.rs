@@ -418,9 +418,10 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     );
 
     let latest = restated(&reader, REPORT);
-    // ExecTransType Cancel wrote ExecType TradeCancel over the retired
-    // PartiallyFilled before ExecType's own rule read it.
-    assert_eq!(text(&latest, 150), Some(state("H").as_str()));
+    // ExecTransType Cancel states TradeCancel, but ExecType already stated
+    // PartiallyFilled and a stated value stands - so the rule that answers
+    // 150 is ExecType's own, folding the partial fill into Trade.
+    assert_eq!(text(&latest, 150), Some(state("F").as_str()));
     assert_eq!(text(&latest, 20), Some("1"), "the source stays");
     assert_eq!(
         text(&latest, 39),
