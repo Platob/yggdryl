@@ -1174,6 +1174,9 @@ impl FixRegistry {
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
         // Even a declaration whose category does not consume the counter must
         // not publish malformed protocol metadata. Groups reuse this reading.
+        // The alternate names are read infallibly everywhere else, so this is
+        // where a text the read would walk as nothing is refused.
+        field.as_fix().validate_names()?;
         let counter = field.as_fix().counter()?;
         let map_group =
             category == FixCategory::Groups && matches!(field.dtype(), DataType::Map(_));

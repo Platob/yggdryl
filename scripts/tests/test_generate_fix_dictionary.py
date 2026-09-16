@@ -95,8 +95,8 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual("NestedParty2", GENERATOR.entry_name("NestedParties2"))
         self.assertEqual("SecAltID", GENERATOR.entry_name("SecAltIDGrp"))
 
-    def test_catalog_names_do_not_shadow_scalar_aliases(self) -> None:
-        self.fields[0]["metadata"]["fix:aliases"] = "parties,party"
+    def test_catalog_names_do_not_shadow_scalar_names(self) -> None:
+        self.fields[0]["metadata"]["fix:names"] = ["parties", "party"]
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
         self.assertIn("partiesgrp", [field["name"] for field in catalog["groups"]])
         self.assertIn("partycomponent", [field["name"] for field in catalog["components"]])

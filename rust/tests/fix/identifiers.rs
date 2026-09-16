@@ -16,7 +16,7 @@ fn tagged(name: &str, tag: i32) -> Field {
 
 fn component() -> Field {
     let mut order = tagged("clordid", 11);
-    order.as_fix_mut().set_aliases(["ClientOrder"]).unwrap();
+    order.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     order.as_fix_mut().set_tags(&[9001]).unwrap();
     let nested = DataType::list(
         DataType::from_fields([tagged("execid", 17)])
@@ -74,7 +74,7 @@ fn identifier_refusals_are_located_atomic_and_do_not_accept_paths() {
         assert_eq!(field, before, "{bad:?}");
     }
     let mut ambiguous = tagged("another", 100);
-    ambiguous.as_fix_mut().set_aliases(["ClientOrder"]).unwrap();
+    ambiguous.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     field
         .set_dtype(
             DataType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
@@ -376,7 +376,7 @@ fn raw_component_and_occurrence_identifiers_are_refused_before_create_or_merge()
 fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_compact() {
     for references in [false, true] {
         let mut first = tagged("clordid", 11);
-        first.as_fix_mut().set_aliases(["ClientOrder"]).unwrap();
+        first.as_fix_mut().set_names(["ClientOrder"]).unwrap();
         let second = tagged("orderid", 37);
         let mut registry = FixRegistry::from_fields([first.clone(), second.clone()]).unwrap();
         let mut members = [first, second];
@@ -423,7 +423,7 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
 fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_resolve() {
     for references in [false, true] {
         let mut first = tagged("clordid", 11);
-        first.as_fix_mut().set_aliases(["ClientOrder"]).unwrap();
+        first.as_fix_mut().set_names(["ClientOrder"]).unwrap();
         let second = tagged("orderid", 37);
         let definitions = [first.clone(), second.clone()];
         let members = if references {
@@ -442,14 +442,21 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
             component
                 .update_metadata([("fix:identifiers", declaration)])
                 .unwrap();
+            // The store's own shape: a field's `fix:names` is the array it is
+            // there, never the escaped text a native document holds.
             let snapshot = Scalar::from_record([
                 (
                     "fields",
-                    Scalar::from_sequence(definitions.iter().cloned().map(Field::into_value)),
+                    Scalar::from_sequence(
+                        definitions
+                            .iter()
+                            .cloned()
+                            .map(|field| yggdryl::into_fix_document(field).unwrap()),
+                    ),
                 ),
                 (
                     "components",
-                    Scalar::from_sequence([component.into_value()]),
+                    Scalar::from_sequence([yggdryl::into_fix_document(component).unwrap()]),
                 ),
                 ("groups", Scalar::from_sequence([])),
             ])

@@ -387,7 +387,7 @@ fn aliased_derived(
     derivation: &str,
 ) -> Result<Field> {
     let mut field = derived(identity, display, dtype, description, derivation)?;
-    field.as_fix_mut().set_aliases(aliases.iter().copied())?;
+    field.as_fix_mut().set_names(aliases.iter().copied())?;
     Ok(field)
 }
 
@@ -400,7 +400,7 @@ fn aliased(
     aliases: &[&str],
 ) -> Result<Field> {
     let mut field = crated(identity, display, dtype, description)?;
-    field.as_fix_mut().set_aliases(aliases.iter().copied())?;
+    field.as_fix_mut().set_names(aliases.iter().copied())?;
     Ok(field)
 }
 

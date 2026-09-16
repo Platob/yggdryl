@@ -63,7 +63,7 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut symbol = DataType::utf8().required_field("Symbol");
 /// symbol.as_fix_mut().set_tag(55)?;
-/// symbol.as_fix_mut().set_aliases(["Ticker"])?;
+/// symbol.as_fix_mut().set_names(["Ticker"])?;
 /// let mut qty = DataType::Int64.required_field("OrderQty");
 /// qty.as_fix_mut().set_tag(38)?;
 /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone()])?);

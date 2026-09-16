@@ -1373,7 +1373,6 @@
     "metadata": {
       "description": "Specifies the method for price quotation.",
       "display": "DerivativeValuationMethod",
-      "fix:aliases": "derivativefuturesvaluationmethod",
       "fix:codes": [
         {
           "value": "EQTY",
@@ -1400,6 +1399,9 @@
           "name": "CDSInDeliveryUseRecoveryRateToCalculate",
           "doc": "CDS in delivery - use recovery rate to calculate obligation"
         }
+      ],
+      "fix:names": [
+        "derivativefuturesvaluationmethod"
       ],
       "fix:tag": "1319"
     }

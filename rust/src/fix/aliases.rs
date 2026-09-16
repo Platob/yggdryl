@@ -3,7 +3,7 @@
 //! A venue writes `OfferPx`, a blotter writes `AskPrice`, a risk system
 //! writes `AskPx`, and FIX publishes exactly one of them. The registry
 //! already resolves a name through one fold and then through aliases
-//! ([`FixFieldMut::set_aliases`](super::FixFieldMut::set_aliases)), so the
+//! ([`FixFieldMut::set_names`](super::FixFieldMut::set_names)), so the
 //! other spellings are alias rows rather than a second resolver - and this is
 //! where the rows come from.
 //!
@@ -136,7 +136,7 @@ impl FixRegistry {
                 continue;
             };
             let mut field = held.clone();
-            let mut aliases: Vec<SmolStr> = field.as_fix().aliases().map(SmolStr::new).collect();
+            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
             for spelled in spellings {
                 // A spelling another field claims canonically is that
                 // field's; the registry says so too, and saying it here keeps
@@ -150,7 +150,7 @@ impl FixRegistry {
             }
             field
                 .as_fix_mut()
-                .set_aliases(aliases.iter().map(SmolStr::as_str))?;
+                .set_names(aliases.iter().map(SmolStr::as_str))?;
             self.insert_definition(FixCategory::Fields, field)?;
         }
         Ok(self)

@@ -45,7 +45,7 @@ fn id_of(tag: i32, name: &str) -> FixId {
 fn full(name: &str, tag: i32, tags: &[i32], aliases: &[&str]) -> Field {
     let mut field = tagged(name, tag);
     field.as_fix_mut().set_tags(tags).unwrap();
-    field.as_fix_mut().set_aliases(aliases).unwrap();
+    field.as_fix_mut().set_names(aliases).unwrap();
     field
         .as_fix_mut()
         .set_description(format!("{name} described"))
@@ -972,8 +972,9 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `isincode`, the struct that joins them, and `snapshotat` saying that
     // only a snapshot stamps it. It moved last when `instuuid` went: the
     // instrument is the scope a chain hangs its identifiers under, digested
-    // from the message, and no column of the row.
-    assert_eq!(carrying.stable_hash(), 17_138_582_387_977_970_701);
+    // from the message, and no column of the row. It moved once more when
+    // the bridge's names became the JSON array `fix:names` holds.
+    assert_eq!(carrying.stable_hash(), 5_072_174_093_746_461_452);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -1076,8 +1077,8 @@ fn membership_folds_once_sorts_and_refuses_what_it_cannot_hold() {
     field.as_fix_mut().add_branch("Blp").unwrap();
     assert_eq!(field.get_metadata("fix:branches"), Some("blp,cme,globex"));
 
-    // Held to the alias grammar: non-empty, no separator. A refusal leaves
-    // the field exactly as it was.
+    // Held to the membership grammar: non-empty, no separator. A refusal
+    // leaves the field exactly as it was.
     let before = field.clone();
     for refused in [vec!["cme", ""], vec!["cm,e"]] {
         let error = field
@@ -1246,48 +1247,49 @@ fn properties_round_trip_including_empty_and_single_element_lists() {
     let view = field.as_fix();
     assert_eq!(view.tag().unwrap(), None);
     assert_eq!(view.tags().unwrap(), Vec::<i32>::new());
-    assert_eq!(view.aliases().count(), 0);
+    assert_eq!(view.names().count(), 0);
     assert_eq!(view.description(), None);
 
     field.as_fix_mut().set_tag(38).unwrap();
     field.as_fix_mut().set_tags(&[152]).unwrap();
-    field.as_fix_mut().set_aliases(["Qty"]).unwrap();
+    field.as_fix_mut().set_names(["Qty"]).unwrap();
     field
         .as_fix_mut()
         .set_description("Quantity ordered.")
         .unwrap();
     assert_eq!(field.as_fix().tag().unwrap(), Some(38));
     assert_eq!(field.as_fix().tags().unwrap(), [152]);
-    assert_eq!(field.as_fix().aliases().collect::<Vec<_>>(), ["Qty"]);
+    assert_eq!(field.as_fix().names().collect::<Vec<_>>(), ["Qty"]);
     assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
+    // Each list is the compact JSON array it is.
     assert_eq!(field.get_metadata("fix:tag"), Some("38"));
-    assert_eq!(field.get_metadata("fix:tags"), Some("152"));
-    assert_eq!(field.get_metadata("fix:aliases"), Some("Qty"));
+    assert_eq!(field.get_metadata("fix:tags"), Some("[152]"));
+    assert_eq!(field.get_metadata("fix:names"), Some("[\"Qty\"]"));
 
-    // Order is priority and is kept; the aliases walk both ways.
+    // Order is priority and is kept.
     field.as_fix_mut().set_tags(&[3, 1, 2]).unwrap();
     field
         .as_fix_mut()
-        .set_aliases(["Quantity", "Qty", "OrderQuantity"])
+        .set_names(["Quantity", "Qty", "OrderQuantity"])
         .unwrap();
     assert_eq!(field.as_fix().tags().unwrap(), [3, 1, 2]);
-    assert_eq!(field.get_metadata("fix:tags"), Some("3,1,2"));
+    assert_eq!(field.get_metadata("fix:tags"), Some("[3,1,2]"));
     assert_eq!(
-        field.as_fix().aliases().collect::<Vec<_>>(),
+        field.as_fix().names().collect::<Vec<_>>(),
         ["Quantity", "Qty", "OrderQuantity"]
     );
     assert_eq!(
-        field.as_fix().aliases().rev().collect::<Vec<_>>(),
-        ["OrderQuantity", "Qty", "Quantity"]
+        field.get_metadata("fix:names"),
+        Some("[\"Quantity\",\"Qty\",\"OrderQuantity\"]")
     );
 
-    // An empty list removes the property rather than storing "".
+    // An empty list removes the property rather than storing "[]".
     field.as_fix_mut().set_tags(&[]).unwrap();
-    field.as_fix_mut().set_aliases(Vec::<&str>::new()).unwrap();
+    field.as_fix_mut().set_names(Vec::<&str>::new()).unwrap();
     assert!(!field.has_metadata("fix:tags"));
-    assert!(!field.has_metadata("fix:aliases"));
+    assert!(!field.has_metadata("fix:names"));
     assert_eq!(field.as_fix().tags().unwrap(), Vec::<i32>::new());
-    assert_eq!(field.as_fix().aliases().count(), 0);
+    assert_eq!(field.as_fix().names().count(), 0);
 
     // The value outlives the view it was read through.
     let description = field.as_fix().description();
@@ -1297,16 +1299,18 @@ fn properties_round_trip_including_empty_and_single_element_lists() {
 #[test]
 fn a_property_write_rejects_bad_elements_and_leaves_the_field_unchanged() {
     let mut field = tagged("Symbol", 55);
-    field.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    field.as_fix_mut().set_names(["Ticker"]).unwrap();
     let before = field.clone();
 
     let refusals = [
         field.as_fix_mut().set_tag(-1).unwrap_err(),
         field.as_fix_mut().set_tags(&[1, -2]).unwrap_err(),
         field.as_fix_mut().set_tags(&[1, 2, 1]).unwrap_err(),
-        field.as_fix_mut().set_aliases(["Sym", ""]).unwrap_err(),
-        field.as_fix_mut().set_aliases(["Sym,bol"]).unwrap_err(),
-        field.as_fix_mut().set_aliases(["Sym", "SYM"]).unwrap_err(),
+        field.as_fix_mut().set_names(["Sym", ""]).unwrap_err(),
+        field.as_fix_mut().set_names(["Sym\"bol"]).unwrap_err(),
+        field.as_fix_mut().set_names(["Sym\\bol"]).unwrap_err(),
+        field.as_fix_mut().set_names(["Sym\tbol"]).unwrap_err(),
+        field.as_fix_mut().set_names(["Sym", "SYM"]).unwrap_err(),
     ];
     for (index, error) in refusals.iter().enumerate() {
         assert!(
@@ -1495,7 +1499,7 @@ fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
             .field_by_tag(55)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .count(),
         0,
         "the holder is lent nothing it would have to take from another field"
@@ -1503,7 +1507,7 @@ fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
     assert_eq!(
         registry
             .iter()
-            .filter(|field| field.as_fix().aliases().any(|alias| alias == "Ticker"))
+            .filter(|field| field.as_fix().names().any(|alias| alias == "Ticker"))
             .map(Field::name)
             .collect::<Vec<_>>(),
         ["Price"],
@@ -1531,7 +1535,7 @@ fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
             .field_by_tag(44)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["Ticker"]
     );
@@ -1547,7 +1551,7 @@ fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
             .field_by_tag(44)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["Ticker"]
     );
@@ -1556,7 +1560,7 @@ fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
 #[test]
 fn two_fields_may_hold_one_tag_under_two_names() {
     let mut spec = tagged("Symbol", 5055);
-    spec.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    spec.as_fix_mut().set_names(["Ticker"]).unwrap();
     spec.as_fix_mut().set_tags(&[9055]).unwrap();
     let venue = member("VenueSymbol", "cme", 5055);
 
@@ -1570,7 +1574,7 @@ fn two_fields_may_hold_one_tag_under_two_names() {
     let held = registry.field_by_id(spec_id).unwrap();
     assert_eq!(held.name(), "Symbol");
     assert_eq!(
-        held.as_fix().aliases().collect::<Vec<_>>(),
+        held.as_fix().names().collect::<Vec<_>>(),
         ["Ticker", "VenueSymbol"]
     );
     assert_eq!(held.as_fix().tags().unwrap(), [9055]);
@@ -1606,7 +1610,7 @@ fn two_fields_may_hold_one_tag_under_two_names() {
             .field_by_tag(5055)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["Symbol"]
     );
@@ -1615,7 +1619,7 @@ fn two_fields_may_hold_one_tag_under_two_names() {
 
     // A conflict is still a conflict, and it names both fields.
     let mut twice = member("VenueSym", "cme", 5099);
-    twice.as_fix_mut().set_aliases(["TICKER"]).unwrap();
+    twice.as_fix_mut().set_names(["TICKER"]).unwrap();
     let mut probed = registry.clone();
     let error = probed.insert(twice).unwrap_err();
     assert!(
@@ -1671,7 +1675,7 @@ fn fold_table(
     // the merge unions its tags, aliases and membership.
     let mut same = member("SYMBOL", "cme", 55);
     same.as_fix_mut().set_tags(&[66]).unwrap();
-    same.as_fix_mut().set_aliases(["Sym"]).unwrap();
+    same.as_fix_mut().set_names(["Sym"]).unwrap();
     assert_eq!(
         fold(&mut registry, same),
         (0, 1 + seeded_merges),
@@ -1682,7 +1686,7 @@ fn fold_table(
     assert_eq!(symbol.name(), "Symbol", "{verb}");
     assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65], "{verb}");
     assert_eq!(
-        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        symbol.as_fix().names().collect::<Vec<_>>(),
         ["Sym", "Ticker"],
         "{verb}"
     );
@@ -1705,7 +1709,7 @@ fn fold_table(
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.name(), "Symbol", "{verb}: the bare tag");
     assert_eq!(
-        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        symbol.as_fix().names().collect::<Vec<_>>(),
         ["Sym", "Ticker", "VenueSymbol"],
         "{verb}"
     );
@@ -1733,7 +1737,7 @@ fn fold_table(
     // the tag as an alternate and the incoming spellings as aliases. No
     // second field.
     let mut spelled = member("symbol", "blp", 9055);
-    spelled.as_fix_mut().set_aliases(["BlpSym"]).unwrap();
+    spelled.as_fix_mut().set_names(["BlpSym"]).unwrap();
     assert_eq!(
         fold(&mut registry, spelled),
         (0, 1 + seeded_merges),
@@ -1748,7 +1752,7 @@ fn fold_table(
     );
     assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65, 9055], "{verb}");
     assert_eq!(
-        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        symbol.as_fix().names().collect::<Vec<_>>(),
         ["Sym", "Ticker", "VenueSymbol", "BlpSym"],
         "{verb}"
     );
@@ -1865,10 +1869,22 @@ fn a_corrupt_stored_property_is_reported_under_its_full_key() {
         ("fix:tag", "+35"),
         ("fix:tag", "-35"),
         ("fix:tag", ""),
-        ("fix:tags", "1,,2"),
-        ("fix:tags", "1,1"),
-        ("fix:tags", "1, 2"),
-        ("fix:tags", "1,-2"),
+        // The alternates are one compact JSON array: the comma text an older
+        // writer wrote is not one, and neither is a spaced, signed, empty,
+        // unclosed or repeated element.
+        ("fix:tags", "1,2"),
+        ("fix:tags", "[1,,2]"),
+        ("fix:tags", "[1,1]"),
+        ("fix:tags", "[1, 2]"),
+        ("fix:tags", "[1,-2]"),
+        ("fix:tags", "[0]"),
+        ("fix:tags", "[1"),
+        ("fix:tags", "[1]]"),
+        ("fix:tags", "[2147483648]"),
+        ("fix:tags", "[1,]"),
+        ("fix:tags", "[,1]"),
+        ("fix:tags", "[01]"),
+        ("fix:tags", "[1 2]"),
     ];
     for (key, stored) in cases {
         let mut field = tagged("Symbol", 55);
@@ -1892,15 +1908,69 @@ fn a_corrupt_stored_property_is_reported_under_its_full_key() {
         );
     }
 
-    // A stored empty alias element is skipped on read, never reported.
+    // A stored names text that is not the array of words the setter writes
+    // reads as nothing rather than as a partial list: the comma text an
+    // older writer wrote, an escaped word, an unclosed array, a trailing
+    // byte. A read stays infallible, so it cannot report; it can decline to
+    // mis-read.
+    for stored in [
+        "Ticker,Sym",
+        "[\"Ticker\",\"Sy\\\"m\"]",
+        "[\"Ticker\"",
+        "[\"Ticker\"]x",
+        "{\"Ticker\"}",
+    ] {
+        let mut field = tagged("Symbol", 55);
+        field.insert_metadata("fix:names", stored).unwrap();
+        assert_eq!(field.as_fix().names().count(), 0, "{stored:?}");
+    }
+    // A well-formed array reads whatever produced it.
     let mut field = tagged("Symbol", 55);
     field
-        .insert_metadata("fix:aliases", ",Ticker,,Sym,")
+        .insert_metadata("fix:names", "[\"Ticker\",\"Sym\"]")
         .unwrap();
     assert_eq!(
-        field.as_fix().aliases().collect::<Vec<_>>(),
+        field.as_fix().names().collect::<Vec<_>>(),
         ["Ticker", "Sym"]
     );
+}
+
+#[test]
+fn a_names_text_the_read_walks_as_nothing_never_enters_a_registry() {
+    // The read is infallible and answers nothing for such a text, so the
+    // registry is where it is refused: at intake, under the full key, and on
+    // a merge, so a stored text is never silently replaced by nothing. An
+    // empty word, an escaped one and a trailing separator are not the array
+    // the setter writes; a name stated twice under the fold is not either.
+    for stored in [
+        "Ticker,Sym",
+        "[\"\"]",
+        "[\"Ticker\",\"\"]",
+        "[\"Ticker\",\"Sy\\\"m\"]",
+        "[\"Ticker\",]",
+        "[\"Ticker\" \"Sym\"]",
+        "[\"Ticker\",\"TICKER\"]",
+        "[\"Ticker\",\"a\tb\"]",
+    ] {
+        let mut field = tagged("Symbol", 55);
+        field.insert_metadata("fix:names", stored).unwrap();
+        let error = FixRegistry::new().insert(field.clone()).unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:names"),
+            "{stored:?}: {error}"
+        );
+        let mut incoming = tagged("Symbol", 55);
+        incoming.as_fix_mut().set_names(["Sym"]).unwrap();
+        let error = incoming
+            .as_fix_mut()
+            .merge_with(&field.as_fix())
+            .unwrap_err();
+        assert!(
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:names"),
+            "{stored:?}: {error}"
+        );
+        assert_eq!(incoming.as_fix().names().collect::<Vec<_>>(), ["Sym"]);
+    }
 }
 
 #[test]
@@ -2023,7 +2093,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
             .field_by_tag(55)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["Ticker", "SymbolSfx"]
     );
@@ -2105,7 +2175,7 @@ fn a_merge_follows_the_truth_table() {
     incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
     incoming
         .as_fix_mut()
-        .set_aliases(["Instrument", "sym"])
+        .set_names(["Instrument", "sym"])
         .unwrap();
     incoming
         .insert_metadata("display", "Ticker symbol")
@@ -2125,7 +2195,7 @@ fn a_merge_follows_the_truth_table() {
     // Lists concatenate, incoming first, deduplicated with case folded.
     assert_eq!(merged.as_fix().tags().unwrap(), [67, 66, 65]);
     assert_eq!(
-        merged.as_fix().aliases().collect::<Vec<_>>(),
+        merged.as_fix().names().collect::<Vec<_>>(),
         ["Instrument", "sym", "Ticker"]
     );
     // Every key, old and new, resolves to the merged field.
@@ -2236,7 +2306,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
     // on 5055 is the same folded name under another tag: the same field
     // spelled with another number, so it folds into the holder too.
     let mut priced = tagged("PRICE", 44);
-    priced.as_fix_mut().set_aliases(["Px"]).unwrap();
+    priced.as_fix_mut().set_names(["Px"]).unwrap();
     let (added, merged) = registry
         .add_fields([
             full("Symbol", 55, &[66], &["Sym"]),
@@ -2253,7 +2323,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65, 5_055]);
     assert_eq!(
-        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        symbol.as_fix().names().collect::<Vec<_>>(),
         ["Sym", "Ticker"]
     );
     assert_eq!(symbol.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
@@ -2277,7 +2347,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
             .field_by_tag(58)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["VenueText"]
     );
@@ -3113,7 +3183,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         .nullable_field("Instrument");
     let mut qty = DataType::Int64.required_field("OrderQty");
     qty.as_fix_mut().set_tag(38).unwrap();
-    qty.as_fix_mut().set_aliases(["Qty"]).unwrap();
+    qty.as_fix_mut().set_names(["Qty"]).unwrap();
     let count = counter("NoPartyIDs", 453);
     let mut registry =
         FixRegistry::from_fields([count.clone(), qty.clone(), tagged("Symbol", 55)]).unwrap();
@@ -3325,9 +3395,9 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
     // and so answers the bare tag; the specification's is reached by its
     // own name or identity. Tag 35 is held once.
     let mut venue_trade = member("TradeID", "cme", 5001);
-    venue_trade.as_fix_mut().set_aliases(["TID"]).unwrap();
+    venue_trade.as_fix_mut().set_names(["TID"]).unwrap();
     let mut spec_trade = tagged("SecondaryTradeID", 5001);
-    spec_trade.as_fix_mut().set_aliases(["STID"]).unwrap();
+    spec_trade.as_fix_mut().set_names(["STID"]).unwrap();
     let msg_type = tagged("MsgType", 35);
     let registry = Arc::new(
         FixRegistry::from_fields([venue_trade.clone(), spec_trade.clone(), msg_type.clone()])
@@ -3424,10 +3494,6 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
         ["2cme", "c me"],
         "read back as stored"
     );
-}
-
-fn version(text: &str) -> Version {
-    text.parse().unwrap()
 }
 
 /// The committed dictionary, as the codec every enrichment case reads with.
@@ -3942,7 +4008,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     let mut stored = DataType::utf8().nullable_field("LastQty");
     stored.as_fix_mut().set_tag(32).unwrap();
     stored.as_fix_mut().set_tags(&[65, 66]).unwrap();
-    stored.as_fix_mut().set_aliases(["lastshares"]).unwrap();
+    stored.as_fix_mut().set_names(["lastshares"]).unwrap();
     stored
         .as_fix_mut()
         .set_description("the stored wording")
@@ -3959,7 +4025,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     let mut incoming = DataType::utf8().nullable_field("LastQty");
     incoming.as_fix_mut().set_tag(32).unwrap();
     incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
-    incoming.as_fix_mut().set_aliases(["qty"]).unwrap();
+    incoming.as_fix_mut().set_names(["qty"]).unwrap();
     incoming
         .as_fix_mut()
         .set_description("the incoming wording")
@@ -3991,7 +4057,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     assert_eq!(merged.code_name("5"), Some("IncomingOnly"));
     assert_eq!(merged.code_name("9"), Some("StoredOnly"));
     // Aliases union, incoming first, folded and deduplicated.
-    assert_eq!(merged.aliases().collect::<Vec<_>>(), ["qty", "lastshares"]);
+    assert_eq!(merged.names().collect::<Vec<_>>(), ["qty", "lastshares"]);
 }
 
 #[test]
@@ -4005,13 +4071,13 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
 
     let mut incoming = DataType::utf8().nullable_field("Symbol");
     incoming.as_fix_mut().set_tag(55).unwrap();
-    incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    incoming.as_fix_mut().set_names(["Ticker"]).unwrap();
 
     // The FIX half folds the `fix:` keys and nothing else, so on its own it
     // leaves a description alone in both directions: it is not FIX's key.
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(incoming.as_fix().description(), None);
-    assert_eq!(incoming.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    assert_eq!(incoming.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
 
     // The whole merge is two halves, and the generic one carries it: a
     // description the incoming definition does not state is kept from what
@@ -4024,7 +4090,7 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
         held.description(),
         Some("a very long stored wording nobody wants compared")
     );
-    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    assert_eq!(held.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
 
     // And one the incoming definition does state wins, because the caller's
     // ordering is the precedence.
@@ -4043,7 +4109,7 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
 fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
     let mut incoming = DataType::utf8().nullable_field("Symbol");
     incoming.as_fix_mut().set_tag(55).unwrap();
-    incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    incoming.as_fix_mut().set_names(["Ticker"]).unwrap();
     let before = incoming.clone();
 
     let mut other = DataType::utf8().nullable_field("Symbol");
@@ -4084,7 +4150,7 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     field.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().set_tags(&[65]).unwrap();
     field.as_fix_mut().set_description("wording").unwrap();
-    field.as_fix_mut().set_aliases(["lastshares"]).unwrap();
+    field.as_fix_mut().set_names(["lastshares"]).unwrap();
     field
         .as_fix_mut()
         .set_codes(&[FixCode::new("Shared", "1")])

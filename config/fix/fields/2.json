@@ -247,7 +247,9 @@
     "metadata": {
       "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType (836)",
       "display": "PegOffsetValue",
-      "fix:aliases": "pegdifference",
+      "fix:names": [
+        "pegdifference"
+      ],
       "fix:tag": "211"
     }
   },
@@ -364,7 +366,9 @@
     "metadata": {
       "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
       "display": "Spread",
-      "fix:aliases": "spreadtobenchmark",
+      "fix:names": [
+        "spreadtobenchmark"
+      ],
       "fix:tag": "218"
     }
   },
@@ -3490,7 +3494,6 @@
     "metadata": {
       "description": "Flag that identifies a market data entry. (Prior to FIX 4.3 this field was of type char)",
       "display": "OpenCloseSettlFlag",
-      "fix:aliases": "openclosesettleflag",
       "fix:codes": [
         {
           "value": "0",
@@ -3522,6 +3525,9 @@
           "name": "TheoreticalPriceValue",
           "doc": "Theoretical Price value"
         }
+      ],
+      "fix:names": [
+        "openclosesettleflag"
       ],
       "fix:tag": "286"
     }
@@ -3789,7 +3795,6 @@
     "metadata": {
       "description": "Identifies the status of the quote acknowledgement.",
       "display": "QuoteStatus",
-      "fix:aliases": "quoteackstatus",
       "fix:codes": [
         {
           "value": "1",
@@ -3911,6 +3916,9 @@
           "name": "Accepted",
           "doc": "Accepted"
         }
+      ],
+      "fix:names": [
+        "quoteackstatus"
       ],
       "fix:tag": "297"
     }

@@ -34,7 +34,7 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
     // The dictionary holds one reading of the tag, under one name and one
     // datatype; the spellings earlier versions used reach it as aliases.
     let view = last_qty.as_fix();
-    assert_eq!(view.aliases().collect::<Vec<_>>(), ["lastshares"]);
+    assert_eq!(view.names().collect::<Vec<_>>(), ["lastshares"]);
 
     // A query by either spelling answers the same field, and the
     // specification's own casing still resolves.
@@ -457,7 +457,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 11_371_237_979_410_291_568);
+    assert_eq!(registry.stable_hash(), 10_294_191_169_587_294_217);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

@@ -318,7 +318,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .expect("msghash");
     for identity in &held[identities..identities + 2] {
         assert_eq!(identity.dtype(), &super::identity_dtype());
-        assert_eq!(identity.as_fix().aliases().count(), 0);
+        assert_eq!(identity.as_fix().names().count(), 0);
     }
     assert_eq!(typed("prevupdatedat"), typed("updatedat"));
     assert_eq!(
@@ -335,7 +335,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .expect("prevupdatedat");
     for previous in &held[previous_at..previous_at + 2] {
         assert!(previous.is_nullable());
-        assert_eq!(previous.as_fix().aliases().count(), 0);
+        assert_eq!(previous.as_fix().names().count(), 0);
     }
     let field = |name: &str| {
         held.iter()
@@ -421,7 +421,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     assert_eq!(
         ["sendersessionname", "targetsessionname"]
-            .map(|name| field(name).as_fix().aliases().collect::<Vec<_>>()),
+            .map(|name| field(name).as_fix().names().collect::<Vec<_>>()),
         [vec!["ULFromSessionName"], vec!["ULToSessionName"]]
     );
 

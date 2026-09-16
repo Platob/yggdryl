@@ -13,7 +13,7 @@
 | Aspect | Rule |
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
-| History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it as a `fix:aliases` entry, and a field FIX retired is still in the dictionary under its own tag |
+| History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `fix:names`, and a field FIX retired is still in the dictionary under its own tag |
 | Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message under the dictionary; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Identifiers | `fix:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
@@ -162,7 +162,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
 
     let mut client = DataType::utf8().nullable_field("clordid");
     client.as_fix_mut().set_tag(11)?;
-    client.as_fix_mut().set_aliases(["ClientOrder"])?;
+    client.as_fix_mut().set_names(["ClientOrder"])?;
     let mut server = DataType::utf8().nullable_field("orderid");
     server.as_fix_mut().set_tag(37)?;
     let mut order = DataType::from_fields([client.clone(), server.clone()])?.required_field("order");
@@ -197,7 +197,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
 
     client = Field("clordid", "utf8")
     client.fix.tag = 11
-    client.fix.aliases = ["ClientOrder"]
+    client.fix.names = ["ClientOrder"]
     server = Field("orderid", "utf8")
     server.fix.tag = 37
     order = Field("order", DataType.from_fields([client, server]), nullable=False)
@@ -229,7 +229,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
 
     const client = Field.from('clordid: utf8')
     client.fix.tag = 11
-    client.fix.aliases = ['ClientOrder']
+    client.fix.names = ['ClientOrder']
     const server = Field.from('orderid: utf8')
     server.fix.tag = 37
     const order = fields.struct('order', [client, server], { nullable: false })
@@ -386,7 +386,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     venue.as_fix_mut().set_branches(["xnas"])?;
     assert!(registry.add_field(venue)?, "added");
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol", "the bare tag answers the holder");
-    assert!(registry.field_by_tag(55)?.as_fix().aliases().any(|alias| alias == "VenueSymbol"));
+    assert!(registry.field_by_tag(55)?.as_fix().names().any(|name| name == "VenueSymbol"));
     assert!(!registry.field_by_tag(55)?.as_fix().has_branch("xnas"));
     let newcomer = registry.field_by_id(FixId::of(55, "venue_symbol")?)?;
     assert_eq!(newcomer.name(), "VenueSymbol");
@@ -425,7 +425,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     venue.fix.branches = ["xnas"]
     assert registry.add_field(venue) is True, "added"
     assert registry.field_by_tag(55).name == "Symbol", "the bare tag answers the holder"
-    assert "VenueSymbol" in registry.field_by_tag(55).fix.aliases
+    assert "VenueSymbol" in registry.field_by_tag(55).fix.names
     assert not registry.field_by_tag(55).fix.has_branch("xnas")
     assert registry.field_by_id(venue.fix.id).name == "VenueSymbol"
     assert registry.field_by_name("venue_symbol").name == "VenueSymbol", "canonical before alias"
@@ -463,7 +463,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     venue.fix.branches = ['xnas']
     assert.equal(registry.addField(venue), true, 'added')
     assert.equal(registry.fieldByTag(55).name, 'Symbol', 'the bare tag answers the holder')
-    assert.ok(registry.fieldByTag(55).fix.aliases.includes('VenueSymbol'))
+    assert.ok(registry.fieldByTag(55).fix.names.includes('VenueSymbol'))
     assert.equal(registry.fieldByTag(55).fix.hasBranch('xnas'), false)
     assert.equal(registry.fieldById(venue.fix.id).name, 'VenueSymbol')
     assert.equal(registry.fieldByName('venue_symbol').name, 'VenueSymbol', 'canonical before alias')
@@ -477,7 +477,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 
 ### Membership
 
-A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `fix:branches` - a comma-separated list of dialect names, each held to the alias grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
+A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `fix:branches` - a comma-separated list of dialect names, each held to the membership grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
 
 | Rust | Python | JavaScript | Answer |
 | --- | --- | --- | --- |

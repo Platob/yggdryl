@@ -923,7 +923,9 @@
     "metadata": {
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
       "display": "DerivativeOptPayoutAmount",
-      "fix:aliases": "derivativeoptpayamount",
+      "fix:names": [
+        "derivativeoptpayamount"
+      ],
       "fix:tag": "1225"
     }
   },

@@ -30,7 +30,7 @@
 
     let mut symbol = DataType::utf8().required_field("Symbol");
     symbol.as_fix_mut().set_tag(55)?;
-    symbol.as_fix_mut().set_aliases(["Ticker"])?;
+    symbol.as_fix_mut().set_names(["Ticker"])?;
     let mut qty = DataType::Int64.required_field("OrderQty");
     qty.as_fix_mut().set_tag(38)?;
     let mut party_id = DataType::utf8().nullable_field("PartyID");
@@ -101,7 +101,7 @@
 
     symbol = Field("Symbol", "utf8", nullable=False)
     symbol.fix.tag = 55
-    symbol.fix.aliases = ["Ticker"]
+    symbol.fix.names = ["Ticker"]
     qty = Field("OrderQty", "int64", nullable=False)
     qty.fix.tag = 38
     party_id = Field("PartyID", "utf8")
@@ -177,7 +177,7 @@
 
     const symbol = Field.from('Symbol: utf8 not null')
     symbol.fix.tag = 55
-    symbol.fix.aliases = ['Ticker']
+    symbol.fix.names = ['Ticker']
     const qty = Field.from('OrderQty: int64 not null')
     qty.fix.tag = 38
     const partyId = Field.from('PartyID: utf8')

@@ -20,7 +20,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     incoming.as_fix_mut().set_tag(9_000).unwrap();
     incoming
         .as_fix_mut()
-        .set_aliases(["IncomingAlias"])
+        .set_names(["IncomingAlias"])
         .unwrap();
     group.bench_function("insert_into_seed", |bencher| {
         bencher.iter_batched(
@@ -57,7 +57,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut update = DataType::utf8().nullable_field("Symbol");
     update.as_fix_mut().set_tag(55).unwrap();
     update.as_fix_mut().set_tags(&[9_001]).unwrap();
-    update.as_fix_mut().set_aliases(["Sym"]).unwrap();
+    update.as_fix_mut().set_names(["Sym"]).unwrap();
     group.bench_function("update_in_seed", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), update.clone()),
@@ -84,7 +84,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // which re-resolves the seed's whole catalog, and is the honest cost.
     let mut renamed = DataType::utf8().nullable_field("symbol");
     renamed.as_fix_mut().set_tag(9_001).unwrap();
-    renamed.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    renamed.as_fix_mut().set_names(["Ticker"]).unwrap();
     group.bench_function("add_field_same_name_merge", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), renamed.clone()),
@@ -315,7 +315,7 @@ fn merge_source(wording: &str, alias: &str, reading: &str) -> Field {
         .expect("static alternate tags");
     field
         .as_fix_mut()
-        .set_aliases([alias])
+        .set_names([alias])
         .expect("a spelling the field does not already take");
     field
         .as_fix_mut()

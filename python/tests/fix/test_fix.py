@@ -124,7 +124,7 @@ def _field(
     *,
     branches: Iterable[str] = (),
     tags: Iterable[int] = (),
-    aliases: Iterable[str] = (),
+    names: Iterable[str] = (),
     description: str | None = None,
     nullable: bool = True,
 ) -> Field:
@@ -135,8 +135,8 @@ def _field(
         field.fix.branches = branches
     if tags:
         field.fix.tags = tags
-    if aliases:
-        field.fix.aliases = aliases
+    if names:
+        field.fix.names = names
     if description is not None:
         field.fix.description = description
     return field
@@ -157,15 +157,17 @@ def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
     field = Field("OrderQty", "decimal128(20, 8)")
     field.fix.tag = 38
     field.fix.tags = [1088]
-    field.fix.aliases = ["Qty", "Quantity"]
+    field.fix.names = ["Qty", "Quantity"]
     field.fix.description = "Quantity ordered."
 
     assert field.fix.tag == 38
     assert field.fix.tags == [1088]
-    assert field.fix.aliases == ["Qty", "Quantity"]
+    assert field.fix.names == ["Qty", "Quantity"]
     assert field.fix.description == "Quantity ordered."
-    # Ordinary namespaced text, in the one metadata map.
-    assert field.metadata["fix:aliases"] == "Qty,Quantity"
+    # Ordinary namespaced text, in the one metadata map: a list is the
+    # compact JSON array it is.
+    assert field.metadata["fix:names"] == '["Qty","Quantity"]'
+    assert field.metadata["fix:tags"] == "[1088]"
     assert field.fix["tag"] == "38"
     # Three, not four: a description is a fact about the column rather than a
     # FIX fact, so it lives on the generic key every catalog reads.
@@ -177,15 +179,15 @@ def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
     field.fix.tags = []
     assert field.fix.tags == []
     assert "tags" not in field.fix
-    field.fix.aliases = ()
-    assert field.fix.aliases == []
+    field.fix.names = ()
+    assert field.fix.names == []
     del field.fix["tag"]
     assert field.fix.tag is None
 
     absent = Field("Symbol", "utf8")
     assert absent.fix.tag is None
     assert absent.fix.tags == []
-    assert absent.fix.aliases == []
+    assert absent.fix.names == []
     assert absent.fix.description is None
 
 
@@ -197,7 +199,7 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
         with pytest.raises(TypeError, match=scheme):
             view.tag
         with pytest.raises(TypeError, match=scheme):
-            view.aliases
+            view.names
         with pytest.raises(TypeError, match=scheme):
             view.branches
         with pytest.raises(TypeError, match=scheme):
@@ -315,8 +317,10 @@ def test_tag_rejects_bool_and_refuses_to_narrow() -> None:
         field.fix.tag = -1
     with pytest.raises(ValueError, match="fix:tags"):
         field.fix.tags = [55, 55]
-    with pytest.raises(ValueError, match="fix:aliases"):
-        field.fix.aliases = ["Sym", "sym"]
+    with pytest.raises(ValueError, match="fix:names"):
+        field.fix.names = ["Sym", "sym"]
+    with pytest.raises(ValueError, match="fix:names"):
+        field.fix.names = ['Sym"bol']
 
 
 def test_a_tag_counter_and_alternate_are_positive_and_a_refusal_writes_nothing() -> None:
@@ -350,8 +354,11 @@ def test_a_tag_counter_and_alternate_are_positive_and_a_refusal_writes_nothing()
 
     # A stored spelling reads the same way: zero, a sign or a value past `i32`
     # is refused where it is read, and a registry refuses to take the field.
+    # The alternates are one JSON array, and their elements are held to the
+    # same shape.
     for key in ("fix:tag", "fix:counter", "fix:tags"):
-        for text in ("0", "000", "-1", "+1", "2147483648"):
+        for digits in ("0", "000", "-1", "+1", "2147483648"):
+            text = f"[{digits}]" if key == "fix:tags" else digits
             incoming = Field("incoming", "utf8", metadata={"fix:tag": "90001"})
             incoming.metadata[key] = text
             with pytest.raises(ValueError, match=key):
@@ -361,12 +368,17 @@ def test_a_tag_counter_and_alternate_are_positive_and_a_refusal_writes_nothing()
             with pytest.raises(ValueError):
                 registry.insert(incoming)
             assert registry.into_json() == snapshot, (key, text)
+    # Leading zeros are still the tag on the two bare decimals, and never in
+    # the array: a JSON number spells none, and the array is JSON.
     padded = Field(
         "positive",
         "utf8",
-        metadata={"fix:tag": "0001", "fix:counter": "0001", "fix:tags": "0001"},
+        metadata={"fix:tag": "0001", "fix:counter": "0001", "fix:tags": "[1]"},
     )
     assert (padded.fix.tag, padded.fix.counter, padded.fix.tags) == (1, 1, [1])
+    padded.metadata["fix:tags"] = "[0001]"
+    with pytest.raises(ValueError, match="fix:tags"):
+        padded.fix.tags
 
 
 def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
@@ -413,7 +425,7 @@ def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
 
     # The registry answers the same integer, exactly: no alias, alternate
     # tag or fold is consulted.
-    registry = FixRegistry.from_fields([trade, _field("Symbol", "utf8", 55, tags=[65], aliases=["Ticker"])])
+    registry = FixRegistry.from_fields([trade, _field("Symbol", "utf8", 55, tags=[65], names=["Ticker"])])
     assert registry.field_by_id(held).name == "TradeID"
     assert registry.field_by_tag(55).fix.id == _field("symbol", "utf8", 55).fix.id
     assert registry.get_field_by_id(registry.field_by_tag(55).fix.id) == registry.field_by_tag(55)
@@ -525,7 +537,7 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     # The published dictionary declares no aliases, so the alias tier is
     # exercised where one is actually declared.
     aliased = _field("symbol", "utf8", 55)
-    aliased.fix.aliases = ["ticker"]
+    aliased.fix.names = ["ticker"]
     named = FixRegistry.from_fields([aliased])
     assert named.field_by_name("ticker").name == "symbol"
     # A path reaches a repeating group and one of its members.
@@ -630,7 +642,7 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
 def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("symbol", "utf8", 55, names=["Ticker"]),
             _field("TradeID", "utf8", 5001, branches=["cme"]),
         ]
     )
@@ -640,12 +652,12 @@ def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> Non
     # The same folded name under another tag is the same field spelled with
     # another number: it merges into the holder, which gains the tag as an
     # alternate, the alias, and the membership. No second field.
-    venue = _field("symbol", "utf8", 5055, branches=["cme"], aliases=["VenueTicker"])
+    venue = _field("symbol", "utf8", 5055, branches=["cme"], names=["VenueTicker"])
     assert registry.add_field(venue) is False
     assert len(registry) == 2 + SEEDED
     holder = registry.field_by_tag(55)
     assert holder.fix.tags == [5055]
-    assert holder.fix.aliases == ["Ticker", "VenueTicker"]
+    assert holder.fix.names == ["Ticker", "VenueTicker"]
     assert holder.fix.branches == ["cme"]
     assert holder.fix.id == symbol_id
     assert registry.get_field_by_tag(5055) == holder
@@ -661,7 +673,7 @@ def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> Non
     assert registry.add_field(reused) is True
     assert len(registry) == 3 + SEEDED
     assert registry.field_by_tag(55).name == "symbol"
-    assert registry.field_by_tag(55).fix.aliases == ["Ticker", "VenueTicker", "VenueSym"]
+    assert registry.field_by_tag(55).fix.names == ["Ticker", "VenueTicker", "VenueSym"]
     assert registry.field_by_id(reused.fix.id).name == "VenueSym"
     assert registry.field_by_name("venuesym").fix.id == reused.fix.id
     assert registry.get_field_by_tag(55).fix.branches == ["cme"]
@@ -917,8 +929,8 @@ def test_a_vendor_field_shards_by_its_tag_and_keeps_its_membership(tmp_path: pat
 def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("symbol", "utf8", 55, aliases=["Ticker"]),
-            _field("Price", "decimal128(20, 8)", 44, aliases=["Px"]),
+            _field("symbol", "utf8", 55, names=["Ticker"]),
+            _field("Price", "decimal128(20, 8)", 44, names=["Px"]),
         ]
     )
     assert len(registry) == 2 + SEEDED
@@ -927,20 +939,20 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
 
     # A key another field holds is refused, naming both; nothing changes.
     with pytest.raises(ValueError, match="held by symbol"):
-        registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
+        registry.insert(_field("SymbolSfx", "utf8", 65, names=["ticker"]))
     assert len(registry) == 3 + SEEDED
 
     # One namespace: the same alias under a venue's tag is the same conflict.
     with pytest.raises(ValueError, match="held by symbol"):
-        registry.insert(_field("VenueSym", "utf8", 5055, branches=["cme"], aliases=["ticker"]))
+        registry.insert(_field("VenueSym", "utf8", 5055, branches=["cme"], names=["ticker"]))
     assert len(registry) == 3 + SEEDED
     assert registry.get_field_by_tag(5055) is None
 
     # A merge concatenates the two list properties, incoming first.
-    registry.update(_field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]))
+    registry.update(_field("SYMBOL", "utf8", 55, tags=[65], names=["Sym"]))
     merged = registry.field_by_tag(65)
     assert merged.name == "symbol"
-    assert merged.fix.aliases == ["Sym", "Ticker"]
+    assert merged.fix.names == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
         registry.update(_field("symbol", "large_utf8", 55))
@@ -961,7 +973,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     """`add_field` is the one-field verb `add_fields` folds through: True arrived, False merged."""
     registry = FixRegistry.from_fields(
         [
-            _field("Symbol", "utf8", 55, tags=[65], aliases=["Ticker"], description="stored"),
+            _field("Symbol", "utf8", 55, tags=[65], names=["Ticker"], description="stored"),
             _field("Price", "float64", 44),
         ]
     )
@@ -971,7 +983,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     # aliases are the union - stored order first, the incoming canonical tag
     # last - and the incoming metadata wins a shared key.
     incoming = _field(
-        "symbol", "utf8", 9001, tags=[66], aliases=["Sym", "TICKER"], description="incoming"
+        "symbol", "utf8", 9001, tags=[66], names=["Sym", "TICKER"], description="incoming"
     )
     assert registry.add_field(incoming) is False
     assert len(registry) == 2 + SEEDED
@@ -979,7 +991,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     assert stored.name == "Symbol"
     assert stored.fix.id == _field("symbol", "utf8", 55).fix.id
     assert stored.fix.tags == [65, 66, 9001]
-    assert stored.fix.aliases == ["Ticker", "Sym"]
+    assert stored.fix.names == ["Ticker", "Sym"]
     assert stored.description == "incoming"
 
     # Every spelling the incoming field carried now reaches the stored one.
@@ -1013,7 +1025,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
 def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("symbol", "utf8", 55, names=["Ticker"]),
             _field("Price", "utf8", 44),
         ]
     )
@@ -1022,7 +1034,7 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
     # and the name of nothing, and arrives with its membership.
     added, merged = registry.add_fields(
         [
-            _field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]),
+            _field("SYMBOL", "utf8", 55, tags=[65], names=["Sym"]),
             _field("Text", "utf8", 58),
             _field("VenueSym", "utf8", 5055, branches=["cme"]),
         ]
@@ -1034,7 +1046,7 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
     # The fold kept what only the stored field declared and added the rest.
     folded = registry.field_by_tag(65)
     assert folded.name == "symbol"
-    assert folded.fix.aliases == ["Sym", "Ticker"]
+    assert folded.fix.names == ["Sym", "Ticker"]
 
     # One mutation: a refusal partway leaves the dictionary as it was, so
     # neither the field before it nor the one after arrives.
@@ -1486,13 +1498,13 @@ def test_a_venues_field_and_msgtype_are_both_reachable_from_a_venue_message() ->
     registry = FixRegistry.from_fields(
         [
             _field("MsgType", "utf8", 35),
-            _field("TradeID", "utf8", 5001, branches=["cme"], aliases=["VenueTrade"]),
-            _field("Symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("TradeID", "utf8", 5001, branches=["cme"], names=["VenueTrade"]),
+            _field("Symbol", "utf8", 55, names=["Ticker"]),
         ]
     )
     # The venue re-spells `Symbol` under its own tag: one field, an
     # alternate tag, and a second alias.
-    assert registry.add_field(_field("Symbol", "utf8", 5055, branches=["cme"], aliases=["VenueTicker"])) is False
+    assert registry.add_field(_field("Symbol", "utf8", 5055, branches=["cme"], names=["VenueTicker"])) is False
     root = Field(
         "VenueOrder",
         DataType.from_fields(
@@ -1894,9 +1906,10 @@ def test_the_enriching_pass_restates_before_it_fills(seed: FixRegistry) -> None:
     assert read.get_by_tag(453) is None
 
     latest = codec.enrich_message(read)
-    # ExecTransType Cancel wrote ExecType TradeCancel over the retired
-    # PartiallyFilled, and the source stays.
-    assert latest.by_tag(150).as_py() == "40TRDCXL"
+    # ExecType PartiallyFilled is restated as Trade; ExecTransType Cancel
+    # writes nothing over it, because a code set retires nothing and a value
+    # the message stated stands. The source stays.
+    assert latest.by_tag(150).as_py() == "40TRADE"
     assert latest.by_tag(20).as_py() == "1"
     # Rule80A A is an agency order.
     assert latest.by_tag(528).as_py() == "A"
@@ -1914,8 +1927,8 @@ def test_the_enriching_pass_restates_before_it_fills(seed: FixRegistry) -> None:
     assert latest.by_name("LastShares").as_py() == 100.0
     assert [name for name, _ in latest].count("lastqty") == 1
     assert not any(name == "lastshares" for name, _ in latest)
-    # The row speaks the dictionary's newest version; the wire still says 4.2.
-    assert latest.by_tag(65001).as_py() == "5.0.2"
+    # The row keeps the version the line said: restating stamps none.
+    assert latest.by_tag(65001).as_py() == "4.2"
     assert latest.by_tag(8).as_py() == "FIX.4.2"
 
     # One pass, and the filling read the restated row: a report stating no
@@ -2580,8 +2593,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "targetsessionname",
     ):
         assert fields[name].dtype == DataType("utf8"), name
-    assert fields["sendersessionname"].fix.aliases == ["ULFromSessionName"]
-    assert fields["targetsessionname"].fix.aliases == ["ULToSessionName"]
+    assert fields["sendersessionname"].fix.names == ["ULFromSessionName"]
+    assert fields["targetsessionname"].fix.names == ["ULToSessionName"]
     # The ISIN, the market and the order's state are typed as the thing they
     # hold.
     assert fields["isincode"].dtype == DataType("isin")
@@ -2592,7 +2605,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # and no alias reaches them.
     for name in ("msghash", "msgphash", "prevmsghash"):
         assert fields[name].dtype == DataType("fixedbinary(16)"), name
-        assert fields[name].fix.aliases == [], name
+        assert fields[name].fix.names == [], name
 
     # Every registry holds them from construction beside the two seeded
     # standard clocks, and a bridge row spelling `SESSIONID` or
@@ -3519,7 +3532,7 @@ def test_an_unresolved_arrival_records_tag_zero_and_keeps_its_raw_key(seed: FixR
     registry = copy.copy(seed)
     symbol = registry.field_by_tag(55)
     symbol.fix.tags = [9_000_001]
-    symbol.fix.aliases = ["SyntheticSymbol"]
+    symbol.fix.names = ["SyntheticSymbol"]
     registry.insert(symbol)
     respelled = _fixed(registry)
     canonical = next(respelled.parse_line(b"35=D|55=SYNTH|10=0|"))
@@ -3540,21 +3553,22 @@ def test_an_unresolved_arrival_records_tag_zero_and_keeps_its_raw_key(seed: FixR
     assert digest(bare, "7") != digest(bare, "8")
 
 
-def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) -> None:
+def test_a_batch_read_restates_when_the_pass_is_composed_in(seed: FixRegistry) -> None:
     """A stage is a call: the enriching pass composes between the parse and the batch."""
     codec = _fixed(seed)
     source = pa.table({"body": pa.array([REPORT], pa.binary())})
     # Enriched as messages, before the row: the pass restates first, and the
     # fixed row has no column for a retired field such as `ExecTransType(20)`,
-    # so a row read back would restate without it.
+    # so a row read back would restate without it. Either way the row keeps
+    # the version the line said, because restating stamps none.
     restated = codec.arrow_reader(
         fix_schema(seed), codec.enrich_messages(codec.parse_lines([REPORT]))
     ).read_all()
-    assert restated.column("version").to_pylist() == ["5.0.2"]
-    assert restated.column("exectype").to_pylist()[0] == "40TRDCXL"
+    assert restated.column("version").to_pylist() == ["4.2"]
+    assert restated.column("exectype").to_pylist()[0] == "40TRADE"
     assert restated.column("nopartyids").to_pylist() == [2]
     assert restated.column("parties").to_pylist()[0][0]["partyid"] == "BRKR"
-    # Unenriched, the row speaks the version it was read at.
+    # Unenriched, the row is what the line said and nothing more.
     read = codec.parse_text_arrow_reader(source).read_all()
     assert read.column("version").to_pylist() == ["4.2"]
     assert read.column("exectype").to_pylist()[0] == "40PARTFILL"

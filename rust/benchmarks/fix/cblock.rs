@@ -155,7 +155,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .field(counter)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["NOVENDORENTRIES_ALT"]
     );

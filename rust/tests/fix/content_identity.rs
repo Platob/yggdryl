@@ -72,7 +72,7 @@ fn aliased_message() -> FixMsg {
         let mut field = declared(&registry, tag);
         field
             .as_fix_mut()
-            .set_aliases([format!("alias_{tag}")])
+            .set_names([format!("alias_{tag}")])
             .unwrap();
         registry.update(field).unwrap();
     }
@@ -496,11 +496,11 @@ fn mandatory_names_numeric_spellings_and_renamed_tags_resolve_once_in_place() {
 fn mandatory_registered_alias_plans_are_scoped_to_the_resolving_registry() {
     let mut first = FixRegistry::new();
     let mut updated = declared(&first, UPDATEDAT_TAG_NAME.0);
-    updated.as_fix_mut().set_aliases(["clock_alias"]).unwrap();
+    updated.as_fix_mut().set_names(["clock_alias"]).unwrap();
     first.update(updated).unwrap();
     let mut second = FixRegistry::new();
     let mut snapshot = declared(&second, SNAPSHOTAT_TAG_NAME.0);
-    snapshot.as_fix_mut().set_aliases(["clock_alias"]).unwrap();
+    snapshot.as_fix_mut().set_names(["clock_alias"]).unwrap();
     second.update(snapshot).unwrap();
     let field = root([
         declared(&first, 52),

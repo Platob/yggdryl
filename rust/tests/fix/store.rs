@@ -528,7 +528,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
 #[test]
 fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
     let mut old = tagged("quotestatus", 297, DataType::Int32);
-    old.as_fix_mut().set_aliases(["quoteackstatus"]).unwrap();
+    old.as_fix_mut().set_names(["quoteackstatus"]).unwrap();
     old.as_fix_mut().set_tags(&[1865]).unwrap();
     let current = tagged("quoteackstatus", 1865, DataType::Int32);
     for fields in [
@@ -596,7 +596,7 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
                 .field(1865)
                 .unwrap()
                 .as_fix()
-                .aliases()
+                .names()
                 .any(|alias| alias == "other")
         );
         assert_eq!(
@@ -904,7 +904,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
                 .field(448)
                 .unwrap()
                 .as_fix()
-                .aliases()
+                .names()
                 .collect::<Vec<_>>(),
             ["VenuePartyID"]
         );
@@ -971,7 +971,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
             .field(448)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["PartyID"]
     );
@@ -1568,7 +1568,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     let mut registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
     let mut incoming = tagged("Symbol", 55, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[9001]).unwrap();
-    incoming.as_fix_mut().set_aliases(["Sym"]).unwrap();
+    incoming.as_fix_mut().set_names(["Sym"]).unwrap();
     registry.update(incoming.clone()).unwrap();
     let canonical = registry.field(55).unwrap();
     assert_eq!(canonical.name(), "symbol");
@@ -2160,6 +2160,83 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
         .unwrap();
     let error = yggdryl::into_fix_document(broken).expect_err("a malformed document");
     assert!(error.to_string().contains("fix:codes"), "{error}");
+}
+
+#[test]
+fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
+    // The two list properties are dumped as JSON arrays, like the three
+    // documents of entries, and read back as the compact text the setters
+    // write - whatever spacing or integer width the file used.
+    let mut qty = tagged("OrderQty", 38, DataType::Float64);
+    qty.as_fix_mut().set_names(["Qty", "Quantity"]).unwrap();
+    qty.as_fix_mut().set_tags(&[1088, 152]).unwrap();
+    assert_eq!(qty.get_metadata("fix:names"), Some(r#"["Qty","Quantity"]"#));
+    assert_eq!(qty.get_metadata("fix:tags"), Some("[1088,152]"));
+
+    let document = yggdryl::into_fix_document(qty.clone()).unwrap();
+    let metadata = document.get_key_str("metadata").expect("the metadata");
+    let names = metadata.get_key_str("fix:names").expect("the names");
+    assert_eq!(
+        names
+            .as_sequence()
+            .map(|held| held.iter().filter_map(Scalar::as_str).collect::<Vec<_>>()),
+        Some(vec!["Qty", "Quantity"]),
+    );
+    let tags = metadata.get_key_str("fix:tags").expect("the tags");
+    assert_eq!(
+        tags.as_sequence()
+            .map(|held| held.iter().filter_map(Scalar::as_i64).collect::<Vec<_>>()),
+        Some(vec![1088, 152]),
+    );
+    assert_eq!(yggdryl::from_fix_document(document).unwrap(), qty);
+
+    // A file may space the arrays however it likes; the field holds one text.
+    let spaced = yggdryl::from_json_scalar(
+        r#"{"name":"OrderQty","dtype":{"type":"float64"},"nullable":true,"metadata":{
+            "fix:tag":"38",
+            "fix:names":[ "Qty" ,  "Quantity" ],
+            "fix:tags":[ 1088 , 152 ]
+        }}"#,
+    )
+    .unwrap();
+    assert_eq!(yggdryl::from_fix_document(spaced).unwrap(), qty);
+
+    // One shape: text under either key is refused by name, and so is an
+    // element that is not what the list holds - an empty or escaped name, a
+    // tag that is not a positive integer.
+    for (key, spelled) in [
+        ("fix:names", r#""Qty,Quantity""#),
+        ("fix:names", r#"["Qty",""]"#),
+        ("fix:names", r#"["Qty","Qu\"antity"]"#),
+        ("fix:names", r#"["Qty",152]"#),
+        ("fix:names", r#"["Qty","qty"]"#),
+        ("fix:names", r#"{"Qty":true}"#),
+        ("fix:tags", r#""1088,152""#),
+        ("fix:tags", r#"[1088,1088]"#),
+        ("fix:tags", r#"[1088,0]"#),
+        ("fix:tags", r#"[1088,-152]"#),
+        ("fix:tags", r#"[1088,2147483648]"#),
+        ("fix:tags", r#"[1088,"152"]"#),
+        ("fix:tags", r#"[1088,1.5]"#),
+    ] {
+        let document = yggdryl::from_json_scalar(format!(
+            r#"{{"name":"OrderQty","dtype":{{"type":"float64"}},"nullable":true,
+                "metadata":{{"fix:tag":"38","{key}":{spelled}}}}}"#
+        ))
+        .unwrap();
+        let error =
+            yggdryl::from_fix_document(document).expect_err(&format!("{key}: {spelled}"));
+        assert!(error.to_string().contains(key), "{key}: {spelled}: {error}");
+    }
+
+    // And a field holding text no reader can parse under either key is named
+    // where it is written.
+    for (key, stored) in [("fix:names", "Qty,Quantity"), ("fix:tags", "1088,152")] {
+        let mut broken = tagged("OrderQty", 38, DataType::Float64);
+        broken.set_metadata([(key, stored)]).unwrap();
+        let error = yggdryl::into_fix_document(broken).expect_err("the comma text");
+        assert!(error.to_string().contains(key), "{key}: {error}");
+    }
 }
 
 #[test]

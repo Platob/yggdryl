@@ -25,7 +25,7 @@ fn undated_fields() -> Vec<Field> {
     let mut qty = DataType::Float64.nullable_field("lastqty");
     qty.as_fix_mut().set_tag(32).expect("a tag");
     qty.as_fix_mut()
-        .set_aliases(["LastShares"])
+        .set_names(["LastShares"])
         .expect("an alias");
     let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).expect("a tag");

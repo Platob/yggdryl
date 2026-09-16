@@ -222,7 +222,9 @@
     "metadata": {
       "description": "Total number of quotes for the quote set.",
       "display": "TotNoQuoteEntries",
-      "fix:aliases": "totquoteentries",
+      "fix:names": [
+        "totquoteentries"
+      ],
       "fix:tag": "304"
     }
   },
@@ -235,7 +237,6 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingSecurityID(309) value.",
       "display": "UnderlyingSecurityIDSource",
-      "fix:aliases": "underlyingidsource",
       "fix:codes": [
         {
           "value": "1",
@@ -402,6 +403,9 @@
           "name": "DigitalTokenIdentifier",
           "doc": "Digital Token Identifier (ISO 24165)"
         }
+      ],
+      "fix:names": [
+        "underlyingidsource"
       ],
       "fix:tag": "305"
     }
@@ -2062,7 +2066,6 @@
     "metadata": {
       "description": "Denotes the reason for a delay or halt of services.",
       "display": "HaltReason",
-      "fix:aliases": "haltreasonchar",
       "fix:codes": [
         {
           "value": "1",
@@ -2123,6 +2126,9 @@
           "value": "X",
           "name": "EquipmentChangeoverLegacy"
         }
+      ],
+      "fix:names": [
+        "haltreasonchar"
       ],
       "fix:tag": "327"
     }
@@ -4493,7 +4499,9 @@
     "metadata": {
       "description": "Amount (signed) added to the \"related to\" price specified via DiscretionInst (388), in the context of DiscretionOffsetType (842)",
       "display": "DiscretionOffsetValue",
-      "fix:aliases": "discretionoffset",
+      "fix:names": [
+        "discretionoffset"
+      ],
       "fix:tag": "389"
     }
   },
@@ -4542,7 +4550,9 @@
     "metadata": {
       "description": "Total number of securities.",
       "display": "TotNoRelatedSym",
-      "fix:aliases": "totalnumsecurities",
+      "fix:names": [
+        "totalnumsecurities"
+      ],
       "fix:tag": "393"
     }
   },

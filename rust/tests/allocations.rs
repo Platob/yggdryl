@@ -366,7 +366,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a static alternate tag");
     symbol
         .as_fix_mut()
-        .set_aliases(["Ticker", "SecuritySymbolIdentifier"])
+        .set_names(["Ticker", "SecuritySymbolIdentifier"])
         .expect("static aliases");
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
@@ -378,7 +378,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a static membership");
     trade
         .as_fix_mut()
-        .set_aliases(["TradeIdentifier"])
+        .set_names(["TradeIdentifier"])
         .expect("a static alias");
     let generated = (0..extra).map(|index| {
         let mut field = DataType::Int64.nullable_field(format!("Generated{index:04}"));
@@ -386,7 +386,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
             .as_fix_mut()
-            .set_aliases([format!("GeneratedAlias{index:04}")])
+            .set_names([format!("GeneratedAlias{index:04}")])
             .expect("a generated alias");
         field
     });

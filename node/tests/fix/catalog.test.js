@@ -57,7 +57,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     const beside = registry.clone()
     beside.createDefinition('fields', tagged('DifferentName', 448))
     assert.equal(beside.field(448).name, 'PartyID')
-    assert.ok(beside.field(448).fix.aliases.includes('DifferentName'))
+    assert.ok(beside.field(448).fix.names.includes('DifferentName'))
     assert.equal(beside.fieldByName('differentname').fix.tag, 448)
     assert.notEqual(beside.fieldByName('differentname').fix.id, beside.field(448).fix.id)
   }
@@ -318,9 +318,9 @@ test('compiled identifier selection returns independent declarations and native 
   assert.ok(selected[2][1].equals(value.byName('numericid')))
   assert.equal(typeof selected[2][1].asJs(), 'bigint')
   selected[0][0].setName('changed')
-  selected[0][0].fix.aliases = ['ChangedAlias']
+  selected[0][0].fix.names = ['ChangedAlias']
   assert.equal(singleton.identifierValues(value)[0][0].name, 'clordid')
-  assert.deepEqual(singleton.identifierValues(value)[0][0].fix.aliases, [])
+  assert.deepEqual(singleton.identifierValues(value)[0][0].fix.names, [])
   assert.ok(registry.definition('components', 'order').equals(registered))
   const absent = new fix.FixMsg(row, [null, 'C-1', null], registry)
   assert.deepEqual(singleton.identifierValues(absent).map(([field, scalar]) => [field.name, scalar.asJs()]), [['clordid', 'C-1']])

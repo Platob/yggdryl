@@ -36,7 +36,7 @@ fn vendored(count: usize) -> Vec<Field> {
                 .expect("a generated membership");
             field
                 .as_fix_mut()
-                .set_aliases([format!("VendorAlias{index:05}")])
+                .set_names([format!("VendorAlias{index:05}")])
                 .expect("a generated alias");
             field
         })
@@ -73,7 +73,7 @@ pub(crate) fn generated(count: usize) -> Vec<Field> {
             field.as_fix_mut().set_tag(tag).expect("a generated tag");
             field
                 .as_fix_mut()
-                .set_aliases([format!("GeneratedAlias{index:05}")])
+                .set_names([format!("GeneratedAlias{index:05}")])
                 .expect("a generated alias");
             field
         })
@@ -97,7 +97,7 @@ pub(crate) fn mixed_categories(count: usize) -> Vec<Field> {
             field.as_fix_mut().set_tag(tag).expect("a generated tag");
             field
                 .as_fix_mut()
-                .set_aliases([format!("MixedAlias{index:05}")])
+                .set_names([format!("MixedAlias{index:05}")])
                 .expect("a generated alias");
             field
         })

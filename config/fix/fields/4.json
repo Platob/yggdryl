@@ -305,7 +305,6 @@
     "metadata": {
       "description": "Code to represent the type of trade.",
       "display": "BidTradeType",
-      "fix:aliases": "tradetype",
       "fix:codes": [
         {
           "value": "A",
@@ -327,6 +326,9 @@
           "name": "RiskTrade",
           "doc": "Risk Trade"
         }
+      ],
+      "fix:names": [
+        "tradetype"
       ],
       "fix:tag": "418"
     }
@@ -3184,7 +3186,9 @@
     "metadata": {
       "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
       "display": "CardIssNum",
-      "fix:aliases": "cardissno",
+      "fix:names": [
+        "cardissno"
+      ],
       "fix:tag": "491"
     }
   },

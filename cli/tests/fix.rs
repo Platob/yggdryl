@@ -397,7 +397,7 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     assert_eq!(other.as_fix().branches().collect::<Vec<_>>(), ["beta"]);
     let holder = workspace.read("fields", "DeskValue");
     assert_eq!(holder.dtype(), &DataType::Int32);
-    assert!(holder.as_fix().aliases().any(|alias| alias == "OtherName"));
+    assert!(holder.as_fix().names().any(|alias| alias == "OtherName"));
     let by_tag = workspace.read("fields", "5001");
     assert_eq!(by_tag.as_fix().tag().unwrap(), Some(5001));
     assert_eq!(by_tag, holder);

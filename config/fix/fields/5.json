@@ -237,7 +237,9 @@
     "metadata": {
       "description": "Set of Registration name and address details, possibly including phone, fax etc.",
       "display": "RegistDtls",
-      "fix:aliases": "registdetls",
+      "fix:names": [
+        "registdetls"
+      ],
       "fix:tag": "509"
     }
   },
@@ -2358,7 +2360,9 @@
     "metadata": {
       "description": "Used to support fragmentation. Indicates total number of security types when multiple Security Type messages are used to return results.",
       "display": "TotNoSecurityTypes",
-      "fix:aliases": "totalnumsecuritytypes",
+      "fix:names": [
+        "totalnumsecuritytypes"
+      ],
       "fix:tag": "557"
     }
   },
@@ -3367,7 +3371,6 @@
     "metadata": {
       "description": "Indicates order settlement period. If present, LegSettlDate (588) overrides this field. If both LegSettlType (587) and LegSettDate (588) are omitted, the default for LegSettlType (587) is 0 (Regular)",
       "display": "LegSettlType",
-      "fix:aliases": "legsettlmnttyp",
       "fix:codes": [
         {
           "value": "0",
@@ -3430,6 +3433,9 @@
           "doc": "FX Spot Next settlement (Spot+1, aka next day)"
         }
       ],
+      "fix:names": [
+        "legsettlmnttyp"
+      ],
       "fix:tag": "587"
     }
   },
@@ -3443,7 +3449,9 @@
     "metadata": {
       "description": "Refer to description for SettlDate[64]",
       "display": "LegSettlDate",
-      "fix:aliases": "legfutsettdate",
+      "fix:names": [
+        "legfutsettdate"
+      ],
       "fix:tag": "588"
     }
   },

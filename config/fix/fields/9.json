@@ -3032,7 +3032,6 @@
     "metadata": {
       "description": "Expiration Quantity type",
       "display": "ExpirationQtyType",
-      "fix:aliases": "exptype",
       "fix:codes": [
         {
           "value": "1",
@@ -3059,6 +3058,9 @@
           "name": "Difference",
           "doc": "Difference"
         }
+      ],
+      "fix:names": [
+        "exptype"
       ],
       "fix:tag": "982"
     }

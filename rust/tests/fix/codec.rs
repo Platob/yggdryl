@@ -1887,7 +1887,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .field("nolinesoftext")
         .expect("the counter's column");
     assert!(
-        group.as_fix().aliases().any(|held| held == "linesoftext"),
+        group.as_fix().names().any(|held| held == "linesoftext"),
         "the 4.2 spelling is still readable off the column",
     );
     assert!(message.anomalies().next().is_none());

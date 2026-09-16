@@ -2092,25 +2092,27 @@ impl JsProtocolField {
     ///
     /// Assigning an empty array removes the property.
     #[napi(getter)]
-    pub fn aliases(&self, env: Env) -> Result<Vec<String>> {
-        self.require_fix(env, "aliases")?;
+    pub fn names(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "names")?;
         Ok(self
             .field
             .inner
             .as_fix()
-            .aliases()
+            .names()
             .map(ToOwned::to_owned)
             .collect())
     }
 
-    /// Record the aliases; an empty array removes the property.
+    /// Record the alternate names, each non-empty and free of a quote, a
+    /// backslash or a control character, stated once with ASCII case folded;
+    /// an empty array removes the property.
     #[napi(setter)]
-    pub fn set_aliases(&mut self, env: Env, values: Vec<String>) -> Result<()> {
-        self.require_fix(env, "aliases")?;
+    pub fn set_names(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "names")?;
         self.field
             .inner
             .as_fix_mut()
-            .set_aliases(values)
+            .set_names(values)
             .map_err(napi_error)
     }
 

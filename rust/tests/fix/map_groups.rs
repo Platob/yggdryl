@@ -247,7 +247,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let mut registry = FixRegistry::new();
     let mut label = DataType::utf8().nullable_field("label");
     label.as_fix_mut().set_tag(9001).unwrap();
-    label.as_fix_mut().set_aliases(["AltIds"]).unwrap();
+    label.as_fix_mut().set_names(["AltIds"]).unwrap();
     registry.insert(label.clone()).unwrap();
     let map = registry.get_group_by_tag(65_020).unwrap().clone();
     let schema = DataType::from_fields([label, map])
@@ -302,7 +302,7 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
             field.as_fix_mut().set_tag(alias_tag).unwrap();
             field
         };
-        alias.as_fix_mut().set_aliases(["AltIds"]).unwrap();
+        alias.as_fix_mut().set_names(["AltIds"]).unwrap();
         registry.insert(alias).unwrap();
         assert_eq!(
             registry
@@ -358,7 +358,7 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
         if scalar_alias {
             let mut label = DataType::utf8().nullable_field("label");
             label.as_fix_mut().set_tag(9001).unwrap();
-            label.as_fix_mut().set_aliases(["AltIds"]).unwrap();
+            label.as_fix_mut().set_names(["AltIds"]).unwrap();
             registry.insert(label).unwrap();
         }
         let component = DataType::from_fields([DataType::utf8().nullable_field("note")])

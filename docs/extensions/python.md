@@ -1363,7 +1363,7 @@ assert registry["venue_trade_key"].fix.id == vendor.fix.id
 venue = Field("VenueSymbol", "utf8")
 venue.fix.tag = 55
 registry.insert(venue)
-assert registry[55].name == "symbol" and registry[55].fix.aliases == ["VenueSymbol"]
+assert registry[55].name == "symbol" and registry[55].fix.names == ["VenueSymbol"]
 assert registry["VenueSymbol"].fix.id == venue.fix.id != symbol.fix.id
 assert [field.name for field in registry if field.fix.tag == 55] == ["symbol", "VenueSymbol"]
 assert registry.remove_by_id(venue.fix.id).name == "VenueSymbol"

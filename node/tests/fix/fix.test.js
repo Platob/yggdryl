@@ -59,12 +59,12 @@ function seed() {
   return seedRegistry.clone()
 }
 
-function fixField(name, dtype, tag, { branches, tags, aliases, description } = {}) {
+function fixField(name, dtype, tag, { branches, tags, names, description } = {}) {
   const field = Field.from(`${name}: ${dtype}`)
   field.fix.tag = tag
   if (branches) field.fix.branches = branches
   if (tags) field.fix.tags = tags
-  if (aliases) field.fix.aliases = aliases
+  if (names) field.fix.names = names
   if (description !== undefined) field.fix.description = description
   return field
 }
@@ -73,15 +73,17 @@ test('the protocol view carries the typed fix vocabulary', () => {
   const field = Field.from('OrderQty: decimal128(20, 8)')
   field.fix.tag = 38
   field.fix.tags = [1088]
-  field.fix.aliases = ['Qty', 'Quantity']
+  field.fix.names = ['Qty', 'Quantity']
   field.fix.description = 'Quantity ordered.'
 
   assert.equal(field.fix.tag, 38)
   assert.deepEqual(field.fix.tags, [1088])
-  assert.deepEqual(field.fix.aliases, ['Qty', 'Quantity'])
+  assert.deepEqual(field.fix.names, ['Qty', 'Quantity'])
   assert.equal(field.fix.description, 'Quantity ordered.')
-  // Ordinary namespaced text, in the one metadata map.
-  assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
+  // Ordinary namespaced text, in the one metadata map: a list is the
+  // compact JSON array it is.
+  assert.equal(field.get('fix:names'), '["Qty","Quantity"]')
+  assert.equal(field.get('fix:tags'), '[1088]')
   assert.equal(field.fix.get('tag'), '38')
   // Three, not four: a description is a fact about the column rather than a
   // FIX fact, so it lives on the generic key every catalog reads.
@@ -93,15 +95,15 @@ test('the protocol view carries the typed fix vocabulary', () => {
   field.fix.tags = []
   assert.deepEqual(field.fix.tags, [])
   assert.equal(field.fix.has('tags'), false)
-  field.fix.aliases = []
-  assert.deepEqual(field.fix.aliases, [])
+  field.fix.names = []
+  assert.deepEqual(field.fix.names, [])
   assert.equal(field.fix.delete('tag'), true)
   assert.equal(field.fix.tag, null)
 
   const absent = Field.from('Symbol: utf8')
   assert.equal(absent.fix.tag, null)
   assert.deepEqual(absent.fix.tags, [])
-  assert.deepEqual(absent.fix.aliases, [])
+  assert.deepEqual(absent.fix.names, [])
   assert.equal(absent.fix.description, null)
 })
 
@@ -116,7 +118,7 @@ test('the typed vocabulary answers only on the fix view', () => {
   ]) {
     assert.throws(() => view.tag, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.tags, { name: 'TypeError', message: new RegExp(scheme) })
-    assert.throws(() => view.aliases, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.names, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.identifiers, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.description, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.branches, { name: 'TypeError', message: new RegExp(scheme) })
@@ -134,7 +136,7 @@ test('the typed vocabulary answers only on the fix view', () => {
       view.derivation = 'orderqty - cumqty'
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
-      view.aliases = ['Ticker']
+      view.names = ['Ticker']
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.identifiers = []
@@ -149,7 +151,7 @@ test('the typed vocabulary answers only on the fix view', () => {
 })
 
 test('identifier declarations resolve aliases and decimal tags into direct member order', () => {
-  const client = fixField('clordid', 'utf8', 11, { aliases: ['ClientOrder'] })
+  const client = fixField('clordid', 'utf8', 11, { names: ['ClientOrder'] })
   const order = fixField('orderid', 'utf8', 37)
   const declaration = fields.struct('order', [client, order], { nullable: false })
   const view = declaration.fix
@@ -291,8 +293,11 @@ test('a tag crosses as a number and is never narrowed', () => {
     field.fix.tags = [55, 55]
   }, /fix:tags/)
   assert.throws(() => {
-    field.fix.aliases = ['Sym', 'sym']
-  }, /fix:aliases/)
+    field.fix.names = ['Sym', 'sym']
+  }, /fix:names/)
+  assert.throws(() => {
+    field.fix.names = ['Sym"bol']
+  }, /fix:names/)
   assert.equal(field.fix.tag, null)
   assert.equal(field.fix.counter, null)
   assert.deepEqual(field.fix.tags, [])
@@ -308,9 +313,11 @@ test('a tag crosses as a number and is never narrowed', () => {
 test('an externally stated nonpositive tag is refused where it is read', () => {
   // Text written past the typed setters is read strictly: decimal digits of a
   // positive tag, never signed and never wider than an i32. A registry refuses
-  // the field and is left exactly as it was.
+  // the field and is left exactly as it was. The alternates are one JSON
+  // array, and their elements are held to the same shape.
   for (const [key, property] of [['fix:tag', 'tag'], ['fix:counter', 'counter'], ['fix:tags', 'tags']]) {
-    for (const text of ['0', '000', '-1', '+1', '2147483648']) {
+    for (const digits of ['0', '000', '-1', '+1', '2147483648']) {
+      const text = key === 'fix:tags' ? `[${digits}]` : digits
       const field = fixField('incoming', 'utf8', 90_001)
       field.set(key, text)
       assert.throws(() => field.fix[property], new RegExp(key), `${key}=${text}`)
@@ -320,12 +327,16 @@ test('an externally stated nonpositive tag is refused where it is read', () => {
       assert.ok(registry.equals(before), `${key}=${text}`)
     }
   }
-  // Leading zeros of a positive tag are still that tag.
+  // Leading zeros are still the tag on the two bare decimals, and never in
+  // the array: a JSON number spells none, and the array is JSON.
   const field = fixField('positive', 'utf8', 1)
-  for (const key of ['fix:tag', 'fix:counter', 'fix:tags']) field.set(key, '0001')
+  for (const key of ['fix:tag', 'fix:counter']) field.set(key, '0001')
+  field.set('fix:tags', '[1]')
   assert.equal(field.fix.tag, 1)
   assert.equal(field.fix.counter, 1)
   assert.deepEqual(field.fix.tags, [1])
+  field.set('fix:tags', '[0001]')
+  assert.throws(() => field.fix.tags, /fix:tags/)
 })
 
 test('the identifier is a number derived from the tag and the name', () => {
@@ -559,7 +570,7 @@ test('protocol and MsgType inference stays native and shallow', () => {
 
 test('one namespace: a reused name merges and a reused tag stands beside its holder', () => {
   const registry = fix.FixRegistry.fromFields([
-    fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
+    fixField('Symbol', 'utf8', 55, { names: ['Ticker'] }),
     fixField('TradeID', 'utf8', 5001, { branches: ['cme'] }),
   ])
   assert.deepEqual(registry.dialects(), ['cme'])
@@ -567,14 +578,14 @@ test('one namespace: a reused name merges and a reused tag stands beside its hol
   // A venue reusing a name under another tag is the same field spelled with
   // another number: `addField` folds it into the holder, which gains the tag
   // as an alternate, the alias, and the membership; `insert` refuses it.
-  const venueSymbol = fixField('Symbol', 'utf8', 5055, { branches: ['cme'], aliases: ['VenueTicker'] })
+  const venueSymbol = fixField('Symbol', 'utf8', 5055, { branches: ['cme'], names: ['VenueTicker'] })
   assert.throws(() => registry.insert(venueSymbol), /held by Symbol/)
   assert.equal(registry.addField(venueSymbol), false)
   assert.equal(registry.size, 2 + SEEDED)
   const symbol = registry.fieldByTag(55)
   assert.equal(registry.fieldByTag(5055).name, 'Symbol')
   assert.deepEqual(symbol.fix.tags, [5055])
-  assert.deepEqual(symbol.fix.aliases, ['Ticker', 'VenueTicker'])
+  assert.deepEqual(symbol.fix.names, ['Ticker', 'VenueTicker'])
   assert.deepEqual(symbol.fix.branches, ['cme'])
   assert.equal(registry.fieldByName('venueticker').fix.id, symbol.fix.id)
   assert.equal(registry.getFieldByPath('Symbol').fix.id, symbol.fix.id)
@@ -587,7 +598,7 @@ test('one namespace: a reused name merges and a reused tag stands beside its hol
   assert.equal(registry.insert(venueId), null)
   assert.equal(registry.size, 3 + SEEDED)
   assert.equal(registry.fieldByTag(55).name, 'Symbol')
-  assert.deepEqual(registry.fieldByTag(55).fix.aliases, ['Ticker', 'VenueTicker', 'VenueSymbol'])
+  assert.deepEqual(registry.fieldByTag(55).fix.names, ['Ticker', 'VenueTicker', 'VenueSymbol'])
   const newcomer = registry.fieldByName('venuesymbol')
   assert.equal(newcomer.name, 'VenueSymbol')
   assert.notEqual(newcomer.fix.id, symbol.fix.id)
@@ -609,8 +620,8 @@ test('one namespace: a reused name merges and a reused tag stands beside its hol
 
 test('removeById reaches one of two fields on a tag by its own identity', () => {
   const registry = fix.FixRegistry.fromFields([
-    fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
-    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], aliases: ['VenueTrade'] }),
+    fixField('Symbol', 'utf8', 55, { names: ['Ticker'] }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], names: ['VenueTrade'] }),
   ])
   registry.insert(fixField('VenueSymbol', 'utf8', 55, { branches: ['cme'] }))
   assert.equal(registry.size, 3 + SEEDED)
@@ -878,8 +889,8 @@ test('membership is stored on the field, in the one shard tree', (t) => {
 
 test('insert, update and remove carry the core rules across', () => {
   const registry = fix.FixRegistry.fromFields([
-    fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
-    fixField('Price', 'decimal128(20, 8)', 44, { aliases: ['Px'] }),
+    fixField('Symbol', 'utf8', 55, { names: ['Ticker'] }),
+    fixField('Price', 'decimal128(20, 8)', 44, { names: ['Px'] }),
   ])
   assert.equal(registry.size, 2 + SEEDED)
   assert.equal(registry.insert(fixField('Side', 'utf8', 54)), null)
@@ -887,7 +898,7 @@ test('insert, update and remove carry the core rules across', () => {
 
   // A key another field holds is refused, naming both; nothing changes.
   assert.throws(
-    () => registry.insert(fixField('SymbolSfx', 'utf8', 65, { aliases: ['ticker'] })),
+    () => registry.insert(fixField('SymbolSfx', 'utf8', 65, { names: ['ticker'] })),
     /alias \\"ticker\\" of SymbolSfx, held by Symbol/,
   )
   assert.equal(registry.size, 3 + SEEDED)
@@ -895,17 +906,17 @@ test('insert, update and remove carry the core rules across', () => {
   // One namespace: the same alias under a venue's membership is the same
   // conflict.
   assert.throws(
-    () => registry.insert(fixField('VenueSym', 'utf8', 5055, { branches: ['cme'], aliases: ['ticker'] })),
+    () => registry.insert(fixField('VenueSym', 'utf8', 5055, { branches: ['cme'], names: ['ticker'] })),
     /held by Symbol/,
   )
   assert.equal(registry.size, 3 + SEEDED)
   assert.equal(registry.fieldByName('TICKER').name, 'Symbol')
 
   // A merge concatenates the two list properties, incoming first.
-  registry.update(fixField('SYMBOL', 'utf8', 55, { tags: [65], aliases: ['Sym'] }))
+  registry.update(fixField('SYMBOL', 'utf8', 55, { tags: [65], names: ['Sym'] }))
   const merged = registry.fieldByTag(65)
   assert.equal(merged.name, 'Symbol')
-  assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
+  assert.deepEqual(merged.fix.names, ['Sym', 'Ticker'])
   // A datatype disagreement is refused, never widened.
   assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 55)))
   assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
@@ -920,7 +931,7 @@ test('insert, update and remove carry the core rules across', () => {
 
 test('addField answers whether the field arrived or folded into a stored one', () => {
   const registry = fix.FixRegistry.fromFields([
-    fixField('Symbol', 'utf8', 55, { tags: [65], aliases: ['Ticker'], description: 'stored' }),
+    fixField('Symbol', 'utf8', 55, { tags: [65], names: ['Ticker'], description: 'stored' }),
     fixField('Price', 'float64', 44),
   ])
 
@@ -930,7 +941,7 @@ test('addField answers whether the field arrived or folded into a stored one', (
   // last - and the incoming metadata wins a shared key.
   const incoming = fixField('symbol', 'utf8', 9001, {
     tags: [66],
-    aliases: ['Sym', 'TICKER'],
+    names: ['Sym', 'TICKER'],
     description: 'incoming',
   })
   assert.equal(registry.addField(incoming), false)
@@ -939,7 +950,7 @@ test('addField answers whether the field arrived or folded into a stored one', (
   assert.equal(stored.name, 'Symbol')
   assert.equal(stored.fix.tag, 55)
   assert.deepEqual(stored.fix.tags, [65, 66, 9001])
-  assert.deepEqual(stored.fix.aliases, ['Ticker', 'Sym'])
+  assert.deepEqual(stored.fix.names, ['Ticker', 'Sym'])
   assert.equal(stored.fix.description, 'incoming')
 
   // Every spelling the incoming field carried now reaches the stored one.
@@ -1114,8 +1125,8 @@ test('a message resolves through the registry it carries', () => {
 test("a venue's field and MsgType are both reachable from a venue message", () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('MsgType', 'utf8', 35),
-    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], aliases: ['VenueTrade'] }),
-    fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], names: ['VenueTrade'] }),
+    fixField('Symbol', 'utf8', 55, { names: ['Ticker'] }),
   ])
   const root = fields.struct(
     'VenueOrder',
@@ -1339,10 +1350,11 @@ test('a reader parses every frame shape the core reads', () => {
   // for byte.
   const pairs = fixedCodec(registry).parsePairs([['55', 'AAPL']])
   assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'version', ...REPLAY])
-  // Pairs state no frame, so the read is at the dictionary's newest.
-  const newest = '5.0.2'
-  assert.equal(pairs.byTag(65001).toJSON(), newest)
-  assert.equal(pairs.byTag(8).toJSON(), `FIX.${newest}`)
+  // Pairs state no frame, and a version-blind dictionary dates nothing, so
+  // the read is at the crate's stated default.
+  const stated = '4.4'
+  assert.equal(pairs.byTag(65001).toJSON(), stated)
+  assert.equal(pairs.byTag(8).toJSON(), `FIX.${stated}`)
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
   assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
   // An undated message takes the codec's default SendingTime, and its event,
@@ -1547,9 +1559,10 @@ test('the enriching pass restates before it fills', () => {
   // Restatement is the pass's first step, not a door of its own: the rules
   // are the dictionary's, and the row is canonical before anything fills it.
   const latest = codec.enrichMessage(read)
-  // ExecTransType Cancel wrote ExecType TradeCancel over the retired
-  // PartiallyFilled, and the source stays.
-  assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
+  // ExecType PartiallyFilled is restated as Trade; ExecTransType Cancel
+  // writes nothing over it, because a code set retires nothing and a value
+  // the message stated stands. The source stays.
+  assert.equal(latest.byTag(150).toJSON(), '40TRADE')
   assert.equal(latest.byTag(20).toJSON(), '1')
   // Rule80A A is an agency order.
   assert.equal(latest.byTag(528).toJSON(), 'A')
@@ -1568,8 +1581,8 @@ test('the enriching pass restates before it fills', () => {
   const names = [...latest].map(([name]) => name)
   assert.equal(names.filter((name) => name === 'lastqty').length, 1)
   assert.ok(!names.includes('lastshares'))
-  // The row speaks the dictionary's newest version; the wire still says 4.2.
-  assert.equal(latest.byTag(65001).toJSON(), '5.0.2')
+  // The row keeps the version the line said: restating stamps none.
+  assert.equal(latest.byTag(65001).toJSON(), '4.2')
   assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
 
   // One pass, and the filling read the restated row: a report stating no time
@@ -2147,7 +2160,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // The session names answer to the spellings a bridge row writes them
   // under, so `ULFROMSESSIONNAME=` lands on the sender's session by name.
   assert.deepEqual(
-    held.slice(4).map((field) => field.fix.aliases),
+    held.slice(4).map((field) => field.fix.names),
     [['ULFromSessionName'], ['ULToSessionName']],
   )
 
@@ -2179,7 +2192,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
     ],
   )
   assert.ok(identities.every((field) => field.description))
-  assert.ok(identities.every((field) => field.fix.aliases.length === 0))
+  assert.ok(identities.every((field) => field.fix.names.length === 0))
 
   // A new registry, a loaded one and a built one answer them alike, by the
   // identifier the listed field derives on its own, by name, and by the bare
@@ -2568,7 +2581,7 @@ test('numeric and named aliases keep the canonical positive arrival tag', () => 
   const registry = seed()
   const symbol = registry.fieldByTag(55)
   symbol.fix.tags = [9_000_001]
-  symbol.fix.aliases = ['SyntheticSymbol']
+  symbol.fix.names = ['SyntheticSymbol']
   registry.insert(symbol)
   const codec = fixedCodec(registry)
   const canonical = codec.parseLine(Buffer.from('35=D|55=SYNTH|10=0|')).next().value

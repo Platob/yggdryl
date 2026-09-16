@@ -25,8 +25,8 @@ reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
 field is written under the one name and datatype the newest source gives it,
-and every spelling an earlier version used is written beside it as a
-``fix:aliases`` entry, so an old name still reaches the field. What a *value*
+and every spelling an earlier version used is written beside it in its
+``fix:names`` list, so an old name still reaches the field. What a *value*
 was does travel - a code set holds every value an older version declared and
 every older spelling of a surviving one, dated - and a field whose value
 another field took over carries the fix:replacements document that says which
@@ -1386,9 +1386,9 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
         )
         metadata = {"fix:tag": str(tag), "display": display}
-        aliases = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
-        if aliases:
-            metadata["fix:aliases"] = ",".join(dict.fromkeys(aliases))
+        names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
+        if names:
+            metadata["fix:names"] = list(dict.fromkeys(names))
         codes = coded(tag, fix_type, [])
         if codes is not None:
             metadata["fix:codes"] = codes
@@ -1434,16 +1434,17 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             metadata["display"] = field["name"]
         if field["doc"]:
             metadata["description"] = field["doc"]
-        # Every spelling an earlier version gave this tag is an alias of the
-        # one name the dictionary holds it under. A field no version spelled
+        # Every spelling an earlier version gave this tag is an alternate
+        # name of the one the dictionary holds it under, and the store holds
+        # them as the JSON array they are. A field no version spelled
         # otherwise states none, because the only entry names the field.
-        aliases = []
+        names = []
         for entry in entries:
             spelling = entry.get("name")
-            if spelling and spelling != name and spelling not in aliases:
-                aliases.append(spelling)
-        if aliases:
-            metadata["fix:aliases"] = ",".join(aliases)
+            if spelling and spelling != name and spelling not in names:
+                names.append(spelling)
+        if names:
+            metadata["fix:names"] = names
         code_set_name = field["code_set"] or field["type"] or ""
         if field["code_set"] and code_set_name not in latest["code_sets"]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
@@ -1493,10 +1494,9 @@ def build_catalog(
     if len(used) != len(fields):
         raise ValueError("duplicate folded FIX field name")
     used.update(
-        folded(alias)
+        folded(name)
         for field in fields
-        for alias in field.get("metadata", {}).get("fix:aliases", "").split(",")
-        if alias
+        for name in field.get("metadata", {}).get("fix:names", [])
     )
     source_names: dict[tuple[str, int], str] = {}
     definitions: dict[tuple[str, int], dict[str, Any]] = {}

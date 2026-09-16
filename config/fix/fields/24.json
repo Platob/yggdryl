@@ -229,7 +229,9 @@
     "metadata": {
       "description": "Identifies the page heading from the rate source.",
       "display": "RateSourceReferencePageHeading",
-      "fix:aliases": "ratesourcereferemcepageheading",
+      "fix:names": [
+        "ratesourcereferemcepageheading"
+      ],
       "fix:tag": "2412"
     }
   },

@@ -218,7 +218,6 @@
     "metadata": {
       "description": "Used on a multi-sided trade to specify the type of trade for a given side. Same values as TrdSubType (829).",
       "display": "SideTrdSubType",
-      "fix:aliases": "sidetrdsubtyp",
       "fix:codes": [
         {
           "value": "0",
@@ -503,6 +502,9 @@
           "doc": "Bilateral compression"
         }
       ],
+      "fix:names": [
+        "sidetrdsubtyp"
+      ],
       "fix:tag": "1008"
     }
   },
@@ -515,7 +517,9 @@
     "metadata": {
       "description": "Used to indicate the quantity on one side of a multi-sided trade.",
       "display": "SideLastQty",
-      "fix:aliases": "sideqty",
+      "fix:names": [
+        "sideqty"
+      ],
       "fix:tag": "1009"
     }
   },
@@ -3864,7 +3868,9 @@
     "metadata": {
       "description": "PartyID value within an underlying instrument party repeating group.",
       "display": "UnderlyingInstrumentPartyID",
-      "fix:aliases": "undlyinstrumentpartyid",
+      "fix:names": [
+        "undlyinstrumentpartyid"
+      ],
       "fix:tag": "1059"
     }
   },
@@ -3877,7 +3883,6 @@
     "metadata": {
       "description": "PartyIDSource value within an underlying instrument partyrepeating group.",
       "display": "UnderlyingInstrumentPartyIDSource",
-      "fix:aliases": "undlyinstrumentpartyidsource",
       "fix:codes": [
         {
           "value": "1",
@@ -4066,6 +4071,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
+      "fix:names": [
+        "undlyinstrumentpartyidsource"
+      ],
       "fix:tag": "1060"
     }
   },
@@ -4078,7 +4086,6 @@
     "metadata": {
       "description": "PartyRole value within an underlying instrument partyepeating group.",
       "display": "UnderlyingInstrumentPartyRole",
-      "fix:aliases": "undlyinstrumentpartyrole",
       "fix:codes": [
         {
           "value": "2",
@@ -4726,6 +4733,9 @@
           "doc": "Executing Firm (formerly FIX 4.2 ExecBroker)"
         }
       ],
+      "fix:names": [
+        "undlyinstrumentpartyrole"
+      ],
       "fix:tag": "1061"
     }
   },
@@ -4750,7 +4760,9 @@
     "metadata": {
       "description": "PartySubID value within an underlying instrument party repeating group.",
       "display": "UnderlyingInstrumentPartySubID",
-      "fix:aliases": "undlyinstrumentpartysubid",
+      "fix:names": [
+        "undlyinstrumentpartysubid"
+      ],
       "fix:tag": "1063"
     }
   },
@@ -4763,7 +4775,6 @@
     "metadata": {
       "description": "Type of underlying InstrumentPartySubID (1053) value.",
       "display": "UnderlyingInstrumentPartySubIDType",
-      "fix:aliases": "undlyinstrumentpartysubidtype",
       "fix:codes": [
         {
           "value": "2",
@@ -5210,6 +5221,9 @@
           "name": "Firm",
           "doc": "Firm"
         }
+      ],
+      "fix:names": [
+        "undlyinstrumentpartysubidtype"
       ],
       "fix:tag": "1064"
     }

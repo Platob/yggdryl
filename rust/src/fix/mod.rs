@@ -13,8 +13,8 @@
 //! | --- | --- | --- | --- |
 //! | tag | `fix:tag` | `i32` | canonical FIX tag |
 //! | branches | `fix:branches` | ordered name list | the dictionaries that contributed this field, folded and sorted; absent for a field the specification alone defines |
-//! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
-//! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
+//! | tags | `fix:tags` | JSON array of `i32` | alternate tags, highest priority first |
+//! | names | `fix:names` | JSON array of names | alternate names, highest priority first |
 //! | identifiers | `fix:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
@@ -61,13 +61,13 @@
 //! The registry is version-blind: it holds every tag ever defined and filters
 //! by none. A dictionary is one reading of the protocol rather than a history
 //! of it, so a field is the field, under the one name and datatype the
-//! dictionary gives it. A spelling an earlier version used reaches it as an
-//! ordinary [alias](FixSpellings), stated by whoever built the dictionary;
-//! nothing here derives one from a date.
+//! dictionary gives it. A spelling an earlier version used reaches it as one
+//! of its alternate [names](FixField::names), stated by whoever built the
+//! dictionary; nothing here derives one from a date.
 //!
 //! What a *value* was is the field's own business and stays: a
-//! [code](FixCode) carries the version it was declared at and the one that
-//! deprecated it, and a [`fix:replacements`](FixReplacement) rule says how a
+//! [code](FixCode) an older version declared is a code of the set like any
+//! other, and a [`fix:replacements`](FixReplacement) rule says how a
 //! retired field or value is restated - which is what
 //! [`FixCodec::enrich_message`] applies.
 //!
@@ -108,7 +108,7 @@
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut symbol = DataType::utf8().required_field("Symbol");
 //! symbol.as_fix_mut().set_tag(55)?;
-//! symbol.as_fix_mut().set_aliases(["Ticker"])?;
+//! symbol.as_fix_mut().set_names(["Ticker"])?;
 //!
 //! let mut trade = DataType::utf8().required_field("TradeID");
 //! trade.as_fix_mut().set_tag(5001)?;
@@ -193,7 +193,7 @@ pub use crated::{
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
 pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns};
-pub use document::{Numbers, Words, from_fix_document, into_fix_document};
+pub use document::{Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
 pub use lifecycle::FixLifecycle;

@@ -3525,9 +3525,13 @@ export declare class ProtocolField {
    *
    * Assigning an empty array removes the property.
    */
-  get aliases(): Array<string>
-  /** Record the aliases; an empty array removes the property. */
-  set aliases(values: Array<string>)
+  get names(): Array<string>
+  /**
+   * Record the alternate names, each non-empty and free of a quote, a
+   * backslash or a control character, stated once with ASCII case folded;
+   * an empty array removes the property.
+   */
+  set names(values: Array<string>)
   /**
    * The component's direct scalar identifier names, in member order.
    *

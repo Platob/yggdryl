@@ -208,8 +208,8 @@ const tag: number | null = field.fix.tag
 field.fix.tag = 55
 const tags: number[] = field.fix.tags
 field.fix.tags = [1088]
-const aliases: string[] = field.fix.aliases
-field.fix.aliases = ['Ticker']
+const names: string[] = field.fix.names
+field.fix.names = ['Ticker']
 const identifiers: string[] = field.fix.identifiers
 field.fix.identifiers = ['11', 'OrderIdentifier']
 field.fix.identifiers = []
@@ -231,7 +231,7 @@ void member
 void identity
 void tag
 void tags
-void aliases
+void names
 void identifiers
 void description
 void nulls
@@ -247,7 +247,7 @@ field.fix.branches = [55]
 // @ts-expect-error the identifier is derived from the tag and the name, never assigned
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
-field.fix.aliases = [55]
+field.fix.names = [55]
 // @ts-expect-error identifiers are an array of spellings, never one spelling
 field.fix.identifiers = '11'
 // @ts-expect-error decimal tags are spelled as strings

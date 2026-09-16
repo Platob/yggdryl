@@ -77,7 +77,7 @@ fn occurrence(group: &Field) -> &Field {
 fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
     let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_tags(&[65]).unwrap();
-    symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    symbol.as_fix_mut().set_names(["Ticker"]).unwrap();
     symbol.as_fix_mut().set_description("stored").unwrap();
     let mut registry =
         FixRegistry::from_fields([symbol, tagged("Price", 44, DataType::Float64)]).unwrap();
@@ -88,7 +88,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
     incoming.as_fix_mut().set_tags(&[66]).unwrap();
     incoming
         .as_fix_mut()
-        .set_aliases(["Sym", "TICKER"])
+        .set_names(["Sym", "TICKER"])
         .unwrap();
     incoming.as_fix_mut().set_description("incoming").unwrap();
     assert!(!registry.add_field(incoming.clone()).unwrap());
@@ -104,7 +104,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
     );
     assert_eq!(stored.as_fix().tags().unwrap(), [65, 66, 9001]);
     assert_eq!(
-        stored.as_fix().aliases().collect::<Vec<_>>(),
+        stored.as_fix().names().collect::<Vec<_>>(),
         ["Ticker", "Sym"]
     );
     assert_eq!(stored.description(), Some("incoming"));
@@ -142,7 +142,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
 #[test]
 fn a_name_that_is_a_stored_alias_folds_into_the_alias_holder() {
     let mut symbol = tagged("Symbol", 55, DataType::utf8());
-    symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    symbol.as_fix_mut().set_names(["Ticker"]).unwrap();
     let mut registry = FixRegistry::from_fields([symbol]).unwrap();
 
     assert!(
@@ -153,7 +153,7 @@ fn a_name_that_is_a_stored_alias_folds_into_the_alias_holder() {
     let stored = registry.field_by_tag(9001).unwrap();
     assert_eq!(stored.name(), "Symbol");
     assert_eq!(stored.as_fix().tags().unwrap(), [9001]);
-    assert_eq!(stored.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    assert_eq!(stored.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
     assert_eq!(registry.field("TICKER").unwrap().name(), "Symbol");
     assert_eq!(registry.len(), 1 + super::seeded_fields());
 }
@@ -510,7 +510,7 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
 #[test]
 fn add_fields_counts_what_arrived_and_what_folded() {
     let mut symbol = tagged("Symbol", 55, DataType::utf8());
-    symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    symbol.as_fix_mut().set_names(["Ticker"]).unwrap();
     let mut registry =
         FixRegistry::from_fields([symbol, tagged("Price", 44, DataType::Float64)]).unwrap();
     registry
@@ -797,7 +797,7 @@ fn a_required_spelling_folds_into_a_nullable_referenced_field_keeping_its_shape(
 #[test]
 fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     let mut symbol = tagged("Symbol", 55, DataType::utf8());
-    symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    symbol.as_fix_mut().set_names(["Ticker"]).unwrap();
     let mut registry = FixRegistry::from_fields([symbol]).unwrap();
 
     // The crate's one fold drops `_`, `-` and space beside the case, so a
@@ -808,14 +808,14 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     let mut respelled = tagged("Sym_bol", 9001, DataType::utf8());
     respelled
         .as_fix_mut()
-        .set_aliases(["Tick-er", "SYM"])
+        .set_names(["Tick-er", "SYM"])
         .unwrap();
     assert!(!registry.add_field(respelled).unwrap());
     let stored = registry.field_by_tag(9001).unwrap();
     assert_eq!(stored.name(), "Symbol");
     assert_eq!(stored.as_fix().tags().unwrap(), [9001]);
     assert_eq!(
-        stored.as_fix().aliases().collect::<Vec<_>>(),
+        stored.as_fix().names().collect::<Vec<_>>(),
         ["Ticker", "SYM"]
     );
     assert_eq!(registry.len(), 1 + super::seeded_fields());
@@ -1034,7 +1034,7 @@ fn assert_fold_table(registry: &FixRegistry) {
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.name(), "Symbol");
     assert_eq!(
-        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        symbol.as_fix().names().collect::<Vec<_>>(),
         ["VenueSymbol"]
     );
     assert!(symbol.as_fix().tags().unwrap().is_empty());
@@ -1156,7 +1156,7 @@ fn two_fields_on_one_tag_survive_a_snapshot_round_trip() {
             .field_by_name("VenueSymbol")
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .next()
             .is_none()
     );
@@ -1168,7 +1168,7 @@ fn two_fields_on_one_tag_survive_a_snapshot_round_trip() {
             .field_by_name("Symbol")
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["VenueSymbol"]
     );
@@ -1177,7 +1177,7 @@ fn two_fields_on_one_tag_survive_a_snapshot_round_trip() {
             .field_by_name("VenueSymbol")
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .next()
             .is_none()
     );
@@ -1205,7 +1205,7 @@ fn the_fold_table_holds_through_merge_with() {
             .field_by_tag(55)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         ["Symbol"]
     );
@@ -1495,7 +1495,7 @@ fn a_merge_reads_the_other_dictionary_in_the_order_it_answers_in() {
     // reach one stored field and the order decides which description lands.
     let target = || {
         let mut field = tagged("Symbol", 55, DataType::utf8());
-        field.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+        field.as_fix_mut().set_names(["Ticker"]).unwrap();
         FixRegistry::from_fields([field]).unwrap()
     };
     let mut left = target();

@@ -200,9 +200,9 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
             style::entry(key, value);
         }
     }
-    let aliases: Vec<&str> = view.aliases().collect();
-    if !aliases.is_empty() {
-        style::entry("aliases", &aliases.join(", "));
+    let names: Vec<&str> = view.names().collect();
+    if !names.is_empty() {
+        style::entry("names", &names.join(", "));
     }
 
     let codes: Vec<Vec<String>> = view

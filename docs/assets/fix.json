@@ -143847,40 +143847,40 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')",
-              "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)"
+              "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
+              "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')"
             },
             {
-              "plan": "select '1' as pegpricetype where contains(execinst, 'L')",
-              "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '1' as pegpricetype where contains(execinst, 'L')"
             },
             {
-              "plan": "select '2' as pegpricetype where contains(execinst, 'M')",
-              "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '2' as pegpricetype where contains(execinst, 'M')"
             },
             {
-              "plan": "select '3' as pegpricetype where contains(execinst, 'O')",
-              "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '3' as pegpricetype where contains(execinst, 'O')"
             },
             {
-              "plan": "select '4' as pegpricetype where contains(execinst, 'P')",
-              "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '4' as pegpricetype where contains(execinst, 'P')"
             },
             {
-              "plan": "select '5' as pegpricetype where contains(execinst, 'R')",
-              "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '5' as pegpricetype where contains(execinst, 'R')"
             },
             {
-              "plan": "select '7' as pegpricetype where contains(execinst, 'W')",
-              "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '7' as pegpricetype where contains(execinst, 'W')"
             },
             {
-              "plan": "select '8' as pegpricetype where contains(execinst, 'a')",
-              "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '8' as pegpricetype where contains(execinst, 'a')"
             },
             {
-              "plan": "select '9' as pegpricetype where contains(execinst, 'd')",
-              "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)"
+              "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)",
+              "plan": "select '9' as pegpricetype where contains(execinst, 'd')"
             }
           ],
           "fix:tag": "18"
@@ -143926,16 +143926,16 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'H' as exectype where exectranstype = '1'",
-              "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'H' as exectype where exectranstype = '1'"
             },
             {
-              "plan": "select 'G' as exectype where exectranstype = '2'",
-              "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'G' as exectype where exectranstype = '2'"
             },
             {
-              "plan": "select 'I' as exectype where exectranstype = '3'",
-              "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'I' as exectype where exectranstype = '3'"
             }
           ],
           "fix:tag": "20"
@@ -143979,7 +143979,6 @@
         "metadata": {
           "description": "Identifies class or source of the SecurityID(48) value.",
           "display": "SecurityIDSource",
-          "fix:aliases": "idsource",
           "fix:codes": [
             {
               "doc": "CUSIP",
@@ -144148,6 +144147,9 @@
             }
           ],
           "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
+          "fix:names": [
+            "idsource"
+          ],
           "fix:tag": "22"
         },
         "name": "securityidsource",
@@ -144234,7 +144236,6 @@
         "metadata": {
           "description": "Quantity (e.g. number of shares) in numeric form or relative size.",
           "display": "IOIQty",
-          "fix:aliases": "ioishares",
           "fix:codes": [
             {
               "doc": "Small",
@@ -144256,6 +144257,9 @@
               "name": "UndisclosedQuantity",
               "value": "U"
             }
+          ],
+          "fix:names": [
+            "ioishares"
           ],
           "fix:tag": "27"
         },
@@ -144362,7 +144366,9 @@
         "metadata": {
           "description": "Quantity (e.g. shares) bought/sold on this (last) fill.",
           "display": "LastQty",
-          "fix:aliases": "lastshares",
+          "fix:names": [
+            "lastshares"
+          ],
           "fix:tag": "32"
         },
         "name": "lastqty",
@@ -144375,7 +144381,9 @@
         "metadata": {
           "description": "Identifies number of lines of text body",
           "display": "NoLinesOfText",
-          "fix:aliases": "linesoftext",
+          "fix:names": [
+            "linesoftext"
+          ],
           "fix:tag": "33"
         },
         "name": "nolinesoftext",
@@ -145596,28 +145604,28 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'",
-              "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
+              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'"
             },
             {
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'",
-              "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
+              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'"
             },
             {
-              "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'",
-              "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
+              "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'"
             },
             {
-              "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'",
-              "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)",
+              "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'"
             },
             {
-              "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'",
-              "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)",
+              "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'"
             },
             {
-              "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'",
-              "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"
+              "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'"
             }
           ],
           "fix:tag": "40"
@@ -145823,96 +145831,96 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'A' as ordercapacity where rule80a = 'A'",
-              "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity where rule80a = 'A'"
             },
             {
-              "plan": "select 'A' as ordercapacity where rule80a = 'B'",
-              "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity where rule80a = 'B'"
             },
             {
-              "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'",
-              "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'"
             },
             {
-              "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'",
-              "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'"
             },
             {
-              "plan": "select 'P' as ordercapacity where rule80a = 'E'",
-              "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity where rule80a = 'E'"
             },
             {
-              "plan": "select 'W' as ordercapacity where rule80a = 'F'",
-              "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity where rule80a = 'F'"
             },
             {
-              "plan": "select 'I' as ordercapacity where rule80a = 'H'",
-              "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'I' as ordercapacity where rule80a = 'H'"
             },
             {
-              "plan": "select 'I' as ordercapacity where rule80a = 'I'",
-              "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'I' as ordercapacity where rule80a = 'I'"
             },
             {
-              "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'",
-              "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'"
             },
             {
-              "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'",
-              "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'"
             },
             {
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'",
-              "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'"
             },
             {
-              "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'",
-              "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'"
             },
             {
-              "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'",
-              "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'"
             },
             {
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'",
-              "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'"
             },
             {
-              "plan": "select 'P' as ordercapacity where rule80a = 'P'",
-              "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity where rule80a = 'P'"
             },
             {
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'",
-              "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'"
             },
             {
-              "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'",
-              "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'"
             },
             {
-              "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'",
-              "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'"
             },
             {
-              "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'",
-              "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'"
             },
             {
-              "plan": "select 'W' as ordercapacity where rule80a = 'W'",
-              "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity where rule80a = 'W'"
             },
             {
-              "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'",
-              "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'"
             },
             {
-              "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'",
-              "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'"
             },
             {
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'",
-              "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
+              "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'"
             }
           ],
           "fix:tag": "47"
@@ -145990,7 +145998,9 @@
         "metadata": {
           "description": "Overall/total quantity (e.g. number of shares)",
           "display": "Quantity",
-          "fix:aliases": "shares",
+          "fix:names": [
+            "shares"
+          ],
           "fix:tag": "53"
         },
         "name": "quantity",
@@ -146288,7 +146298,6 @@
         "metadata": {
           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
           "display": "SettlType",
-          "fix:aliases": "settlmnttyp",
           "fix:codes": [
             {
               "doc": "Regular / FX Spot settlement (T+1 or T+2 depending on currency)",
@@ -146355,10 +146364,13 @@
               "value": "A"
             }
           ],
+          "fix:names": [
+            "settlmnttyp"
+          ],
           "fix:replacements": [
             {
-              "plan": "select '2' as settltype where settltype = 'A'",
-              "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)"
+              "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)",
+              "plan": "select '2' as settltype where settltype = 'A'"
             }
           ],
           "fix:tag": "63"
@@ -146374,7 +146386,9 @@
         "metadata": {
           "description": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format.",
           "display": "SettlDate",
-          "fix:aliases": "futsettdate",
+          "fix:names": [
+            "futsettdate"
+          ],
           "fix:tag": "64"
         },
         "name": "settldate",
@@ -146437,7 +146451,9 @@
         "metadata": {
           "description": "Total number of list order entries across all messages. Should be the sum of all NoOrders (73) in each message that has repeating list order entries related to the same ListID (66). Used to support fragmentation.",
           "display": "TotNoOrders",
-          "fix:aliases": "listnoords",
+          "fix:names": [
+            "listnoords"
+          ],
           "fix:tag": "68"
         },
         "name": "totnoorders",
@@ -146510,12 +146526,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'",
-              "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"
+              "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)",
+              "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'"
             },
             {
-              "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'",
-              "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"
+              "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)",
+              "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'"
             }
           ],
           "fix:tag": "71"
@@ -146554,7 +146570,9 @@
         "metadata": {
           "description": "Indicates number of decimal places to be used for average pricing. Absence of this field indicates that default precision arranged by the broker/institution is to be used.",
           "display": "AvgPxPrecision",
-          "fix:aliases": "avgprxprecision",
+          "fix:names": [
+            "avgprxprecision"
+          ],
           "fix:tag": "74"
         },
         "name": "avgpxprecision",
@@ -146581,8 +146599,8 @@
           "display": "ExecBroker",
           "fix:replacements": [
             {
-              "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties",
-              "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties"
             }
           ],
           "fix:tag": "76"
@@ -146597,7 +146615,6 @@
         "metadata": {
           "description": "Indicates whether the resulting position after a trade should be an opening position or closing position. Used for omnibus accounting - where accounts are held on a gross basis instead of being netted together.",
           "display": "PositionEffect",
-          "fix:aliases": "openclose",
           "fix:codes": [
             {
               "doc": "Close",
@@ -146629,6 +146646,9 @@
               "name": "Default",
               "value": "D"
             }
+          ],
+          "fix:names": [
+            "openclose"
           ],
           "fix:tag": "77"
         },
@@ -146666,7 +146686,9 @@
         "metadata": {
           "description": "Quantity to be allocated to specific sub-account",
           "display": "AllocQty",
-          "fix:aliases": "allocshares",
+          "fix:names": [
+            "allocshares"
+          ],
           "fix:tag": "80"
         },
         "name": "allocqty",
@@ -147080,8 +147102,8 @@
           "display": "BrokerOfCredit",
           "fix:replacements": [
             {
-              "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties",
-              "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)"
+              "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties"
             }
           ],
           "fix:tag": "92"
@@ -147767,8 +147789,8 @@
           "display": "ClientID",
           "fix:replacements": [
             {
-              "plan": "select [{partyid: clientid, partyrole: '3'}] as parties",
-              "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)"
+              "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: clientid, partyrole: '3'}] as parties"
             }
           ],
           "fix:tag": "109"
@@ -148738,12 +148760,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'F' as exectype where exectype = '1'",
-              "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'F' as exectype where exectype = '1'"
             },
             {
-              "plan": "select 'F' as exectype where exectype = '2'",
-              "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"
+              "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'F' as exectype where exectype = '2'"
             }
           ],
           "fix:tag": "150"
@@ -149053,32 +149075,32 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'",
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'"
             },
             {
-              "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties",
-              "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)"
+              "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties"
             }
           ],
           "fix:tag": "166"
@@ -150239,12 +150261,12 @@
           "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
           "fix:replacements": [
             {
-              "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'",
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'"
             },
             {
-              "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'",
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'"
             }
           ],
           "fix:tag": "167"
@@ -150596,7 +150618,9 @@
         "metadata": {
           "description": "SettDate (64) of the future part of a F/X swap order.",
           "display": "SettlDate2",
-          "fix:aliases": "futsettdate2",
+          "fix:names": [
+            "futsettdate2"
+          ],
           "fix:tag": "193"
         },
         "name": "settldate2",
@@ -150795,12 +150819,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'A' as ordercapacity where customerorfirm = '0'",
-              "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"
+              "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'A' as ordercapacity where customerorfirm = '0'"
             },
             {
-              "plan": "select 'P' as ordercapacity where customerorfirm = '1'",
-              "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"
+              "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)",
+              "plan": "select 'P' as ordercapacity where customerorfirm = '1'"
             }
           ],
           "fix:tag": "204"
@@ -150816,8 +150840,8 @@
           "display": "MaturityDay",
           "fix:replacements": [
             {
-              "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate",
-              "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)"
+              "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)",
+              "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate"
             }
           ],
           "fix:tag": "205"
@@ -150937,7 +150961,9 @@
         "metadata": {
           "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType (836)",
           "display": "PegOffsetValue",
-          "fix:aliases": "pegdifference",
+          "fix:names": [
+            "pegdifference"
+          ],
           "fix:tag": "211"
         },
         "name": "pegoffsetvalue",
@@ -151054,7 +151080,9 @@
         "metadata": {
           "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
           "display": "Spread",
-          "fix:aliases": "spreadtobenchmark",
+          "fix:names": [
+            "spreadtobenchmark"
+          ],
           "fix:tag": "218"
         },
         "name": "spread",
@@ -151106,40 +151134,40 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'",
-              "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'",
-              "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'",
-              "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'",
-              "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'",
-              "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'",
-              "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'",
-              "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'",
-              "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'"
             },
             {
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'",
-              "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"
+              "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'"
             }
           ],
           "fix:tag": "219"
@@ -151520,12 +151548,12 @@
           "display": "RepurchaseTerm",
           "fix:replacements": [
             {
-              "plan": "select '1' as terminationtype where repurchaseterm = '1'",
-              "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"
+              "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)",
+              "plan": "select '1' as terminationtype where repurchaseterm = '1'"
             },
             {
-              "plan": "select '2' as terminationtype",
-              "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"
+              "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)",
+              "plan": "select '2' as terminationtype"
             }
           ],
           "fix:tag": "226"
@@ -154180,7 +154208,6 @@
         "metadata": {
           "description": "Flag that identifies a market data entry. (Prior to FIX 4.3 this field was of type char)",
           "display": "OpenCloseSettlFlag",
-          "fix:aliases": "openclosesettleflag",
           "fix:codes": [
             {
               "doc": "Daily Open / Close / Settlement entry",
@@ -154212,6 +154239,9 @@
               "name": "TheoreticalPriceValue",
               "value": "5"
             }
+          ],
+          "fix:names": [
+            "openclosesettleflag"
           ],
           "fix:tag": "286"
         },
@@ -154479,7 +154509,6 @@
         "metadata": {
           "description": "Identifies the status of the quote acknowledgement.",
           "display": "QuoteStatus",
-          "fix:aliases": "quoteackstatus",
           "fix:codes": [
             {
               "doc": "Canceled for specific securities",
@@ -154601,6 +154630,9 @@
               "name": "Accepted",
               "value": "0"
             }
+          ],
+          "fix:names": [
+            "quoteackstatus"
           ],
           "fix:tag": "297"
         },
@@ -154897,7 +154929,9 @@
         "metadata": {
           "description": "Total number of quotes for the quote set.",
           "display": "TotNoQuoteEntries",
-          "fix:aliases": "totquoteentries",
+          "fix:names": [
+            "totquoteentries"
+          ],
           "fix:tag": "304"
         },
         "name": "totnoquoteentries",
@@ -154910,7 +154944,6 @@
         "metadata": {
           "description": "Identifies class or source of the UnderlyingSecurityID(309) value.",
           "display": "UnderlyingSecurityIDSource",
-          "fix:aliases": "underlyingidsource",
           "fix:codes": [
             {
               "doc": "CUSIP",
@@ -155077,6 +155110,9 @@
               "name": "DigitalTokenIdentifier",
               "value": "Y"
             }
+          ],
+          "fix:names": [
+            "underlyingidsource"
           ],
           "fix:tag": "305"
         },
@@ -156232,12 +156268,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'",
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'"
             },
             {
-              "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'",
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'"
             }
           ],
           "fix:tag": "310"
@@ -156306,8 +156342,8 @@
           "display": "UnderlyingMaturityDay",
           "fix:replacements": [
             {
-              "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate",
-              "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)"
+              "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)",
+              "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate"
             }
           ],
           "fix:tag": "314"
@@ -156737,7 +156773,6 @@
         "metadata": {
           "description": "Denotes the reason for a delay or halt of services.",
           "display": "HaltReason",
-          "fix:aliases": "haltreasonchar",
           "fix:codes": [
             {
               "doc": "Order Influx",
@@ -156798,6 +156833,9 @@
               "name": "EquipmentChangeoverLegacy",
               "value": "X"
             }
+          ],
+          "fix:names": [
+            "haltreasonchar"
           ],
           "fix:tag": "327"
         },
@@ -157662,8 +157700,8 @@
           "display": "OnBehalfOfSendingTime",
           "fix:replacements": [
             {
-              "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hopgrp",
-              "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)"
+              "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hopgrp"
             }
           ],
           "fix:tag": "370"
@@ -159168,7 +159206,9 @@
         "metadata": {
           "description": "Amount (signed) added to the \"related to\" price specified via DiscretionInst (388), in the context of DiscretionOffsetType (842)",
           "display": "DiscretionOffsetValue",
-          "fix:aliases": "discretionoffset",
+          "fix:names": [
+            "discretionoffset"
+          ],
           "fix:tag": "389"
         },
         "name": "discretionoffsetvalue",
@@ -159217,7 +159257,9 @@
         "metadata": {
           "description": "Total number of securities.",
           "display": "TotNoRelatedSym",
-          "fix:aliases": "totalnumsecurities",
+          "fix:names": [
+            "totalnumsecurities"
+          ],
           "fix:tag": "393"
         },
         "name": "totnorelatedsym",
@@ -159633,7 +159675,6 @@
         "metadata": {
           "description": "Code to represent the type of trade.",
           "display": "BidTradeType",
-          "fix:aliases": "tradetype",
           "fix:codes": [
             {
               "doc": "Agency",
@@ -159655,6 +159696,9 @@
               "name": "RiskTrade",
               "value": "R"
             }
+          ],
+          "fix:names": [
+            "tradetype"
           ],
           "fix:tag": "418"
         },
@@ -160261,8 +160305,8 @@
           "display": "ClearingFirm",
           "fix:replacements": [
             {
-              "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties",
-              "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)"
+              "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties"
             }
           ],
           "fix:tag": "439"
@@ -160278,8 +160322,8 @@
           "display": "ClearingAccount",
           "fix:replacements": [
             {
-              "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties",
-              "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)"
+              "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
+              "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties"
             }
           ],
           "fix:tag": "440"
@@ -161960,20 +162004,20 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as qtytype where quantitytype = '6'",
-              "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"
+              "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)",
+              "plan": "select '1' as qtytype where quantitytype = '6'"
             },
             {
-              "plan": "select '0' as qtytype where quantitytype = '1'",
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
+              "plan": "select '0' as qtytype where quantitytype = '1'"
             },
             {
-              "plan": "select '0' as qtytype where quantitytype = '5'",
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
+              "plan": "select '0' as qtytype where quantitytype = '5'"
             },
             {
-              "plan": "select '0' as qtytype where quantitytype = '8'",
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
+              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
+              "plan": "select '0' as qtytype where quantitytype = '8'"
             }
           ],
           "fix:tag": "465"
@@ -162512,7 +162556,9 @@
         "metadata": {
           "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
           "display": "CardIssNum",
-          "fix:aliases": "cardissno",
+          "fix:names": [
+            "cardissno"
+          ],
           "fix:tag": "491"
         },
         "name": "cardissnum",
@@ -163126,7 +163172,9 @@
         "metadata": {
           "description": "Set of Registration name and address details, possibly including phone, fax etc.",
           "display": "RegistDtls",
-          "fix:aliases": "registdetls",
+          "fix:names": [
+            "registdetls"
+          ],
           "fix:tag": "509"
         },
         "name": "registdtls",
@@ -165247,7 +165295,9 @@
         "metadata": {
           "description": "Used to support fragmentation. Indicates total number of security types when multiple Security Type messages are used to return results.",
           "display": "TotNoSecurityTypes",
-          "fix:aliases": "totalnumsecuritytypes",
+          "fix:names": [
+            "totalnumsecuritytypes"
+          ],
           "fix:tag": "557"
         },
         "name": "totnosecuritytypes",
@@ -165888,8 +165938,8 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as lottype where oddlot = 'Y'",
-              "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)"
+              "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)",
+              "plan": "select '1' as lottype where oddlot = 'Y'"
             }
           ],
           "fix:tag": "575"
@@ -166256,7 +166306,6 @@
         "metadata": {
           "description": "Indicates order settlement period. If present, LegSettlDate (588) overrides this field. If both LegSettlType (587) and LegSettDate (588) are omitted, the default for LegSettlType (587) is 0 (Regular)",
           "display": "LegSettlType",
-          "fix:aliases": "legsettlmnttyp",
           "fix:codes": [
             {
               "doc": "Regular / FX Spot settlement (T+1 or T+2 depending on currency)",
@@ -166319,6 +166368,9 @@
               "value": "C"
             }
           ],
+          "fix:names": [
+            "legsettlmnttyp"
+          ],
           "fix:tag": "587"
         },
         "name": "legsettltype",
@@ -166332,7 +166384,9 @@
         "metadata": {
           "description": "Refer to description for SettlDate[64]",
           "display": "LegSettlDate",
-          "fix:aliases": "legfutsettdate",
+          "fix:names": [
+            "legfutsettdate"
+          ],
           "fix:tag": "588"
         },
         "name": "legsettldate",
@@ -168140,12 +168194,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'",
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'"
             },
             {
-              "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'",
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
+              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
+              "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'"
             }
           ],
           "fix:tag": "609"
@@ -179767,12 +179821,12 @@
           ],
           "fix:replacements": [
             {
-              "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'",
-              "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"
+              "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)",
+              "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'"
             },
             {
-              "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'",
-              "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"
+              "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)",
+              "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'"
             }
           ],
           "fix:tag": "852"
@@ -185046,7 +185100,6 @@
         "metadata": {
           "description": "Expiration Quantity type",
           "display": "ExpirationQtyType",
-          "fix:aliases": "exptype",
           "fix:codes": [
             {
               "doc": "Auto Exercise",
@@ -185073,6 +185126,9 @@
               "name": "Difference",
               "value": "5"
             }
+          ],
+          "fix:names": [
+            "exptype"
           ],
           "fix:tag": "982"
         },
@@ -186999,7 +187055,6 @@
         "metadata": {
           "description": "Used on a multi-sided trade to specify the type of trade for a given side. Same values as TrdSubType (829).",
           "display": "SideTrdSubType",
-          "fix:aliases": "sidetrdsubtyp",
           "fix:codes": [
             {
               "doc": "CMTA",
@@ -187284,6 +187339,9 @@
               "value": "54"
             }
           ],
+          "fix:names": [
+            "sidetrdsubtyp"
+          ],
           "fix:tag": "1008"
         },
         "name": "sidetrdsubtype",
@@ -187296,7 +187354,9 @@
         "metadata": {
           "description": "Used to indicate the quantity on one side of a multi-sided trade.",
           "display": "SideLastQty",
-          "fix:aliases": "sideqty",
+          "fix:names": [
+            "sideqty"
+          ],
           "fix:tag": "1009"
         },
         "name": "sidelastqty",
@@ -190645,7 +190705,9 @@
         "metadata": {
           "description": "PartyID value within an underlying instrument party repeating group.",
           "display": "UnderlyingInstrumentPartyID",
-          "fix:aliases": "undlyinstrumentpartyid",
+          "fix:names": [
+            "undlyinstrumentpartyid"
+          ],
           "fix:tag": "1059"
         },
         "name": "underlyinginstrumentpartyid",
@@ -190658,7 +190720,6 @@
         "metadata": {
           "description": "PartyIDSource value within an underlying instrument partyrepeating group.",
           "display": "UnderlyingInstrumentPartyIDSource",
-          "fix:aliases": "undlyinstrumentpartyidsource",
           "fix:codes": [
             {
               "doc": "Korean Investor ID",
@@ -190847,6 +190908,9 @@
               "value": "V"
             }
           ],
+          "fix:names": [
+            "undlyinstrumentpartyidsource"
+          ],
           "fix:tag": "1060"
         },
         "name": "underlyinginstrumentpartyidsource",
@@ -190859,7 +190923,6 @@
         "metadata": {
           "description": "PartyRole value within an underlying instrument partyepeating group.",
           "display": "UnderlyingInstrumentPartyRole",
-          "fix:aliases": "undlyinstrumentpartyrole",
           "fix:codes": [
             {
               "doc": "Broker of Credit (formerly FIX 4.2 BrokerOfCredit)",
@@ -191507,6 +191570,9 @@
               "value": "1"
             }
           ],
+          "fix:names": [
+            "undlyinstrumentpartyrole"
+          ],
           "fix:tag": "1061"
         },
         "name": "underlyinginstrumentpartyrole",
@@ -191531,7 +191597,9 @@
         "metadata": {
           "description": "PartySubID value within an underlying instrument party repeating group.",
           "display": "UnderlyingInstrumentPartySubID",
-          "fix:aliases": "undlyinstrumentpartysubid",
+          "fix:names": [
+            "undlyinstrumentpartysubid"
+          ],
           "fix:tag": "1063"
         },
         "name": "underlyinginstrumentpartysubid",
@@ -191544,7 +191612,6 @@
         "metadata": {
           "description": "Type of underlying InstrumentPartySubID (1053) value.",
           "display": "UnderlyingInstrumentPartySubIDType",
-          "fix:aliases": "undlyinstrumentpartysubidtype",
           "fix:codes": [
             {
               "doc": "Person",
@@ -191991,6 +192058,9 @@
               "name": "Firm",
               "value": "1"
             }
+          ],
+          "fix:names": [
+            "undlyinstrumentpartysubidtype"
           ],
           "fix:tag": "1064"
         },
@@ -196735,7 +196805,9 @@
         "metadata": {
           "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
           "display": "OptPayoutAmount",
-          "fix:aliases": "optpayamount",
+          "fix:names": [
+            "optpayamount"
+          ],
           "fix:tag": "1195"
         },
         "name": "optpayoutamount",
@@ -196782,7 +196854,6 @@
         "metadata": {
           "description": "Specifies the type of valuation method applied.",
           "display": "ValuationMethod",
-          "fix:aliases": "futuresvaluationmethod",
           "fix:codes": [
             {
               "doc": "premium style",
@@ -196809,6 +196880,9 @@
               "name": "CDSInDeliveryUseRecoveryRateToCalculate",
               "value": "CDSD"
             }
+          ],
+          "fix:names": [
+            "futuresvaluationmethod"
           ],
           "fix:tag": "1197"
         },
@@ -197773,7 +197847,9 @@
         "metadata": {
           "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
           "display": "DerivativeOptPayoutAmount",
-          "fix:aliases": "derivativeoptpayamount",
+          "fix:names": [
+            "derivativeoptpayamount"
+          ],
           "fix:tag": "1225"
         },
         "name": "derivativeoptpayoutamount",
@@ -203758,7 +203834,6 @@
         "metadata": {
           "description": "Specifies the method for price quotation.",
           "display": "DerivativeValuationMethod",
-          "fix:aliases": "derivativefuturesvaluationmethod",
           "fix:codes": [
             {
               "doc": "premium style",
@@ -203785,6 +203860,9 @@
               "name": "CDSInDeliveryUseRecoveryRateToCalculate",
               "value": "CDSD"
             }
+          ],
+          "fix:names": [
+            "derivativefuturesvaluationmethod"
           ],
           "fix:tag": "1319"
         },
@@ -251797,7 +251875,9 @@
         "metadata": {
           "description": "Identifies the page heading from the rate source.",
           "display": "RateSourceReferencePageHeading",
-          "fix:aliases": "ratesourcereferemcepageheading",
+          "fix:names": [
+            "ratesourcereferemcepageheading"
+          ],
           "fix:tag": "2412"
         },
         "name": "ratesourcereferencepageheading",
@@ -263648,7 +263728,6 @@
         "metadata": {
           "description": "Indicates whether a routing arrangement is in place, e.g. between two brokers. May be used together with OrderOrigination(1724) to further describe the origin of an order.",
           "display": "RoutingArrangementIndicator",
-          "fix:aliases": "routingarrangmentindicator",
           "fix:codes": [
             {
               "doc": "Routing arrangement in place",
@@ -263664,6 +263743,9 @@
               "value": "0"
             }
           ],
+          "fix:names": [
+            "routingarrangmentindicator"
+          ],
           "fix:tag": "2883"
         },
         "name": "routingarrangementindicator",
@@ -263676,7 +263758,6 @@
         "metadata": {
           "description": "Indicates whether a routing arrangement is in place, e.g. between two brokers. May be used together with ContraOrderOrigination(2882) to further describe the origin of an order.",
           "display": "ContraRoutingArrangementIndicator",
-          "fix:aliases": "contraroutingarrangmentindicator",
           "fix:codes": [
             {
               "doc": "Routing arrangement in place",
@@ -263688,6 +263769,9 @@
               "name": "NoRoutingArrangementInPlace",
               "value": "0"
             }
+          ],
+          "fix:names": [
+            "contraroutingarrangmentindicator"
           ],
           "fix:tag": "2884"
         },
@@ -367736,7 +367820,9 @@
         "metadata": {
           "description": "The session a message came from, as the message states it.",
           "display": "SenderSessionId",
-          "fix:aliases": "SessionId",
+          "fix:names": [
+            "SessionId"
+          ],
           "fix:tag": "65007"
         },
         "name": "sendersessionid",
@@ -367785,7 +367871,9 @@
         "metadata": {
           "description": "The name of the session a message came from, as the bridge row states it.",
           "display": "SenderSessionName",
-          "fix:aliases": "ULFromSessionName",
+          "fix:names": [
+            "ULFromSessionName"
+          ],
           "fix:tag": "65011"
         },
         "name": "sendersessionname",
@@ -367798,7 +367886,9 @@
         "metadata": {
           "description": "The name of the session a message went to, as the bridge row states it.",
           "display": "TargetSessionName",
-          "fix:aliases": "ULToSessionName",
+          "fix:names": [
+            "ULToSessionName"
+          ],
           "fix:tag": "65012"
         },
         "name": "targetsessionname",
@@ -367994,8 +368084,10 @@
         "metadata": {
           "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
           "display": "RecordedAt",
-          "fix:aliases": "mtime",
           "fix:derivation": "sendingtime",
+          "fix:names": [
+            "mtime"
+          ],
           "fix:tag": "65028",
           "fix:transient": "false"
         },
@@ -383704,7 +383796,7 @@
               "metadata": {
                 "description": "Quantity (e.g. shares) bought/sold on this (last) fill.",
                 "display": "LastQty",
-                "fix:aliases": "lastshares",
+                "fix:names": "[\"lastshares\"]",
                 "fix:tag": "32"
               },
               "name": "lastqty",
@@ -385188,8 +385280,8 @@
                               "metadata": {
                                 "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
                                 "display": "Spread",
-                                "fix:aliases": "spreadtobenchmark",
                                 "fix:field": "spread",
+                                "fix:names": "[\"spreadtobenchmark\"]",
                                 "fix:tag": "218"
                               },
                               "name": "spread",
@@ -385453,8 +385545,8 @@
                                   "metadata": {
                                     "description": "Identifies the page heading from the rate source.",
                                     "display": "RateSourceReferencePageHeading",
-                                    "fix:aliases": "ratesourcereferemcepageheading",
                                     "fix:field": "ratesourcereferencepageheading",
+                                    "fix:names": "[\"ratesourcereferemcepageheading\"]",
                                     "fix:tag": "2412"
                                   },
                                   "name": "ratesourcereferencepageheading",
@@ -385762,9 +385854,9 @@
                         "metadata": {
                           "description": "Denotes the reason for a delay or halt of services.",
                           "display": "HaltReason",
-                          "fix:aliases": "haltreasonchar",
                           "fix:codes": "[{\"value\":\"1\",\"name\":\"OrderInflux\",\"doc\":\"Order Influx\"},{\"value\":\"2\",\"name\":\"OrderImbalance\",\"doc\":\"Order Imbalance\"},{\"value\":\"3\",\"name\":\"AdditionalInformation\",\"doc\":\"Additional Information\"},{\"value\":\"4\",\"name\":\"NewsPending\",\"doc\":\"News Pending\"},{\"value\":\"5\",\"name\":\"EquipmentChangeover\",\"doc\":\"Equipment Changeover\"},{\"value\":\"6\",\"name\":\"Outage\",\"doc\":\"Outage\"},{\"value\":\"0\",\"name\":\"NewsDissemination\",\"doc\":\"News Dissemination\"},{\"value\":\"D\",\"name\":\"NewsDisseminationLegacy\"},{\"value\":\"E\",\"name\":\"OrderInfluxLegacy\"},{\"value\":\"I\",\"name\":\"OrderImbalanceLegacy\"},{\"value\":\"M\",\"name\":\"AdditionalInformationLegacy\"},{\"value\":\"P\",\"name\":\"NewPending\"},{\"value\":\"X\",\"name\":\"EquipmentChangeoverLegacy\"}]",
                           "fix:field": "haltreason",
+                          "fix:names": "[\"haltreasonchar\"]",
                           "fix:tag": "327"
                         },
                         "name": "haltreason",
@@ -385952,9 +386044,9 @@
                         "metadata": {
                           "description": "Flag that identifies a market data entry. (Prior to FIX 4.3 this field was of type char)",
                           "display": "OpenCloseSettlFlag",
-                          "fix:aliases": "openclosesettleflag",
                           "fix:codes": "[{\"value\":\"0\",\"name\":\"DailyOpen\",\"doc\":\"Daily Open / Close / Settlement entry\"},{\"value\":\"1\",\"name\":\"SessionOpen\",\"doc\":\"Session Open / Close / Settlement entry\"},{\"value\":\"2\",\"name\":\"DeliverySettlementEntry\",\"doc\":\"Delivery Settlement entry\"},{\"value\":\"3\",\"name\":\"ExpectedEntry\",\"doc\":\"Expected entry\"},{\"value\":\"4\",\"name\":\"EntryFromPreviousBusinessDay\",\"doc\":\"Entry from previous business day\"},{\"value\":\"5\",\"name\":\"TheoreticalPriceValue\",\"doc\":\"Theoretical Price value\"}]",
                           "fix:field": "openclosesettlflag",
+                          "fix:names": "[\"openclosesettleflag\"]",
                           "fix:tag": "286"
                         },
                         "name": "openclosesettlflag",
@@ -387105,9 +387197,9 @@
                         "metadata": {
                           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
                           "display": "SettlType",
-                          "fix:aliases": "settlmnttyp",
                           "fix:codes": "[{\"value\":\"0\",\"name\":\"Regular\",\"doc\":\"Regular / FX Spot settlement (T+1 or T+2 depending on currency)\"},{\"value\":\"1\",\"name\":\"Cash\",\"doc\":\"Cash (TOD / T+0)\"},{\"value\":\"2\",\"name\":\"NextDay\",\"doc\":\"Next Day (TOM / T+1)\"},{\"value\":\"3\",\"name\":\"TPlus2\",\"doc\":\"T+2\"},{\"value\":\"4\",\"name\":\"TPlus3\",\"doc\":\"T+3\"},{\"value\":\"5\",\"name\":\"TPlus4\",\"doc\":\"T+4\"},{\"value\":\"6\",\"name\":\"Future\",\"doc\":\"Future\"},{\"value\":\"7\",\"name\":\"WhenAndIfIssued\",\"doc\":\"When And If Issued\"},{\"value\":\"8\",\"name\":\"SellersOption\",\"doc\":\"Sellers Option\"},{\"value\":\"9\",\"name\":\"TPlus5\",\"doc\":\"T+5\"},{\"value\":\"B\",\"name\":\"BrokenDate\",\"doc\":\"Broken date\"},{\"value\":\"C\",\"name\":\"FXSpotNextSettlement\",\"doc\":\"FX Spot Next settlement (Spot+1, aka next day)\"},{\"value\":\"A\",\"name\":\"T1\"}]",
                           "fix:field": "settltype",
+                          "fix:names": "[\"settlmnttyp\"]",
                           "fix:replacements": "[{\"plan\":\"select '2' as settltype where settltype = 'A'\",\"doc\":\"SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)\"}]",
                           "fix:tag": "63"
                         },
@@ -387122,8 +387214,8 @@
                         "metadata": {
                           "description": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format.",
                           "display": "SettlDate",
-                          "fix:aliases": "futsettdate",
                           "fix:field": "settldate",
+                          "fix:names": "[\"futsettdate\"]",
                           "fix:tag": "64"
                         },
                         "name": "settldate",
@@ -390385,9 +390477,9 @@
               "metadata": {
                 "description": "Identifies class or source of the SecurityID(48) value.",
                 "display": "SecurityIDSource",
-                "fix:aliases": "idsource",
                 "fix:codes": "[{\"value\":\"1\",\"name\":\"CUSIP\",\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"doc\":\"Digital Token Identifier (ISO 24165)\"}]",
                 "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
+                "fix:names": "[\"idsource\"]",
                 "fix:tag": "22"
               },
               "name": "securityidsource",
@@ -390917,9 +391009,9 @@
               "metadata": {
                 "description": "Identifies class or source of the SecurityID(48) value.",
                 "display": "SecurityIDSource",
-                "fix:aliases": "idsource",
                 "fix:codes": "[{\"value\":\"1\",\"name\":\"CUSIP\",\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"doc\":\"Digital Token Identifier (ISO 24165)\"}]",
                 "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
+                "fix:names": "[\"idsource\"]",
                 "fix:tag": "22"
               },
               "name": "securityidsource",
@@ -391579,7 +391671,7 @@
         "nullable": false
       },
       "value": [
-        "FIX.5.0.2",
+        "FIX.4.4",
         "TTF",
         "1",
         1200,
@@ -391592,10 +391684,10 @@
             1
           ]
         ],
-        "5.0.2",
+        "4.4",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACK1csydz4q9A==",
+        "l6aAQgI8FACxjn01DIcXzw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -392952,14 +393044,14 @@
         "nullable": false
       },
       "value": [
-        "FIX.5.0.2",
+        "FIX.4.4",
         "ACCT-000117",
         "MCFP2",
         "XPAR",
-        "5.0.2",
+        "4.4",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADq+iOxg6n60g==",
+        "l6aAQgI8FACz4pCYb4mTlA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,

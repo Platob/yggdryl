@@ -2873,26 +2873,29 @@ impl PyProtocolField {
 
     /// The alternate names, highest priority first.
     ///
-    /// Assigning an empty iterable removes the property.
+    /// Assigning an empty iterable removes the property. Each is a non-empty
+    /// name holding no quote, backslash or control character, stated once
+    /// with ASCII case folded; anything else is the core's `ValueError` and
+    /// leaves the field unchanged.
     #[getter]
-    fn aliases(&self, py: Python<'_>) -> PyResult<Vec<String>> {
-        self.require_fix("aliases")?;
+    fn names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("names")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().aliases().map(str::to_owned).collect())
+        Ok(field.inner.as_fix().names().map(str::to_owned).collect())
     }
 
     #[setter]
-    fn set_aliases(&self, aliases: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_fix("aliases")?;
+    fn set_names(&self, names: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("names")?;
         let mut parsed = Vec::new();
-        for value in aliases.try_iter()? {
+        for value in names.try_iter()? {
             parsed.push(value?.extract::<String>()?);
         }
-        let mut field = self.borrow_field_mut(aliases.py())?;
+        let mut field = self.borrow_field_mut(names.py())?;
         field
             .inner
             .as_fix_mut()
-            .set_aliases(parsed)
+            .set_names(parsed)
             .map_err(value_error)
     }
 

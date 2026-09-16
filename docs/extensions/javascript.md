@@ -778,7 +778,7 @@ definitions, codec, messages and lazy iterators. The namespace holds no
 constant: a dictionary is one namespace of tags and names, an identity is the
 number `field.fix.id` derives from both, and a dictionary's membership is
 `fix:branches` on the field it contributed to. The `fix:` vocabulary is typed
-accessor pairs on the `field.fix` view: `id`, `tag`, `tags`, `aliases`,
+accessor pairs on the `field.fix` view: `id`, `tag`, `tags`, `names`,
 `branches`, `nulls`, `directions`, `identifiers`, `description`, and the
 definition metadata `counter`, `component` and `msgtype`; `tag`, `tags` and
 `counter` take positive tags only, and `codes` has no accessor pair in
@@ -916,7 +916,7 @@ venueSymbol.fix.branches = ['cme']
 assert.equal(venue.insert(symbol), null)
 assert.equal(venue.insert(venueSymbol), null)
 assert.equal(venue.fieldByTag(55).name, 'symbol')
-assert.deepEqual(venue.fieldByTag(55).fix.aliases, ['VenueSymbol'])
+assert.deepEqual(venue.fieldByTag(55).fix.names, ['VenueSymbol'])
 assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')

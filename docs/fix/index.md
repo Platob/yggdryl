@@ -25,7 +25,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
-| Keys | `fix:tag`, `fix:tags`, `fix:aliases`, `fix:branches`, `fix:identifiers`; name, datatype, `display` and `description` stay the field's own |
+| Keys | `fix:tag`, `fix:tags`, `fix:names`, `fix:branches`, `fix:identifiers`; name, datatype, `display` and `description` stay the field's own |
 | Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a tag that is not positive; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
@@ -34,7 +34,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Dialect | The name `from_cfb_file(handle, Some("cme"))` stamps on every field, group, component and message the file produces, standard tags included; `FixRegistry::dialects()` lists the distinct names; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
 | Tag range | Any positive tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse zero and negative tags, naming their key: tag 0 marks only an [unresolved arrival entry](capture.md#nothing-is-lost-at-the-end), never a definition. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
-| List properties | Comma-separated text; `aliases()`, `branches()` and `identifiers()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
+| List properties | `fix:names` and `fix:tags` are compact JSON arrays, `["Qty","Quantity"]` and `[1088]`, crossed by a store as the arrays they are; `names()` walks the array lazily and `tags()` parses it to a `Vec`. `fix:branches`, `fix:identifiers` and `fix:nulls` stay comma-separated text, `branches()`, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `fix:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
 | Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` List/LargeList occurrences and Map entries |
@@ -49,16 +49,17 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 
     let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
     field.as_fix_mut().set_tag(38)?;
-    field.as_fix_mut().set_aliases(["Qty", "Quantity"])?;
+    field.as_fix_mut().set_names(["Qty", "Quantity"])?;
     field.as_fix_mut().set_description("Quantity ordered.")?;
     field.set_display("Order quantity")?;
 
     assert_eq!(field.as_fix().tag()?, Some(38));
     assert_eq!(field.as_fix().tags()?, Vec::<i32>::new());
-    assert_eq!(field.as_fix().aliases().collect::<Vec<_>>(), ["Qty", "Quantity"]);
+    assert_eq!(field.as_fix().names().collect::<Vec<_>>(), ["Qty", "Quantity"]);
     assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
-    // Stored as ordinary namespaced text, in the one metadata map.
-    assert_eq!(field.get_metadata("fix:aliases"), Some("Qty,Quantity"));
+    // Stored as ordinary namespaced text, in the one metadata map: a list is
+    // the compact JSON array it is.
+    assert_eq!(field.get_metadata("fix:names"), Some("[\"Qty\",\"Quantity\"]"));
     // Two, not three: a description is a fact about the column rather than a
     // FIX fact, so it lives on the generic key beside `display`.
     assert_eq!(field.get_metadata("description"), Some("Quantity ordered."));
@@ -84,16 +85,17 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 
     field = Field("OrderQty", "decimal128(20, 8)")
     field.fix.tag = 38
-    field.fix.aliases = ["Qty", "Quantity"]
+    field.fix.names = ["Qty", "Quantity"]
     field.fix.description = "Quantity ordered."
     field.set_display("Order quantity")
 
     assert field.fix.tag == 38
     assert field.fix.tags == []
-    assert field.fix.aliases == ["Qty", "Quantity"]
+    assert field.fix.names == ["Qty", "Quantity"]
     assert field.fix.description == "Quantity ordered."
-    # Stored as ordinary namespaced text, in the one metadata map.
-    assert field.metadata["fix:aliases"] == "Qty,Quantity"
+    # Stored as ordinary namespaced text, in the one metadata map: a list is
+    # the compact JSON array it is.
+    assert field.metadata["fix:names"] == '["Qty","Quantity"]'
     # Two, not three: a description is a fact about the column rather than a
     # FIX fact, so it lives on the generic key beside `display`.
     assert field.metadata["description"] == "Quantity ordered."
@@ -115,8 +117,8 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
         field.fix.tag = 2**31
 
     # An empty list removes a list property; `del` removes any of them.
-    field.fix.aliases = []
-    assert field.fix.aliases == []
+    field.fix.names = []
+    assert field.fix.names == []
     del field.fix["tag"]
     assert field.fix.tag is None
     ```
@@ -129,16 +131,17 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 
     const field = Field.from('OrderQty: decimal128(20, 8)')
     field.fix.tag = 38
-    field.fix.aliases = ['Qty', 'Quantity']
+    field.fix.names = ['Qty', 'Quantity']
     field.fix.description = 'Quantity ordered.'
     field.setDisplay('Order quantity')
 
     assert.equal(field.fix.tag, 38)
     assert.deepEqual(field.fix.tags, [])
-    assert.deepEqual(field.fix.aliases, ['Qty', 'Quantity'])
+    assert.deepEqual(field.fix.names, ['Qty', 'Quantity'])
     assert.equal(field.fix.description, 'Quantity ordered.')
-    // Stored as ordinary namespaced text, in the one metadata map.
-    assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
+    // Stored as ordinary namespaced text, in the one metadata map: a list is
+    // the compact JSON array it is.
+    assert.equal(field.get('fix:names'), '["Qty","Quantity"]')
     // Two, not three: a description is a fact about the column rather than a
     // FIX fact, so it lives on the generic key beside `display`.
     assert.equal(field.get('description'), 'Quantity ordered.')
@@ -164,8 +167,8 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
     assert.throws(() => field.iceberg.tag, TypeError)
 
     // An empty array removes a list property; `delete` removes any of them.
-    field.fix.aliases = []
-    assert.deepEqual(field.fix.aliases, [])
+    field.fix.names = []
+    assert.deepEqual(field.fix.names, [])
     field.fix.delete('tag')
     assert.equal(field.fix.tag, null)
     ```
@@ -178,8 +181,8 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | --- | --- | --- | --- |
 | `branches` | `fix:branches` | sorted lowercase name list | the dictionaries that contributed this field; absent for a field the specification alone defines |
 | `tag` | `fix:tag` | `i32` | canonical tag, always positive |
-| `tags` | `fix:tags` | ordered positive `i32` list | alternate tags, highest priority first |
-| `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
+| `tags` | `fix:tags` | JSON array of positive `i32` | alternate tags, highest priority first |
+| `names` | `fix:names` | JSON array of names | alternate names, highest priority first |
 | `identifiers` | `fix:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
 | `codes` | `fix:codes` | canonical JSON, by wire value | the inline enum values declared by this field; see [Registry](registry.md#a-field-carries-its-code-set) |
@@ -240,7 +243,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert_eq!(trade.as_fix().id()?, Some(id));
     trade.as_fix_mut().add_branch("blp")?;
     assert_eq!(trade.as_fix().branches().collect::<Vec<_>>(), ["blp", "cme", "globex"]);
-    // Held to the alias grammar: non-empty, no comma; a refusal names the key.
+    // Held to the membership grammar: non-empty, no comma; a refusal names the key.
     let error = trade.as_fix_mut().set_branches(["c,me"]).unwrap_err();
     assert!(error.to_string().contains("fix:branches"), "{error}");
     assert_eq!(trade.get_metadata("fix:branches"), Some("blp,cme,globex"));
@@ -293,7 +296,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     trade.fix.add_branch("blp")
     assert trade.fix.branches == ["blp", "cme", "globex"]
     assert trade.fix.id == held
-    # Held to the alias grammar: non-empty, no comma; a refusal names the key.
+    # Held to the membership grammar: non-empty, no comma; a refusal names the key.
     with pytest.raises(ValueError, match="fix:branches"):
         trade.fix.branches = ["c,me"]
     assert trade.fix.branches == ["blp", "cme", "globex"]
@@ -348,7 +351,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     trade.fix.addBranch('blp')
     assert.deepEqual(trade.fix.branches, ['blp', 'cme', 'globex'])
     assert.equal(trade.fix.id, held)
-    // Held to the alias grammar: non-empty, no comma; a refusal names the key.
+    // Held to the membership grammar: non-empty, no comma; a refusal names the key.
     assert.throws(() => {
       trade.fix.branches = ['c,me']
     }, /fix:branches/)
@@ -436,7 +439,8 @@ names are folded; `display` keeps the specification's spelling.
 
 ## Edges
 
-- Empty element, duplicate (aliases ASCII-folded), alias with a comma, or a zero or negative tag -> refused naming `fix:tags` / `fix:aliases` / `fix:tag`; field unchanged.
+- An empty name, a duplicate (names ASCII-folded, tags exact), a name holding a quote, a backslash or a control character, or a zero or negative tag -> refused naming `fix:tags` / `fix:names` / `fix:tag`; field unchanged. A name may hold a comma: the array frames it.
+- A stored `fix:tags` that is not the compact array the setter writes - comma text, a spaced or signed element, an unclosed bracket - is refused where it is read; a stored `fix:names` that is not one reads as nothing rather than as part of a list.
 - An identifier spelling that is empty, contains a comma, names no member, names a nested member, is ambiguous, or repeats a selected member -> a located `fix:identifiers` refusal; the whole field stays unchanged. Empty input removes the declaration.
 - Folding is ASCII only: `Größe` and `GRÖSSE` are two names.
 - A tag is decimal `1` to `i32::MAX`; readers refuse stored `0`, `+35`, `-35`, `3x`.

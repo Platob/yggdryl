@@ -3970,7 +3970,9 @@
     "metadata": {
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
       "display": "OptPayoutAmount",
-      "fix:aliases": "optpayamount",
+      "fix:names": [
+        "optpayamount"
+      ],
       "fix:tag": "1195"
     }
   },
@@ -4017,7 +4019,6 @@
     "metadata": {
       "description": "Specifies the type of valuation method applied.",
       "display": "ValuationMethod",
-      "fix:aliases": "futuresvaluationmethod",
       "fix:codes": [
         {
           "value": "EQTY",
@@ -4044,6 +4045,9 @@
           "name": "CDSInDeliveryUseRecoveryRateToCalculate",
           "doc": "CDS in delivery - use recovery rate to calculate obligation"
         }
+      ],
+      "fix:names": [
+        "futuresvaluationmethod"
       ],
       "fix:tag": "1197"
     }

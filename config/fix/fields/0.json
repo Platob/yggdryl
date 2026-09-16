@@ -762,7 +762,6 @@
     "metadata": {
       "description": "Identifies class or source of the SecurityID(48) value.",
       "display": "SecurityIDSource",
-      "fix:aliases": "idsource",
       "fix:codes": [
         {
           "value": "1",
@@ -931,6 +930,9 @@
         }
       ],
       "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
+      "fix:names": [
+        "idsource"
+      ],
       "fix:tag": "22"
     }
   },
@@ -1017,7 +1019,6 @@
     "metadata": {
       "description": "Quantity (e.g. number of shares) in numeric form or relative size.",
       "display": "IOIQty",
-      "fix:aliases": "ioishares",
       "fix:codes": [
         {
           "value": "S",
@@ -1039,6 +1040,9 @@
           "name": "UndisclosedQuantity",
           "doc": "Undisclosed Quantity"
         }
+      ],
+      "fix:names": [
+        "ioishares"
       ],
       "fix:tag": "27"
     }
@@ -1145,7 +1149,9 @@
     "metadata": {
       "description": "Quantity (e.g. shares) bought/sold on this (last) fill.",
       "display": "LastQty",
-      "fix:aliases": "lastshares",
+      "fix:names": [
+        "lastshares"
+      ],
       "fix:tag": "32"
     }
   },
@@ -1158,7 +1164,9 @@
     "metadata": {
       "description": "Identifies number of lines of text body",
       "display": "NoLinesOfText",
-      "fix:aliases": "linesoftext",
+      "fix:names": [
+        "linesoftext"
+      ],
       "fix:tag": "33"
     }
   },
@@ -2773,7 +2781,9 @@
     "metadata": {
       "description": "Overall/total quantity (e.g. number of shares)",
       "display": "Quantity",
-      "fix:aliases": "shares",
+      "fix:names": [
+        "shares"
+      ],
       "fix:tag": "53"
     }
   },
@@ -3071,7 +3081,6 @@
     "metadata": {
       "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
       "display": "SettlType",
-      "fix:aliases": "settlmnttyp",
       "fix:codes": [
         {
           "value": "0",
@@ -3138,6 +3147,9 @@
           "name": "T1"
         }
       ],
+      "fix:names": [
+        "settlmnttyp"
+      ],
       "fix:replacements": [
         {
           "plan": "select '2' as settltype where settltype = 'A'",
@@ -3157,7 +3169,9 @@
     "metadata": {
       "description": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format.",
       "display": "SettlDate",
-      "fix:aliases": "futsettdate",
+      "fix:names": [
+        "futsettdate"
+      ],
       "fix:tag": "64"
     }
   },
@@ -3220,7 +3234,9 @@
     "metadata": {
       "description": "Total number of list order entries across all messages. Should be the sum of all NoOrders (73) in each message that has repeating list order entries related to the same ListID (66). Used to support fragmentation.",
       "display": "TotNoOrders",
-      "fix:aliases": "listnoords",
+      "fix:names": [
+        "listnoords"
+      ],
       "fix:tag": "68"
     }
   },
@@ -3337,7 +3353,9 @@
     "metadata": {
       "description": "Indicates number of decimal places to be used for average pricing. Absence of this field indicates that default precision arranged by the broker/institution is to be used.",
       "display": "AvgPxPrecision",
-      "fix:aliases": "avgprxprecision",
+      "fix:names": [
+        "avgprxprecision"
+      ],
       "fix:tag": "74"
     }
   },
@@ -3380,7 +3398,6 @@
     "metadata": {
       "description": "Indicates whether the resulting position after a trade should be an opening position or closing position. Used for omnibus accounting - where accounts are held on a gross basis instead of being netted together.",
       "display": "PositionEffect",
-      "fix:aliases": "openclose",
       "fix:codes": [
         {
           "value": "C",
@@ -3412,6 +3429,9 @@
           "name": "Default",
           "doc": "Default"
         }
+      ],
+      "fix:names": [
+        "openclose"
       ],
       "fix:tag": "77"
     }
@@ -3449,7 +3469,9 @@
     "metadata": {
       "description": "Quantity to be allocated to specific sub-account",
       "display": "AllocQty",
-      "fix:aliases": "allocshares",
+      "fix:names": [
+        "allocshares"
+      ],
       "fix:tag": "80"
     }
   },

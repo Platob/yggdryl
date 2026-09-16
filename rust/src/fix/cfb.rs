@@ -1536,7 +1536,7 @@ impl<'doc> Parse<'doc> {
             let field = &held.field;
             let spellings = [field.name(), spelled(field)]
                 .into_iter()
-                .chain(field.as_fix().aliases());
+                .chain(field.as_fix().names());
             for spelling in spellings {
                 claimed
                     .entry(super::registry::name_key(spelling))
@@ -1571,12 +1571,12 @@ impl<'doc> Parse<'doc> {
             {
                 continue;
             }
-            let mut aliases: Vec<SmolStr> = field.as_fix().aliases().map(SmolStr::new).collect();
+            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
             if aliases.iter().any(|held| name.eq_ignore_ascii_case(held)) {
                 continue;
             }
             aliases.push(SmolStr::new(&name));
-            if let Err(error) = field.as_fix_mut().set_aliases(&aliases) {
+            if let Err(error) = field.as_fix_mut().set_names(&aliases) {
                 self.dropped(&refusal(
                     position,
                     format_smolstr!(

@@ -2896,7 +2896,7 @@ mod clock_intake_tests {
     fn code_keeps_original_segment_bytes_at_every_text_door() {
         let mut registry = FixRegistry::new();
         let mut code = registry.field_by_tag(65024).unwrap().clone();
-        code.as_fix_mut().set_aliases(["ChainLabel"]).unwrap();
+        code.as_fix_mut().set_names(["ChainLabel"]).unwrap();
         registry.insert(code).unwrap();
         let codec = FixCodec::new(Arc::new(registry))
             .try_with_default_sending_time(Some(clock(17)))

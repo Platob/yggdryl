@@ -612,7 +612,7 @@ fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace
             .field_by_tag(6)
             .unwrap()
             .as_fix()
-            .aliases()
+            .names()
             .any(|alias| alias == "somethingelse")
     );
     assert_eq!(
@@ -916,7 +916,7 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
     let holder = registry.field_by_tag(35).unwrap();
     assert_eq!(holder.name(), "msgtype");
     assert_eq!(
-        holder.as_fix().aliases().collect::<Vec<_>>(),
+        holder.as_fix().names().collect::<Vec<_>>(),
         ["somethingelse"]
     );
     let second = registry
@@ -1705,7 +1705,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     assert_eq!(registry.len(), 2 + super::seeded_fields());
     let holder = registry.field_by_tag(44).unwrap();
     assert_eq!(holder.name(), "price");
-    assert_eq!(holder.as_fix().aliases().collect::<Vec<_>>(), ["lastpx"]);
+    assert_eq!(holder.as_fix().names().collect::<Vec<_>>(), ["lastpx"]);
     let lastpx = FixId::of(44, "LastPx").unwrap();
     assert_eq!(registry.field_by_id(lastpx).unwrap().name(), "lastpx");
     assert_eq!(
@@ -1997,7 +1997,7 @@ fn a_normalization_spells_a_tag_and_the_vocabulary_keeps_its_name() {
         Some("22830"),
     );
     assert_eq!(
-        held.as_fix().aliases().collect::<Vec<_>>(),
+        held.as_fix().names().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "in the order the file spelled them",
     );
@@ -2011,12 +2011,12 @@ fn a_name_a_tag_already_answers_to_is_not_stored_a_second_time() {
     // the vocabulary spelled `LegSecurityID`. Most of a real binding is this.
     let held = registry.field_by_tag(602).expect("LegSecurityID");
     assert_eq!(held.name(), "legsecurityid");
-    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert_eq!(held.as_fix().names().collect::<Vec<_>>(), [] as [&str; 0]);
     assert!(registry.get_field_by_name("LEGSECURITYID").is_some());
 
     // The same, spelled with the file's own casing inside a nested group.
     let alt = registry.field_by_tag(605).expect("LegSecurityAltID");
-    assert_eq!(alt.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert_eq!(alt.as_fix().names().collect::<Vec<_>>(), [] as [&str; 0]);
 }
 
 #[test]
@@ -2040,7 +2040,7 @@ fn only_an_unconditional_reference_to_one_tag_is_a_name_for_it() {
             .field_by_tag(603)
             .expect("LegSecurityIDSource")
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
         "a lookup names nothing",
@@ -2088,7 +2088,7 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
             .field_by_tag(22831)
             .expect("the second claimant")
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
     );
@@ -2101,7 +2101,7 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
             .field_by_tag(22832)
             .expect("the tag spelled as another")
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
     );
@@ -2120,7 +2120,7 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
             .field_by_tag(22834)
             .expect("the venue tag spelled as a standard one")
             .as_fix()
-            .aliases()
+            .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
     );
@@ -2148,7 +2148,7 @@ fn both_doors_carry_the_names_a_normalization_spelled() {
         .find(|field| field.name() == "22830")
         .expect("the unnamed tag");
     assert_eq!(
-        held.as_fix().aliases().collect::<Vec<_>>(),
+        held.as_fix().names().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "the vocabulary door carries them too",
     );

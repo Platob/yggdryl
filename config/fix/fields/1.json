@@ -3352,7 +3352,9 @@
     "metadata": {
       "description": "SettDate (64) of the future part of a F/X swap order.",
       "display": "SettlDate2",
-      "fix:aliases": "futsettdate2",
+      "fix:names": [
+        "futsettdate2"
+      ],
       "fix:tag": "193"
     }
   },

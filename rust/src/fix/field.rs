@@ -6,7 +6,6 @@
 //! apply to every write. The property names are private to this module: a
 //! caller writes `set_tag(35)`, never `"fix:tag"`.
 
-use std::fmt::Write as _;
 use std::iter::FusedIterator;
 use std::str::Split;
 
@@ -15,6 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::FixId;
 use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::directions::{FixDirection, FixDirections};
+use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::expression::Term;
 use crate::types::folds_equal;
@@ -27,10 +27,10 @@ const BRANCHES: &str = "branches";
 const TAG: &str = "tag";
 /// The full key the canonical tag is stored under.
 pub(super) const TAG_KEY: &str = "fix:tag";
-/// The alternate tags, comma-separated, highest priority first.
+/// The alternate tags, a JSON array of tags, highest priority first.
 const TAGS: &str = "tags";
-/// The alternate names, comma-separated, highest priority first.
-const ALIASES: &str = "aliases";
+/// The alternate names, a JSON array of words, highest priority first.
+const NAMES: &str = "names";
 /// The direct scalar members identifying one component, in member order.
 const IDENTIFIERS: &str = "identifiers";
 /// The spellings that mean "nothing was sent" for this field.
@@ -60,7 +60,9 @@ const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
 const GROUP: &str = "group";
 const MSGTYPE: &str = "msgtype";
-/// What separates the elements of a list-valued property.
+/// What separates the elements of a comma-separated property: the
+/// memberships, the identifiers and the null spellings, whose elements can
+/// hold no comma. The names and the tags are JSON arrays instead.
 const SEPARATOR: char = ',';
 
 /// What a tag is, spelled once for every refusal.
@@ -190,34 +192,59 @@ impl<'field> FixField<'field> {
     /// # Errors
     ///
     /// Returns an error naming the full `fix:tags` key when the stored text
-    /// holds an empty element, a duplicate, or anything that is not a tag.
+    /// is not the compact JSON array of tags [`FixFieldMut::set_tags`]
+    /// writes, holds a tag that is not positive, or names one twice.
     pub fn tags(&self) -> Result<Vec<i32>> {
         let Some(stored) = self.get(TAGS) else {
             return Ok(Vec::new());
         };
-        let mut tags = Vec::new();
-        for element in stored.split(SEPARATOR) {
-            if element.is_empty() {
-                return Err(self.invalid(TAGS, "no empty element among the tags", stored));
-            }
-            let tag = parse_tag(element)
-                .ok_or_else(|| self.invalid(TAGS, "a comma-separated list of FIX tags", stored))?;
-            if tags.contains(&tag) {
-                return Err(self.invalid(TAGS, "each tag once", stored));
-            }
-            tags.push(tag);
+        let mut cursor = Cursor::new(stored);
+        let body = cursor
+            .read_numbers(TAGS)
+            .ok()
+            .filter(|_| cursor.is_done())
+            .ok_or_else(|| self.invalid(TAGS, "a JSON array of FIX tags", stored))?;
+        if Numbers::over(body).any(|tag| tag <= 0) {
+            return Err(self.invalid(TAGS, TAG_SHAPE, stored));
         }
-        Ok(tags)
+        if repeated_number(Numbers::over(body)).is_some() {
+            return Err(self.invalid(TAGS, "each tag once", stored));
+        }
+        Ok(Numbers::over(body).collect())
     }
 
-    /// Iterates the aliases, highest priority first.
+    /// Iterates the alternate names, highest priority first.
     ///
-    /// The iterator is lazy and allocates nothing: every alias is a slice of
-    /// the stored text, which the field already owns, so reading them costs
+    /// The iterator is lazy and allocates nothing: every name is a slice of
+    /// the stored array, which the field already owns, so reading them costs
     /// the same whether one is taken or all are. An absent property yields
-    /// nothing.
-    pub fn aliases(&self) -> FixSpellings<'field> {
-        FixSpellings::over(self.get(ALIASES))
+    /// nothing, and so does a stored text that is not the JSON array of
+    /// words [`FixFieldMut::set_names`] writes: the typed refusal belongs to
+    /// the write, and a read stays cheap.
+    pub fn names(&self) -> Words<'field> {
+        Words::over(self.get(NAMES).and_then(word_list).unwrap_or_default())
+    }
+
+    /// Holds the stored alternate names to what [`FixFieldMut::set_names`]
+    /// writes, which is what a registry asks before it takes a field: the
+    /// infallible read above answers nothing for a text it cannot walk, and
+    /// a dictionary must not hold one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `fix:names` key when the stored text
+    /// is not the compact JSON array of words the setter writes, or names one
+    /// twice with ASCII case folded.
+    pub(super) fn validate_names(&self) -> Result<()> {
+        let Some(stored) = self.get(NAMES) else {
+            return Ok(());
+        };
+        let body =
+            word_list(stored).ok_or_else(|| self.invalid(NAMES, "a JSON array of names", stored))?;
+        if repeated_word(Words::over(body)).is_some() {
+            return Err(self.invalid(NAMES, "each name once", stored));
+        }
+        Ok(())
     }
 
     /// Borrows the canonical identifier member names, in component order.
@@ -258,7 +285,7 @@ impl<'field> FixField<'field> {
             for (position, child) in self.as_field().fields().iter().enumerate() {
                 let view = child.as_fix();
                 let named = folds_equal(child.name(), spelling)
-                    || view.aliases().any(|alias| folds_equal(alias, spelling));
+                    || view.names().any(|name| folds_equal(name, spelling));
                 let tagged = match tag {
                     Some(tag) => view.tag()? == Some(tag) || view.tags()?.contains(&tag),
                     None => false,
@@ -607,7 +634,7 @@ impl FixFieldMut<'_> {
 
     /// Records the dictionaries that contributed this field.
     ///
-    /// Each name is held to the alias grammar - non-empty, no separator -
+    /// Each name is held to the membership grammar - non-empty, no separator -
     /// folded by ASCII case once, deduplicated under the crate fold, and the
     /// list is stored sorted, so two registries built from the same
     /// dictionaries in any order hash alike. Empty input removes the
@@ -692,73 +719,53 @@ impl FixFieldMut<'_> {
             self.remove(TAGS);
             return Ok(());
         }
-        let mut rendered = String::new();
-        for (index, tag) in tags.iter().enumerate() {
-            if *tag <= 0 {
-                return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
-            }
-            if tags[..index].contains(tag) {
-                return Err(self.rejected(
-                    TAGS,
-                    format_smolstr!("expected each tag once, got {tag} twice"),
-                ));
-            }
-            if index > 0 {
-                rendered.push(SEPARATOR);
-            }
-            // Writing into a `String` cannot fail.
-            let _ = write!(rendered, "{tag}");
+        if let Some(tag) = tags.iter().find(|tag| **tag <= 0) {
+            return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
-        self.store(TAGS, rendered)
+        if let Some(tag) = repeated_number(tags.iter().copied()) {
+            return Err(self.rejected(
+                TAGS,
+                format_smolstr!("expected each tag once, got {tag} twice"),
+            ));
+        }
+        self.store(TAGS, Writer::list_of_numbers(tags.iter().copied()))
     }
 
-    /// Records the aliases in the given order, highest priority first.
+    /// Records the alternate names in the given order, highest priority
+    /// first.
     ///
     /// Empty input removes the property.
     ///
     /// # Errors
     ///
-    /// Returns an error when an alias is empty, contains the separator, or
-    /// repeats an earlier one with ASCII case folded, leaving the field
-    /// unchanged.
-    pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()>
+    /// Returns an error when a name is empty, holds a quote, a backslash or
+    /// a control character, or repeats an earlier one with ASCII case folded,
+    /// leaving the field unchanged.
+    pub fn set_names<I, S>(&mut self, names: I) -> Result<()>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut rendered = String::new();
-        let mut count = 0;
-        for alias in aliases {
-            let alias = alias.as_ref();
-            if alias.is_empty() {
-                return Err(self.rejected(ALIASES, "expected a non-empty alias, got \"\"".into()));
-            }
-            if alias.contains(SEPARATOR) {
-                return Err(self.rejected(
-                    ALIASES,
-                    format_smolstr!("expected an alias without {SEPARATOR:?}, got {alias:?}"),
-                ));
-            }
-            if rendered
-                .split(SEPARATOR)
-                .any(|held| held.eq_ignore_ascii_case(alias))
-            {
-                return Err(self.rejected(
-                    ALIASES,
-                    format_smolstr!("expected each alias once, got {alias:?} twice"),
-                ));
-            }
-            if count > 0 {
-                rendered.push(SEPARATOR);
-            }
-            rendered.push_str(alias);
-            count += 1;
+        let held: Vec<S> = names.into_iter().collect();
+        if let Some(text) = held.iter().map(AsRef::as_ref).find(|text| !is_word(text)) {
+            return Err(self.rejected(
+                NAMES,
+                format_smolstr!(
+                    "expected a non-empty name without a quote, a backslash or a control character, got {text:?}"
+                ),
+            ));
         }
-        if count == 0 {
-            self.remove(ALIASES);
+        if let Some(text) = repeated_word(held.iter().map(AsRef::as_ref)) {
+            return Err(self.rejected(
+                NAMES,
+                format_smolstr!("expected each name once, got {text:?} twice"),
+            ));
+        }
+        if held.is_empty() {
+            self.remove(NAMES);
             return Ok(());
         }
-        self.store(ALIASES, rendered)
+        self.store(NAMES, Writer::list_of_words(held.iter().map(AsRef::as_ref))?)
     }
 
     /// Declares direct scalar identifiers by member name, alias or decimal tag.
@@ -1194,7 +1201,7 @@ impl FixFieldMut<'_> {
     /// | `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
     /// | `fix:branches` | union, folded, sorted: every dictionary that contributed either side |
     /// | `fix:tags` | union, incoming first, order kept, deduplicated |
-    /// | `fix:aliases` | union, folded, incoming first |
+    /// | `fix:names` | union, folded, incoming first |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
     /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
@@ -1256,10 +1263,14 @@ impl FixFieldMut<'_> {
                 tags.push(tag);
             }
         }
-        let mut aliases: Vec<&str> = held.aliases().collect();
-        for alias in other.aliases() {
-            if !aliases.iter().any(|kept| kept.eq_ignore_ascii_case(alias)) {
-                aliases.push(alias);
+        // A names text the read walks as nothing would merge as nothing and
+        // be dropped; it is refused instead, as a tags text is.
+        held.validate_names()?;
+        other.validate_names()?;
+        let mut names: Vec<&str> = held.names().collect();
+        for name in other.names() {
+            if !names.iter().any(|kept| kept.eq_ignore_ascii_case(name)) {
+                names.push(name);
             }
         }
         let branches = render_branches(held.branches().chain(other.branches()));
@@ -1269,7 +1280,7 @@ impl FixFieldMut<'_> {
         for key in MERGED_KEYS {
             let value = match key {
                 TAGS => render_tags(&tags),
-                ALIASES => render_aliases(&aliases),
+                NAMES => render_names(&names)?,
                 BRANCHES => branches.clone(),
                 CODES => codes.clone(),
                 // Every other key is "incoming wins, stored keeps what only
@@ -1336,13 +1347,14 @@ pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text:
         .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
 }
 
-/// The aliases a field declares, in stored priority order.
+/// The spellings one comma-separated `fix:` property holds, in stored order.
 ///
-/// Answered by [`FixField::aliases`]. It walks the stored comma-separated
-/// text as it goes and hands back slices of it, so nothing is parsed ahead
-/// of the alias being asked for and nothing is allocated. An empty element,
-/// which the writer never produces, is skipped rather than reported: the
-/// typed rejection belongs to the write, and a read stays cheap.
+/// Answered by [`FixField::branches`], [`FixField::identifiers`] and
+/// [`FixField::nulls`]. It walks the stored text as it goes and hands back
+/// slices of it, so nothing is parsed ahead of the spelling being asked for
+/// and nothing is allocated. An empty element, which the writer never
+/// produces, is skipped rather than reported: the typed rejection belongs to
+/// the write, and a read stays cheap.
 #[derive(Clone, Debug)]
 pub struct FixSpellings<'field> {
     parts: Option<Split<'field, char>>,
@@ -1361,7 +1373,7 @@ impl<'field> Iterator for FixSpellings<'field> {
     type Item = &'field str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parts.as_mut()?.find(|alias| !alias.is_empty())
+        self.parts.as_mut()?.find(|spelling| !spelling.is_empty())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1374,7 +1386,7 @@ impl<'field> Iterator for FixSpellings<'field> {
 
 impl DoubleEndedIterator for FixSpellings<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.parts.as_mut()?.rfind(|alias| !alias.is_empty())
+        self.parts.as_mut()?.rfind(|spelling| !spelling.is_empty())
     }
 }
 
@@ -1389,7 +1401,7 @@ const MERGED_KEYS: [&str; 10] = [
     TAG,
     BRANCHES,
     TAGS,
-    ALIASES,
+    NAMES,
     NULLS,
     CODES,
     REPLACEMENTS,
@@ -1398,12 +1410,21 @@ const MERGED_KEYS: [&str; 10] = [
     IDENTIFIERS,
 ];
 
-/// Render aliases the way the setter renders them.
-fn render_aliases(aliases: &[&str]) -> Option<String> {
-    if aliases.is_empty() {
-        return None;
+/// The body of one stored array of words, or nothing for a text that is not
+/// one: the setter never writes such a text, so a read walks nothing rather
+/// than mis-reading a hand edit.
+fn word_list(stored: &str) -> Option<&str> {
+    let mut cursor = Cursor::new(stored);
+    let body = cursor.read_words(NAMES).ok()?;
+    cursor.is_done().then_some(body)
+}
+
+/// Render alternate names the way the setter renders them.
+fn render_names(names: &[&str]) -> Result<Option<String>> {
+    if names.is_empty() {
+        return Ok(None);
     }
-    Some(aliases.join(","))
+    Writer::list_of_words(names.iter().copied()).map(Some)
 }
 
 /// Render the dictionaries that contributed a field the way the setter
@@ -1428,15 +1449,7 @@ fn render_tags(tags: &[i32]) -> Option<String> {
     if tags.is_empty() {
         return None;
     }
-    let mut rendered = String::new();
-    for (index, tag) in tags.iter().enumerate() {
-        if index > 0 {
-            rendered.push(SEPARATOR);
-        }
-        // Writing into a `String` cannot fail.
-        let _ = write!(rendered, "{tag}");
-    }
-    Some(rendered)
+    Some(Writer::list_of_numbers(tags.iter().copied()))
 }
 
 /// Fold two code sets by wire value, the incoming winning a shared value.

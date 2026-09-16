@@ -69,7 +69,7 @@ const generated = path.join(workspace, 'generated')
   for (let tag = 1; tag <= WIDE_FIELDS; tag += 1) {
     const field = Field.from(`Field${tag}: utf8`)
     field.fix.tag = tag
-    field.fix.aliases = [`Alias${tag}`]
+    field.fix.names = [`Alias${tag}`]
     wide.push(field)
   }
   fix.FixRegistry.fromFields(wide).writeInto(generated)
@@ -86,7 +86,7 @@ const twoDialects = (() => {
     const field = Field.from(`Venue${offset}: utf8`)
     field.fix.tag = 5000 + offset
     field.fix.branches = [VENDOR_DIALECT]
-    field.fix.aliases = [`VenueAlias${offset}`]
+    field.fix.names = [`VenueAlias${offset}`]
     held.insert(field)
   }
   return held

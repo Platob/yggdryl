@@ -1,12 +1,14 @@
 //! The canonical JSON documents the `fix:` namespace stores, read borrowed.
 //!
-//! Three `fix:` properties hold more than one text can say as a list: the
-//! [code set](super::codes), the [directions](super::directions) a line is
-//! read under and the [replacements](super::replacements) a value is
-//! restated through. All are
-//! JSON, because a metadata value may hold no control character and so
-//! cannot be separator-framed, and all are read on hot paths where building a
-//! parse tree per ask would cost more than the lookup.
+//! Five `fix:` properties hold more than one text can say. Three are
+//! documents of entries: the [code set](super::codes), the
+//! [directions](super::directions) a line is read under and the
+//! [replacements](super::replacements) a value is restated through. Two are
+//! bare lists: the alternate [names](super::FixField::names) a field answers
+//! to and the alternate [tags](super::FixField::tags) it holds. All are JSON,
+//! because a metadata value may hold no control character and so cannot be
+//! separator-framed, and all are read on hot paths where building a parse
+//! tree per ask would cost more than the lookup.
 //!
 //! So one convention serves them. **A document is the array of its entries**,
 //! `[{...},{...}]`, and never an object wrapping one under a key that only
@@ -16,7 +18,9 @@
 //! nothing. Declared order is what makes the walk safe *and* cheap: a reader
 //! knows which key can come next, so a hand-edited document with reordered or
 //! repeated keys is refused with its byte position rather than mis-read, and
-//! the key a lookup keys on is put first so a scan can stop at it.
+//! the key a lookup keys on is put first so a scan can stop at it. **A list
+//! is the array of its elements**, `["a","b"]` or `[1,2]`, rendered and read
+//! by the same primitives an entry's own array-valued keys are.
 //!
 //! A store dumps one of these as the JSON it is rather than as the escaped
 //! text it is held as, and reads it back through the same renderer, so the
@@ -31,7 +35,7 @@ use std::fmt::{self, Write as _};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result, Scalar, Version};
+use crate::{Error, Result, Scalar};
 
 /// Why a scan stopped, held without allocating until an error is asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,22 +44,20 @@ pub(super) enum Refusal {
     Expected(u8),
     /// A string ran to the end of the document.
     Unclosed,
-    /// A word that may hold no escape held one.
-    Escaped(&'static str),
-    /// A number key held something that is not decimal digits.
+    /// A word key held something that is not a word: empty, or holding a
+    /// quote, a backslash or a control character.
+    NotAWord(&'static str),
+    /// A number key held something that is not a JSON number of decimal
+    /// digits.
     NotANumber(&'static str),
     /// A number key held more than 32 bits.
     TooWide(&'static str),
-    /// A version key held something the version grammar refuses.
-    NotAVersion(&'static str),
     /// A key repeated, or came before one already read.
     KeyOrder,
     /// A key this document does not declare.
     UnknownKey,
     /// A key the document must state was absent.
     MissingKey(&'static str),
-    /// Two keys that exclude each other were both stated.
-    Together(&'static str, &'static str),
     /// A list held fewer elements than the grammar requires of it.
     Short(&'static str, usize),
     /// Bytes stood after the document ended.
@@ -82,19 +84,17 @@ impl Refusal {
         let reason = match self {
             Self::Expected(byte) => format_smolstr!("expected {:?}", char::from(byte)),
             Self::Unclosed => SmolStr::new_static("expected a closing quote"),
-            Self::Escaped(what) => format_smolstr!("expected {what:?} to hold no escape"),
+            Self::NotAWord(what) => format_smolstr!(
+                "expected {what:?} to hold a word: non-empty, without a quote, a backslash or a control character"
+            ),
             Self::NotANumber(what) => format_smolstr!("expected {what:?} to hold a decimal number"),
             Self::TooWide(what) => format_smolstr!("expected {what:?} to fit in 32 bits"),
-            Self::NotAVersion(what) => format_smolstr!("expected {what:?} to hold a version"),
             Self::KeyOrder => format_smolstr!(
                 "expected keys in their declared order, got {:?} out of order",
                 key()
             ),
             Self::UnknownKey => format_smolstr!("unknown key {:?}", key()),
             Self::MissingKey(what) => format_smolstr!("expected every entry to state {what:?}"),
-            Self::Together(left, right) => {
-                format_smolstr!("expected {left:?} and {right:?} never together")
-            }
             Self::Short(what, least) => {
                 format_smolstr!("expected {what:?} to hold at least {least} elements")
             }
@@ -185,18 +185,19 @@ impl<'doc> Cursor<'doc> {
         Err(Refusal::Unclosed)
     }
 
-    /// Reads one JSON string body that may hold no escape.
+    /// Reads one JSON string body that is a word: what [`is_word`] admits.
     ///
-    /// A FIX name, a datatype name, a code value and a version are ASCII
-    /// words, so an escape in one is a hand edit rather than something the
-    /// writer produced.
+    /// A FIX name, a code value and a field's alternate name are words - non-
+    /// empty, holding nothing the writer would escape - so an escape or an
+    /// empty string in one is a hand edit rather than something the writer
+    /// produced, and [`Words`] can split the array on its quotes alone.
     #[inline]
     pub(super) fn read_word(&mut self, key: &'static str) -> Scan<&'doc str> {
         let start = self.position;
         let word = self.read_string()?;
-        if word.as_bytes().contains(&b'\\') {
+        if !is_word(word) {
             self.position = start;
-            return Err(Refusal::Escaped(key));
+            return Err(Refusal::NotAWord(key));
         }
         Ok(word)
     }
@@ -235,54 +236,47 @@ impl<'doc> Cursor<'doc> {
 
     /// Reads the body of an array of tags, as one slice.
     ///
-    /// Every element is read as a decimal tag so a hand-edited array is
-    /// refused here rather than mis-read by [`Numbers`], which walks the
-    /// slice handed back without checking it again.
+    /// Every element is read as a decimal number that fits a tag so a
+    /// hand-edited array is refused here rather than mis-read by
+    /// [`Numbers`], which walks the slice handed back without checking it
+    /// again. Whether an element is positive is the caller's rule, not the
+    /// grammar's.
     pub(super) fn read_numbers(&mut self, key: &'static str) -> Scan<&'doc str> {
         self.expect(b'[')?;
         let start = self.position;
+        if self.peek() == Some(b']') {
+            self.position += 1;
+            return Ok(&self.document[start..start]);
+        }
         loop {
-            if self.peek() == Some(b']') {
-                let body = &self.document[start..self.position];
-                self.position += 1;
-                return Ok(body);
-            }
             let at = self.position;
             if i32::try_from(self.read_number(key)?).is_err() {
                 self.position = at;
                 return Err(Refusal::TooWide(key));
             }
-            if self.peek() == Some(b',') {
-                self.position += 1;
+            if !self.next_element()? {
+                return Ok(&self.document[start..self.position - 1]);
             }
         }
     }
 
-    /// Reads one non-negative decimal number.
+    /// Reads one non-negative decimal number as JSON spells one: digits, and
+    /// no leading zero in front of another digit.
     #[inline]
-    pub(super) fn read_number(&mut self, key: &'static str) -> Scan<u32> {
+    fn read_number(&mut self, key: &'static str) -> Scan<u32> {
         let start = self.position;
         let bytes = self.document.as_bytes();
         while bytes.get(self.position).is_some_and(u8::is_ascii_digit) {
             self.position += 1;
         }
-        if self.position == start {
+        let digits = &self.document[start..self.position];
+        if digits.is_empty() || (digits.len() > 1 && digits.starts_with('0')) {
+            self.position = start;
             return Err(Refusal::NotANumber(key));
         }
-        self.document[start..self.position].parse().map_err(|_| {
+        digits.parse().map_err(|_| {
             self.position = start;
             Refusal::TooWide(key)
-        })
-    }
-
-    /// Reads one canonically spelled version.
-    #[inline]
-    pub(super) fn read_version(&mut self, key: &'static str) -> Scan<Version> {
-        let start = self.position;
-        let text = self.read_word(key)?;
-        text.parse().map_err(|_| {
-            self.position = start;
-            Refusal::NotAVersion(key)
         })
     }
 
@@ -338,15 +332,14 @@ impl<'doc> Cursor<'doc> {
     pub(super) fn read_words(&mut self, key: &'static str) -> Scan<&'doc str> {
         self.expect(b'[')?;
         let start = self.position;
+        if self.peek() == Some(b']') {
+            self.position += 1;
+            return Ok(&self.document[start..start]);
+        }
         loop {
-            if self.peek() == Some(b']') {
-                let body = &self.document[start..self.position];
-                self.position += 1;
-                return Ok(body);
-            }
             self.read_word(key)?;
-            if self.peek() == Some(b',') {
-                self.position += 1;
+            if !self.next_element()? {
+                return Ok(&self.document[start..self.position - 1]);
             }
         }
     }
@@ -435,6 +428,46 @@ pub(super) fn decode_text(
         })
 }
 
+/// Whether `text` is a word: non-empty, and holding no byte the writer would
+/// escape - a quote, a backslash or a control character - so the reader that
+/// walks a list of them can split on the quotes alone.
+pub(super) fn is_word(text: &str) -> bool {
+    !text.is_empty() && needs_no_escape(text)
+}
+
+/// Whether `text` holds no byte a JSON string has to escape.
+fn needs_no_escape(text: &str) -> bool {
+    text.bytes()
+        .all(|byte| byte >= 0x20 && !matches!(byte, b'"' | b'\\'))
+}
+
+/// The first word that repeats an earlier one with ASCII case folded, which
+/// is the one rule every list of names is held to: by the setter that writes
+/// one, by the reader that validates one, and by the store crossing one.
+pub(super) fn repeated_word<'a>(words: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    let mut seen: Vec<&'a str> = Vec::new();
+    for word in words {
+        if seen.iter().any(|held| held.eq_ignore_ascii_case(word)) {
+            return Some(word);
+        }
+        seen.push(word);
+    }
+    None
+}
+
+/// The first tag that repeats an earlier one, the one rule every list of
+/// tags is held to.
+pub(super) fn repeated_number(numbers: impl IntoIterator<Item = i32>) -> Option<i32> {
+    let mut seen: Vec<i32> = Vec::new();
+    for number in numbers {
+        if seen.contains(&number) {
+            return Some(number);
+        }
+        seen.push(number);
+    }
+    None
+}
+
 /// The words one array-valued key holds, borrowed.
 ///
 /// The reader that produced the body already held every word to the grammar,
@@ -468,7 +501,7 @@ impl std::iter::FusedIterator for Words<'_> {}
 /// The reader that produced the body already held every element to the tag
 /// grammar, so nothing here re-validates and nothing allocates.
 #[derive(Clone, Debug)]
-pub struct Numbers<'doc>(&'doc str);
+pub(super) struct Numbers<'doc>(&'doc str);
 
 impl<'doc> Numbers<'doc> {
     /// Walks one array body a reader answered.
@@ -527,24 +560,6 @@ impl Writer {
         self.text.push('}');
     }
 
-    /// Opens one array-valued key whose elements are objects.
-    ///
-    /// One flag serves every nesting depth because elements nest strictly:
-    /// the list opened here is the only one taking elements until it closes,
-    /// and closing it leaves the enclosing array mid-way, where its next
-    /// element needs a separator.
-    pub(super) fn open_list(&mut self, first: bool, key: &str) {
-        self.key(first, key);
-        self.text.push('[');
-        self.empty = true;
-    }
-
-    /// Closes the list [`Self::open_list`] opened.
-    pub(super) fn close_list(&mut self) {
-        self.text.push(']');
-        self.empty = false;
-    }
-
     /// Writes one text-valued key.
     ///
     /// # Errors
@@ -557,16 +572,13 @@ impl Writer {
 
     /// Writes one string, escaping it only when it needs escaping.
     ///
-    /// Almost every value these documents hold is a FIX name, a code value or
-    /// a version, and none of those can carry a quote, a backslash or a
+    /// Almost every value these documents hold is a word - a FIX name, a code
+    /// value, an alternate name - and a word carries no quote, backslash or
     /// control character. Those are quoted directly; anything else goes
     /// through the crate's own JSON codec, so there is still exactly one
     /// escaper and it is the one that reads these documents back.
     fn string(&mut self, value: &str) -> Result<()> {
-        if value
-            .bytes()
-            .all(|byte| byte >= 0x20 && !matches!(byte, b'"' | b'\\'))
-        {
+        if needs_no_escape(value) {
             self.text.push('"');
             self.text.push_str(value);
             self.text.push('"');
@@ -575,32 +587,6 @@ impl Writer {
         self.text
             .push_str(&crate::text::json::into_utf8(&Scalar::from(value))?);
         Ok(())
-    }
-
-    /// Writes one number-valued key.
-    pub(super) fn number(&mut self, first: bool, key: &str, value: impl fmt::Display) {
-        self.key(first, key);
-        // Writing into a `String` cannot fail.
-        let _ = write!(self.text, "{value}");
-    }
-
-    /// Writes one array-of-tags key.
-    pub(super) fn numbers(
-        &mut self,
-        first: bool,
-        key: &str,
-        values: impl IntoIterator<Item = i32>,
-    ) {
-        self.key(first, key);
-        self.text.push('[');
-        for (index, value) in values.into_iter().enumerate() {
-            if index > 0 {
-                self.text.push(',');
-            }
-            // Writing into a `String` cannot fail.
-            let _ = write!(self.text, "{value}");
-        }
-        self.text.push(']');
     }
 
     /// Writes one array-of-words key.
@@ -615,6 +601,40 @@ impl Writer {
         values: impl IntoIterator<Item = &'a str>,
     ) -> Result<()> {
         self.key(first, key);
+        self.word_list(values)
+    }
+
+    /// Renders one bare array of tags: the whole value of a list property.
+    pub(super) fn list_of_numbers(values: impl IntoIterator<Item = i32>) -> String {
+        let mut writer = Self::default();
+        writer.number_list(values);
+        writer.text
+    }
+
+    /// Renders one bare array of words: the whole value of a list property.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the JSON codec's refusal, which text cannot provoke.
+    pub(super) fn list_of_words<'a>(values: impl IntoIterator<Item = &'a str>) -> Result<String> {
+        let mut writer = Self::default();
+        writer.word_list(values)?;
+        Ok(writer.text)
+    }
+
+    fn number_list(&mut self, values: impl IntoIterator<Item = i32>) {
+        self.text.push('[');
+        for (index, value) in values.into_iter().enumerate() {
+            if index > 0 {
+                self.text.push(',');
+            }
+            // Writing into a `String` cannot fail.
+            let _ = write!(self.text, "{value}");
+        }
+        self.text.push(']');
+    }
+
+    fn word_list<'a>(&mut self, values: impl IntoIterator<Item = &'a str>) -> Result<()> {
         self.text.push('[');
         for (index, value) in values.into_iter().enumerate() {
             if index > 0 {
@@ -661,9 +681,10 @@ impl Writer {
 
 /// One `fix:` property whose stored value is a canonical document.
 ///
-/// Four properties hold one, and this is what names one of them to the pair
-/// a store crosses: [`Self::into_value`] writes the document as the JSON it
-/// is, [`Self::from_value`] reads that JSON back as the canonical text.
+/// Five properties hold one - three arrays of entries and two bare lists -
+/// and this is what names one of them to the pair a store crosses:
+/// [`Self::value_of`] reads the document as the JSON it is,
+/// [`Self::text_of`] restates that JSON as the canonical text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
     /// [`super::codes`], under `fix:codes`.
@@ -672,11 +693,32 @@ pub(super) enum Kind {
     Directions,
     /// [`super::replacements`], under `fix:replacements`.
     Replacements,
+    /// [`FixField::names`](super::FixField::names), under `fix:names`.
+    Names,
+    /// [`FixField::tags`](super::FixField::tags), under `fix:tags`.
+    Tags,
+}
+
+/// What one document's array holds.
+#[derive(Clone, Copy)]
+enum Shape {
+    /// Objects, each stating some of these keys, in this order.
+    Entries(&'static [&'static str]),
+    /// Texts the writer never escapes.
+    Words,
+    /// Positive tags.
+    Tags,
 }
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 3] = [Self::Codes, Self::Directions, Self::Replacements];
+    pub(super) const ALL: [Self; 5] = [
+        Self::Codes,
+        Self::Directions,
+        Self::Replacements,
+        Self::Names,
+        Self::Tags,
+    ];
 
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
@@ -684,6 +726,8 @@ impl Kind {
             Self::Codes => "fix:codes",
             Self::Directions => "fix:directions",
             Self::Replacements => "fix:replacements",
+            Self::Names => "fix:names",
+            Self::Tags => "fix:tags",
         }
     }
 
@@ -698,19 +742,24 @@ impl Kind {
             Self::Codes => "fix codes",
             Self::Directions => "fix directions",
             Self::Replacements => "fix replacements",
+            Self::Names => "fix names",
+            Self::Tags => "fix tags",
         }
     }
 
-    /// The keys one entry states, in the order its reader walks them.
+    /// What this document's array holds: for a document of entries, the keys
+    /// one entry states in the order its reader walks them.
     ///
-    /// Every one of them is a leaf - a text, a number, a flag, or an array of
-    /// those - so an entry is restated by putting its stated keys back into
-    /// this order and carrying each value as it arrived.
-    const fn entry(self) -> &'static [&'static str] {
+    /// Every key of an entry is a leaf - a text, a number, a flag, or an
+    /// array of those - so an entry is restated by putting its stated keys
+    /// back into this order and carrying each value as it arrived.
+    const fn shape(self) -> Shape {
         match self {
-            Self::Codes => &super::codes::KEYS,
-            Self::Directions => &super::directions::KEYS,
-            Self::Replacements => &super::replacements::KEYS,
+            Self::Codes => Shape::Entries(&super::codes::KEYS),
+            Self::Directions => Shape::Entries(&super::directions::KEYS),
+            Self::Replacements => Shape::Entries(&super::replacements::KEYS),
+            Self::Names => Shape::Words,
+            Self::Tags => Shape::Tags,
         }
     }
 
@@ -729,35 +778,83 @@ impl Kind {
 
     /// The canonical text one dumped value restates.
     ///
-    /// The entries keep the order the file gave them - a code set is ordered
-    /// by wire value, which is the writer's business rather than this one's -
-    /// while each entry's own keys are put back into the order the grammar
-    /// declares, whatever order the file spelled them in.
+    /// The elements keep the order the file gave them - a code set is ranked
+    /// by position and a list of names by priority, which is the writer's
+    /// business rather than this one's - while each entry's own keys are put
+    /// back into the order the grammar declares, whatever order the file
+    /// spelled them in.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when the value is not an array of objects or
-    /// an entry states a key this document does not declare, and whatever
-    /// the datatype reader returns for a `type` that is not one.
+    /// Returns [`Error::Parse`] when the value is not the array this document
+    /// is: not an array of objects, or an entry stating a key this document
+    /// does not declare; not an array of words; not an array of positive
+    /// tags.
     pub(super) fn text_of(self, value: &Scalar) -> Result<String> {
         crate::into_json_scalar(&self.ordered(value)?)
     }
 
     /// The document with every entry's keys in the order this kind states
-    /// them: the one order its reader walks and its writer writes.
+    /// them: the one order its reader walks and its writer writes. A list
+    /// has no order to settle and is held to its element grammar instead.
     fn ordered(self, value: &Scalar) -> Result<Scalar> {
-        let entries = value.as_sequence().ok_or_else(|| {
+        let elements = value.as_sequence().ok_or_else(|| {
             self.refused(crate::text::expected_got(
-                "an array of entries",
+                match self.shape() {
+                    Shape::Entries(_) => "an array of entries",
+                    Shape::Words => "an array of names",
+                    Shape::Tags => "an array of tags",
+                },
                 value.kind(),
             ))
         })?;
-        let keys = self.entry();
-        let ordered = entries
-            .iter()
-            .map(|entry| self.order_entry(keys, entry))
-            .collect::<Result<Vec<_>>>()?;
+        let ordered = match self.shape() {
+            Shape::Entries(keys) => elements
+                .iter()
+                .map(|entry| self.order_entry(keys, entry))
+                .collect::<Result<Vec<_>>>()?,
+            Shape::Words => {
+                let words = elements
+                    .iter()
+                    .map(|element| self.word(element))
+                    .collect::<Result<Vec<_>>>()?;
+                if let Some(twice) = repeated_word(words.iter().filter_map(Scalar::as_str)) {
+                    return Err(self.refused(format_args!("expected each name once, got {twice:?} twice")));
+                }
+                words
+            }
+            Shape::Tags => {
+                let tags = elements
+                    .iter()
+                    .map(|element| self.tag(element))
+                    .collect::<Result<Vec<_>>>()?;
+                if let Some(twice) = repeated_number(tags.iter().filter_map(|tag| tag.as_i64()?.try_into().ok())) {
+                    return Err(self.refused(format_args!("expected each tag once, got {twice} twice")));
+                }
+                tags
+            }
+        };
         Ok(Scalar::from_sequence(ordered))
+    }
+
+    /// One element of a list of words, which the reader hands back as the
+    /// slice it is: a non-empty text holding nothing the writer would escape.
+    fn word(self, element: &Scalar) -> Result<Scalar> {
+        let text = element
+            .as_str()
+            .filter(|text| is_word(text))
+            .ok_or_else(|| self.refused(format_args!("expected a word, got {element:?}")))?;
+        Ok(Scalar::from(text))
+    }
+
+    /// One element of a list of tags: a positive integer that fits an `i32`.
+    fn tag(self, element: &Scalar) -> Result<Scalar> {
+        let tag = element
+            .as_i64()
+            .and_then(|held| i32::try_from(held).ok())
+            .filter(|held| *held > 0)
+            .ok_or_else(|| self.refused(format_args!("expected a positive tag, got {element:?}")))?;
+        Ok(Scalar::from(tag))
     }
 
     /// One entry, its stated keys in the declared order and nothing else.
@@ -814,8 +911,7 @@ impl Kind {
 /// document out of a store - what `ygg fix read --json` prints and
 /// `ygg fix ... --input` takes - writes the same shape the store does. It is
 /// the FIX spelling of [`Field::into_value`](crate::Field::into_value), and
-/// the only difference between
-/// them is those four properties.
+/// the only difference between them is those five properties.
 ///
 /// ```
 /// use yggdryl::{DataType, FixCode, Scalar, fix};
@@ -844,7 +940,7 @@ impl Kind {
 /// # Errors
 ///
 /// Returns [`Error::InvalidMetadataValue`] naming the property when a field
-/// holds text under one of the four keys that is not the document that key
+/// holds text under one of the five keys that is not the document that key
 /// declares.
 pub fn into_fix_document(field: crate::Field) -> Result<Scalar> {
     dump(field.into_value())
@@ -860,8 +956,8 @@ pub fn into_fix_document(field: crate::Field) -> Result<Scalar> {
 /// # Errors
 ///
 /// Returns [`Error::InvalidMetadataValue`] naming the property when the
-/// document spells one of the four keys as anything but the array of entries
-/// it is, and what [`Field::from_value`](crate::Field::from_value) returns
+/// document spells one of the five keys as anything but the array it is, and
+/// what [`Field::from_value`](crate::Field::from_value) returns
 /// for a document that is not a field.
 pub fn from_fix_document(document: Scalar) -> Result<crate::Field> {
     crate::Field::from_value(load(document)?)
@@ -900,9 +996,9 @@ pub(super) fn dump(value: Scalar) -> Result<Scalar> {
 /// # Errors
 ///
 /// Returns [`Error::InvalidMetadataValue`] naming the property when the file
-/// spells one of these keys as anything but the array of entries it is - the
-/// escaped text an older writer wrote included, because a store reads one
-/// shape - or when an entry states a key the document does not declare.
+/// spells one of these keys as anything but the array it is - the escaped
+/// text an older writer wrote included, because a store reads one shape - or
+/// when an entry states a key the document does not declare.
 pub(super) fn load(value: Scalar) -> Result<Scalar> {
     cross(value, &|kind, held| {
         if let Some(text) = held.as_str() {
@@ -944,7 +1040,7 @@ fn cross(value: Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) -> Res
     Scalar::from_mapping(held)
 }
 
-/// One `metadata` map with the four document properties crossed over.
+/// One `metadata` map with the five document properties crossed over.
 fn properties(value: &Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) -> Result<Scalar> {
     let Some(keys) = named(value) else {
         return Ok(value.clone());

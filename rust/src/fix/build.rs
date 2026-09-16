@@ -1001,7 +1001,7 @@ impl<'registry> Builder<'registry> {
     /// and datatype the dictionary gives it: a tag is one column whatever
     /// spelling a version gave it, and a row that renamed itself per version
     /// is a row no two captures share. A spelling an earlier version used
-    /// reaches the field as an ordinary [alias](super::FixSpellings). One the
+    /// reaches the field as one of its [names](super::FixField::names). One the
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
     /// A dialect that spelled one name over two tags is why `scope` is

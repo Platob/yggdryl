@@ -1298,11 +1298,11 @@ assert expression_matched == [] or expression_matched
 fix_field: Field = Field("OrderQty", "decimal128(20, 8)")
 fix_field.fix.tag = 38
 fix_field.fix.tags = [1088]
-fix_field.fix.aliases = ["Qty", "Quantity"]
+fix_field.fix.names = ["Qty", "Quantity"]
 fix_field.fix.description = "Quantity ordered."
 fix_tag: int | None = fix_field.fix.tag
 fix_tags: list[int] = fix_field.fix.tags
-fix_aliases: list[str] = fix_field.fix.aliases
+fix_names: list[str] = fix_field.fix.names
 fix_description: str | None = fix_field.fix.description
 fix_field.fix.branches = ["cme", "Bloomberg"]
 fix_field.fix.add_branch("ice")
@@ -1616,7 +1616,7 @@ fix_fixed_row: Scalar = fix_read_text.into_row(fix_fixed_schema)
 fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
 
-assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
+assert fix_tag == 38 and fix_tags and fix_names and fix_description
 assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
 assert fix_plugin_dialect == "plugin" and fix_dialects
 assert fix_id is not None and fix_vendor_id is not None

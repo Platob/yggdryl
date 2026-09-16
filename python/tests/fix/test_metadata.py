@@ -109,7 +109,7 @@ def test_reference_properties_refuse_other_protocols_and_frozen_fields(
 def test_identifiers_resolve_python_iterables_into_canonical_member_order() -> None:
     client = Field("clordid", "utf8")
     client.fix.tag = 11
-    client.fix.aliases = ["ClientOrder"]
+    client.fix.names = ["ClientOrder"]
     order = Field("orderid", "utf8")
     order.fix.tag = 37
     component = Field("order", DataType.from_fields([client, order]), nullable=False)

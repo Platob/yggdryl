@@ -8,7 +8,7 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 | --- | --- |
 | Source | `scripts/build_docs_fix.js` runs the native package over `config/fix`, retaining compact stored documents and adding the crate's own definitions, which the shipped seed does not state. |
 | Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `fix:msgtype`, and enum codes stay inline on fields. |
-| Search | Filters names, tags, aliases, `fix:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
+| Search | Filters names, tags, `fix:names`, `fix:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
 | References | A member button selects a search in its target category. The browser does not resolve or merge schemas. |
 | Samples | [Decode](decode.md) and [Encode](encode.md) display recorded native codec results and emitted bytes. |
 

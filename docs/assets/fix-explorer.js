@@ -102,6 +102,8 @@
   const memberships = (field) => (metadata(field)['fix:branches'] ?? '').split(',').filter(Boolean)
   const title = (field) => metadata(field).display ?? field.name
   const searchText = (text) => String(text).toLowerCase()
+  // A list property is the JSON array the store holds; it reads as its elements, comma-joined.
+  const listed = (value) => (Array.isArray(value) ? value.join(', ') : value)
   const words = (text) => searchText(text).trim().split(/\s+/).filter(Boolean)
 
   const manifest = () => {
@@ -117,7 +119,7 @@
         definitions: CATEGORIES.flatMap((category) => data.catalog[category].map((field) => ({
           category,
           field,
-          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:aliases', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'fix:branches'].map((key) => metadata(field)[key] ?? '')].join(' ')),
+          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:names', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'fix:branches'].map((key) => listed(metadata(field)[key] ?? ''))].join(' ')),
         }))),
       }))
     }
@@ -149,7 +151,8 @@
       ['category', category], ['name', field.name],
       ['datatype', field.dtype.type], ['nullable', field.nullable],
       ...(field.dtype.keys_sorted === undefined ? [] : [['keys_sorted', field.dtype.keys_sorted]]),
-      ...['fix:tag', 'fix:tags', 'fix:aliases', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, meta[key]]),
+      // `fix:names` and `fix:tags` are the JSON arrays the store holds.
+      ...['fix:tag', 'fix:tags', 'fix:names', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, listed(meta[key])]),
       // Membership is provenance, shown only where a dictionary recorded it.
       ...(held.length ? [['membership', held.join(', ')]] : []),
     ]))

@@ -734,8 +734,12 @@ impl FixRegistry {
             );
         }
         for (path, document) in &documents {
-            let bytes =
+            // A text file ends with a newline, as the one a person's editor
+            // and the generator write does, so a rewrite changes no line it
+            // did not mean to.
+            let mut bytes =
                 crate::text::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
+            bytes.push(b'\n');
             root.child_by_path(path)?.write_all_bytes(&bytes)?;
         }
         for category in FixCategory::ALL {

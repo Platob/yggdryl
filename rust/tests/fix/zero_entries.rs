@@ -47,10 +47,17 @@ fn registry_tag_writers_refuse_nonpositive_values_atomically() {
 
 #[test]
 fn externally_stated_zero_identity_is_refused_without_mutating_the_registry() {
+    // The alternates are one JSON array, and their elements are held to the
+    // same shape as the two scalar tags.
     for key in ["fix:tag", "fix:counter", "fix:tags"] {
-        for text in ["0", "000", "-1", "+1", "2147483648"] {
+        for digits in ["0", "000", "-1", "+1", "2147483648"] {
+            let text = if key == "fix:tags" {
+                format!("[{digits}]")
+            } else {
+                digits.to_owned()
+            };
             let mut field = tagged("incoming", 90_001);
-            field.insert_metadata(key, text).unwrap();
+            field.insert_metadata(key, text.as_str()).unwrap();
             let error = match key {
                 "fix:tag" => field.as_fix().tag().unwrap_err(),
                 "fix:counter" => field.as_fix().counter().unwrap_err(),
@@ -66,13 +73,22 @@ fn externally_stated_zero_identity_is_refused_without_mutating_the_registry() {
             assert_eq!(registry, before, "{key}={text}");
         }
     }
+    // Leading zeros are still the tag on the two bare decimals, and never in
+    // the array: a JSON number spells none, and the array is JSON.
     let mut field = tagged("positive", 1);
-    for key in ["fix:tag", "fix:counter", "fix:tags"] {
+    for key in ["fix:tag", "fix:counter"] {
         field.insert_metadata(key, "0001").unwrap();
     }
+    field.insert_metadata("fix:tags", "[1]").unwrap();
     assert_eq!(field.as_fix().tag().unwrap(), Some(1));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1));
     assert_eq!(field.as_fix().tags().unwrap(), [1]);
+    field.insert_metadata("fix:tags", "[0001]").unwrap();
+    let error = field.as_fix().tags().unwrap_err();
+    assert!(
+        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:tags"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -243,7 +259,7 @@ fn numeric_and_named_aliases_keep_canonical_positive_arrival_tags() {
     symbol.as_fix_mut().set_tags(&[9_000_001]).unwrap();
     symbol
         .as_fix_mut()
-        .set_aliases(["SyntheticSymbol"])
+        .set_names(["SyntheticSymbol"])
         .unwrap();
     registry.insert(symbol).unwrap();
     let codec = super::fixed_codec(Arc::new(registry));

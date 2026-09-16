@@ -75,7 +75,7 @@ def _vendor_registry() -> FixRegistry:
         field = Field(f"Venue{offset}", "utf8")
         field.fix.tag = tag
         field.fix.branches = [VENDOR_DIALECT]
-        field.fix.aliases = [f"VenueAlias{offset}"]
+        field.fix.names = [f"VenueAlias{offset}"]
         fields.append(field)
     registry.add_fields(fields)
     return registry
@@ -99,7 +99,7 @@ def _generated(root: pathlib.Path) -> pathlib.Path:
     for tag in range(1, WIDE_FIELDS + 1):
         field = Field(f"Field{tag}", "utf8")
         field.fix.tag = tag
-        field.fix.aliases = [f"Alias{tag}"]
+        field.fix.names = [f"Alias{tag}"]
         fields.append(field)
     FixRegistry.from_fields(fields).write_into(root)
     return root

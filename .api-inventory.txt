@@ -508,8 +508,8 @@ impl<'field> FixField<'field>
   pub fn has_branch(&self, dialect: &str) -> bool
   pub fn id(&self) -> Result<Option<FixId>>  (derived from `fix:tag` and the field's name, never stored)
   pub fn tag(&self) -> Result<Option<i32>>  (positive decimal digits only)
-  pub fn tags(&self) -> Result<Vec<i32>>  (positive decimal digits only)
-  pub fn aliases(&self) -> FixSpellings<'field>
+  pub fn tags(&self) -> Result<Vec<i32>>  (the fix:tags array, `[1088,152]`; refuses a stored text that is not the compact array the setter writes, a tag that is not positive, or one named twice)
+  pub fn names(&self) -> Words<'field>  (the fix:names array, `["Qty","Quantity"]`, walked lazily; a stored text that is not the array the setter writes yields nothing)
   pub fn identifiers(&self) -> FixSpellings<'field>  (canonical direct scalar members in component order; borrowed)
   pub fn description(&self) -> Option<&'field str>
   pub fn component(&self) -> Option<&'field str>
@@ -525,8 +525,8 @@ impl<'field> FixField<'field>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
   pub fn add_branch(&mut self, dialect: &str) -> Result<()>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any positive tag; zero is unresolved arrival provenance only)
-  pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>  (positive, distinct; empty removes)
-  pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>  (positive, distinct; stored as the compact JSON array; empty removes)
+  pub fn set_names<I, S>(&mut self, names: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and free of a quote, a backslash or a control character, distinct with ASCII case folded; stored as the compact JSON array; empty removes)
   pub fn set_identifiers<I, S>(&mut self, identifiers: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>  (resolve names, aliases or tags once against direct scalar members; atomic, empty removes)
   pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
   pub fn set_component(&mut self, name: &str) -> Result<()>
@@ -546,18 +546,15 @@ impl<'field> FixField<'field>
   pub fn set_transient(&mut self, transient: bool) -> Result<()>  (writes fix:transient; true is the default and is stored as stated)
   pub fn set_derivation(&mut self, term: &Term) -> Result<()>  (stores the term's canonical text; a term past the depth or node budget is Error::Parse and leaves the field unchanged; a registry validates it again at insert, update and load)
   pub fn remove_derivation(&mut self) -> Result<Option<Term>>  (answers the term it spelled; a stored text the reader refuses is InvalidMetadataValue, already removed)
-  pub struct FixSpellings<'field>  (aliases and dialect memberships alike)
+  pub struct FixSpellings<'field>  (the comma-separated properties: branches, identifiers and nulls)
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
 ### yggdryl::fix::document  [rust\src\fix\document.rs]
-pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:replacements/fix:directions as the JSON they are)
+pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:replacements/fix:directions and the fix:names/fix:tags arrays as the JSON they are)
 pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
-pub struct Words<'doc>  (re-exported at the crate root)
+pub struct Words<'doc>  (re-exported at the crate root; a code's aliases and a field's names alike)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
   impl Clone, Debug for Words<'_>
-pub struct Numbers<'doc>
-  impl Iterator for Numbers<'_>  (Item = i32; also FusedIterator)
-  impl Clone, Debug for Numbers<'_>
 
 ### yggdryl::fix::replacements  [rust\src\fix\replacements.rs]
 pub struct FixReplacement  (one rule: a Plan whose `select` names the columns it fills and their terms and whose `where` is its condition - `:msgtype` and `:group` cross as parameters - beside the specification's `doc`; re-exported at the crate root)

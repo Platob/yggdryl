@@ -602,11 +602,6 @@ pub(super) fn lifted(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
 fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
     let mut dropped: Vec<(i32, Scalar)> = Vec::new();
     let mut groups: Vec<(SmolStr, Scalar)> = Vec::new();
-    // The version the row was read at, which is what a code spelling and a
-    // dated clock are read against - the same version the builder read the
-    // line at, so a value lifted back out of the record comes back as what
-    // went in.
-    let version = msg.version();
     for entry in msg.entries() {
         let tag = entry.tag();
         // `0` is an unresolved key - a name or number with no registry
@@ -626,7 +621,7 @@ fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
         // count and the group is the thing beside it.
         if !entry.children().is_empty() {
             if let Some(group) = registry.get_group_by_tag(tag) {
-                if let Some(value) = occurrences_of(group, entry.children(), version) {
+                if let Some(value) = occurrences_of(group, entry.children()) {
                     let count = value.as_sequence().map_or(0, <[Scalar]>::len);
                     groups.push((SmolStr::new(group.name()), value));
                     dropped.push((tag, Scalar::from(i32::try_from(count).unwrap_or(i32::MAX))));
@@ -676,11 +671,7 @@ fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
 ///
 /// `None` where nothing was rebuilt, so a group that says nothing writes
 /// nothing rather than an empty list the message never stated.
-fn occurrences_of(
-    group: &Field,
-    entries: &[super::FixEntry],
-    version: Option<crate::Version>,
-) -> Option<Scalar> {
+fn occurrences_of(group: &Field, entries: &[super::FixEntry]) -> Option<Scalar> {
     let members = super::schema::item_fields(group)?;
     let tags: Vec<Option<i32>> = members
         .iter()
@@ -706,8 +697,7 @@ fn occurrences_of(
                 .map(|text| super::build::typed_spelling(member, text))
                 .filter(|held| !held.is_null())
         } else {
-            occurrences_of(member, entry.children(), version)
-                .and_then(|held| member.scalar(held).ok())
+            occurrences_of(member, entry.children()).and_then(|held| member.scalar(held).ok())
         };
         if let Some(value) = value {
             let last = rows.len() - 1;

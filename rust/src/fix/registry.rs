@@ -635,7 +635,7 @@ impl FixRegistry {
         if folds_equal(stored.name(), name)
             || stored
                 .as_fix()
-                .aliases()
+                .names()
                 .any(|alias| folds_equal(alias, name))
         {
             return Ok(());
@@ -664,11 +664,11 @@ impl FixRegistry {
         let mut lent = stored.clone();
         let aliases: Vec<String> = lent
             .as_fix()
-            .aliases()
+            .names()
             .map(str::to_owned)
             .chain(std::iter::once(name.to_owned()))
             .collect();
-        lent.as_fix_mut().set_aliases(&aliases)?;
+        lent.as_fix_mut().set_names(&aliases)?;
         self.replace_field(
             holder,
             lent,
@@ -768,10 +768,10 @@ impl FixRegistry {
         // Spellings dedupe under the same fold the index resolves them by,
         // so no alias is kept that the stored name or an earlier alias
         // already answers for.
-        let mut aliases: Vec<&str> = stored.as_fix().aliases().collect();
+        let mut aliases: Vec<&str> = stored.as_fix().names().collect();
         for alias in field
             .as_fix()
-            .aliases()
+            .names()
             .chain(std::iter::once(field.name()))
         {
             if !folds_equal(alias, stored.name())
@@ -781,7 +781,7 @@ impl FixRegistry {
             }
         }
         merged.as_fix_mut().set_tags(&tags)?;
-        merged.as_fix_mut().set_aliases(&aliases)?;
+        merged.as_fix_mut().set_names(&aliases)?;
         let alternate = merged.as_fix().tags()?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
         self.replace_field(position, merged, tag)?;
@@ -866,14 +866,14 @@ impl FixRegistry {
     /// // with a second name: that is a second spelling of tag 55's field.
     /// let mut incoming = DataType::utf8().nullable_field("symbol");
     /// incoming.as_fix_mut().set_tag(9001)?;
-    /// incoming.as_fix_mut().set_aliases(["Ticker"])?;
+    /// incoming.as_fix_mut().set_names(["Ticker"])?;
     /// assert!(!registry.add_field(incoming)?, "folded into the stored field");
     ///
     /// let stored = registry.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
     /// assert_eq!(stored.as_fix().id()?, Some(FixId::of(55, "Symbol")?));
     /// assert_eq!(stored.as_fix().tags()?, [9001]);
-    /// assert!(stored.as_fix().aliases().any(|alias| alias == "Ticker"));
+    /// assert!(stored.as_fix().names().any(|alias| alias == "Ticker"));
     /// assert_eq!(registry.field_by_name("ticker")?.name(), "Symbol");
     ///
     /// // A field nothing stored answers to arrives.
@@ -991,7 +991,7 @@ impl FixRegistry {
     /// // second name, and knows one more member of the component.
     /// let mut ticker = DataType::utf8().nullable_field("symbol");
     /// ticker.as_fix_mut().set_tag(9001)?;
-    /// ticker.as_fix_mut().set_aliases(["Ticker"])?;
+    /// ticker.as_fix_mut().set_names(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
     /// let venue = DataType::utf8().nullable_field("VenueSymbol");
     /// other.create_definition(
@@ -1003,7 +1003,7 @@ impl FixRegistry {
     /// assert_eq!(held.merge_with(&other)?, (0, 3));
     /// let stored = held.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
-    /// assert_eq!(stored.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    /// assert_eq!(stored.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
     /// let instrument = held.definition(FixCategory::Components, "Instrument")?;
     /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
     /// # Ok(())
@@ -1405,7 +1405,7 @@ impl FixRegistry {
         self.fields.get(position).is_some_and(|field| {
             field
                 .as_fix()
-                .aliases()
+                .names()
                 .any(|alias| folds_equal(alias, name))
         })
     }
@@ -1485,7 +1485,7 @@ impl FixRegistry {
                 ));
             }
         }
-        for alias in field.as_fix().aliases() {
+        for alias in field.as_fix().names() {
             let key = name_digest(alias, ALIAS_SEED);
             if let Some(holder) = self.aliases.get(&key).filter(|position| other(position)) {
                 return Err(conflict(Held::Alias(alias), field, &self.fields[*holder]));
@@ -1520,7 +1520,7 @@ impl FixRegistry {
         }
         self.names
             .insert(name_digest(field.name(), NAME_SEED), position);
-        for alias in view.aliases() {
+        for alias in view.names() {
             self.aliases
                 .insert(name_digest(alias, ALIAS_SEED), position);
         }
@@ -1553,7 +1553,7 @@ impl FixRegistry {
         if self.names.get(&name) == Some(&pointing_at) {
             self.names.remove(&name);
         }
-        for alias in view.aliases() {
+        for alias in view.names() {
             let key = name_digest(alias, ALIAS_SEED);
             if self.aliases.get(&key) == Some(&pointing_at) {
                 self.aliases.remove(&key);

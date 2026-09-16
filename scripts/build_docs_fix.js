@@ -183,14 +183,14 @@ function dictionary() {
 }
 
 /** The `fix:` properties a store writes as the JSON they are. */
-const DOCUMENT_KEYS = ['fix:codes', 'fix:replacements', 'fix:directions']
+const DOCUMENT_KEYS = ['fix:codes', 'fix:replacements', 'fix:directions', 'fix:names', 'fix:tags']
 
 /**
  * One native Field document in the shape a store writes.
  *
  * `registry.toJSON()` already answers it; a definition only the package
  * itself carries comes from `field.toJSON()`, which is the core spelling
- * with those four properties still escaped. One manifest, one shape.
+ * with those five properties still escaped. One manifest, one shape.
  */
 function storeDocument(field) {
   if (field === null || typeof field !== 'object') return field
@@ -265,8 +265,8 @@ function fieldRecords(registry) {
     const memberships = view.branches
     if (memberships.length > 0) record.m = memberships
     if (field.description !== null) record.x = field.description
-    const aliases = view.aliases
-    if (aliases.length > 0) record.a = aliases
+    const names = view.names
+    if (names.length > 0) record.a = names
     const alternates = view.tags
     if (alternates.length > 0) record.g = alternates
 

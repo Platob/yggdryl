@@ -531,7 +531,7 @@ test('altids filling agrees between message and Arrow streams for all three rows
 test('the canonical altids Map name wins over a scalar alias at native name and key paths', () => {
   const scalar = fields.utf8('venueid')
   scalar.fix.tag = 9001
-  scalar.fix.aliases = ['AltIds']
+  scalar.fix.names = ['AltIds']
   const registry = fix.FixRegistry.fromFields([scalar])
   const mapping = registry.groupByTag(65020)
   const schema = fields.struct('row', [scalar, mapping, registry.fieldByTag(52)], { nullable: false })
