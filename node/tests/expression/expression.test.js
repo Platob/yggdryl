@@ -5,6 +5,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
+const { pathToFileURL } = require('node:url')
 
 const arrow = require('apache-arrow')
 
@@ -463,7 +464,8 @@ test('a plan shapes a stream in section order', () => {
 test('a plan runs a store end to end', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-plan-'))
   try {
-    const url = `file://${path.join(root, 'trades.arrow')}`
+    // Never `file://` + a path: a Windows drive letter reads as a port.
+    const url = pathToFileURL(path.join(root, 'trades.arrow')).href
     const created = new Plan(`create '${url}' (id int64 not null, name utf8)`).execute()
     assert.equal(created.intoTable().numRows, 0)
     new Plan(`insert into '${url}'`).applyArrowBatch(

@@ -28,7 +28,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
+import collections
+import json
 import os
 import pathlib
 import re
@@ -36,11 +37,13 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 from typing import NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 RUST_TARGET = ROOT / "rust" / "tests" / "docs_examples.rs"
+WORKERS = {"python": ROOT / "scripts" / "docs_worker.py", "javascript": ROOT / "scripts" / "docs_worker.js"}
 PYTHON = ROOT / "python" / ".venv" / "Scripts" / "python.exe"
 if not PYTHON.exists():
     PYTHON = ROOT / "python" / ".venv" / "bin" / "python"
@@ -208,14 +211,124 @@ def run_rust() -> int:
     return result.returncode
 
 
+class Pool:
+    """Long-lived workers, each running one block at a time.
+
+    A scripting-language block spends milliseconds on what it demonstrates and
+    most of a second on the import behind it, so what a run costs is almost
+    entirely how many times that import is paid. One process per block paid it
+    908 times; a worker pays it once and then executes block after block in a
+    fresh namespace, which is what the `docs_worker` scripts beside this one
+    are. The process boundary is kept - a block that segfaults the extension
+    takes down one worker, and the parent reports it and starts another.
+    """
+
+    def __init__(self, language: str, workspace: pathlib.Path, size: int) -> None:
+        self.language = language
+        self.workspace = workspace
+        self.size = size
+        if language == "python":
+            self.command = [str(PYTHON), str(WORKERS["python"])]
+            self.warm = ["pyarrow", "yggdryl"]
+        else:
+            self.command = ["node", str(WORKERS["javascript"])]
+            self.warm = [NODE_BINDING, NODE_ARROW]
+
+    def _spawn(self, slot: int) -> tuple[subprocess.Popen[str], pathlib.Path]:
+        capture = self.workspace / f"capture-{self.language}-{slot}"
+        capture.write_bytes(b"")
+        # The Python worker points its own descriptors at the capture, so it
+        # is named on the command line; the Node one is given the file as its
+        # stderr, which is where a worker the runtime killed says why.
+        arguments = [] if self.language == "javascript" else [str(capture)]
+        with capture.open("wb") as sink:
+            return (
+                subprocess.Popen(  # noqa: S603 - a script of this repository
+                    [*self.command, *arguments, *self.warm],
+                    cwd=ROOT,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=sink,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    bufsize=1,
+                ),
+                capture,
+            )
+
+    def run(self, scripts: list[pathlib.Path]) -> list[str | None]:
+        """Return one answer per script: ``None`` for a pass, else the detail."""
+        answers: list[str | None] = [None] * len(scripts)
+        queue = collections.deque(range(len(scripts)))
+        lock = threading.Lock()
+
+        def drain(slot: int) -> None:
+            process, capture = self._spawn(slot)
+            try:
+                while True:
+                    with lock:
+                        if not queue:
+                            return
+                        index = queue.popleft()
+                    answered, detail = self._ask(process, scripts[index])
+                    if not answered:
+                        # The worker died on this block - the capture is what
+                        # it managed to say - so the next one starts fresh.
+                        died = capture.read_text(encoding="utf-8", errors="replace").strip()
+                        answers[index] = died or "the worker exited without answering"
+                        process.kill()
+                        process.wait()
+                        process, capture = self._spawn(slot)
+                    else:
+                        answers[index] = detail
+            finally:
+                self._close(process)
+
+        width = min(self.size, max(1, len(scripts)))
+        threads = [threading.Thread(target=drain, args=(slot,)) for slot in range(width)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        return answers
+
+    @staticmethod
+    def _ask(process: subprocess.Popen[str], script: pathlib.Path) -> tuple[bool, str | None]:
+        """Run one block.
+
+        Returns whether the worker answered at all, and - when it did - the
+        failure detail, or ``None`` for a block that passed. The two are
+        separate because a worker that died and a block that passed both have
+        nothing to report, and only one of them means run it again.
+        """
+        try:
+            process.stdin.write(json.dumps({"path": str(script)}) + "\n")
+            process.stdin.flush()
+            line = process.stdout.readline()
+        except (BrokenPipeError, OSError, ValueError):
+            return False, None
+        if not line.strip():
+            return False, None
+        answer = json.loads(line)
+        return True, None if answer["ok"] else answer.get("detail", "")
+
+    @staticmethod
+    def _close(process: subprocess.Popen[str]) -> None:
+        try:
+            if process.stdin is not None:
+                process.stdin.close()
+            process.wait(timeout=10)
+        except Exception:  # noqa: BLE001 - a worker that will not go is killed
+            process.kill()
+
+
 def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
     """Run every block of one scripting language, returning counts and failures.
 
-    One block is one process, and a process spends most of its life importing
-    the extension rather than running the example, so the blocks run on a pool
-    rather than one after another. Each block writes its own file under the
-    workspace and reads nothing another block writes, so the only shared state
-    is the temporary directory.
+    Each block writes its own file under the workspace and reads nothing
+    another block writes, so the only shared state is the temporary directory
+    and whatever an import left warm in the worker running it.
     """
     if language == "python" and not PYTHON.exists():
         return 0, 0, [f"{language}: no interpreter at {PYTHON}"]
@@ -225,7 +338,7 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
 
     with tempfile.TemporaryDirectory() as directory:
         workspace = pathlib.Path(directory)
-        pending: list[tuple[pathlib.Path, Block, list[str]]] = []
+        pending: list[tuple[pathlib.Path, Block, pathlib.Path]] = []
         for page in pages:
             for block in blocks(page):
                 if block.language != language:
@@ -238,7 +351,6 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
                 if language == "python":
                     script = workspace / f"{label}.py"
                     script.write_text(block.code, encoding="utf-8")
-                    command = [str(PYTHON), str(script)]
                 else:
                     script = workspace / f"{label}.js"
                     rewired = block.code
@@ -250,23 +362,19 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
                             f'"{name}"', f'"{target}"'
                         )
                     script.write_text(rewired, encoding="utf-8")
-                    command = ["node", str(script)]
-                pending.append((page, block, command))
+                pending.append((page, block, script))
 
-        def run(command: list[str]) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
-
-        # `map` yields in submission order, so failures stay in page order
-        # however the processes happen to finish.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-            results = pool.map(run, [command for _, _, command in pending])
-            for (page, block, _), result in zip(pending, results):
-                if result.returncode != 0:
-                    tail = (result.stderr or result.stdout).strip().splitlines()
-                    detail = "\n      ".join(tail[-6:])
-                    failures.append(
-                        f"{page.relative_to(ROOT)} {language} block {block.index}:\n      {detail}"
-                    )
+        # Answers come back by index, so failures stay in page order however
+        # the workers happen to finish.
+        answers = Pool(language, workspace, jobs).run([script for _, _, script in pending])
+        for (page, block, _), detail in zip(pending, answers):
+            if detail is None:
+                continue
+            tail = detail.strip().splitlines()
+            failures.append(
+                f"{page.relative_to(ROOT)} {language} block {block.index}:\n      "
+                + "\n      ".join(tail[-6:])
+            )
 
     return len(pending), skipped, failures
 
