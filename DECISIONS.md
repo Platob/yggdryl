@@ -3598,3 +3598,120 @@ rename rather than a change. The retired-name pins in
 `rust/tests/fix/digest.rs` and `python/tests/fix/test_fix.py` now read
 `uuid`, `puuid` and `prevuuid` as the retired spellings, and no longer
 `msghash`.
+
+## 41. The instrument is a scope, not a column; and a store states the whole row
+
+Two changes the user asked for together: retire `instuuid`, and let a store
+write the crate's own definitions.
+
+### The instrument scopes a chain and is never written down
+
+**Rule.** Tag 65016 carried `instuuid` (`InstUuid`), the instrument's sixteen
+identity bytes. It is retired, and the slot is not reused: `CRATE_TAG_MIN`
+is still 65000, `CRATE_TAG_MAX` still 65100, and 65016 joins 65000 and 65004
+as a hole the block keeps. `INSTUUID_TAG_NAME` is deleted rather than
+aliased, from the Rust core, both bindings, the CLI, the pages and both
+inventories. The crate's listing is thirty-four scalar fields, one Struct
+and one Map group - `fix_crate_fields` answers 36 - and a new registry's
+length is 36.
+
+`lifecycle::instrument_digest` stays exactly as it was: the xxh128 of the
+message's market, its classification, its ISIN - else its symbol - and its
+currency, each upper-cased and closed by a unit separator, an absent part
+contributing its separator alone. What changes is where that value goes. It
+scopes the identifier index and nothing else, and a generated chain code
+still spells it as the thirty-two lowercase hex digits of
+`<scope hex or ->/<identifier>`. No row carries it, `stamp_lifecycle` no
+longer takes it, and no message states one: the "effective instrument" - a
+stated `instuuid`, else the derived digest - is gone, so what the message
+says the instrument is decides the scope and nothing overrides it.
+
+**Why.** A column nobody joins on is a column that costs a write. The digest
+answers one question - which instrument's identifiers is this chain's? - and
+the chain already answers it in `code`, where a reader can see the scope and
+the identifier that opened it together. `instids`, `isincode`, `miccode`,
+`symbolticker` and the three identifier columns beside them are what a
+monitor actually joins instruments on, and they are all stated rather than
+hashed. The override went with it for the same reason: a caller who could
+state a scope could put two unrelated instruments in one chain, and no
+message's own row should be able to say that.
+
+**What moves.** `msghash` covers every column of the named content, and
+`instuuid` was one of them, so the equivalence snapshot moves on exactly the
+`*.field.msghash` key of all 309 captured messages - across the `bridge`,
+`enrich`, `enrich.ulbridge`, `frames`, `latest`, `lift`, `shapes`,
+`ulbridge` and `verbatim` corpora - and on nothing else: no arrival, wire,
+digest, line, type, count or refusal key moves, and `msgphash` does not
+either, because it hashes `code` alone. The committed dictionary's pinned
+`stable_hash` and the plugin dictionary's move with the retired declaration.
+The fixed row is 116 columns rather than 117, and its crate block is 35.
+
+**The freely stated identity is `prevmsghash` now.** `msghash` and
+`msgphash` are mandatory, so intake refuses a column of another layout
+before a stamp reaches it; `instuuid` was the one a caller stated, and so it
+was where a value of another width, byte layout or family was refused by
+name. `prevmsghash` inherits that: a stated one is kept, and one that is not
+sixteen bytes is `$.prevmsghash`, with the live chain untouched.
+
+**Written in:** `fix/crated.rs` (the declaration, the `build()` entry, its
+membership in `SETTLED_TO_ONE_MESSAGE`, the module's count),
+`fix/lifecycle.rs` (`transition`, `stamp_lifecycle`, the module doc, the
+digest's own doc), `fix/codec.rs` (`lifecycle`'s doc), `fix/mod.rs` and
+`lib.rs` (the re-export), both bindings' surfaces and their generated
+declaration files, `docs/fix/{capture,lifecycle,arrow,store}.md`,
+`docs/extensions/{python,javascript}.md`, `docs/assets/fix.json`, both
+inventories.
+**Fixtures:** `rust/tests/fix/digest.rs` - 65016 joins the retired tags and
+`instuuid` the retired names, the crate lists 36 fields of which 34 are
+scalar; `rust/tests/fix/lifecycle.rs` - the instrument is read off the chain
+code's scope prefix, and the stated-identity refusals move to
+`prevmsghash`; `rust/tests/fix/lifecycle_chains.rs`,
+`lifecycle_grid.rs`, `lifecycle_previous.rs` - a test scopes a chain by
+naming an instrument rather than by stating a scope, so `Some(numbered)`
+becomes a symbol; `rust/tests/fix/lifecycle_targets.rs` - `IDENTITIES` is
+the two mandatory columns and the optional-retype case goes with the column
+it tested; `rust/tests/fix/schema.rs`; `rust/benchmarks/fix/lifecycle.rs` -
+one symbol per scope. Python and JavaScript mirror each of these.
+
+### A store writes the crate's own definitions
+
+**Rule.** `FixRegistry::write_into` and the JSON snapshot behind
+`into_json` write every definition the registry holds, the crate's own
+fields, its `altids` group, its `instids` component and its `pluginconfig`
+message among them. A written store therefore gains `fields/650.json`,
+`groups/altids.json`, `components/instids.json` and
+`components/pluginconfig.json`.
+
+The readers do not move. `from_handle`'s `load_entry` and `from_snapshot`
+still read past a crate tag and the crate's own message, so the definition
+every registry holds from construction is the one that types a row and a
+stored copy can never replace it - stale, edited or otherwise. Round-trip
+equality holds in both directions, and `add_json_file`'s counts do not move,
+because what it reads past it never counts.
+
+**Why.** A dump that omits a third of the row is not a picture of the row.
+Reading one back was never the problem - the reader has always preferred its
+own copy - so leaving them out bought nothing and cost every outside tool
+that reads the store a schema it could not see. Decision 19's rule was
+"a stored document cannot override a builtin"; that rule is the reader's,
+and it survives untouched. Only the writer's half is reversed.
+
+**Tripwires.** `config/fix` is unchanged: it is written by
+`scripts/generate_fix_dictionary.py`, which emits specification fields
+alone, and a dictionary loaded from it answers the same registry as before.
+A test that counted a written store's files counts the crate's four extra
+documents now, and a test that read a snapshot's definitions by position
+reads them by name. Decision 13's pinned `child_by_path=4` on write is 8:
+five documents and the three category roots. The load side stays at 3.
+
+**Written in:** `fix/store.rs` (`write_into`, `snapshot`, and the two
+helpers' docs), `docs/fix/{store,registry,explorer}.md`, `python/src/fix.rs`,
+`python/yggdryl/{fix.py,_native.pyi}` and `node/src/fix.rs`.
+**Fixtures:** `rust/tests/fix/store.rs` - the crate's Map group is written
+and still wins over a stored override, and a snapshot's definitions are
+found by name; `rust/tests/iobase_calls.rs` - the write costs
+`child_by_path=8`; `python/tests/fix/test_fix.py` and
+`python/tests/fix/test_catalog.py`, `node/tests/fix/fix.test.js` and
+`node/tests/fix/catalog.test.js` - the round trip counts the catalog's
+documents plus the crate's own, and the shard the crate's block takes is
+there rather than absent.

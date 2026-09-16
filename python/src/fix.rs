@@ -214,12 +214,12 @@ impl PyFixRegistry {
 
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
-    /// `fix_crate_fields` lists twenty-six scalar fields - tags 65001 to
-    /// 65019 and 65021 to 65027 - and the `altids` Map group at 65020; the
-    /// retired 65000 is not reused. Beside them sit two seeded standard
-    /// clocks, `SendingTime` (52) and `TransactTime` (60), each a
-    /// nanosecond UTC `datetime64`, so a new registry holds twenty-eight
-    /// scalar fields. The seeds are ordinary definitions a loaded dictionary
+    /// `fix_crate_fields` lists thirty-four scalar fields - tags 65001 to 65015, 65017 to 65019 and 65021 to 65038 -
+    /// the `altids` Map group at 65020 and the `instids` Struct at 65036; the
+    /// retired 65000, 65004 and 65016 are not reused. Beside them sit two
+    /// seeded standard clocks, `SendingTime` (52) and `TransactTime` (60),
+    /// each a nanosecond UTC `datetime64`, so a new registry holds
+    /// thirty-six scalar fields. The seeds are ordinary definitions a loaded dictionary
     /// supplies its own metadata for; the crate's fields are held by every
     /// dictionary alike. `len` counts only scalar fields. The crate's
     /// `pluginconfig` component is also registered.
@@ -627,6 +627,11 @@ impl PyFixRegistry {
     /// Write every populated field shard and named definition under
     /// `location`, removing the files no field or definition populates any
     /// more.
+    ///
+    /// The crate's own definitions are written like every other, so a store
+    /// states the whole row rather than the half it declared itself; a
+    /// reader takes the definition it holds from construction over the
+    /// document it finds there.
     fn write_into(&self, location: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut holder = folder_holder_from_value(location)?;
         self.inner.write_into(&mut holder).map_err(value_error)
@@ -2385,17 +2390,18 @@ impl PyFixLifecycle {
     /// A nonempty stated `code` selects its live chain whatever instrument
     /// scope it names; otherwise the first identifier - from a stated
     /// `altids`, else the message type's declared identifiers - reaching a
-    /// live chain under the message's `instuuid` lends that chain's code, and
-    /// the first identifier names a new chain `<scope hex or ->/<identifier>`
-    /// when none does. No identifier and no code opens nothing, and an
+    /// live chain under the instrument the message names lends that chain's
+    /// code, and the first identifier names a new chain
+    /// `<scope hex or ->/<identifier>` when none does. The instrument is the
+    /// digest of what the message says it is and no column carries it. No identifier and no code opens nothing, and an
     /// identifier another live chain holds is never taken from it.
     ///
     /// `updatedat` becomes its grid instant - floored to a multiple of
     /// `interval_ns` - while `snapshotat` keeps the real one; a live chain's
     /// first accepted `createdat` replaces a later one; each absent previous
     /// stamp, `prevupdatedat` and `prevmsghash`, comes from the chain's last
-    /// message, and a stated one is kept; a derived `instuuid` fills where
-    /// none is stated. `msghash` and `msgphash` are then settled over the result.
+    /// message, and a stated one is kept. `msghash` and `msgphash` are then
+    /// settled over the result.
     /// A terminal state closes the chain after its stamps. The entries are
     /// untouched, so `into_bytes` re-emits the received line.
     ///
@@ -2555,9 +2561,10 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The twenty-seven definitions this crate lists in tag order: twenty-six
-/// scalar fields at tags 65001 to 65019 and 65021 to 65027, and the `altids`
-/// Map group at 65020. The retired 65000 is not reused.
+/// The thirty-six definitions this crate lists in tag order: thirty-four
+/// scalar fields at tags 65001 to 65015, 65017 to 65019 and 65021 to 65038, the `altids` Map group at 65020 and the
+/// `instids` Struct at 65036. The retired 65000, 65004 and 65016 are not
+/// reused.
 ///
 /// The version read, the cross-venue symbol, the settled `updatedat` clock
 /// and the partition it falls in, the two parent order identifiers no
@@ -2565,8 +2572,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// sessions the message itself names, its message context, the plugin that
 /// logged it and the one it came through before that, and the two session
 /// names the line spells - the three facts a row derives from what the
-/// message said: its ISIN, its market and the order's state - the
-/// instrument's `instuuid`, the message's `msghash` and the chain's `msgphash`,
+/// message said: its ISIN, its market and the order's state - the message's
+/// `msghash` and the chain's `msgphash`,
 /// the previous message's `prevupdatedat` and `prevmsghash`, `createdat`,
 /// `code` and `snapshotat`, the `sourceurl` a line was read from, and the
 /// `nofixentries` that counts its arrival record. The Map holds the message's own-level

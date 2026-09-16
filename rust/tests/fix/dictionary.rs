@@ -559,11 +559,15 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// always were: `fix:codes` is `[{...}]` where it was `{"codes":[{...}]}`,
 /// and `fix:lineage`, `fix:replacements` and `fix:directions` lose the same
 /// wrapper, so every shipped field carrying one holds different text for the
-/// same facts.
+/// same facts. The last thing to move it is `instuuid` retiring: the
+/// instrument is the scope a chain hangs its identifiers under, digested
+/// from what the message says it is, and never a column - so 65016 joins
+/// 65000 and 65004 as a slot this crate does not reuse, and the crate's
+/// listing is one field shorter.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 8_550_823_950_921_093_740);
+    assert_eq!(registry.stable_hash(), 5_337_224_848_900_906_647);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

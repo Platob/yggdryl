@@ -43,15 +43,15 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 117);
+    assert_eq!(tags.len(), 116);
     // The crate's own lead the row in three groups - clocks, identities,
     // then the rest - and the protocol's own follow them.
-    let (crated, message) = tags.split_at(36);
+    let (crated, message) = tags.split_at(35);
     assert_eq!(
         crated,
         [
             65_003, 65_021, 65_023, 65_025, 65_028, 65_029, // clocks
-            65_016, 65_017, 65_018, 65_022, 65_024, // identities, and the code
+            65_017, 65_018, 65_022, 65_024, // identities, and the code
             65_001, 65_002, 65_005, 65_006, 65_007, 65_008, 65_009, 65_010, 65_011, 65_012, 65_013,
             65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031, 65_032, 65_033, 65_034, 65_035,
             65_036, 65_037, 65_038,
@@ -169,7 +169,6 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::ISINCODE_TAG_NAME.0, "ISINCode"),
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::INSTUUID_TAG_NAME.0, "InstUuid"),
         (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
         (yggdryl::MSGPHASH_TAG_NAME.0, "MsgPHash"),
         (yggdryl::PREVUPDATEDAT_TAG_NAME.0, "PrevUpdatedAt"),
@@ -206,26 +205,20 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
-    use yggdryl::{
-        FixMsg, INSTUUID_TAG_NAME, IOMedia, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME,
-        PREVMSGHASH_TAG_NAME,
-    };
+    use yggdryl::{FixMsg, IOMedia, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
     let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
     let mut message = codec.sole_line(wire, false).unwrap();
     let digest = message.digest();
-    let identities = [
-        (
-            INSTUUID_TAG_NAME,
-            [
-                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
-                0xee, 0xff,
-            ],
-        ),
-        (PREVMSGHASH_TAG_NAME, [0xff; 16]),
-    ];
+    let identities = [(
+        PREVMSGHASH_TAG_NAME,
+        [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+            0xee, 0xff,
+        ],
+    )];
     message
         .set_many(
             identities
@@ -274,12 +267,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
             .data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
     );
-    for (_, name) in [
-        INSTUUID_TAG_NAME,
-        MSGHASH_TAG_NAME,
-        MSGPHASH_TAG_NAME,
-        PREVMSGHASH_TAG_NAME,
-    ] {
+    for (_, name) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME] {
         // Plain sixteen bytes, with no extension name over them: a lake
         // engine reads the storage and nothing has to know the extension.
         let field = arrow_schema.field_with_name(name).unwrap();
@@ -316,9 +304,9 @@ fn renamed_identity_columns_are_their_tags_roles_and_stay_plain_arrow_bytes() {
 
     let registry = Arc::new(FixRegistry::new());
     // The identity columns are typed by their tag, never by their name: a
-    // renamed sixteen-byte column carrying 65016/65017/65018 is that role,
+    // renamed sixteen-byte column carrying 65017/65018/65022 is that role,
     // and the row it belongs to still owes the whole replay bundle.
-    let columns = [(65_016, "instid"), (65_017, "id"), (65_018, "persistentid")];
+    let columns = [(65_017, "id"), (65_018, "persistentid"), (65_022, "previd")];
     let fields = columns.map(|(tag, name)| {
         let mut field = super::identity_dtype().required_field(name);
         field.as_fix_mut().set_tag(tag).unwrap();
@@ -595,7 +583,7 @@ fn a_datatype_is_named_the_same_by_both_documents() {
     }
 }
 
-/// The four identity columns cross a lake as `fixed[16]`, byte for byte.
+/// The three identity columns cross a lake as `fixed[16]`, byte for byte.
 ///
 /// This is the whole reason they are bytes: an Iceberg table maps
 /// `fixed_size_binary(16)` to the spec's `fixed[16]`, which every engine
@@ -608,12 +596,12 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{INSTUUID_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
+    use yggdryl::{MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
-    // Two messages of one order, so the chain stamps `instuuid` on both and
-    // `prevuuid` on the second.
+    // Two messages of one order, so the chain stamps `msgphash` on both and
+    // `prevmsghash` on the second.
     let lines: [&[u8]; 2] = [
         b"8=FIX.4.4|35=D|11=LAKE-1|55=AAPL|207=XNAS|15=USD|54=1|38=100|52=20260102-10:15:30.000|10=0|",
         b"8=FIX.4.4|35=8|11=LAKE-1|37=O-1|17=E-1|39=2|150=F|55=AAPL|207=XNAS|15=USD|14=100|52=20260102-10:15:31.000|10=0|",
@@ -627,14 +615,9 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let identities = [
-        INSTUUID_TAG_NAME,
-        MSGHASH_TAG_NAME,
-        MSGPHASH_TAG_NAME,
-        PREVMSGHASH_TAG_NAME,
-    ];
+    let identities = [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME];
     // Read off the projected row, because the fixed schema is what the table
-    // holds and a projection is content: `uuid` digests the row it lands in
+    // holds and a projection is content: `msghash` digests the row it lands in
     // (see `message.md#clocks-and-identity`), and the table's business is to
     // carry those bytes back unchanged.
     let expected: Vec<Vec<Option<[u8; 16]>>> = stamped
@@ -652,7 +635,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .collect();
     assert!(
         expected[1].iter().all(Option::is_some),
-        "the second message states all four"
+        "the second message states all three"
     );
 
     let mut schema = fixed.clone();

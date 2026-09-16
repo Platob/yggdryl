@@ -295,8 +295,8 @@ fn crated_messages() -> usize {
     usize::from(yggdryl::fix_plugin_message().is_ok())
 }
 
-/// The datatype every FIX identity column - `instuuid`, `uuid`, `puuid`,
-/// `prevuuid` - answers: sixteen plain bytes, no RFC identity.
+/// The datatype every FIX identity column - `msghash`, `msgphash`,
+/// `prevmsghash` - answers: sixteen plain bytes, no RFC identity.
 fn identity_dtype() -> yggdryl::DataType {
     yggdryl::DataType::fixed_size_binary(16).expect("sixteen is a width")
 }
@@ -328,9 +328,33 @@ fn identity_text(bytes: &[u8; 16]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The `puuid` a chain code hashes to: the XXH3-128 of its exact bytes.
+/// The `msgphash` a chain code hashes to: the XXH3-128 of its exact bytes.
 fn persistent_identity(code: &str) -> [u8; 16] {
     yggdryl::hashing::xxhash::xxh128(code.as_bytes()).to_be_bytes()
+}
+
+/// The scope a chain hangs its identifiers under: the instrument digest the
+/// lifecycle computes from what the message says the instrument is - its
+/// market, its classification, its ISIN else its symbol, and its currency -
+/// each upper-cased and closed by a unit separator, an absent part
+/// contributing its separator alone.
+///
+/// No column carries it: the value is derived from the message and never
+/// stated, so a test that needs it computes it the way the lifecycle does.
+fn instrument_identity(parts: [Option<&str>; 4]) -> [u8; 16] {
+    let mut bytes = Vec::new();
+    for part in parts {
+        if let Some(held) = part {
+            bytes.extend_from_slice(held.to_ascii_uppercase().as_bytes());
+        }
+        bytes.push(0x1f);
+    }
+    yggdryl::hashing::xxhash::xxh128(&bytes).to_be_bytes()
+}
+
+/// The scope of a message naming its instrument by symbol alone.
+fn symbol_identity(symbol: &str) -> [u8; 16] {
+    instrument_identity([None, None, Some(symbol), None])
 }
 
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";

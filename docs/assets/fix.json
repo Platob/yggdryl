@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6276,
+    "fields": 6275,
     "groups": 581,
     "enumFields": 2026,
     "codes": 27209,
@@ -105,7 +105,7 @@
     "alternates": 0,
     "messages": 182,
     "components": 930,
-    "columns": 121,
+    "columns": 120,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 23,
@@ -165,7 +165,7 @@
       ],
       [
         "fixed_size_binary(16)",
-        4
+        3
       ],
       [
         "state",
@@ -457252,21 +457252,6 @@
           "type": "binary"
         },
         "metadata": {
-          "description": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
-          "display": "InstUuid",
-          "fix:tag": "65016",
-          "fix:transient": "false"
-        },
-        "name": "instuuid",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "fixed": 16,
-          "layout": "fixed_size_binary",
-          "type": "binary"
-        },
-        "metadata": {
           "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
           "display": "MsgHash",
           "fix:tag": "65017",
@@ -471520,13 +471505,6 @@
         "n": "ExpiredAt",
         "y": "datetime64(ns,\"UTC\")",
         "x": "The instant the message stops being good: ExpireTime, else ValidUntilTime, else ExpireDate, else the instrument's MaturityDate."
-      },
-      {
-        "c": "instuuid",
-        "t": 65016,
-        "n": "InstUuid",
-        "y": "fixed_size_binary(16)",
-        "x": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
       },
       {
         "c": "msghash",

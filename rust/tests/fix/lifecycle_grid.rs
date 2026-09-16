@@ -4,11 +4,13 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use super::{identity_scalar, identity_text, numbered_identity, persistent_identity};
+use super::{
+    identity_scalar, identity_text, numbered_identity, persistent_identity, symbol_identity,
+};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, Error, FixCodec, FixLifecycle,
-    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
-    SNAPSHOTAT_TAG_NAME, STATE_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+    FixMsg, FixRegistry, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, SNAPSHOTAT_TAG_NAME,
+    STATE_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 fn clock(nanos: i64) -> Scalar {
@@ -19,7 +21,7 @@ fn event(
     registry: &Arc<FixRegistry>,
     nanos: i64,
     code: &str,
-    scope: Option<[u8; 16]>,
+    symbol: Option<&str>,
     identifiers: &[(&str, &str)],
 ) -> FixMsg {
     let mut fields = [
@@ -50,14 +52,13 @@ fn event(
         )
         .unwrap(),
     ];
-    if let Some(scope) = scope {
-        fields.push(
-            registry
-                .get_field_by_tag(INSTUUID_TAG_NAME.0)
-                .unwrap()
-                .clone(),
-        );
-        values.push(identity_scalar(scope));
+    // The scope is the instrument the message names, so a test states a
+    // symbol and the lifecycle digests it; no column carries the digest.
+    if let Some(symbol) = symbol {
+        let mut field = DataType::utf8().nullable_field("symbol");
+        field.as_fix_mut().set_tag(55).unwrap();
+        fields.push(field);
+        values.push(Scalar::from(symbol));
     }
     FixMsg::with_registry(
         Arc::clone(registry),
@@ -249,7 +250,7 @@ fn full_and_filtered_doors_share_finalized_history_and_consume_aligned_buckets()
 fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = lifecycle(&registry);
-    let scope = numbered_identity(1);
+    let scope = "ALPHA";
     let first = life
         .fill(event(&registry, 1, "A", Some(scope), &[("id", "OWNED")]))
         .unwrap();
@@ -269,25 +270,13 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
     assert_eq!(alias.createdat(), first.createdat());
 
     let direct = life
-        .fill(event(
-            &registry,
-            21,
-            "A",
-            Some(numbered_identity(2)),
-            &[("id", "NEW")],
-        ))
+        .fill(event(&registry, 21, "A", Some("BETA"), &[("id", "NEW")]))
         .unwrap();
     previous(&direct, Some(&alias));
     assert_eq!(direct.msgphash(), first.msgphash());
     assert_eq!(direct.createdat(), first.createdat());
     let attached = life
-        .fill(event(
-            &registry,
-            31,
-            "",
-            Some(numbered_identity(2)),
-            &[("id", "NEW")],
-        ))
+        .fill(event(&registry, 31, "", Some("BETA"), &[("id", "NEW")]))
         .unwrap();
     previous(&attached, Some(&direct));
     assert_eq!(attached.createdat(), first.createdat());
@@ -323,11 +312,11 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
     let mut life = lifecycle(&registry);
     let text = "Mixed/Case/界";
     let mut ids = Vec::new();
-    let scopes = [None, Some(numbered_identity(0)), Some(numbered_identity(1))];
+    let scopes = [None, Some("ALPHA"), Some("BETA")];
     for (time, scope) in (1..).zip(scopes) {
         let expected = scope.map_or_else(
             || format!("-/{text}"),
-            |id| format!("{}/{text}", identity_text(&id)),
+            |symbol| format!("{}/{text}", identity_text(&symbol_identity(symbol))),
         );
         let value = life
             .fill(event(&registry, time, "", scope, &[("id", text)]))

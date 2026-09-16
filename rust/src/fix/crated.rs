@@ -38,7 +38,8 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty-six scalar fields and one Map group, each registered by its shape.
+//! Thirty-four scalar fields, one Struct and one Map group, each registered
+//! by its shape.
 
 use std::sync::LazyLock;
 
@@ -104,10 +105,6 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 
 /// The tag and name carrying the state the order is in.
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
-
-/// The tag and name carrying the instrument's sixteen identity bytes.
-/// The tag and name carrying the instrument's identity bytes.
-pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
 /// The tag and name carrying the message's time/content identity bytes.
 pub const MSGHASH_TAG_NAME: (i32, &str) = (65_017, "msghash");
@@ -328,13 +325,12 @@ pub(super) fn version_field() -> Option<&'static Field> {
 /// Everything else the crate owns is about the instrument or the session -
 /// `isincode`, `miccode`, `symbolticker`, `altids`, the lane currencies,
 /// `expiredat`, the session names and ids - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 13] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 12] = [
     UPDATEDAT_TAG_NAME.0,
     CREATEDAT_TAG_NAME.0,
     SNAPSHOTAT_TAG_NAME.0,
     RECORDEDAT_TAG_NAME.0,
     PREVUPDATEDAT_TAG_NAME.0,
-    INSTUUID_TAG_NAME.0,
     MSGHASH_TAG_NAME.0,
     MSGPHASH_TAG_NAME.0,
     PREVMSGHASH_TAG_NAME.0,
@@ -568,14 +564,6 @@ fn build() -> Result<Vec<Field>> {
         // Sixteen plain bytes, big-endian, with no version or variant bit:
         // every lake engine reads `fixed[16]` and none reads `uuid` the same
         // way twice, so the FIX identities state the bytes themselves.
-        crated(
-            INSTUUID_TAG_NAME,
-            "InstUuid",
-            super::identity::IDENTITY_DATATYPE,
-            "The instrument's sixteen bytes: the big-endian xxh128 digest of \
-             its market, its classification, its ISIN - else its symbol - and \
-             its currency.",
-        )?,
         crated(
             MSGHASH_TAG_NAME,
             "MsgHash",
@@ -826,7 +814,7 @@ const CFICODE_MEMBER: &str = "cficode";
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 37);
+/// assert_eq!(held.len(), 36);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// // No partition column: how a layout is cut is the target's to decide -

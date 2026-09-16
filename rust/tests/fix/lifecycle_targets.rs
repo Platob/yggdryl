@@ -4,12 +4,15 @@ use std::sync::Arc;
 
 use super::{identity_bytes, identity_dtype, identity_scalar, numbered_identity};
 use yggdryl::{
-    ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar,
-    TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+    ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, MSGHASH_TAG_NAME,
+    MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Scalar, TimeUnit, Timezone,
+    UPDATEDAT_TAG_NAME,
 };
 
-const IDENTITIES: [(i32, &str); 3] = [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, INSTUUID_TAG_NAME];
+/// The identity columns a message must carry, which intake refuses before a
+/// stamp can reach them. The chain's own `prevmsghash` is the one a caller
+/// states freely, and the previous-target cases below own it.
+const IDENTITIES: [(i32, &str); 2] = [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME];
 
 fn field((tag, name): (i32, &str), dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
@@ -84,7 +87,7 @@ fn located(error: Error, name: &str, expected: &DataType) {
 }
 
 #[test]
-fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
+fn mandatory_intake_refuses_coercible_identity_targets() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
@@ -105,12 +108,8 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
                     Some((target.clone(), Scalar::Null)),
                     false,
                 );
-                let error = if identity == INSTUUID_TAG_NAME {
-                    life.fill(message.unwrap()).unwrap_err()
-                } else {
-                    message.unwrap_err()
-                };
-                if !registered && identity != INSTUUID_TAG_NAME {
+                let error = message.unwrap_err();
+                if !registered {
                     let Error::InvalidRecord { path, reason } = error else {
                         panic!("expected a located missing definition refusal, got {error}");
                     };
@@ -129,6 +128,10 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
                 for (tag, _) in IDENTITIES {
                     tagged_identity(&accepted, tag);
                 }
+                assert!(
+                    accepted.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap().is_null(),
+                    "the chain opens with no previous message"
+                );
                 assert_eq!(life.alive(), 1);
             }
         }
@@ -136,7 +139,7 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
 }
 
 #[test]
-fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
+fn refused_identity_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
@@ -156,12 +159,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
                     Some((target.clone(), Scalar::Null)),
                     terminal,
                 );
-                let error = if identity == INSTUUID_TAG_NAME {
-                    life.fill(message.unwrap()).unwrap_err()
-                } else {
-                    message.unwrap_err()
-                };
-                located(error, identity.1, &identity_dtype());
+                located(message.unwrap_err(), identity.1, &identity_dtype());
                 assert_eq!(life.alive(), 1, "a refusal cannot close the live chain");
                 let independent = life
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
@@ -182,7 +180,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
 }
 
 #[test]
-fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_retype() {
+fn mandatory_null_identity_columns_still_require_their_native_layout() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
@@ -193,24 +191,7 @@ fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_rety
                 Some((target, Scalar::Null)),
                 false,
             );
-            if identity != INSTUUID_TAG_NAME {
-                located(message.unwrap_err(), identity.1, &identity_dtype());
-                continue;
-            }
-            let mut life = FixLifecycle::new(Arc::clone(&registry))
-                .try_with_interval_ns(1)
-                .unwrap();
-            let message = life.fill(message.unwrap()).unwrap();
-            tagged_identity(&message, identity.0);
-            assert_eq!(
-                message.as_field().get_field(identity.1).unwrap().dtype(),
-                &identity_dtype(),
-            );
-            assert_eq!(life.alive(), 1);
-            life.clear();
-            assert_eq!(life.alive(), 0);
-            assert_eq!(life.fill(message.clone()).unwrap(), message);
-            assert_eq!(life.alive(), 1);
+            located(message.unwrap_err(), identity.1, &identity_dtype());
         }
     }
 }

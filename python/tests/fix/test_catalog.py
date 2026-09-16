@@ -86,12 +86,12 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.get_definition(category, name) is None
         assert registry.remove_definition(category, name) is None
     # Only what every registry is built with is left: the crate's own
-    # thirty-five scalar fields, which are never a definition a caller can
+    # thirty-four scalar fields, which are never a definition a caller can
     # remove, and the two seeded standard clocks, SendingTime (52) and
     # TransactTime (60). The crate also lists its `altids` Map group and its
     # `instids` Struct, neither of which a scalar iteration counts.
-    assert len(registry) == len(list(registry.definitions("fields"))) == 37
-    assert len(fix_crate_fields()) == 37
+    assert len(registry) == len(list(registry.definitions("fields"))) == 36
+    assert len(fix_crate_fields()) == 36
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
     assert registry.group_by_tag(65020).name == "altids"
 
@@ -405,17 +405,19 @@ def test_compiled_identifiers_do_not_assign_one_ambiguous_tag_to_another_member(
     assert singleton.identifier_values(FixMsg(renamed, ["L-1", "R-1"], registry)) == []
 
 
-def test_builtin_altids_group_reference_round_trips_without_a_persisted_definition(tmp_path: Any) -> None:
+def test_builtin_altids_group_reference_round_trips_over_the_persisted_definition(tmp_path: Any) -> None:
     registry = FixRegistry()
     mapping = registry.group_by_tag(65020)
     mapping.fix.group = "altids"
     registry.create_definition("components", _message("identified", "ID", [mapping]))
     snapshot = json.loads(registry.into_json())
-    assert snapshot["groups"] == []
+    # A dump states the crate's own group, and reading one back takes the held
+    # declaration over the document's.
+    assert [group["name"] for group in snapshot["groups"]] == ["altids"]
     assert FixRegistry.from_json(registry.into_json()) == registry
     location = tmp_path / "altids-reference"
     registry.write_into(location)
-    assert not (location / "groups" / "altids.json").exists()
+    assert (location / "groups" / "altids.json").exists()
     assert FixRegistry.from_handle(location) == registry
 
 

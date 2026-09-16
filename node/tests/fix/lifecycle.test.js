@@ -13,13 +13,13 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { BatchReader, DataType, Scalar, fields, fix } = require('yggdryl')
+const { BatchReader, DataType, Scalar, fields, fix, hashing } = require('yggdryl')
 
 const I64_MIN = -(2n ** 63n)
 const I64_MAX = 2n ** 63n - 1n
 
 const UPDATEDAT = 65003
-const INSTUUID = 65016
+const SYMBOL = 55
 const STATE = 65015
 const ALTIDS = 65020
 const PREVUPDATEDAT = 65021
@@ -43,17 +43,40 @@ function identityOf(value) {
 }
 
 /**
- * One event every clock of which is `nanos`, named by `code`, in an optional
- * instrument `scope`, stating `identifiers` as its altids Map - the Rust
- * suite's `event` helper, built through the public constructor.
+ * The scope a chain hangs its identifiers under, for a message naming its
+ * instrument by `Symbol(55)` alone: the xxh128 of each upper-cased part
+ * closed by a unit separator, an absent part contributing its separator
+ * alone. No column carries it, so a test computes it the way the lifecycle
+ * does - the Rust suite's `symbol_identity`.
  */
-function event(registry, nanos, code, scope = null, identifiers = []) {
+function scopeOf(symbol) {
+  const bytes = Buffer.concat([
+    Buffer.from([0x1f, 0x1f]),
+    Buffer.from(symbol.toUpperCase(), 'utf8'),
+    Buffer.from([0x1f, 0x1f]),
+  ])
+  return hashing.xxhash.xxh128(bytes).toString(16).padStart(32, '0')
+}
+
+/** The `Symbol(55)` column a message names its instrument with. */
+function symbolField() {
+  const field = fields.utf8('symbol', { nullable: true })
+  field.fix.tag = SYMBOL
+  return field
+}
+
+/**
+ * One event every clock of which is `nanos`, named by `code`, naming an
+ * optional instrument `symbol`, stating `identifiers` as its altids Map -
+ * the Rust suite's `event` helper, built through the public constructor.
+ */
+function event(registry, nanos, code, symbol = null, identifiers = []) {
   const members = [52, UPDATEDAT, CREATEDAT, SNAPSHOTAT, CODE].map((tag) => registry.fieldByTag(tag))
   members.push(registry.groupByTag(ALTIDS))
   const values = [clock(nanos), clock(nanos), clock(nanos), clock(nanos), code, new Map(identifiers)]
-  if (scope !== null) {
-    members.push(registry.fieldByTag(INSTUUID))
-    values.push(scope)
+  if (symbol !== null) {
+    members.push(symbolField())
+    values.push(symbol)
   }
   return new fix.FixMsg(fields.struct('event', members, { nullable: false }), values, registry)
 }
@@ -228,7 +251,7 @@ test('the full and filtered doors share finalized history and consume aligned bu
 test('explicit codes are global and never steal scoped identifier ownership', () => {
   const registry = new fix.FixRegistry()
   const life = lifecycle(registry)
-  const scope = identityOf(1)
+  const scope = 'ALPHA'
   const first = life.fill(event(registry, 1, 'A', scope, [['id', 'OWNED']]))
   const other = life.fill(event(registry, 2, 'B', scope, [['id', 'OWNED']]))
   assert.equal(first.msgphash().equals(other.msgphash()), false)
@@ -243,11 +266,11 @@ test('explicit codes are global and never steal scoped identifier ownership', ()
   assert.ok(alias.createdat().equals(first.createdat()))
 
   // An explicit code joins its chain across instrument scopes.
-  const direct = life.fill(event(registry, 21, 'A', identityOf(2), [['id', 'NEW']]))
+  const direct = life.fill(event(registry, 21, 'A', 'BETA', [['id', 'NEW']]))
   previous(direct, alias)
   assert.ok(direct.msgphash().equals(first.msgphash()))
   assert.ok(direct.createdat().equals(first.createdat()))
-  const attached = life.fill(event(registry, 31, '', identityOf(2), [['id', 'NEW']]))
+  const attached = life.fill(event(registry, 31, '', 'BETA', [['id', 'NEW']]))
   previous(attached, direct)
   assert.ok(attached.createdat().equals(first.createdat()))
   assert.equal(life.alive, 2)
@@ -269,11 +292,11 @@ test('derived codes keep the scope and identifier text, and empty is not whitesp
   const registry = new fix.FixRegistry()
   const life = lifecycle(registry)
   const text = 'Mixed/Case/界'
-  const scopes = [null, identityOf(0), identityOf(1)]
+  const scopes = [null, 'ALPHA', 'BETA']
   const ids = []
   for (const [at, scope] of scopes.entries()) {
     const time = at + 1
-    const expected = scope === null ? `-/${text}` : `${scope.toString('hex')}/${text}`
+    const expected = scope === null ? `-/${text}` : `${scopeOf(scope)}/${text}`
     const value = life.fill(event(registry, time, '', scope, [['id', text]]))
     assert.equal(value.byTag(CODE).asJs(), expected)
     assert.ok(value.msgphash().equals(persistentOf(expected)))

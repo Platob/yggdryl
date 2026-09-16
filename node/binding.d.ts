@@ -3244,18 +3244,19 @@ export interface Fix {
    */
   schemaTags(): number[]
   /**
-   * The twenty-seven crate definitions in tag order: twenty-six scalar
-   * fields at 65001-65019 and 65021-65027 and the sorted `altids` Map group
-   * at 65020 (65000 is retired) - the version, the ticker, `updatedat` and
-   * its partition, the sessions a message states, the bridge's message
+   * The thirty-six crate definitions in tag order: thirty-four scalar fields
+   * at 65001-65003, 65005-65015, 65017-65019, 65021-65035 and 65037-65038,
+   * the sorted `altids` Map group at 65020 and the `instids` Struct at 65036
+   * (65000, 65004 and 65016 are retired) - the version, the ticker,
+   * `updatedat`, the sessions a message states, the bridge's message
    * context, the plugins and plugin sessions a line moved between, the
-   * ISIN, MIC and order state a row derives, the `instuuid`, `msghash` and
-   * `msgphash` identities, the direct identifiers enrichment records in
+   * ISIN, MIC and order state a row derives, the `msghash` and `msgphash`
+   * identities, the direct identifiers enrichment records in
    * `altids`, `prevupdatedat`/`prevmsghash`, `createdat`, `code`, `snapshotat`,
    * the `sourceurl` a line was read from and the `nofixentries` counting its
    * arrival record. Every registry holds them in their category from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
-   * (60) clocks, so a new registry's `size` is 28.
+   * (60) clocks, so a new registry's `size` is 36.
    */
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */

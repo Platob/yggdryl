@@ -50,15 +50,16 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# The crate's own scalar fields: tags 65001 to 65019 and 65021 to 65038, less
-# the ``instids`` Struct at 65036; the retired 65000 and 65004 are never
+# The crate's own scalar fields: tags 65001 to 65038, less the ``instids``
+# Struct at 65036; the retired 65000, 65004 and 65016 are never
 # reused. ``fix_crate_fields`` also lists the ``altids`` Map group at 65020
 # and that Struct, neither of which registry length or scalar iteration counts
 # (``rust/tests/fix/digest.rs``).
-CRATED = 35
+CRATED = 34
 CRATE_TAGS = [
     *range(65001, 65004),
-    *range(65005, 65020),
+    *range(65005, 65016),
+    *range(65017, 65020),
     *range(65021, 65036),
     *range(65037, 65039),
 ]
@@ -81,7 +82,6 @@ CLOCK_PARTITION = dt.datetime(2024, 1, 2, 10, 0, tzinfo=dt.timezone.utc)
 # built without them appends them.
 BUNDLE = ["updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime"]
 UPDATEDAT_TAG = 65003
-INSTUUID_TAG = 65016
 UUID_TAG = 65017
 PUUID_TAG = 65018
 PREVUPDATEDAT_TAG = 65021
@@ -489,9 +489,10 @@ def test_membership_round_trips_as_a_sorted_list() -> None:
 
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
-    # The store's fields, and the crate's own beside them: a store never
-    # writes those, so a loaded dictionary holds the crate's definition. The
-    # store states its own SendingTime and TransactTime, so no seed adds one.
+    # The store's fields, and the crate's own beside them: a store writes
+    # those too, and a loaded dictionary still holds the crate's definition
+    # rather than the document's. The store states its own SendingTime and
+    # TransactTime, so no seed adds one.
     assert len(seed) == 6241 + CRATED
     assert bool(seed)
 
@@ -807,7 +808,7 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # The crate's own twenty-five close the walk, above every tag the
+    # The crate's own thirty-four close the walk, above every tag the
     # specification publishes; the store's own SendingTime and TransactTime
     # stand where their tags put them.
     assert tags[-CRATED:] == CRATE_TAGS
@@ -856,21 +857,25 @@ def test_registry_round_trips_through_the_three_categories(
     seed.write_into(root)
 
     assert (root / "fields" / "0.json").is_file()
-    # Every category comes back exactly as heavy as the committed catalog.
-    # The crate's own `pluginconfig` is not written, for the reason the
-    # crate's own fields are not: every registry holds it from construction,
-    # so a store that wrote it would claim to define what it inherited
-    # (decision 19).
-    for category in ("fields", "components", "groups"):
-        assert len(list((root / category).glob("*.json"))) == len(
+    # Every category comes back as heavy as the committed catalog plus the
+    # crate's own, which a store writes so that a dump is the whole row: one
+    # shard for the crate's tag block, the `altids` group, and `instids` and
+    # `pluginconfig` among the components.
+    written = {
+        "fields": 1,
+        "components": 2,
+        "groups": 1,
+    }
+    for category, crated in written.items():
+        assert len(list((root / category).glob("*.json"))) == crated + len(
             list((SEED / category).glob("*.json"))
         )
-    assert not (root / "components" / "pluginconfig.json").exists()
-    assert not (root / "groups" / "altids.json").exists()
-    # The crate's own fields are never written either: they are the crate's
-    # rather than the store's, so the shard their tag block would take is in
-    # no category at all, and the reload holds them all the same.
-    assert not (root / "fields" / f"{CRATE_TAGS[0] // 100}.json").exists()
+    assert (root / "components" / "pluginconfig.json").exists()
+    assert (root / "components" / "instids.json").exists()
+    assert (root / "groups" / "altids.json").exists()
+    assert (root / "fields" / f"{CRATE_TAGS[0] // 100}.json").exists()
+    # And the reload holds the crate's own definition rather than the one it
+    # just read, so the round trip is an equality either way.
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
@@ -2254,10 +2259,10 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # only the arrival record's counter waits for the end with `msgdirection`,
     # FIX's own, read from the line where the wire states none
     # (``rust/tests/fix/schema.rs``).
-    assert len(fix_schema_tags()) == 117
-    assert fix_schema_tags()[:36] == [
+    assert len(fix_schema_tags()) == 116
+    assert fix_schema_tags()[:35] == [
         65003, 65021, 65023, 65025, 65028, 65029,
-        65016, 65017, 65018, 65022, 65024,
+        65017, 65018, 65022, 65024,
         65001, 65002, *range(65005, 65016), 65019, 65020, 65026,
         *range(65030, 65039),
     ]
@@ -2274,6 +2279,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "uuid",
         "puuid",
         "prevuuid",
+        "instuuid",
         "timestamp",
         "instid",
         "id",
@@ -2284,7 +2290,6 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     for name, display in (
         ("updatedat", "UpdatedAt"),
         ("sendersessionid", "SenderSessionId"),
-        ("instuuid", "InstUuid"),
         ("msghash", "MsgHash"),
         ("msgphash", "MsgPHash"),
         ("prevupdatedat", "PrevUpdatedAt"),
@@ -2433,10 +2438,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     in ``rust/tests/fix/digest.rs``.
     """
     fields = {field.name: field for field in fix_crate_fields()}
-    assert len(fields) == CRATED + 2 == 37
+    assert len(fields) == CRATED + 2 == 36
     # In tag order, one block from 65001, above every tag FIX or a venue
-    # publishes, and none is a dictionary's contribution. The retired 65000
-    # and 65004 are not reused.
+    # publishes, and none is a dictionary's contribution. The retired 65000,
+    # 65004 and 65016 are not reused.
     assert list(fields) == [
         "version",
         "symbolticker",
@@ -2452,7 +2457,6 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "isincode",
         "miccode",
         "state",
-        "instuuid",
         "msghash",
         "msgphash",
         "targetsessionid",
@@ -2491,7 +2495,6 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ISINCode",
         "MICCode",
         "State",
-        "InstUuid",
         "MsgHash",
         "MsgPHash",
         "TargetSessionId",
@@ -2515,7 +2518,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "SessionMsgId",
         "SessionMsgSeqId",
     ]
-    tags = [*range(65001, 65004), *range(65005, 65039)]
+    tags = [*range(65001, 65004), *range(65005, 65016), *range(65017, 65039)]
     assert [field.fix.tag for field in fields.values()] == tags
     assert all(field.fix.branches == [] for field in fields.values())
     assert [field.fix.id for field in fields.values()] == [
@@ -2587,7 +2590,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The instrument, the message, the chain and the previous message are
     # sixteen plain bytes - what every lake engine reads as `fixed[16]` -
     # and no alias reaches them.
-    for name in ("instuuid", "msghash", "msgphash", "prevmsghash"):
+    for name in ("msghash", "msgphash", "prevmsghash"):
         assert fields[name].dtype == DataType("fixedbinary(16)"), name
         assert fields[name].fix.aliases == [], name
 
@@ -2596,7 +2599,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # `ULFROMSESSIONNAME` reaches them by name. The listing is the very
     # definition a registry answers.
     registry = FixRegistry()
-    assert len(registry) == SEEDED == 37
+    assert len(registry) == SEEDED == 36
     assert registry.dialects() == []
     for name, field in fields.items():
         # A definition is filed by the shape it has: the Map is a group, the
@@ -3015,15 +3018,16 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
     # One instrument, one chain, six messages: the replace's new identifier
     # joined the chain the old one opened.
-    instruments = [_identity_bytes(held, INSTUUID_TAG) for held in stamped]
-    assert instruments[0] is not None
-    assert all(held == instruments[0] for held in instruments)
     chains = [_identity_bytes(held, PUUID_TAG) for held in stamped]
     assert chains[0] is not None
     assert all(held == chains[0] for held in chains)
     # The chain is named by its instrument scope and its first identifier,
-    # and `msgphash` hashes that name.
-    assert stamped[0].by_tag(CODE_TAG).as_py() == f"{instruments[0].hex()}/A1"
+    # and `msgphash` hashes that name. The scope is the instrument digest as
+    # thirty-two hex digits, which is the only place it is written down.
+    code = stamped[0].by_tag(CODE_TAG).as_py()
+    scope = code.split("/")[0]
+    assert len(scope) == 32
+    assert code == f"{scope}/A1"
     assert all(held.by_tag(CODE_TAG) == stamped[0].by_tag(CODE_TAG) for held in stamped)
     # The first creation instant survives the replacement and the terminal
     # fill: the order's own transaction time.
@@ -3089,12 +3093,11 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     assert len(stamped) == 1
     (held,) = stamped
     # Every message has an id; no identifier, no chain name, and the empty
-    # name every unnamed message hashes; no instrument, no identity.
+    # name every unnamed message hashes - and so no scope to name one with.
     assert _identity_bytes(held, UUID_TAG) is not None
     assert held.by_tag(CODE_TAG).as_py() == ""
     undated = next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))
     assert held.msgphash() == undated.msgphash()
-    assert _identity_bytes(held, INSTUUID_TAG) is None
     _previous(held, None)
     # The event clock is the sending time where no transaction time is
     # stated, and the codec's default where the message states no clock.
@@ -3120,8 +3123,13 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     reader = _fixed(seed)
     life = FixLifecycle(seed)
 
-    def identity(line: bytes) -> bytes | None:
-        return _identity_bytes(life.fill(next(reader.parse_line(line))), INSTUUID_TAG)
+    def identity(line: bytes) -> str | None:
+        # The instrument is a scope, not a column: the chain code a message
+        # opens is ``<scope hex>/<identifier>``, so the text before the slash
+        # is the identity and ``-`` is a message that named no instrument.
+        code = life.fill(next(reader.parse_line(line))).by_tag(CODE_TAG).as_py()
+        scope = code.split("/")[0]
+        return None if scope == "-" else scope
 
     # An ISIN outranks a symbol, so the same security under two symbols is
     # one instrument, and case is not a difference.
@@ -3136,9 +3144,12 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     # Without an ISIN the symbol stands in, and a stated one wins over a
     # symbol that would say otherwise.
     by_symbol = identity(b"8=FIX.4.4|35=D|11=B4|55=AAPL|207=XNAS|15=USD|10=0|")
-    assert by_symbol is not None and by_symbol != by_isin
-    # A bridge row names the same facts under its own keys.
-    bridged = identity(b"#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|")
+    assert by_symbol is not None and len(by_symbol) == 32 and by_symbol != by_isin
+    # A bridge row names the same facts under its own keys, and the chain it
+    # opens is scoped by the instrument those keys named.
+    bridged = identity(
+        b"MSGTYPE=D|#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|"
+    )
     assert bridged == by_isin
 
 
@@ -3148,7 +3159,7 @@ def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) ->
     twice = list(reader.lifecycle(once))
     assert len(once) == len(twice) == len(LIFE)
     for first, second in zip(once, twice):
-        for tag in (INSTUUID_TAG, UUID_TAG, PUUID_TAG):
+        for tag in (UUID_TAG, PUUID_TAG):
             assert _identity_bytes(first, tag) == _identity_bytes(second, tag), tag
         assert first.createdat() == second.createdat()
         assert len(first.entries()) == len(second.entries())

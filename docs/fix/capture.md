@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 26 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 107 tags from `fix_schema_tags`, 111 columns with the shipped registry, each List group adding its column beside its counter |
+| Shape | the crate's own clocks and identities, standard header, the fields a consumer reads, three List groups, the trailer, the crate's other scalar fields with the `altids` Map group and the `instids` Struct, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 116 tags from `fix_schema_tags`, 120 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
 | Non-null | `beginstring`, `sendingtime`, `updatedat`, `msghash`, `msgphash`, `createdat`, `code`; `snapshotat` is held by the replay bundle but nullable, because only a snapshot stamps it, and `version` is populated at construction while its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -284,7 +284,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(&columns[header..header + 3], ["beginstring", "bodylength", "msgtype"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 117);
+    assert_eq!(fix_schema_tags().len(), 116);
     assert_eq!(&fix_schema_tags()[header..header + 3], [8, 9, 35]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -312,7 +312,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     header = columns.index("beginstring")
     assert columns[header:header + 3] == ["beginstring", "bodylength", "msgtype"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 117
+    assert len(fix_schema_tags()) == 116
     assert fix_schema_tags()[header:header + 3] == [8, 9, 35]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -336,7 +336,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     const header = schema.indexOf('beginstring')
     assert.equal(schema.fieldAt(header + 2).name, 'msgtype')
     assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'fixentries')
-    assert.equal(fix.schemaTags().length, 117)
+    assert.equal(fix.schemaTags().length, 116)
     assert.deepEqual(fix.schemaTags().slice(header, header + 3), [8, 9, 35])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -366,7 +366,7 @@ A key no dictionary explains is in the same record, with tag 0 beside its exact 
 
 ## The crate's own columns
 
-Thirty-five scalar fields, one Map group and one Struct carry capture facts that no dictionary publishes. Every registry holds them from construction, and the [store](store.md) omits their definitions: `fix_crate_fields` lists all 37 in tag order, while scalar registry iteration counts the 35 scalars. Their tags run from 65001 - `CRATE_TAG_MIN` (65000) starts the reserved block, whose retired slots 65000 and 65004 are not reused - `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `altids` is a group reached by `group_by_tag(65020)` or group definition name, and `instids` a component reached by definition name, not by the registry's scalar-field doors.
+Thirty-four scalar fields, one Map group and one Struct carry capture facts that no dictionary publishes. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 36 in tag order, while scalar registry iteration counts the 34 scalars. Their tags run from 65001 - `CRATE_TAG_MIN` (65000) starts the reserved block, whose retired slots 65000, 65004 and 65016 are not reused - `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `altids` is a group reached by `group_by_tag(65020)` or group definition name, and `instids` a component reached by definition name, not by the registry's scalar-field doors.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
@@ -384,7 +384,6 @@ Thirty-five scalar fields, one Map group and one Struct carry capture facts that
 | `isincode` | `ISINCode` | 65013 | the instrument's ISIN, as an [`isin`](../types/codes.md): `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
 | `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
 | `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
-| `instuuid` | `InstUuid` | 65016 | the instrument's sixteen bytes, `fixedbinary(16)`: the big-endian xxh128 digest of its market, classification, ISIN - else symbol - and currency, the same across venues that spell it alike; stamped by the lifecycle |
 | `msghash` | `MsgHash` | 65017 | the message's identity, `fixedbinary(16)`: signed `updatedat` nanoseconds with the sign bit flipped in bytes 0..8, then all 64 bits of the XXH64 of its named content in bytes 8..16; non-null |
 | `msgphash` | `MsgPHash` | 65018 | the chain's identity, `fixedbinary(16)`: the big-endian XXH3-128 of `code` alone; non-null |
 | `targetsessionid` | `TargetSessionId` | 65019 | the session the message went to, as the message itself states it |
@@ -408,11 +407,13 @@ Thirty-five scalar fields, one Map group and one Struct carry capture facts that
 | `sessionmsgid` | `SessionMsgId` | 65037 | `bridgesessionid` and `msgctxid` joined by a colon, which is what the legs of one routed message share; null where either part is missing |
 | `sessionmsgseqid` | `SessionMsgSeqId` | 65038 | the same with `MsgSeqNum(34)` appended, which names one occurrence and matches exactly |
 
-The four identity columns - `instuuid`, `msghash`, `msgphash`, `prevmsghash` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice. Their names, tags, roles, nullability and every identity semantic are what they always were; only the type and the byte layout are stated outright.
+The three identity columns - `msghash`, `msgphash`, `prevmsghash` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice.
+
+The instrument is not among them, and is not a column at all. The [lifecycle](lifecycle.md) digests what the message says the instrument is - its market, its classification, its ISIN else its symbol, and its currency - to scope the identifiers a chain hangs under, and spells those sixteen bytes as the thirty-two hex digits opening a generated `code`. Nothing stamps the digest into the row, and no message states one to scope itself by: 65016 carried it and is retired unreused.
 
 `msghash` is the one stored message identity and `msgphash` the chain's; what each hashes, and why a projection that adds or renames columns may move `msghash` while unchanged named content keeps it, is the [message's identity](message.md#clocks-and-identity). `FixMsg::digest` is a separate contract: the XXH3-128 of the arrival record with the standard header, the standard trailer and the crate's own tags left out, `MsgType` excepted, so two identical orders sent a second apart, or relayed through two sessions, digest equal.
 
-Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. The four identifier columns, `miccode` and `state` are derived when a message becomes a row; `code`, `instuuid`, `prevupdatedat`, `prevmsghash` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md), and `snapshotat` only where it takes a snapshot. `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
+Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. The four identifier columns, `miccode` and `state` are derived when a message becomes a row; `code`, `prevupdatedat`, `prevmsghash` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md), and `snapshotat` only where it takes a snapshot. `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
 There is no partition column. How a layout is cut is the target's to decide: an Iceberg table takes an `hour` transform over `updatedat` and reads the instant the row already carries, so a materialized copy of it was a second owner of one fact. A reader that wants the hour asks the target for it.
 
@@ -436,16 +437,16 @@ The root's children are the standard header in its declared order, the body as i
     use yggdryl::{CODE_TAG_NAME, FixCodec, FixRegistry, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 37);
+    assert_eq!(fields.len(), 36);
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
     let ids = fields.iter().find(|field| field.name() == "instids").expect("the joined identifiers");
     let members: Vec<&str> = ids.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(members, ["cficode", "isincode", "bloombergcode", "cusipcode", "sedolcode"]);
 
-    // The four identity columns are sixteen plain bytes, not a UUID.
+    // The three identity columns are sixteen plain bytes, not a UUID.
     let identity = yggdryl::DataType::fixed_size_binary(16)?;
-    for name in ["instuuid", "msghash", "msgphash", "prevmsghash"] {
+    for name in ["msghash", "msgphash", "prevmsghash"] {
         let column = fields.iter().find(|field| field.name() == name).expect("a crate column");
         assert_eq!(column.dtype(), &identity);
         assert_eq!(column.dtype().to_string(), "fixed_size_binary(16)");
@@ -494,7 +495,7 @@ The root's children are the standard header in its declared order, the body as i
 
     CODE, SNAPSHOTAT = 65024, 65025
     fields = list(fix_crate_fields())
-    assert len(fields) == 37
+    assert len(fields) == 36
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
     ids = next(field for field in fields if field.name == "instids")
@@ -506,10 +507,10 @@ The root's children are the standard header in its declared order, the body as i
         "sedolcode",
     ]
 
-    # The four identity columns are sixteen plain bytes, not a UUID.
+    # The three identity columns are sixteen plain bytes, not a UUID.
     identity = DataType("fixedbinary(16)")
     by_name = {field.name: field for field in fields}
-    for name in ("instuuid", "msghash", "msgphash", "prevmsghash"):
+    for name in ("msghash", "msgphash", "prevmsghash"):
         assert by_name[name].dtype == identity
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
@@ -545,7 +546,7 @@ The root's children are the standard header in its declared order, the body as i
 
     const [CODE, SNAPSHOTAT] = [65024, 65025]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 37)
+    assert.equal(fields.length, 36)
     // No partition column: how a layout is cut is the target's to decide.
     assert.ok(fields.every((field) => !field.isPartition))
     const ids = fields.find((field) => field.name === 'instids')
@@ -554,9 +555,9 @@ The root's children are the standard header in its declared order, the body as i
       ['cficode', 'isincode', 'bloombergcode', 'cusipcode', 'sedolcode'],
     )
 
-    // The four identity columns are sixteen plain bytes, not a UUID.
+    // The three identity columns are sixteen plain bytes, not a UUID.
     const identity = DataType.fixedSizeBinary(16)
-    for (const name of ['instuuid', 'msghash', 'msgphash', 'prevmsghash']) {
+    for (const name of ['msghash', 'msgphash', 'prevmsghash']) {
       const column = fields.find((field) => field.name === name)
       assert.ok(column.dtype.equals(identity))
     }

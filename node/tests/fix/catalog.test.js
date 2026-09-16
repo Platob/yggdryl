@@ -91,16 +91,16 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     assert.equal(registry.getDefinition(category, name), null)
     assert.equal(registry.removeDefinition(category, name), null)
   }
-  // Only what seeds every registry is left: the crate's own twenty-six
+  // Only what seeds every registry is left: the crate's own thirty-four
   // scalar fields and the standard SendingTime (52) and TransactTime (60)
   // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
-  // fields category. The crate's thirty-seven definitions add the altids
+  // fields category. The crate's thirty-six definitions add the altids
   // group and the instids struct, which are filed by the shapes they have.
-  assert.equal(registry.size, 37)
-  assert.equal([...registry.definitions('fields')].length, 37)
+  assert.equal(registry.size, 36)
+  assert.equal([...registry.definitions('fields')].length, 36)
   assert.equal(registry.fieldByTag(52).name, 'sendingtime')
   assert.equal(registry.fieldByTag(60).name, 'transacttime')
-  assert.equal(fix.crateFields().length, 37)
+  assert.equal(fix.crateFields().length, 36)
   assert.equal(registry.groupByTag(65020).name, 'altids')
 })
 
@@ -369,17 +369,22 @@ test('compiled identifiers never assign one ambiguous tag to another direct memb
   assert.deepEqual(singleton.identifierValues(new fix.FixMsg(renamed, ['L-1', 'R-1'], registry)), [])
 })
 
-test('a builtin altids group reference reloads without a persisted builtin definition', (t) => {
+test('a builtin altids group reference reloads over the persisted builtin definition', (t) => {
   const registry = new fix.FixRegistry()
   const mapping = registry.groupByTag(65020)
   mapping.fix.group = 'altids'
   registry.createDefinition('components', message('identified', 'ID', [mapping]))
-  assert.deepEqual(registry.toJSON().groups, [])
+  // A dump states the crate's own group, and reading one back takes the held
+  // declaration over the document's.
+  assert.deepEqual(
+    registry.toJSON().groups.map((group) => group.name),
+    ['altids'],
+  )
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-altids-'))
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
   registry.writeInto(folder)
-  assert.equal(fs.existsSync(path.join(folder, 'groups', 'altids.json')), false)
+  assert.equal(fs.existsSync(path.join(folder, 'groups', 'altids.json')), true)
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 })
 

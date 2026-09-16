@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use super::{
     SoleMessage, identity_bytes, identity_scalar, identity_text, numbered_identity,
-    persistent_identity,
+    persistent_identity, symbol_identity,
 };
 use yggdryl::types::nested::Mapping;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, DataType, Error, Field, FixCategory, FixLifecycle, FixMsg,
-    FixRegistry, INSTUUID_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, Scalar, TimeUnit,
-    Timezone, UPDATEDAT_TAG_NAME,
+    FixRegistry, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, Scalar, TimeUnit, Timezone,
+    UPDATEDAT_TAG_NAME,
 };
 
 fn field(name: &str, tag: i32, dtype: DataType) -> Field {
@@ -77,9 +77,12 @@ fn mapping(entries: &[(&str, &str)]) -> Scalar {
     .unwrap()
 }
 
+/// One event, scoped by the instrument it names rather than by a scope of
+/// its own: `Symbol(55)` is the whole instrument here, so the digest the
+/// lifecycle hangs the identifiers under is [`symbol_identity`] of it.
 fn event(
     registry: &Arc<FixRegistry>,
-    scope: Option<[u8; 16]>,
+    symbol: Option<&str>,
     code: Option<&str>,
     time: i64,
     entries: &[(&str, &str)],
@@ -88,7 +91,7 @@ fn event(
         (ALTIDS_TAG_NAME.0, mapping(entries)),
         (UPDATEDAT_TAG_NAME.0, clock(time)),
     ];
-    cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, identity_scalar(value))));
+    cells.extend(symbol.map(|value| (55, Scalar::from(value))));
     cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
     row(registry, cells)
 }
@@ -150,11 +153,10 @@ fn explicit_code_opens_without_keys_and_direct_join_outranks_identifier_lookup()
 fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomically() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let scope = numbered_identity(123);
     let original = life
-        .fill(event(&registry, Some(scope), None, 0, &[("id", "A")]))
+        .fill(event(&registry, Some("ALPHA"), None, 0, &[("id", "A")]))
         .unwrap();
-    let mut message = event(&registry, Some(scope), None, 1, &[("id", "A")]);
+    let mut message = event(&registry, Some("ALPHA"), None, 1, &[("id", "A")]);
     for tag in [MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
         let before = message.clone();
         located(
@@ -171,63 +173,64 @@ fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomic
     }
     let resolved = life.fill(message).unwrap();
     assert_eq!(chain(&resolved), chain(&original));
-    assert_eq!(tagged_identity(&resolved, INSTUUID_TAG_NAME.0), Some(scope));
     assert_eq!(life.alive(), 1);
 }
 
 #[test]
-fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
+fn absent_and_distinct_instrument_scopes_have_distinct_generated_chains() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let mut chains = Vec::new();
-    for scope in [
-        None,
-        Some(numbered_identity(0)),
-        Some(numbered_identity(1)),
-        Some(numbered_identity(2)),
-    ] {
+    for symbol in [None, Some("ALPHA"), Some("BETA"), Some("GAMMA")] {
         let message = life
-            .fill(event(&registry, scope, None, 456, &[("id", "SAME")]))
+            .fill(event(&registry, symbol, None, 456, &[("id", "SAME")]))
             .unwrap();
-        let code = scope.map_or_else(
+        let code = symbol.map_or_else(
             || "-/SAME".to_owned(),
-            |scope| format!("{}/SAME", identity_text(&scope)),
+            |symbol| format!("{}/SAME", identity_text(&symbol_identity(symbol))),
         );
         let expected = persistent_identity(&code);
         assert_eq!(chain(&message), expected);
-        assert_eq!(tagged_identity(&message, INSTUUID_TAG_NAME.0), scope);
         assert!(!chains.contains(&expected));
         chains.push(expected);
     }
     assert_eq!(life.alive(), 4);
-    let mut null_scope = event(&registry, None, None, 456, &[("id", "SAME")]);
-    null_scope.set(INSTUUID_TAG_NAME.0, Scalar::Null).unwrap();
-    assert_eq!(chain(&life.fill(null_scope).unwrap()), chains[0]);
+    // A message naming its instrument in no way at all has absence for a
+    // scope, which is the first chain above and not a fifth one.
+    let unnamed = life
+        .fill(event(&registry, None, None, 457, &[("id", "SAME")]))
+        .unwrap();
+    assert_eq!(chain(&unnamed), chains[0]);
     assert_eq!(life.alive(), 4);
 }
 
 #[test]
-fn stated_scope_controls_identity_independently_of_raw_instrument_fields() {
+fn the_raw_instrument_fields_alone_decide_the_scope_an_identifier_hangs_under() {
     let registry = super::committed_registry();
-    let scope = numbered_identity(17);
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let mut first = event(&registry, Some(scope), None, 0, &[("id", "A")]);
-    first.set(55, Scalar::from("ALPHA")).unwrap();
-    let first = life.fill(first).unwrap();
-    let mut second = event(&registry, Some(scope), None, 1, &[("id", "A")]);
-    second.set(55, Scalar::from("BETA")).unwrap();
-    let second = life.fill(second).unwrap();
-    assert_eq!(chain(&first), chain(&second));
-    let mut elsewhere = event(
-        &registry,
-        Some(numbered_identity(18)),
-        None,
-        0,
-        &[("id", "A")],
+    // One identifier, two instruments: no message states a scope, so the
+    // fields it does state are the whole answer and the two never meet.
+    let first = life
+        .fill(event(&registry, Some("ALPHA"), None, 0, &[("id", "A")]))
+        .unwrap();
+    let second = life
+        .fill(event(&registry, Some("BETA"), None, 1, &[("id", "A")]))
+        .unwrap();
+    assert_ne!(chain(&first), chain(&second));
+    assert_eq!(
+        chain(&first),
+        persistent_identity(&format!("{}/A", identity_text(&symbol_identity("ALPHA")))),
     );
-    elsewhere.set(55, Scalar::from("ALPHA")).unwrap();
-    assert_ne!(chain(&first), chain(&life.fill(elsewhere).unwrap()));
-    assert_eq!(life.alive(), 2);
+    // And the same instrument reaches the chain the first one opened, even
+    // where the currency beside it moves the digest for a third.
+    let again = life
+        .fill(event(&registry, Some("ALPHA"), None, 2, &[("id", "A")]))
+        .unwrap();
+    assert_eq!(chain(&again), chain(&first));
+    let mut priced = event(&registry, Some("ALPHA"), None, 3, &[("id", "A")]);
+    priced.set(15, Scalar::from("EUR")).unwrap();
+    assert_ne!(chain(&life.fill(priced).unwrap()), chain(&first));
+    assert_eq!(life.alive(), 3);
 }
 
 #[test]
@@ -291,11 +294,7 @@ fn member_name_priority_wins_without_merging_or_stealing_aliases() {
 fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let scopes = [
-        (Some(numbered_identity(1)), "A"),
-        (Some(numbered_identity(2)), "B"),
-        (None, "C"),
-    ];
+    let scopes = [(Some("ALPHA"), "A"), (Some("BETA"), "B"), (None, "C")];
     for (scope, key) in scopes {
         life.fill(event(&registry, scope, Some("shared"), 0, &[("id", key)]))
             .unwrap();
@@ -586,11 +585,6 @@ fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup(
             "$.altids[1].key",
         ),
         (
-            INSTUUID_TAG_NAME.0,
-            Scalar::from("00000000-0000-0000-0000-000000000000"),
-            "$.instuuid",
-        ),
-        (
             MSGPHASH_TAG_NAME.0,
             Scalar::from(vec![0_u8; 16]),
             "$.msgphash",
@@ -631,7 +625,7 @@ fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup(
 }
 
 #[test]
-fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
+fn malformed_identifier_reasons_bound_ascii_and_multibyte_payloads() {
     let registry = Arc::new(FixRegistry::new());
     for unit in ["x", "界🦀"] {
         for repeats in [128, 4_096] {
@@ -644,13 +638,6 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
                     Scalar::from(long.clone()),
                     "$.altids",
                     "a sorted identifier Map",
-                    true,
-                ),
-                (
-                    INSTUUID_TAG_NAME.0,
-                    Scalar::from(long.clone()),
-                    "$.instuuid",
-                    "fixed_size_binary(16) or null",
                     true,
                 ),
                 (
@@ -797,18 +784,18 @@ fn a_fresh_replay_rebuilds_direct_and_identifier_chains_without_touching_arrival
     let registry = super::committed_registry();
     let codec = super::fixed_codec(Arc::clone(&registry));
     let specs = [
-        (Some(numbered_identity(1)), Some("joined"), "A", false),
-        (Some(numbered_identity(2)), Some("joined"), "B", false),
+        (Some("ALPHA"), Some("joined"), "A", false),
+        (Some("BETA"), Some("joined"), "B", false),
         (None, Some("other"), "C", false),
-        (Some(numbered_identity(2)), None, "B", true),
-        (Some(numbered_identity(1)), None, "A", false),
+        (Some("BETA"), None, "B", true),
+        (Some("ALPHA"), None, "A", false),
     ];
     let mut input = Vec::new();
-    for (at, (scope, code, key, terminal)) in specs.into_iter().enumerate() {
+    for (at, (symbol, code, key, terminal)) in specs.into_iter().enumerate() {
         let line = format!("8=FIX.4.4|35=D|11={key}|60=20260102-10:15:3{at}|10=0|");
         let mut message = codec.sole_line(line.as_bytes(), false).unwrap();
         let mut writes = vec![(ALTIDS_TAG_NAME.0, mapping(&[("id", key)]))];
-        writes.extend(scope.map(|scope| (INSTUUID_TAG_NAME.0, identity_scalar(scope))));
+        writes.extend(symbol.map(|symbol| (55, Scalar::from(symbol))));
         writes.extend(code.map(|code| (CODE_TAG_NAME.0, Scalar::from(code))));
         if terminal {
             writes.push((39, Scalar::from("2")));

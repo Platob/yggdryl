@@ -8,9 +8,9 @@ use super::{
 use std::sync::Arc;
 
 use yggdryl::{
-    CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
-    SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+    CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, MSGHASH_TAG_NAME,
+    MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
+    TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 fn registry() -> Arc<FixRegistry> {
@@ -52,13 +52,21 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         assert_eq!(life.alive(), usize::from(stamped.len() < LIFE.len()));
     }
 
-    // One instrument, one chain, six messages.
-    let instruments: Vec<_> = stamped
+    // One instrument, one chain, six messages. The instrument is the scope
+    // the chain code opens with, which is where it is observable now.
+    let codes: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, INSTUUID_TAG_NAME.0).expect("an instrument"))
+        .map(|held| {
+            held.by_tag(CODE_TAG_NAME.0)
+                .unwrap()
+                .as_str()
+                .expect("a chain code")
+                .to_owned()
+        })
         .collect();
-    assert!(instruments.iter().all(|held| *held == instruments[0]));
-    assert_eq!(instruments[0].len(), 16);
+    let scope = codes[0].split('/').next().expect("a scope");
+    assert_eq!(scope.len(), 32, "the scope is sixteen bytes as hex");
+    assert!(codes.iter().all(|code| code.starts_with(scope)));
     let chains: Vec<_> = stamped
         .iter()
         .map(|held| bytes(held, MSGPHASH_TAG_NAME.0).expect("a chain"))
@@ -160,9 +168,10 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
         bytes(&held, MSGPHASH_TAG_NAME.0),
         Some(persistent_identity(""))
     );
-    assert!(
-        bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
-        "no instrument, no identity"
+    assert_eq!(
+        held.by_tag(CODE_TAG_NAME.0).unwrap().as_str(),
+        Some(""),
+        "no identifier, no chain, and so no scope to name one with"
     );
     for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVMSGHASH_TAG_NAME.0] {
         assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
@@ -185,11 +194,19 @@ fn the_instrument_identity_is_the_same_across_spellings_and_venues() {
     let registry = registry();
     let reader = super::fixed_codec(Arc::clone(&registry));
     let mut life = FixLifecycle::new(Arc::clone(&registry));
+    // The instrument is a scope and not a column: the chain code a message
+    // opens is `<scope hex>/<identifier>`, so the text before the slash is
+    // the identity, and an empty one is a message that named no instrument.
     let mut identity = |line: &[u8]| {
-        bytes(
-            &life.fill(reader.sole_line(line, false).unwrap()).unwrap(),
-            INSTUUID_TAG_NAME.0,
-        )
+        let held = life.fill(reader.sole_line(line, false).unwrap()).unwrap();
+        let code = held
+            .by_tag(CODE_TAG_NAME.0)
+            .unwrap()
+            .as_str()
+            .expect("a chain code")
+            .to_owned();
+        let scope = code.split('/').next().expect("a scope").to_owned();
+        (scope != "-").then_some(scope)
     };
     // An ISIN outranks a symbol, so the same security under two symbols is
     // one instrument, and case is not a difference.
@@ -205,10 +222,12 @@ fn the_instrument_identity_is_the_same_across_spellings_and_venues() {
     // Without an ISIN the symbol stands in, and a stated one wins over a
     // symbol that would say otherwise.
     let by_symbol = identity(b"8=FIX.4.4|35=D|11=B4|55=AAPL|207=XNAS|15=USD|10=0|");
-    assert!(by_symbol.is_some());
+    assert_eq!(by_symbol.as_deref().map(str::len), Some(32));
     assert_ne!(by_symbol, by_isin);
-    // A bridge row names the same facts under its own keys.
-    let bridged = identity(b"#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|");
+    // A bridge row names the same facts under its own keys, and the chain it
+    // opens is scoped by the instrument those keys named.
+    let bridged =
+        identity(b"MSGTYPE=D|#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|");
     assert_eq!(bridged, by_isin);
 }
 
@@ -230,7 +249,7 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
         .collect();
     assert_eq!(twice.len(), LIFE.len());
     for (first, second) in once.iter().zip(&twice) {
-        for tag in [INSTUUID_TAG_NAME.0, MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
+        for tag in [MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
             assert_eq!(bytes(first, tag), bytes(second, tag), "tag {tag}");
         }
         assert_eq!(first.entries().len(), second.entries().len());
@@ -278,14 +297,11 @@ fn instrument_payload_keeps_its_recipe_and_chain_payload_is_only_the_code() {
     let entries = original.entries().to_vec();
     let message = FixLifecycle::new(registry).fill(original).unwrap();
     let raw_instrument = yggdryl::hashing::xxhash::xxh128(b"XNAS\x1f\x1fAAPL\x1fUSD\x1f");
-    let instuuid = raw_instrument.to_be_bytes();
-    assert_eq!(
-        message.by_tag(INSTUUID_TAG_NAME.0).unwrap(),
-        &identity_scalar(instuuid),
-        "every digest bit survives: nothing is masked for a version or a variant"
-    );
-    // The scope a chain code names is the sixteen bytes as lowercase hex.
-    let code = format!("{}/A1", identity_text(&instuuid));
+    let instrument = raw_instrument.to_be_bytes();
+    // The scope a chain code names is the sixteen bytes as lowercase hex, and
+    // every digest bit survives into them: nothing is masked for a version or
+    // a variant, and no column holds a second copy of the value.
+    let code = format!("{}/A1", identity_text(&instrument));
     assert_eq!(
         message.by_tag(CODE_TAG_NAME.0).unwrap().as_str(),
         Some(code.as_str())
@@ -416,14 +432,17 @@ fn non_native_mandatory_clocks_refuse_at_intake_without_touching_lifecycle() {
 }
 
 #[test]
-fn negative_clock_keeps_stated_instrument_but_mismatching_message_identities_refuse() {
+fn negative_clock_keeps_a_stated_previous_but_mismatching_message_identities_refuse() {
     let registry = registry();
     let mut message = row_message(
         Arc::clone(&registry),
         [
             (60, clock(-1)),
             (CODE_TAG_NAME.0, Scalar::from("A")),
-            (INSTUUID_TAG_NAME.0, identity_scalar(numbered_identity(123))),
+            (
+                PREVMSGHASH_TAG_NAME.0,
+                identity_scalar(numbered_identity(123)),
+            ),
         ],
     )
     .unwrap();
@@ -436,28 +455,33 @@ fn negative_clock_keeps_stated_instrument_but_mismatching_message_identities_ref
         );
         assert_eq!(message, before);
     }
-    let instrument = message.by_tag(INSTUUID_TAG_NAME.0).unwrap().clone();
+    let previous = message.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap().clone();
     let mut life = FixLifecycle::new(registry).try_with_interval_ns(1).unwrap();
     let message = life.fill(message).unwrap();
-    assert_eq!(message.by_tag(INSTUUID_TAG_NAME.0).unwrap(), &instrument);
+    assert_eq!(message.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(), &previous);
     assert_eq!(message.updatedat(), &clock(-1));
     assert_eq!(life.alive(), 1);
 }
 
 /// A stated identity is sixteen bytes or it is not one.
 ///
-/// The optional `instuuid` is the one a caller states freely, so it is where
-/// a value of another width, another byte layout or another family is
-/// refused - named by its own column, with the whole chain untouched.
+/// The chain's `prevmsghash` is the one a caller states freely - `msghash`
+/// and `msgphash` are the message's own and intake refuses them before a
+/// stamp is reached - so it is where a value of another width, another byte
+/// layout or another family is refused, named by its own column with the
+/// whole chain untouched.
 #[test]
-fn a_stated_instrument_identity_of_another_width_or_layout_is_refused_by_name() {
+fn a_stated_previous_identity_of_another_width_or_layout_is_refused_by_name() {
     let registry = registry();
     let good = row_message(
         Arc::clone(&registry),
         [
             (60, clock(1)),
             (CODE_TAG_NAME.0, Scalar::from("A")),
-            (INSTUUID_TAG_NAME.0, identity_scalar(numbered_identity(1))),
+            (
+                PREVMSGHASH_TAG_NAME.0,
+                identity_scalar(numbered_identity(1)),
+            ),
         ],
     )
     .unwrap();
@@ -483,13 +507,13 @@ fn a_stated_instrument_identity_of_another_width_or_layout_is_refused_by_name() 
         let live = life.fill(good.clone()).unwrap();
         let message = row_message(
             Arc::clone(&registry),
-            [(60, clock(2)), (INSTUUID_TAG_NAME.0, wrong.clone())],
+            [(60, clock(2)), (PREVMSGHASH_TAG_NAME.0, wrong.clone())],
         )
         .unwrap();
         let Error::InvalidRecord { path, reason } = life.fill(message).unwrap_err() else {
             panic!("a located refusal for {wrong:?}");
         };
-        assert_eq!(path, "$.instuuid", "{wrong:?}");
+        assert_eq!(path, "$.prevmsghash", "{wrong:?}");
         assert!(
             reason.starts_with("expected fixed_size_binary(16) or null, got "),
             "{reason}"

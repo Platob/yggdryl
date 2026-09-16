@@ -1,8 +1,11 @@
 //! Live named chains, arrival history and epoch-aligned snapshots.
 //!
 //! An explicit nonempty `code` names one chain globally. Otherwise the first
-//! identifier reaching a live chain under the effective `instuuid` supplies
-//! its code; a new chain is named `<scope hex or ->/<first identifier>`.
+//! identifier reaching a live chain under the instrument the message names
+//! supplies its code; a new chain is named `<scope hex or ->/<first
+//! identifier>`. The instrument is the digest of what the message says the
+//! instrument is, computed here and never a column: no row carries it, and
+//! no message states one to scope itself by.
 //! Identifiers come from stated `altids` or the registered compiled selector,
 //! never a second tag list. Occupied keys are not stolen, and empty code opens
 //! no chain. The message's identity owner hashes the settled code into `msgphash`.
@@ -46,9 +49,9 @@ use super::msg::FixMsg;
 use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME,
-    PREVUPDATEDAT_TAG_NAME, STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, ISINCODE_TAG_NAME,
+    MICCODE_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
+    STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
 };
 
 /// The separator between the parts an instrument's identity digests.
@@ -286,9 +289,7 @@ impl FixLifecycle {
             path: Path::root().field(UPDATEDAT_TAG_NAME.1).render().into(),
             reason: crate::text::expected_got("an i64 nanosecond grid instant", grid),
         })?;
-        let stated_instrument = stated_identity_of(&message, INSTUUID_TAG_NAME)?;
-        let instrument =
-            stated_instrument.or_else(|| instrument_digest(&message).map(u128::to_be_bytes));
+        let instrument = instrument_digest(&message).map(u128::to_be_bytes);
         let keys = self.chain_keys(&message, instrument)?;
         let (code, persistent) = self.chain_name(&message, &keys)?;
         let chain = persistent.and_then(|held| self.chains.get(&held));
@@ -299,7 +300,6 @@ impl FixLifecycle {
         message.stamp_lifecycle(
             &code,
             Scalar::datetime64(grid, TimeUnit::Nanosecond, Timezone::UTC)?,
-            instrument.filter(|_| stated_instrument.is_none()),
             chain.map(|chain| &chain.previous),
         )?;
         if let Some(persistent) = persistent {
@@ -647,7 +647,6 @@ impl FixMsg {
         &mut self,
         code: &SmolStr,
         updatedat: Scalar,
-        instrument: Option<Identity>,
         previous: Option<&Self>,
     ) -> Result<()> {
         let previous = self.previous_writes(previous)?;
@@ -657,7 +656,6 @@ impl FixMsg {
                 (UPDATEDAT_TAG_NAME.0, updatedat),
             ]
             .into_iter()
-            .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, identity::identity_scalar(value))))
             .chain(previous),
             lifecycle_declared,
         )
@@ -724,6 +722,10 @@ fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
 /// The instrument's identity: the xxh128 digest of its market, its
 /// classification, its ISIN - else its symbol - and its currency, or nothing
 /// where the message names none of them.
+///
+/// The scope a chain's identifiers hang under, and only that: the digest is
+/// read from what the message already says the instrument is, so no column
+/// holds it and no message can state one of its own.
 fn instrument_digest(message: &FixMsg) -> Option<u128> {
     let first = |tags: &[i32]| -> Option<String> {
         tags.iter().find_map(|tag| {

@@ -970,10 +970,12 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // currencies, each declaring how it fills on the field itself. It moved
     // when `timepartition` went - how a layout is cut is the target's - and
     // when the columns settled to one message said so with `fix:transient`.
-    // It moved last for the bridge's own names, the three identifiers beside
+    // It moved for the bridge's own names, the three identifiers beside
     // `isincode`, the struct that joins them, and `snapshotat` saying that
-    // only a snapshot stamps it.
-    assert_eq!(carrying.stable_hash(), 18_403_013_702_931_979_337);
+    // only a snapshot stamps it. It moved last when `instuuid` went: the
+    // instrument is the scope a chain hangs its identifiers under, digested
+    // from the message, and no column of the row.
+    assert_eq!(carrying.stable_hash(), 17_138_582_387_977_970_701);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
