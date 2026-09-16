@@ -1,0 +1,421 @@
+[
+  {
+    "name": "unix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "When the message happened: the settled instant, UTC.",
+      "display": "Unix",
+      "fix:tag": "65003",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "msgctxid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The message context a bridge handled the message in, as its own log names it.",
+      "display": "MsgCtxId",
+      "fix:tag": "65008"
+    }
+  },
+  {
+    "name": "pluginid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own pluginid column, never derived.",
+      "display": "PluginId",
+      "fix:tag": "65009"
+    }
+  },
+  {
+    "name": "isincode",
+    "dtype": {
+      "type": "isin"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN.",
+      "display": "ISINCode",
+      "fix:derivation": "coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin))",
+      "fix:tag": "65013"
+    }
+  },
+  {
+    "name": "miccode",
+    "dtype": {
+      "type": "mic"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt.",
+      "display": "MICCode",
+      "fix:derivation": "coalesce(securityexchange, exdestination, lastmkt)",
+      "fix:tag": "65014"
+    }
+  },
+  {
+    "name": "state",
+    "dtype": {
+      "type": "state"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary.",
+      "display": "State",
+      "fix:derivation": "coalesce(ordstatus, exectype)",
+      "fix:tag": "65015",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "hashcode",
+    "dtype": {
+      "type": "u_int64"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
+      "display": "HashCode",
+      "fix:tag": "65017",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "crosshashcode",
+    "dtype": {
+      "type": "u_int64"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "The XXH3-64 of the cross code; zero where the message names none.",
+      "display": "CrossHashCode",
+      "fix:tag": "65018",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "prevunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When the message this one follows happened, where it follows one.",
+      "display": "PrevUnix",
+      "fix:tag": "65021",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "prevuuid",
+    "dtype": {
+      "type": "uuid"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The identity of the message this one follows, where it follows one.",
+      "display": "PrevUuid",
+      "fix:tag": "65022",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "creatunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "When the message was created: what it states, else when the original was sent, else when it happened; the earliest its chain knows once followed.",
+      "display": "CreatUnix",
+      "fix:tag": "65023",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "snapunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The grid instant a walk read this message as the snapshot of; empty on every row no snapshot was taken of.",
+      "display": "SnapUnix",
+      "fix:tag": "65025",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "sourceurl",
+    "dtype": {
+      "type": "url"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The object this message's line was read from.",
+      "display": "SourceUrl",
+      "fix:tag": "65026",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "nofixentries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "How many pairs the message carried, in arrival order.",
+      "display": "NoFixEntries",
+      "fix:tag": "65027",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "recordedat",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
+      "display": "RecordedAt",
+      "fix:derivation": "sendingtime",
+      "fix:names": [
+        "mtime"
+      ],
+      "fix:tag": "65028",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "expirunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, else ExpireDate, else the instrument's MaturityDate.",
+      "display": "ExpirUnix",
+      "fix:derivation": "coalesce(expiretime, validuntiltime, expiredate, maturitydate)",
+      "fix:tag": "65029"
+    }
+  },
+  {
+    "name": "bidcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The currency the bid lane is quoted in: the message's own Currency, else SettlCurrency.",
+      "display": "BidCurrency",
+      "fix:derivation": "coalesce(currency, settlcurrency)",
+      "fix:tag": "65030"
+    }
+  },
+  {
+    "name": "askcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The currency the ask lane is quoted in: the message's own Currency, else SettlCurrency.",
+      "display": "AskCurrency",
+      "fix:derivation": "coalesce(currency, settlcurrency)",
+      "fix:tag": "65031"
+    }
+  },
+  {
+    "name": "msgsessionid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
+      "display": "MsgSessionId",
+      "fix:tag": "65032"
+    }
+  },
+  {
+    "name": "bloombergcode",
+    "dtype": {
+      "type": "bloomberg"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The instrument's Bloomberg identifier: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg.",
+      "display": "BloombergCode",
+      "fix:derivation": "coalesce(case when securityidsource = 'A' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'A'][0].securityaltid as bloomberg), case when securityidsource = 'S' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'S'][0].securityaltid as bloomberg))",
+      "fix:tag": "65033"
+    }
+  },
+  {
+    "name": "cusipcode",
+    "dtype": {
+      "type": "cusip"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The instrument's CUSIP: the message's own, else a SecurityID or SecurityAltID whose source is CUSIP.",
+      "display": "CUSIPCode",
+      "fix:derivation": "coalesce(case when securityidsource = '1' then try_cast(securityid as cusip) end, try_cast(secaltidgrp[securityaltidsource = '1'][0].securityaltid as cusip))",
+      "fix:tag": "65034"
+    }
+  },
+  {
+    "name": "sedolcode",
+    "dtype": {
+      "type": "sedol"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The instrument's SEDOL: the message's own, else a SecurityID or SecurityAltID whose source is SEDOL.",
+      "display": "SEDOLCode",
+      "fix:derivation": "coalesce(case when securityidsource = '2' then try_cast(securityid as sedol) end, try_cast(secaltidgrp[securityaltidsource = '2'][0].securityaltid as sedol))",
+      "fix:tag": "65035"
+    }
+  },
+  {
+    "name": "curruuid",
+    "dtype": {
+      "type": "uuid"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "The message's identity: the UUIDv7 its instant and its code derive.",
+      "display": "CurrUuid",
+      "fix:tag": "65039",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "crossuuid",
+    "dtype": {
+      "type": "uuid"
+    },
+    "nullable": false,
+    "metadata": {
+      "description": "The identity every message of one lifecycle shares, derived from the identifier they share; the message's own where it names none.",
+      "display": "CrossUuid",
+      "fix:tag": "65040",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "seqnum",
+    "dtype": {
+      "type": "u_int64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The message's place in its chain: how many came before it.",
+      "display": "SeqNum",
+      "fix:tag": "65042",
+      "fix:transient": "false"
+    }
+  },
+  {
+    "name": "px",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The price the message states: Price, else LastPx, else AvgPx, else StopPx.",
+      "display": "Px",
+      "fix:derivation": "coalesce(price, lastpx, avgpx, stoppx)",
+      "fix:tag": "65043"
+    }
+  },
+  {
+    "name": "qty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The quantity the message states: OrderQty, else LastQty, else CumQty, else LeavesQty.",
+      "display": "Qty",
+      "fix:derivation": "coalesce(orderqty, lastqty, cumqty, leavesqty)",
+      "fix:tag": "65044"
+    }
+  },
+  {
+    "name": "unit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unit the quantity is counted in: UnitOfMeasure.",
+      "display": "Unit",
+      "fix:derivation": "unitofmeasure",
+      "fix:tag": "65045"
+    }
+  },
+  {
+    "name": "bidunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unit the bid lane's size is counted in, where the lane states it.",
+      "display": "BidUnit",
+      "fix:tag": "65046"
+    }
+  },
+  {
+    "name": "askunit",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unit the ask lane's size is counted in, where the lane states it.",
+      "display": "AskUnit",
+      "fix:tag": "65047"
+    }
+  },
+  {
+    "name": "crosscode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated.",
+      "display": "CrossCode",
+      "fix:tag": "65048",
+      "fix:transient": "false"
+    }
+  }
+]

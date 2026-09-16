@@ -1859,16 +1859,22 @@ def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
 # The first tag of the crate's own block: `CRATE_TAG_MIN` in the Rust core.
 CRATE_TAG_MIN = 65_000
 
+# The named documents the crate defines and a store dump writes: the fixed
+# row and the two Map groups whose keys are the crate's own vocabulary.
+CRATE_DOCUMENTS = frozenset(
+    {"components/fixmsg.json", "groups/identifiers.json", "groups/metadata.json"}
+)
+
 
 def crate_owned(name: str) -> bool:
     """Whether a document under the output root is the crate's own dump.
 
-    The crate's field shard and its fixed row, ``components/fixmsg.json``,
-    are written by ``FixRegistry::write_into`` and pinned by the Rust store
-    tests; this generator neither writes nor checks them, and never removes
-    them.
+    The crate's own documents - its field shard, its two Map groups, and
+    the fixed row ``components/fixmsg.json`` - are written by
+    ``FixRegistry::write_into`` and pinned by the Rust store tests; this
+    generator neither writes nor checks them, and never removes them.
     """
-    if name == "components/fixmsg.json":
+    if name in CRATE_DOCUMENTS:
         return True
     held = re.fullmatch(r"fields/(\d{9})\.json", name)
     return held is not None and int(held.group(1)) >= CRATE_TAG_MIN // 100

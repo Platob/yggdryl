@@ -120,13 +120,27 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 
 /// One row's columns, in order, as tags.
 ///
-/// The crate's own facts lead - its clocks, then its identities, then the
-/// rest - because a table is read by time and joined by identity. Then the
-/// standard header and trailer, because every message has them; the fields a
-/// financial consumer reads, because they are what a table is queried by; the
-/// three repeating groups worth persisting whole; FIX's own `MsgDirection`;
-/// and last the arrival record's counter, which closes the row with the group
-/// it counts.
+/// Ordered the way a reader thinks about a message rather than the way a
+/// wire writes one, in nine bands: **when** it happened, **which** event it
+/// is, **what message** carried it and over which session, **which
+/// instrument** it is about, **which order** it belongs to, **what values**
+/// it states, **how it went**, the **groups** kept whole, and last the
+/// **frame** - the standard header and trailer fields nothing above claimed,
+/// then the arrival record that closes the row.
+///
+/// A table is read by time, joined by identity and grouped by instrument, so
+/// those three come first and in that order; a consumer scanning columns left
+/// to right meets each band whole instead of meeting a clock, an identifier
+/// and a price interleaved by tag number. Within a band the order is the one
+/// the band's own subject implies: the instant a thing happened before the
+/// instants it derives, the identity before what it descends from, the price
+/// before the lanes that quote it.
+///
+/// Every band is a list of tags this crate names, and what no band names
+/// still lands in the row: the standard header, trailer and body lists close
+/// it, then any crate column a band left out. A tag named twice takes its
+/// first place, so moving a column between bands is one edit and never a
+/// duplicate.
 ///
 /// This is the shape a capture lands in, and it is a *reading* of a message
 /// rather than the message: what the codec made of a line, in columns. The
@@ -138,50 +152,168 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 /// for the rest.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
+    use super::crated::{
+        ASKCURRENCY_TAG_NAME as ASKCURRENCY, ASKUNIT_TAG_NAME as ASKUNIT,
+        BIDCURRENCY_TAG_NAME as BIDCURRENCY, BIDUNIT_TAG_NAME as BIDUNIT,
+        BLOOMBERGCODE_TAG_NAME as BLOOMBERG, CREATUNIX_TAG_NAME as CREATUNIX,
+        CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
+        CROSSUUID_TAG_NAME as CROSSUUID, CURRUUID_TAG_NAME as CURRUUID,
+        CUSIPCODE_TAG_NAME as CUSIP, EXPIRUNIX_TAG_NAME as EXPIRUNIX,
+        HASHCODE_TAG_NAME as HASHCODE, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
+        ISINCODE_TAG_NAME as ISIN, METADATA_TAG_NAME as METADATA, MICCODE_TAG_NAME as MIC,
+        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
+        PLUGINID_TAG_NAME as PLUGINID, PREVUNIX_TAG_NAME as PREVUNIX,
+        PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX, QTY_TAG_NAME as QTY,
+        RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL, SEQNUM_TAG_NAME as SEQNUM,
+        SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL, STATE_TAG_NAME as STATE,
+        UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
+    };
     let crated = super::fix_crate_fields().unwrap_or_default();
-    let mut tags = Vec::with_capacity(
-        HEADER_TAGS.len()
-            + BODY_TAGS.len()
-            + GROUP_TAGS.len()
-            + TRAILER_TAGS.len()
-            + crated.len()
-            + 2,
-    );
-    // The crate's own columns lead, in three groups: when, then which, then
-    // everything else it knows. A table is read by time and joined by
-    // identity, and a reader that has to scroll past eighty protocol columns
-    // to reach either is reading a wire frame rather than a table. The groups
-    // are not a second list to keep in step - each column is classified by
-    // the datatype it already carries, so a clock added to this crate lands
-    // among the clocks by being one.
-    let crate_tag = |field: &Field| field.as_fix().tag().ok().flatten();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
-    let push_group = |tags: &mut Vec<i32>, keep: &dyn Fn(&Field) -> bool| {
-        for field in crated {
-            // The arrival record closes the row, so its counter waits for the
-            // end with it rather than standing among the crate's own.
-            if let Some(tag) = crate_tag(field) {
-                if tag != counter && keep(field) {
-                    tags.push(tag);
-                }
+    let mut tags: Vec<i32> = Vec::with_capacity(
+        HEADER_TAGS.len() + BODY_TAGS.len() + GROUP_TAGS.len() + TRAILER_TAGS.len() + crated.len(),
+    );
+    let band = |tags: &mut Vec<i32>, held: &[i32]| {
+        for tag in held {
+            if !tags.contains(tag) {
+                tags.push(*tag);
             }
         }
     };
-    let identity = |field: &Field| matches!(field.dtype(), DataType::Uuid | DataType::UInt64);
-    push_group(&mut tags, &|field| field.dtype() == &CLOCK_DATATYPE);
-    push_group(&mut tags, &identity);
-    push_group(&mut tags, &|field| {
-        field.dtype() != &CLOCK_DATATYPE && !identity(field)
-    });
-    tags.extend_from_slice(&HEADER_TAGS);
-    tags.extend_from_slice(&BODY_TAGS);
-    tags.extend_from_slice(&GROUP_TAGS);
-    tags.extend_from_slice(&TRAILER_TAGS);
-    // `MsgDirection` is FIX's own and already sits in the header's dialect,
-    // but no message carries it on the wire - it is read from the line - so
-    // it is appended here rather than expected among the header's tags.
-    tags.push(super::MSGDIRECTION_TAG_NAME.0);
-    tags.push(counter);
+    // When it happened: the instant itself, then the instants that instant
+    // is read against - created, followed, expiring, snapped, recorded -
+    // then the clocks the protocol states.
+    band(
+        &mut tags,
+        &[
+            UNIX.0,
+            CREATUNIX.0,
+            PREVUNIX.0,
+            EXPIRUNIX.0,
+            SNAPUNIX.0,
+            RECORDEDAT.0,
+            52,
+            122,
+            60,
+            64,
+            75,
+            126,
+        ],
+    );
+    // Which event: its own identity, the chain it stands in and what it
+    // descends from. A join reads these and nothing else.
+    band(
+        &mut tags,
+        &[
+            CURRUUID.0,
+            CROSSUUID.0,
+            CROSSCODE.0,
+            HASHCODE.0,
+            CROSSHASHCODE.0,
+            PREVUUID.0,
+            SEQNUM.0,
+            PARENTUUIDS.0,
+            IDENTIFIERS.0,
+        ],
+    );
+    // Which message, over which session: what the frame says it is, who sent
+    // it to whom, and where this capture read it.
+    band(
+        &mut tags,
+        &[
+            8,
+            35,
+            34,
+            49,
+            56,
+            43,
+            MSGDIRECTION.0,
+            SOURCEURL.0,
+            PLUGINID.0,
+            MSGCTXID.0,
+            MSGSESSIONID.0,
+        ],
+    );
+    // Which instrument: what the venue calls it, then the identifiers this
+    // crate resolved for it.
+    band(
+        &mut tags,
+        &[
+            55,
+            48,
+            22,
+            167,
+            762,
+            207,
+            461,
+            541,
+            460,
+            ISIN.0,
+            CUSIP.0,
+            SEDOL.0,
+            BLOOMBERG.0,
+            MIC.0,
+        ],
+    );
+    // Which order: the chain of identifiers a message and its answers share.
+    band(
+        &mut tags,
+        &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693],
+    );
+    // What it states: the side, the price and quantity this crate settled,
+    // then the protocol's own values, then the quote's two lanes.
+    band(
+        &mut tags,
+        &[
+            54,
+            PX.0,
+            QTY.0,
+            UNIT.0,
+            15,
+            44,
+            38,
+            31,
+            32,
+            6,
+            14,
+            151,
+            40,
+            53,
+            854,
+            120,
+            132,
+            BIDCURRENCY.0,
+            BIDUNIT.0,
+            134,
+            133,
+            ASKCURRENCY.0,
+            ASKUNIT.0,
+            135,
+        ],
+    );
+    // How it went: the state this crate ranked it at, the protocol's own
+    // statuses and reasons, and whatever the venue said in words.
+    band(&mut tags, &[STATE.0, 39, 150, 297, 301, 368, 103, 102, 58]);
+    // The groups kept whole, which no scalar column can hold.
+    band(&mut tags, &GROUP_TAGS);
+    // The frame: every standard header, body and trailer field no band above
+    // claimed, in the order those lists state them.
+    band(&mut tags, &HEADER_TAGS);
+    band(&mut tags, &BODY_TAGS);
+    band(&mut tags, &TRAILER_TAGS);
+    // And every crate column no band named, so a column added to this crate
+    // lands in the row without being listed twice.
+    let rest: Vec<i32> = crated
+        .iter()
+        .filter_map(|field| field.as_fix().tag().ok().flatten())
+        .filter(|tag| *tag != counter && *tag != METADATA.0)
+        .collect();
+    band(&mut tags, &rest);
+    // Last, what the message carried outside its fields: the bridge's own
+    // keys, then the arrival record's counter, which closes the row with the
+    // group it counts.
+    band(&mut tags, &[METADATA.0, counter]);
     tags
 }
 

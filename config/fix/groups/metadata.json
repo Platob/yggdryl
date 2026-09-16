@@ -1,0 +1,40 @@
+{
+  "name": "metadata",
+  "dtype": {
+    "type": "map",
+    "entries": {
+      "name": "entries",
+      "dtype": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "key",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          {
+            "name": "value",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": false,
+      "metadata": {}
+    },
+    "keys_sorted": true
+  },
+  "nullable": true,
+  "metadata": {
+    "description": "What a bridge stated under its own namespaces - a `TECH.` or an `AMON.` key - each under the key as the bridge spelled it, folded, in sorted order.",
+    "display": "Metadata",
+    "fix:counter": "65049",
+    "fix:tag": "65049"
+  }
+}

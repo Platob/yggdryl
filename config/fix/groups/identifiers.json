@@ -1,0 +1,40 @@
+{
+  "name": "identifiers",
+  "dtype": {
+    "type": "map",
+    "entries": {
+      "name": "entries",
+      "dtype": {
+        "type": "struct",
+        "fields": [
+          {
+            "name": "key",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          {
+            "name": "value",
+            "dtype": {
+              "type": "string"
+            },
+            "nullable": true,
+            "metadata": {}
+          }
+        ]
+      },
+      "nullable": false,
+      "metadata": {}
+    },
+    "keys_sorted": true
+  },
+  "nullable": true,
+  "metadata": {
+    "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened.",
+    "display": "Identifiers",
+    "fix:counter": "65020",
+    "fix:tag": "65020"
+  }
+}
