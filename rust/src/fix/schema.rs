@@ -13,8 +13,8 @@
 //! on the way in - so a row reads the way a message reads, in every binding
 //! and every catalog, and a reader spelling `row["msgseqnum"]` finds the
 //! sequence number without a dictionary in hand. The tag is still the
-//! identity: each column carries its field's `fix:tag`, its lineage and its
-//! code set, and the row is filled by that tag rather than by the spelling,
+//! identity: each column carries its field's `fix:tag` and its code set, and
+//! the row is filled by that tag rather than by the spelling,
 //! so a venue that renames a field between versions changes nothing about
 //! where its value lands.
 //!
@@ -196,8 +196,8 @@ fn is_required(tag: i32) -> bool {
 
 /// The fixed root every message answers as.
 ///
-/// Built from the dictionary, so each column carries its field's real type,
-/// lineage and code set - and built without reading a single message, so two
+/// Built from the dictionary, so each column carries its field's real type
+/// and code set - and built without reading a single message, so two
 /// captures that share a dictionary share a schema exactly.
 ///
 /// A parse lands here, an
@@ -1120,12 +1120,8 @@ impl super::FixMsg {
         // by name.
         let is = |held: (i32, &str)| held.0 == tag;
         if tag == 8 {
-            return Ok(crate::Scalar::from(format!(
-                "FIX.{}",
-                self.registry()
-                    .newest()
-                    .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
-            )));
+            let version = self.version().unwrap_or_else(super::build::default_version);
+            return Ok(crate::Scalar::from(format!("FIX.{version}")));
         }
         Ok(if is(super::VERSION_TAG_NAME) {
             self.version().map_or(crate::Scalar::Null, |held| {

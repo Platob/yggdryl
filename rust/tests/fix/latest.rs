@@ -10,8 +10,7 @@ use super::path;
 
 use std::sync::Arc;
 
-use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixLineageEntry, FixPedigree, FixReplacement};
-use yggdryl::media::text::{TextBytes, TextLine};
+use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixReplacement};
 use yggdryl::types::State;
 use yggdryl::{
     DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG_NAME, Version,
@@ -35,23 +34,6 @@ fn undated_fields() -> Vec<Field> {
 
 fn undated_registry() -> Arc<FixRegistry> {
     Arc::new(FixRegistry::from_fields(undated_fields()).expect("a registry"))
-}
-
-/// The same two fields, `LastQty` dated: an integer `LastShares` until 4.3.
-fn dated_registry() -> Arc<FixRegistry> {
-    let mut fields = undated_fields();
-    fields[0]
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.0"), None))
-                .with_name("lastshares")
-                .with_dtype("int32"),
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None))
-                .with_name("lastqty")
-                .with_dtype("float64"),
-        ])
-        .expect("a lineage");
-    Arc::new(FixRegistry::from_fields(fields).expect("a registry"))
 }
 
 /// One message built from a schema and a record, as a converted row is.
@@ -270,60 +252,11 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
     );
 }
 
-#[test]
-fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
-    let message = built(
-        dated_registry(),
-        vec![DataType::Int64.required_field("LastShares")],
-        &[("LastShares", Scalar::from(100))],
-    );
-    assert_eq!(message.version(), None);
-    let latest = enriched(message);
-    assert_eq!(latest.version(), Some(version("4.3")));
-    assert_eq!(text(&latest, VERSION_TAG_NAME.0), Some("4.3"));
-    assert_eq!(names(&latest), with_bundle(&["lastqty"], &["version"]));
-    // The lineage's old spelling reaches the field as an alias does.
-    assert_eq!(
-        latest.by_name("LastShares").unwrap(),
-        &Scalar::from(100.0_f64)
-    );
-
-    let again = enriched(latest.clone());
-    assert_eq!(again, latest);
-
-    // A stated version is replaced in place rather than stood beside.
-    let mut stated = DataType::utf8().required_field("version");
-    stated
-        .as_fix_mut()
-        .set_tag(VERSION_TAG_NAME.0)
-        .expect("a tag");
-    let message = built(
-        dated_registry(),
-        vec![stated, DataType::Int64.required_field("LastShares")],
-        &[
-            ("version", Scalar::from("4.0")),
-            ("LastShares", Scalar::from(100)),
-        ],
-    );
-    let latest = enriched(message);
-    assert_eq!(names(&latest), with_bundle(&["version", "lastqty"], &[]));
-    assert_eq!(latest.version(), Some(version("4.3")));
-}
-
 /// A hand-built rule: `Rule80A(47)` `A` fills `OrderCapacity(528)` `A`,
 /// whose code set declares `A` and `P` current and `Z` deprecated at 4.4.
 fn ruled_registry() -> Arc<FixRegistry> {
     let mut rule80a = DataType::utf8().nullable_field("rule80a");
     rule80a.as_fix_mut().set_tag(47).expect("a tag");
-    rule80a
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.0"), None))
-                .with_name("rule80a")
-                .with_dtype("utf8"),
-            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).remove(),
-        ])
-        .expect("a lineage");
     rule80a
         .as_fix_mut()
         .set_replacements(&[FixReplacement::new(version("4.3"))
@@ -434,17 +367,9 @@ fn restated(reader: &FixCodec, line: &[u8]) -> FixMsg {
         .enrich_message(latest.clone())
         .expect("a second pass");
     assert_eq!(again, latest, "a second pass over {spelled}");
-    assert_eq!(
-        latest.version(),
-        Some(
-            reader
-                .registry()
-                .newest()
-                .expect("a dated dictionary")
-                .version()
-        ),
-        "the version of {spelled}"
-    );
+    // The restatement leaves the version alone: it is what the line said,
+    // and no pass pins one.
+    assert_eq!(latest.version(), read.version(), "the version of {spelled}");
     latest
 }
 
@@ -483,14 +408,10 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     let read = reader.sole_line(REPORT, false).expect("a readable line");
     assert_eq!(read.version(), Some(version("4.2")));
     assert_eq!(text(&read, 150), Some(state("1").as_str()), "read at 4.2");
-    // Tag 47 is a dictionary field at 4.2 and gone by 4.4; the registry
-    // holds it whatever the version, and the code sets still date a value.
+    // The registry holds tag 47 whatever a version made of it - it filters
+    // by none - and the code sets are what still date a value.
     let registry = reader.registry();
-    assert!(registry.get_field_at(version("4.4"), 47).is_none());
-    assert_eq!(
-        registry.get_field_at(version("4.2"), 47).map(Field::name),
-        Some("rule80a")
-    );
+    assert_eq!(registry.get_field(47).map(Field::name), Some("rule80a"));
     assert_eq!(
         registry
             .field_by_tag(150)
@@ -738,53 +659,6 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
     let floor = restated(&reader, b"8=FIX.4.4|35=D|11=A|111=50|10=0|");
     assert_eq!(floor.by_tag(1138).unwrap(), &Scalar::from(50.0_f64));
     assert_eq!(floor.by_tag(111).unwrap(), &Scalar::from(50.0_f64));
-}
-
-#[test]
-fn a_batch_read_lands_at_the_newest_version_when_asked() {
-    let registry = super::committed_registry();
-    let newest = registry.newest().expect("a dated dictionary").version();
-    let codec = super::fixed_codec(Arc::clone(&registry));
-    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
-    // A stage is a call: the enriching pass, whose first step is the
-    // restatement, composes over the message stream between the parse and
-    // the batch.
-    let rows = |on: bool| {
-        let staged = codec.clone();
-        let messages = codec.parse_lines([REPORT]).map(move |held| {
-            if on {
-                held.and_then(|message| staged.enrich_message(message))
-            } else {
-                held
-            }
-        });
-        codec
-            .arrow_reader(schema.clone(), messages)
-            .expect("a reader")
-            .map(|batch| batch.expect("a batch"))
-            .collect::<Vec<_>>()
-    };
-    let column = |batches: &[arrow_array::RecordBatch], tag: i32| {
-        use arrow_array::cast::AsArray;
-        let at = super::tag_index(&batches[0], tag);
-        batches[0].column(at).as_string::<i32>().value(0).to_owned()
-    };
-    let restated = rows(true);
-    assert_eq!(column(&restated, VERSION_TAG_NAME.0), newest.to_string());
-    let read = rows(false);
-    assert_eq!(column(&read, VERSION_TAG_NAME.0), "4.2");
-
-    // The line door composes the same way.
-    let line = TextLine::from_bytes(0, TextBytes::from_bytes(REPORT).expect("a page")).unwrap();
-    let message = codec
-        .parse_text_line(&line)
-        .expect("a readable line")
-        .next()
-        .expect("one message")
-        .and_then(|message| codec.enrich_message(message))
-        .expect("a message");
-    assert_eq!(message.version(), Some(newest));
-    assert_eq!(text(&message, 528), Some("A"));
 }
 
 #[test]

@@ -8,15 +8,6 @@
     "metadata": {
       "description": "The identifier or name of the price stream.",
       "display": "MDStreamID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "mdstreamid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1500"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Unique identifier of the stream assignment report provided by the respondent.",
       "display": "StreamAsgnRptID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgnrptid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1501"
     }
   },
@@ -91,15 +73,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgnrejreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1502"
     }
   },
@@ -129,15 +102,6 @@
           "doc": "Assignment Rejected"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgnacktype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1503"
     }
   },
@@ -152,17 +116,6 @@
     "metadata": {
       "description": "See TransactTime(60)",
       "display": "RelSymTransactTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "relsymtransacttime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1504"
     }
   },
@@ -5323,17 +5276,6 @@
     "metadata": {
       "description": "Used to limit instrument scope to specified maturity time.",
       "display": "InstrumentScopeMaturityTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "instrumentscopematuritytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1550"
     }
   },

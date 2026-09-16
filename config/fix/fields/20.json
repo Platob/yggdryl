@@ -4324,16 +4324,6 @@
     "metadata": {
       "description": "The valuation time of the trade.",
       "display": "ValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "valuationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "2086"
     }
   },

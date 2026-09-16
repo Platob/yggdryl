@@ -5,15 +5,15 @@
  *
  * The JavaScript extension is a native Node addon, so a browser cannot load
  * it. Everything the explorer states about the dictionary - every tag, name,
- * datatype, code set, lineage entry, projected column - therefore comes from
+ * datatype, code set, projected column - therefore comes from
  * here: this runs the published surface over the committed dictionary and
  * writes what it answered. The page displays the native catalog and decoded
  * sample frames without rebuilding the protocol's schemas.
  *
  * docs/assets/fix.json carries the native catalog, registry counts, fixed
- * capture columns, and recorded decoded/emitted sample results. Codes,
- * lineage and membership (`fix:branches`, the dictionaries that contributed
- * a field) stay inline in their owning native Field metadata.
+ * capture columns, and recorded decoded/emitted sample results. Codes and
+ * membership (`fix:branches`, the dictionaries that contributed a field)
+ * stay inline in their owning native Field metadata.
  *
  * The manifest is committed, so the same build runs on any machine: fixed corpus,
  * fixed key order, two-space JSON, LF, no timestamps and no paths. `--check`
@@ -28,7 +28,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { MimeType, Version, fix } = require('../node/binding.js')
+const { MimeType, fix } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const CONFIG = path.join(ROOT, 'config', 'fix')
@@ -183,7 +183,7 @@ function dictionary() {
 }
 
 /** The `fix:` properties a store writes as the JSON they are. */
-const DOCUMENT_KEYS = ['fix:codes', 'fix:lineage', 'fix:replacements', 'fix:directions']
+const DOCUMENT_KEYS = ['fix:codes', 'fix:replacements', 'fix:directions']
 
 /**
  * One native Field document in the shape a store writes.
@@ -260,8 +260,6 @@ function fieldRecords(registry) {
     const tag = view.tag
     if (tag === null) continue
     const codes = document(field, 'fix:codes')
-    const lineage = document(field, 'fix:lineage')
-    const entries = lineage === null ? [] : lineage
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     const memberships = view.branches
@@ -273,11 +271,6 @@ function fieldRecords(registry) {
     if (alternates.length > 0) record.g = alternates
 
     if (codes !== null) record.c = codes.length
-    if (entries.length > 0) {
-      record.s = entries[0].since ?? ''
-      const closed = entries[entries.length - 1]
-      if (closed.until !== undefined) record.e = closed.until
-    }
     records.push(record)
   }
   // The registry's own order: tag-major, the tag's holder first, then id.
@@ -286,7 +279,6 @@ function fieldRecords(registry) {
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
 function counts(records, catalog, row, dialects) {
-  const versions = new Set()
   // Membership is provenance on the field: `fix:branches` lists every
   // dictionary that contributed it, and a field the specification alone
   // defines lists none. The shipped dictionary carries no membership at all.
@@ -294,7 +286,6 @@ function counts(records, catalog, row, dialects) {
   const dtypes = new Map()
   let enumFields = 0
   let codes = 0
-  let lineage = 0
   let aliases = 0
   let alternates = 0
   let memberships = 0
@@ -308,11 +299,6 @@ function counts(records, catalog, row, dialects) {
       enumFields += 1
       codes += record.c
     }
-    if (record.s !== undefined) {
-      lineage += 1
-      versions.add(record.s)
-    }
-    if (record.e !== undefined) versions.add(record.e)
     if (record.a) aliases += record.a.length
     if (record.g) alternates += record.g.length
   }
@@ -321,7 +307,6 @@ function counts(records, catalog, row, dialects) {
     groups: catalog.groups.length,
     enumFields,
     codes,
-    lineage,
     aliases,
     alternates,
     // A message is a component carrying `fix:msgtype` (decision 13).
@@ -331,14 +316,8 @@ function counts(records, catalog, row, dialects) {
     memberships,
     dialects: dialects.length,
     datatypes: dtypes.size,
-    versions: versions.size,
     dtypes: [...dtypes.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
     dialectSizes: [...members.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
-    versionList: [...versions]
-      .filter((held) => held !== '')
-      .map((held) => Version.fromStr(held))
-      .sort((left, right) => left.compare(right))
-      .map(String),
   }
 }
 

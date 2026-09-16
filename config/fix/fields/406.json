@@ -2625,16 +2625,6 @@
     "metadata": {
       "description": "The fixing time.",
       "display": "UnderlyingPaymentScheduleFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingpaymentschedulefixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40695"
     }
   },

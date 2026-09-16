@@ -108,16 +108,6 @@
     "metadata": {
       "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "UnderlyingProvisionCashSettlValueTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprovisioncashsettlvaluetime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42104"
     }
   },
@@ -838,16 +828,6 @@
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "UnderlyingProvisionOptionExerciseEarliestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprovisionoptionexerciseearliesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42129"
     }
   },
@@ -873,16 +853,6 @@
     "metadata": {
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "UnderlyingProvisionOptionExerciseLatestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprovisionoptionexerciselatesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42131"
     }
   },
@@ -1142,16 +1112,6 @@
     "metadata": {
       "description": "The latest time for exercise on the expiration date.",
       "display": "UnderlyingProvisionOptionExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprovisionoptionexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42140"
     }
   },

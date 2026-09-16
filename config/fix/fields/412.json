@@ -2253,16 +2253,6 @@
     "metadata": {
       "description": "Specifies the local market time of the pricing or fixing.",
       "display": "PricingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "pricingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41235"
     }
   },
@@ -2389,15 +2379,6 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "StreamCalculationPeriodDatesXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcalculationperioddatesxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41244"
     }
   },
@@ -2410,15 +2391,6 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "StreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcalculationperioddatesxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41245"
     }
   },
@@ -3913,15 +3885,6 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "StreamCommodityXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcommodityxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41275"
     }
   },
@@ -3934,15 +3897,6 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "StreamCommodityXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcommodityxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41276"
     }
   },

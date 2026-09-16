@@ -1551,15 +1551,9 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
     assert_eq!(column(&at_42).name(), column(&at_new).name());
     assert_eq!(column(&at_42).dtype(), column(&at_new).dtype());
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
-    // The 4.2 spelling still reaches it - as an alias, and off the lineage
-    // the column carries - so nothing the version knew is lost.
+    // The 4.2 spelling still reaches it, as an alias the dictionary states,
+    // so nothing the version knew is lost.
     assert!(at_42.get_by_name("lastshares").is_some());
-    assert_eq!(
-        column(&at_42)
-            .as_fix()
-            .name_at("4.2".parse::<Version>().unwrap()),
-        Some("lastshares"),
-    );
 }
 
 #[test]
@@ -1844,7 +1838,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
     // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after, and the
     // message is read at 4.2 - but a field is one column under the one name
     // the dictionary holds it by, whatever version the row is read at. What
-    // 4.2 called it stays readable through the field's lineage.
+    // 4.2 called it stays readable as an alias beside that name.
     let message = super::dated_line(
         &reader,
         b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
@@ -1892,9 +1886,8 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .as_field()
         .field("nolinesoftext")
         .expect("the counter's column");
-    assert_eq!(
-        group.as_fix().name_at("4.2".parse().unwrap()),
-        Some("linesoftext"),
+    assert!(
+        group.as_fix().aliases().any(|held| held == "linesoftext"),
         "the 4.2 spelling is still readable off the column",
     );
     assert!(message.anomalies().next().is_none());
@@ -2450,21 +2443,6 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
     exectype.as_fix_mut().set_tag(150).unwrap();
     exectype
         .as_fix_mut()
-        .set_lineage(&[
-            yggdryl::FixLineageEntry::new(yggdryl::FixPedigree::new(
-                "4.2".parse::<Version>().unwrap(),
-                None,
-            ))
-            .with_name("exectypeold"),
-            yggdryl::FixLineageEntry::new(yggdryl::FixPedigree::new(
-                "5.0.2".parse::<Version>().unwrap(),
-                None,
-            ))
-            .with_name("exectype"),
-        ])
-        .unwrap();
-    exectype
-        .as_fix_mut()
         .set_codes(&[
             yggdryl::FixCode::new("RestatedOld", "1")
                 .with_aliases(["Restated"])
@@ -2475,10 +2453,6 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
         .unwrap();
     scoped.insert(exectype).unwrap();
     let registry = Arc::new(scoped);
-    assert_eq!(
-        registry.newest().map(|held| held.version()),
-        Some("5.0.2".parse::<Version>().unwrap())
-    );
 
     // A 4.2 session carrying a row written to a later FIX, which is what a
     // bridge relaying into a long-lived session actually sends.
@@ -2553,13 +2527,10 @@ fn every_generated_message_carries_the_version_the_read_used() {
     );
     assert_eq!(dated.version(), Some(Version::new(4, 4, 0)));
 
-    // A row that dates itself not at all is read at the dictionary's newest,
-    // and the `BeginString` it never stated is filled from the same answer.
-    let newest = registry().newest().expect("the seed's newest").version();
+    // A row that dates itself not at all is undated: the dictionary is
+    // version-blind and lends none. The `BeginString` it never stated is
+    // filled from the crate's stated default rather than from a guess.
     let bare = reader().sole_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
-    assert_eq!(bare.version(), Some(newest));
-    assert_eq!(
-        bare.by_tag(8).unwrap().as_str(),
-        Some(format!("FIX.{newest}").as_str())
-    );
+    assert_eq!(bare.version(), None);
+    assert_eq!(bare.by_tag(8).unwrap().as_str(), Some("FIX.4.4"));
 }

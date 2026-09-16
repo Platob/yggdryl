@@ -1571,14 +1571,11 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
 
     // The envelope's `BeginString` is what the session speaks and the row
     // inside it is written to a later FIX: `RegulatoryTradeIDGrp` is tag 1907,
-    // which no 4.2 session ever named. The codec here pins no version, so the
-    // row is dated by the dictionary's own newest rather than by the frame,
+    // which no 4.2 session ever named. The dictionary holds every tag ever
+    // defined and filters by none, so the later tag reads under a 4.2 frame
     // and the frame keeps saying what it said.
     assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
-    assert!(
-        registry().newest().expect("the seed's newest").version()
-            > "4.2".parse().expect("a version")
-    );
+    assert!(registry().get_field(1907).is_some(), "tag 1907 is held");
     assert!(
         packed_members(
             root.get_field_by_path("regulatorytradeidgrp")

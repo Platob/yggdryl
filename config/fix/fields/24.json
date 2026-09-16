@@ -271,23 +271,6 @@
       "description": "Identifies the page heading from the rate source.",
       "display": "RateSourceReferencePageHeading",
       "fix:aliases": "ratesourcereferemcepageheading",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "ratesourcereferemcepageheading",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "name": "ratesourcereferencepageheading",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2412"
     }
   },
@@ -570,15 +553,6 @@
     "metadata": {
       "description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
       "display": "RelatedToStreamXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "relatedtostreamxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2415"
     }
   },
@@ -603,15 +577,6 @@
     "metadata": {
       "description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
       "display": "RelatedToDividendPeriodXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "relatedtodividendperiodxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2417"
     }
   },

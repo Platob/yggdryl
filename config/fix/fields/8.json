@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Quantity of the order that is being booked out as part of an Allocation Instruction or Allocation Report message",
       "display": "OrderBookingQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "orderbookingqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "800"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
       "display": "NoSettlPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nosettlpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "801"
     }
   },
@@ -50,15 +32,6 @@
     "metadata": {
       "description": "Number of PartySubID (523)and PartySubIDType (803) entries",
       "display": "NoPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nopartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "802"
     }
   },
@@ -756,15 +729,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "partysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "803"
     }
   },
@@ -777,15 +741,6 @@
     "metadata": {
       "description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
       "display": "NoNestedPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nonestedpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "804"
     }
   },
@@ -1483,15 +1438,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nestedpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "805"
     }
   },
@@ -1504,15 +1450,6 @@
     "metadata": {
       "description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
       "display": "NoNested2PartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nonested2partysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "806"
     }
   },
@@ -2210,15 +2147,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested2partysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "807"
     }
   },
@@ -2275,15 +2203,6 @@
           "doc": "Account Level Reject"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocintermedreqtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "808"
     }
   },
@@ -2296,15 +2215,6 @@
     "metadata": {
       "description": "Number of Usernames to which this this response is directed",
       "display": "NoUsernames",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nousernames",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "809"
     }
   },
@@ -2317,15 +2227,6 @@
     "metadata": {
       "description": "Underlying price associate with a derivative instrument.",
       "display": "UnderlyingPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "810"
     }
   },
@@ -2338,15 +2239,6 @@
     "metadata": {
       "description": "The rate of change in the price of a derivative with respect to the movement in the price of the underlying instrument(s) upon which the derivative instrument price is based.",
       "display": "PriceDelta",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pricedelta",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "811"
     }
   },
@@ -2359,15 +2251,6 @@
     "metadata": {
       "description": "Used to specify the maximum number of application messages that can be queued bedore a corrective action needs to take place to resolve the queuing issue.",
       "display": "ApplQueueMax",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "applqueuemax",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "812"
     }
   },
@@ -2380,15 +2263,6 @@
     "metadata": {
       "description": "Current number of application messages that were queued at the time that the message was created by the counterparty.",
       "display": "ApplQueueDepth",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "applqueuedepth",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "813"
     }
   },
@@ -2429,15 +2303,6 @@
           "since": "4.4",
           "sort": 4,
           "doc": "End Session"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "applqueueresolution",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "814"
@@ -2482,15 +2347,6 @@
           "doc": "End Session"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "applqueueaction",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "815"
     }
   },
@@ -2503,15 +2359,6 @@
     "metadata": {
       "description": "Number of alternative market data sources",
       "display": "NoAltMDSource",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noaltmdsource",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "816"
     }
   },
@@ -2524,15 +2371,6 @@
     "metadata": {
       "description": "Session layer source for market data",
       "display": "AltMDSourceID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "altmdsourceid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "817"
     }
   },
@@ -2545,19 +2383,6 @@
     "metadata": {
       "description": "Secondary trade report identifier - can be used to associate an additional identifier with a trade.",
       "display": "SecondaryTradeReportID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondarytradereportid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "818"
     }
   },
@@ -2609,15 +2434,6 @@
           "doc": "Trade is average priced"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "avgpxindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "819"
     }
   },
@@ -2630,15 +2446,6 @@
     "metadata": {
       "description": "Used to link a group of trades together.",
       "display": "TradeLinkID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradelinkid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "820"
     }
   },
@@ -2651,15 +2458,6 @@
     "metadata": {
       "description": "Specific device number, terminal number or station where order was entered",
       "display": "OrderInputDevice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "orderinputdevice",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "821"
     }
   },
@@ -2672,15 +2470,6 @@
     "metadata": {
       "description": "Trading Session in which the underlying instrument trades",
       "display": "UnderlyingTradingSessionID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingtradingsessionid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "822"
     }
   },
@@ -2693,15 +2482,6 @@
     "metadata": {
       "description": "Trading Session sub identifier in which the underlying instrument trades",
       "display": "UnderlyingTradingSessionSubID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingtradingsessionsubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "823"
     }
   },
@@ -2714,15 +2494,6 @@
     "metadata": {
       "description": "Reference to the leg of a multileg instrument to which this trade refers",
       "display": "TradeLegRefID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradelegrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "824"
     }
   },
@@ -2735,15 +2506,6 @@
     "metadata": {
       "description": "Used to report any exchange rules that apply to this trade.",
       "display": "ExchangeRule",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "exchangerule",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "825"
     }
   },
@@ -2811,15 +2573,6 @@
           "doc": "Trade split"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradeallocindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "826"
     }
   },
@@ -2854,15 +2607,6 @@
           "ep": 42,
           "sort": 3,
           "doc": "Trading eligibility expiration specified in the date and time fields [EventDate(866) and EventTime(1145)] associated with EventType(865)=7(Last Eligible Trade Date)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "expirationcycle",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "827"
@@ -3440,15 +3184,6 @@
           "doc": "Prior reference price trade"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "trdtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "828"
     }
   },
@@ -3895,15 +3630,6 @@
           "doc": "Transaction from exercise"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "trdsubtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "829"
     }
   },
@@ -3916,15 +3642,6 @@
     "metadata": {
       "description": "Reason trade is being transferred",
       "display": "TransferReason",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "transferreason",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "830"
     }
   },
@@ -3937,15 +3654,6 @@
     "metadata": {
       "description": "Total Number of Assignment Reports being returned to a firm",
       "display": "TotNumAssignmentReports",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "totnumassignmentreports",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "832"
     }
   },
@@ -3958,15 +3666,6 @@
     "metadata": {
       "description": "Unique identifier for the Assignment Report",
       "display": "AsgnRptID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "asgnrptid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "833"
     }
   },
@@ -3979,15 +3678,6 @@
     "metadata": {
       "description": "Amount that a position has to be in the money before it is exercised.",
       "display": "ThresholdAmount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "thresholdamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "834"
     }
   },
@@ -4014,15 +3704,6 @@
           "since": "4.4",
           "sort": 2,
           "doc": "Fixed"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegmovetype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "835"
@@ -4075,15 +3756,6 @@
           "doc": "Percentage"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegoffsettype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "836"
     }
   },
@@ -4119,15 +3791,6 @@
           "doc": "Or worse - for a buy the peg limit is a minimum and for a sell the peg limit is a maximum (for use for orders which have a price range)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "peglimittype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "837"
     }
   },
@@ -4156,15 +3819,6 @@
           "doc": "More passive - on a buy order round down to the nearest tick; on a sell order round up to the nearest tick"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegrounddirection",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "838"
     }
   },
@@ -4178,15 +3832,6 @@
       "description": "The price the order is currently pegged at",
       "display": "PeggedPrice",
       "fix:derivation": "peggedrefprice + pegoffsetvalue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "peggedprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "839"
     }
   },
@@ -4229,15 +3874,6 @@
           "doc": "National excluding local"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegscope",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "840"
     }
   },
@@ -4264,15 +3900,6 @@
           "since": "4.4",
           "sort": 2,
           "doc": "Fixed"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionmovetype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "841"
@@ -4317,15 +3944,6 @@
           "doc": "Price Tier / Level"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionoffsettype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "842"
     }
   },
@@ -4361,15 +3979,6 @@
           "doc": "Or worse - for a buy the discretion price is a minimum and for a sell the discretion price is a maximum (for use for orders which have a price range)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionlimittype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "843"
     }
   },
@@ -4398,15 +4007,6 @@
           "doc": "More passive - on a buy order round down to the nearest tick; on a sell order round up to the nearest tick"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionrounddirection",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "844"
     }
   },
@@ -4419,15 +4019,6 @@
     "metadata": {
       "description": "The current discretionary price of the order",
       "display": "DiscretionPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "845"
     }
   },
@@ -4470,15 +4061,6 @@
           "doc": "National excluding local"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "discretionscope",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "846"
     }
   },
@@ -4514,15 +4096,6 @@
           "doc": "Mininize market impact"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "targetstrategy",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "847"
     }
   },
@@ -4535,19 +4108,6 @@
     "metadata": {
       "description": "Field to allow further specification of the TargetStrategy - usage to be agreed between counterparties",
       "display": "TargetStrategyParameters",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "targetstrategyparameters",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "848"
     }
   },
@@ -4560,19 +4120,6 @@
     "metadata": {
       "description": "For a TargetStrategy=Participate order specifies the target particpation rate. For other order types this is a volume limit (i.e. do not be more than this percent of the market volume)",
       "display": "ParticipationRate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "participationrate",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "849"
     }
   },
@@ -4585,15 +4132,6 @@
     "metadata": {
       "description": "For communication of the performance of the order versus the target strategy",
       "display": "TargetStrategyPerformance",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "targetstrategyperformance",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "850"
     }
   },
@@ -4698,15 +4236,6 @@
           "doc": "Auction execution after firm order commitment"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastliquidityind",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "851"
     }
   },
@@ -4739,19 +4268,6 @@
             "Yes"
           ],
           "doc": "Report Trade"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "publishtrdindicator",
-          "type": {
-            "type": "boolean"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
         }
       ],
       "fix:replacements": [
@@ -4834,15 +4350,6 @@
           "doc": "QSR or AGU Contra Side Sold Short Exempt"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "shortsalereason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "853"
     }
   },
@@ -4877,15 +4384,6 @@
           "ep": 5,
           "sort": 3,
           "doc": "Unit of Measure per Time Unit"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "qtytype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "854"
@@ -5463,15 +4961,6 @@
           "doc": "Prior reference price trade"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondarytrdtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "855"
     }
   },
@@ -5630,15 +5119,6 @@
           "doc": "Invalid CMTA"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradereporttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "856"
     }
   },
@@ -5667,15 +5147,6 @@
           "doc": "Explicit list provided"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocnoorderstype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "857"
     }
   },
@@ -5688,15 +5159,6 @@
     "metadata": {
       "description": "Commission to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
       "display": "SharedCommission",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sharedcommission",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "858"
     }
   },
@@ -5709,15 +5171,6 @@
     "metadata": {
       "description": "Unique identifier for a Confirmation Request message",
       "display": "ConfirmReqID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "confirmreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "859"
     }
   },
@@ -5730,15 +5183,6 @@
     "metadata": {
       "description": "Used to express average price as percent of par (used where AvgPx field is expressed in some other way)",
       "display": "AvgParPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "avgparpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "860"
     }
   },
@@ -5751,15 +5195,6 @@
     "metadata": {
       "description": "Reported price (used to differentiate from AvgPx on a confirmation of a marked-up or marked-down principal trade)",
       "display": "ReportedPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "reportedpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "861"
     }
   },
@@ -5772,15 +5207,6 @@
     "metadata": {
       "description": "Number of repeating OrderCapacity entries.",
       "display": "NoCapacities",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nocapacities",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "862"
     }
   },
@@ -5793,15 +5219,6 @@
     "metadata": {
       "description": "Quantity executed under a specific OrderCapacity (e.g. quantity executed as agent, quantity executed as principal)",
       "display": "OrderCapacityQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "ordercapacityqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "863"
     }
   },
@@ -5814,15 +5231,6 @@
     "metadata": {
       "description": "Number of repeating EventType entries.",
       "display": "NoEvents",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noevents",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "864"
     }
   },
@@ -6069,15 +5477,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "eventtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "865"
     }
   },
@@ -6091,16 +5490,6 @@
     "metadata": {
       "description": "Date of event",
       "display": "EventDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "eventdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "866"
     }
   },
@@ -6113,15 +5502,6 @@
     "metadata": {
       "description": "Predetermined price of issue at event, if applicable",
       "display": "EventPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "eventpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "867"
     }
   },
@@ -6134,15 +5514,6 @@
     "metadata": {
       "description": "Comments related to the event.",
       "display": "EventText",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "eventtext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "868"
     }
   },
@@ -6155,15 +5526,6 @@
     "metadata": {
       "description": "Percent at risk due to lowest possible call.",
       "display": "PctAtRisk",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pctatrisk",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "869"
     }
   },
@@ -6176,15 +5538,6 @@
     "metadata": {
       "description": "Number of repeating InstrAttribType entries.",
       "display": "NoInstrAttrib",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noinstrattrib",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "870"
     }
   },
@@ -6525,15 +5878,6 @@
           "doc": "Text"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrattribtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "871"
     }
   },
@@ -6546,15 +5890,6 @@
     "metadata": {
       "description": "Attribute value appropriate to the InstrAttribType (871) field.",
       "display": "InstrAttribValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrattribvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "872"
     }
   },
@@ -6568,16 +5903,6 @@
     "metadata": {
       "description": "The effective date of a new securities issue determined by its underwriters. Often but not always the same as the Issue Date and the Interest Accrual Date",
       "display": "DatedDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "dateddate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "873"
     }
   },
@@ -6591,16 +5916,6 @@
     "metadata": {
       "description": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
       "display": "InterestAccrualDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "interestaccrualdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "874"
     }
   },
@@ -6684,15 +5999,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "cpprogram",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "875"
     }
   },
@@ -6705,15 +6011,6 @@
     "metadata": {
       "description": "The description of commercial paper registration or rule under which exempt commercial paper is offered. For example \"144a\", \"Tax Exempt\" or \"REG. S\".",
       "display": "CPRegType",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "cpregtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "876"
     }
   },
@@ -6797,22 +6094,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcpprogram",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyingcpprogram",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "877"
     }
   },
@@ -6825,15 +6106,6 @@
     "metadata": {
       "description": "The registration type of the underlying commercial paper issuance",
       "display": "UnderlyingCPRegType",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcpregtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "878"
     }
   },
@@ -6846,15 +6118,6 @@
     "metadata": {
       "description": "Unit amount of the underlying security (par, shares, currency, etc.)",
       "display": "UnderlyingQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "879"
     }
   },
@@ -6867,15 +6130,6 @@
     "metadata": {
       "description": "Identifier assigned by a matching system to a match event that results in multiple executions or trades.",
       "display": "TrdMatchID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "trdmatchid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "880"
     }
   },
@@ -6888,19 +6142,6 @@
     "metadata": {
       "description": "Used to refer to a previous SecondaryTradeReportRefID when amending the transaction (cancel, replace, release, or reversal).",
       "display": "SecondaryTradeReportRefID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondarytradereportrefid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "881"
     }
   },
@@ -6913,15 +6154,6 @@
     "metadata": {
       "description": "Price (percent-of-par or per unit) of the underlying security or basket. \"Dirty\" means it includes accrued interest",
       "display": "UnderlyingDirtyPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingdirtyprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "882"
     }
   },
@@ -6934,15 +6166,6 @@
     "metadata": {
       "description": "Price (percent-of-par or per unit) of the underlying security or basket at the end of the agreement.",
       "display": "UnderlyingEndPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingendprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "883"
     }
   },
@@ -6955,15 +6178,6 @@
     "metadata": {
       "description": "Currency value attributed to this collateral at the start of the agreement",
       "display": "UnderlyingStartValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingstartvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "884"
     }
   },
@@ -6976,15 +6190,6 @@
     "metadata": {
       "description": "Currency value currently attributed to this collateral",
       "display": "UnderlyingCurrentValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcurrentvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "885"
     }
   },
@@ -6997,15 +6202,6 @@
     "metadata": {
       "description": "Currency value attributed to this collateral at the end of the agreement",
       "display": "UnderlyingEndValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingendvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "886"
     }
   },
@@ -7018,15 +6214,6 @@
     "metadata": {
       "description": "Number of underlying stipulation entries",
       "display": "NoUnderlyingStips",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nounderlyingstips",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "887"
     }
   },
@@ -7813,15 +7000,6 @@
           "doc": "Yield to Maturity (when YieldType(235) and Yield(236) show a different yield)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingstiptype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "888"
     }
   },
@@ -7834,15 +7012,6 @@
     "metadata": {
       "description": "Value of stipulation.",
       "display": "UnderlyingStipValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingstipvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "889"
     }
   },
@@ -7855,15 +7024,6 @@
     "metadata": {
       "description": "Net Money at maturity if Zero Coupon and maturity value is different from par value",
       "display": "MaturityNetMoney",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "maturitynetmoney",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "890"
     }
   },
@@ -7899,15 +7059,6 @@
           "doc": "Percentage"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "miscfeebasis",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "891"
     }
   },
@@ -7920,15 +7071,6 @@
     "metadata": {
       "description": "Total number of NoAlloc entries across all messages. Should be the sum of all NoAllocs in each message that has repeating NoAlloc entries related to the same AllocID or AllocReportID. Used to support fragmentation.",
       "display": "TotNoAllocs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "totnoallocs",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "892"
     }
   },
@@ -7963,15 +7105,6 @@
           "doc": "Last Message"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastfragment",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "893"
     }
   },
@@ -7984,15 +7117,6 @@
     "metadata": {
       "description": "Collateral Request Identifier",
       "display": "CollReqID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "894"
     }
   },
@@ -8087,15 +7211,6 @@
           "doc": "Transfer withdrawal"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgnreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "895"
     }
   },
@@ -8166,15 +7281,6 @@
           "doc": "Outstanding Trades (Today < end date)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collinquiryqualifier",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "896"
     }
   },
@@ -8187,15 +7293,6 @@
     "metadata": {
       "description": "Number of trades in repeating group.",
       "display": "NoTrades",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "notrades",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "897"
     }
   },
@@ -8208,15 +7305,6 @@
     "metadata": {
       "description": "The fraction of the cash consideration that must be collateralized, expressed as a percent. A MarginRatio of 02% indicates that the value of the collateral (after deducting for \"haircut\") must exceed the cash consideration by 2%.",
       "display": "MarginRatio",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "marginratio",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "898"
     }
   },
@@ -8229,15 +7317,6 @@
     "metadata": {
       "description": "Excess margin amount (deficit if value is negative)",
       "display": "MarginExcess",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "marginexcess",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "899"
     }
   }

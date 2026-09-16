@@ -1883,15 +1883,6 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "UnderlyingDividendPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingdividendperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42881"
     }
   },
@@ -2133,15 +2124,6 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "UnderlyingPaymentStreamCompoundingXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingpaymentstreamcompoundingxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42896"
     }
   },

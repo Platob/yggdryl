@@ -1617,16 +1617,6 @@
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "UnderlyingReturnRateQuoteExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingreturnratequoteexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "43050"
     }
   },
@@ -1765,16 +1755,6 @@
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "UnderlyingReturnRateValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingreturnratevaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "43056"
     }
   },

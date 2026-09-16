@@ -28,7 +28,7 @@
 
 use std::sync::LazyLock;
 
-use crate::{DataType, Field, Scalar, Version};
+use crate::{DataType, Field, Scalar};
 
 use super::msg::FixMsg;
 
@@ -454,32 +454,21 @@ impl FixMsg {
     fn lift_resolved(&self, facet: &str) -> Option<(i32, &Scalar)> {
         let lift = fix_lift(facet)?;
         let msgtype = self.msgtype();
-        let at = self.version();
         // The specification supersedes fields repeatedly - `QuantityType(465)`
-        // by `QtyType(854)`, and so on - and the lineage already says which is
-        // which. Every source this message's version has not deprecated is
-        // tried before any it has. One rule, not a special case per pair.
-        //
-        // One pass, and deprecation is asked only of a source that actually
-        // answered. Asking first and reading second walks the lineage of
-        // every source in the table, and all but one of them had nothing to
-        // say: the question is about the answer, not about the source.
-        let mut superseded = None;
+        // by `QtyType(854)`, and so on - and the lift table states them in the
+        // order they supersede, newest first. That order is the whole rule:
+        // the dictionary holds one reading of every tag and dates none of
+        // them, so which of two sources is current is the table's statement
+        // rather than something rederived per message.
         for source in lift.sources {
             if !source.applies(msgtype) {
                 continue;
             }
-            let Some(value) = self.flat(source.tag) else {
-                continue;
-            };
-            if !self.is_deprecated(source.tag, at) {
+            if let Some(value) = self.flat(source.tag) {
                 return Some((source.tag, value));
             }
-            if superseded.is_none() {
-                superseded = Some((source.tag, value));
-            }
         }
-        superseded.or_else(|| self.derived(facet, msgtype))
+        self.derived(facet, msgtype)
     }
 
     /// One flat value a tag names, when exactly one occurrence carries it.
@@ -499,16 +488,6 @@ impl FixMsg {
     /// This message's type, which is what the root is named.
     fn msgtype(&self) -> &str {
         self.as_field().name()
-    }
-
-    /// Whether the dictionary has deprecated a tag by this message's version.
-    fn is_deprecated(&self, tag: i32, at: Option<Version>) -> bool {
-        let Some(at) = at else {
-            return false;
-        };
-        self.registry()
-            .get_field_by_tag(tag)
-            .is_some_and(|field| field.as_fix().deprecated_at(at))
     }
 
     /// One symbolic code spelling as the member field's own typed value.

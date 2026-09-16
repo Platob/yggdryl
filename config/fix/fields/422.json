@@ -2195,15 +2195,6 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "DividendPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "dividendperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42293"
     }
   },

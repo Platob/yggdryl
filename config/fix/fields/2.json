@@ -11,18 +11,6 @@
     "metadata": {
       "description": "Can be used with standardized derivatives vs. the MaturityDate (541) field. Month and Year of the maturity (used for standardized futures and options).",
       "display": "MaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "maturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "200"
     }
   },
@@ -68,15 +56,6 @@
         }
       ],
       "fix:derivation": "case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "putorcall",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "201"
     }
   },
@@ -89,15 +68,6 @@
     "metadata": {
       "description": "Strike Price for an Option.",
       "display": "StrikePrice",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "strikeprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "202"
     }
   },
@@ -126,15 +96,6 @@
           "doc": "Uncovered"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "coveredoruncovered",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "203"
     }
   },
@@ -158,19 +119,6 @@
           "name": "Firm",
           "since": "4.1",
           "deprecated": "4.3"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "customerorfirm",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
         }
       ],
       "fix:replacements": [
@@ -208,19 +156,6 @@
     "nullable": true,
     "metadata": {
       "display": "MaturityDay",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "maturityday",
-          "type": {
-            "type": "int8"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.3",
@@ -248,15 +183,6 @@
     "metadata": {
       "description": "Provided to support versioning of option contracts as a result of corporate actions or events. Use of this field is defined by counterparty agreement or market conventions.",
       "display": "OptAttribute",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "optattribute",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "206"
     }
   },
@@ -269,22 +195,6 @@
     "metadata": {
       "description": "Market used to help identify a security.",
       "display": "SecurityExchange",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securityexchange",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "securityexchange",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "207"
     }
   },
@@ -317,22 +227,6 @@
             "Yes"
           ],
           "doc": "Details should be communicated"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "notifybrokerofcredit",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "notifybrokerofcredit",
-          "type": {
-            "type": "boolean"
-          }
         }
       ],
       "fix:tag": "208"
@@ -378,15 +272,6 @@
           "doc": "Auto claim give-up"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "allochandlinst",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "209"
     }
   },
@@ -399,26 +284,6 @@
     "metadata": {
       "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
       "display": "MaxShow",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "maxshow",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "maxshow",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "5.0",
@@ -442,22 +307,6 @@
       "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType (836)",
       "display": "PegOffsetValue",
       "fix:aliases": "pegdifference",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "pegdifference",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "pegoffsetvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "211"
     }
   },
@@ -470,15 +319,6 @@
     "metadata": {
       "description": "Length of the XmlData data block.",
       "display": "XmlDataLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "xmldatalen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "212"
     }
   },
@@ -491,15 +331,6 @@
     "metadata": {
       "description": "Actual XML data stream (e.g. FIXML). See appropriate XML reference (e.g. FIXML). Note: may contain embedded SOH characters.",
       "display": "XmlData",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "xmldata",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "213"
     }
   },
@@ -512,15 +343,6 @@
     "metadata": {
       "description": "Reference identifier for the SettlInstID (162) with Cancel and Replace SettlInstTransType (163) transaction types.",
       "display": "SettlInstRefID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "settlinstrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "214"
     }
   },
@@ -533,15 +355,6 @@
     "metadata": {
       "description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
       "display": "NoRoutingIDs",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "noroutingids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "215"
     }
   },
@@ -600,15 +413,6 @@
           "doc": "Block Person"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "routingtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "216"
     }
   },
@@ -621,15 +425,6 @@
     "metadata": {
       "description": "Assigned value used to identify a specific routing destination.",
       "display": "RoutingID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "routingid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "217"
     }
   },
@@ -643,22 +438,6 @@
       "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
       "display": "Spread",
       "fix:aliases": "spreadtobenchmark",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "spreadtobenchmark",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.3",
-          "name": "spread",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "218"
     }
   },
@@ -724,23 +503,6 @@
           "name": "SixMolibor",
           "since": "4.2",
           "deprecated": "4.4"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "benchmark",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "deprecated": true
-        },
-        {
-          "since": "4.4",
-          "removed": true
         }
       ],
       "fix:replacements": [
@@ -928,15 +690,6 @@
     "metadata": {
       "description": "Specifies currency used for benchmark curve.",
       "display": "BenchmarkCurveCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "benchmarkcurvecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "220"
     }
   },
@@ -1375,15 +1128,6 @@
           "doc": "Warsaw Interbank Offered Rate"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "benchmarkcurvename",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "221"
     }
   },
@@ -1396,15 +1140,6 @@
     "metadata": {
       "description": "Point on benchmark curve. Free form values: e.g. \"Y\", \"7Y\", \"INTERPOLATED\".",
       "display": "BenchmarkCurvePoint",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "benchmarkcurvepoint",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "222"
     }
   },
@@ -1417,15 +1152,6 @@
     "metadata": {
       "description": "The rate of interest that, when multiplied by the principal, par value, or face value of a bond, provides the currency amount of the periodic interest payment. The coupon is always cited, along with maturity, in any quotation of a bond's price.",
       "display": "CouponRate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "couponrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "223"
     }
   },
@@ -1439,25 +1165,6 @@
     "metadata": {
       "description": "Date interest is to be paid. Used in identifying Corporate Bond issues.",
       "display": "CouponPaymentDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "couponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "couponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "224"
     }
   },
@@ -1471,25 +1178,6 @@
     "metadata": {
       "description": "The date on which a bond or stock offering is issued. It may or may not be the same as the effective date (\"Dated Date\") or the date on which interest begins to accrue (\"Interest Accrual Date\")",
       "display": "IssueDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "issuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "issuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "225"
     }
   },
@@ -1502,19 +1190,6 @@
     "metadata": {
       "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "RepurchaseTerm",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "repurchaseterm",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -1550,19 +1225,6 @@
     "metadata": {
       "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "RepurchaseRate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "repurchaserate",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -1585,15 +1247,6 @@
     "metadata": {
       "description": "For Fixed Income: Amorization Factor for deriving Current face from Original face for ABS or MBS securities, note the fraction may be greater than, equal to or less than . In TIPS securities this is the Inflation index.",
       "display": "Factor",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "factor",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "228"
     }
   },
@@ -1607,25 +1260,6 @@
     "metadata": {
       "description": "Used with Fixed Income for Muncipal New Issue Market. Agreement in principal between counter-parties prior to actual trade date.",
       "display": "TradeOriginationDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradeoriginationdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "tradeoriginationdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "229"
     }
   },
@@ -1639,25 +1273,6 @@
     "metadata": {
       "description": "The date when a distribution of interest is deducted from a securities assets or set aside for payment to bondholders. On the ex-date, the securities price drops by the amount of the distribution (plus or minus any market activity).",
       "display": "ExDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "exdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "exdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "230"
     }
   },
@@ -1670,15 +1285,6 @@
     "metadata": {
       "description": "Specifies the ratio or multiply factor to convert from \"nominal\" units (e.g. contracts) to total units (e.g. shares) (e.g. 1.0, 100, 1000, etc). Applicable For Fixed Income, Convertible Bonds, Derivatives, etc.",
       "display": "ContractMultiplier",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "contractmultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "231"
     }
   },
@@ -1691,15 +1297,6 @@
     "metadata": {
       "description": "Number of stipulation entries",
       "display": "NoStipulations",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nostipulations",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "232"
     }
   },
@@ -2486,15 +2083,6 @@
           "doc": "Yield to Maturity (when YieldType(235) and Yield(236) show a different yield)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "stipulationtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "233"
     }
   },
@@ -2507,15 +2095,6 @@
     "metadata": {
       "description": "For Fixed Income. Value of stipulation.",
       "display": "StipulationValue",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "stipulationvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "234"
     }
   },
@@ -2792,15 +2371,6 @@
           "doc": "Yield To Worst"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "yieldtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "235"
     }
   },
@@ -2813,15 +2383,6 @@
     "metadata": {
       "description": "Yield percentage.",
       "display": "Yield",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "yield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "236"
     }
   },
@@ -2834,15 +2395,6 @@
     "metadata": {
       "description": "The price at which the securities are distributed to the different members of an underwriting group for the primary market in Municipals, total gross underwriter's spread.",
       "display": "TotalTakedown",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "totaltakedown",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "237"
     }
   },
@@ -2855,15 +2407,6 @@
     "metadata": {
       "description": "Provides the reduction in price for the secondary market in Muncipals.",
       "display": "Concession",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "concession",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "238"
     }
   },
@@ -2876,19 +2419,6 @@
     "metadata": {
       "description": "Identifies the collateral used in the transaction.",
       "display": "RepoCollateralSecurityType",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "repocollateralsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -2912,26 +2442,6 @@
     "metadata": {
       "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "display": "RedemptionDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "redemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "redemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          },
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -2955,25 +2465,6 @@
     "metadata": {
       "description": "Underlying security's CouponPaymentDate.",
       "display": "UnderlyingCouponPaymentDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingcouponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "underlyingcouponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "241"
     }
   },
@@ -2987,25 +2478,6 @@
     "metadata": {
       "description": "Underlying security's IssueDate.",
       "display": "UnderlyingIssueDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingissuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "underlyingissuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "242"
     }
   },
@@ -3018,19 +2490,6 @@
     "metadata": {
       "description": "Underlying security's RepoCollateralSecurityType. See RepoCollateralSecurityType (239) field for description.(Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "UnderlyingRepoCollateralSecurityType",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyingrepocollateralsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "243"
     }
   },
@@ -3043,19 +2502,6 @@
     "metadata": {
       "description": "Underlying security's RepurchaseTerm. See RepurchaseTerm (226) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "UnderlyingRepurchaseTerm",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingrepurchaseterm",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "244"
     }
   },
@@ -3068,19 +2514,6 @@
     "metadata": {
       "description": "Underlying security's RepurchaseRate. See RepurchaseRate (227) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "UnderlyingRepurchaseRate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingrepurchaserate",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "245"
     }
   },
@@ -3093,15 +2526,6 @@
     "metadata": {
       "description": "Underlying security's Factor.",
       "display": "UnderlyingFactor",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingfactor",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "246"
     }
   },
@@ -3115,26 +2539,6 @@
     "metadata": {
       "description": "Underlying security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "display": "UnderlyingRedemptionDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingredemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "underlyingredemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          },
-          "deprecated": true
-        }
-      ],
       "fix:tag": "247"
     }
   },
@@ -3148,25 +2552,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's CouponPaymentDate.",
       "display": "LegCouponPaymentDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legcouponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "legcouponpaymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "248"
     }
   },
@@ -3180,25 +2565,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's IssueDate.",
       "display": "LegIssueDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legissuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "legissuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "249"
     }
   },
@@ -3211,19 +2577,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's RepoCollateralSecurityType. See RepoCollateralSecurityType (239) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "LegRepoCollateralSecurityType",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legrepocollateralsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "250"
     }
   },
@@ -3236,19 +2589,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's RepurchaseTerm. See RepurchaseTerm (226) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "LegRepurchaseTerm",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legrepurchaseterm",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "251"
     }
   },
@@ -3261,19 +2601,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's RepurchaseRate. See RepurchaseRate (227) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
       "display": "LegRepurchaseRate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legrepurchaserate",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "252"
     }
   },
@@ -3286,15 +2613,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's Factor.",
       "display": "LegFactor",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legfactor",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "253"
     }
   },
@@ -3308,26 +2626,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "display": "LegRedemptionDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legredemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "legredemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          },
-          "deprecated": true
-        }
-      ],
       "fix:tag": "254"
     }
   },
@@ -3340,15 +2638,6 @@
     "metadata": {
       "description": "An evaluation of a company's ability to repay obligations or its likelihood of not defaulting. These evaluation are provided by Credit Rating Agencies, i.e. S&P, Moody's.",
       "display": "CreditRating",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "creditrating",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "255"
     }
   },
@@ -3361,15 +2650,6 @@
     "metadata": {
       "description": "Underlying security's CreditRating.",
       "display": "UnderlyingCreditRating",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingcreditrating",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "256"
     }
   },
@@ -3382,15 +2662,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's CreditRating.",
       "display": "LegCreditRating",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "legcreditrating",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "257"
     }
   },
@@ -3425,15 +2696,6 @@
           "doc": "Traded Flat"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradedflatswitch",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "258"
     }
   },
@@ -3447,25 +2709,6 @@
     "metadata": {
       "description": "BasisFeatureDate allows requesting firms within fixed income the ability to request an alternative yield-to-worst, -maturity, -extended or other call. This flows through the confirm process.",
       "display": "BasisFeatureDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "basisfeaturedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "basisfeaturedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "259"
     }
   },
@@ -3478,15 +2721,6 @@
     "metadata": {
       "description": "Price for BasisFeatureDate.",
       "display": "BasisFeaturePrice",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "basisfeatureprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "260"
     }
   },
@@ -3499,15 +2733,6 @@
     "metadata": {
       "description": "Unique identifier for Market Data Request",
       "display": "MDReqID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "262"
     }
   },
@@ -3543,15 +2768,6 @@
           "doc": "Disable previous Snapshot + Update Request (Unsubscribe)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "subscriptionrequesttype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "263"
     }
   },
@@ -3564,15 +2780,6 @@
     "metadata": {
       "description": "Depth of market for Book Snapshot / Incremental updates",
       "display": "MarketDepth",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "marketdepth",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "264"
     }
   },
@@ -3599,15 +2806,6 @@
           "since": "4.2",
           "sort": 2,
           "doc": "Incremental refresh"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdupdatetype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "265"
@@ -3646,15 +2844,6 @@
           "doc": "book entries to be aggregated"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "aggregatedbook",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "266"
     }
   },
@@ -3667,15 +2856,6 @@
     "metadata": {
       "description": "Number of MDEntryType (269) fields requested.",
       "display": "NoMDEntryTypes",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nomdentrytypes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "267"
     }
   },
@@ -3688,15 +2868,6 @@
     "metadata": {
       "description": "Number of entries in Market Data message.",
       "display": "NoMDEntries",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nomdentries",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "268"
     }
   },
@@ -4056,15 +3227,6 @@
           "doc": "Time Weighted Average Price"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrytype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "269"
     }
   },
@@ -4077,15 +3239,6 @@
     "metadata": {
       "description": "Price of the Market Data Entry.",
       "display": "MDEntryPx",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrypx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "270"
     }
   },
@@ -4098,15 +3251,6 @@
     "metadata": {
       "description": "Quantity or volume represented by the Market Data Entry.",
       "display": "MDEntrySize",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrysize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "271"
     }
   },
@@ -4121,17 +3265,6 @@
     "metadata": {
       "description": "Date of Market Data Entry.",
       "display": "MDEntryDate",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "272"
     }
   },
@@ -4145,16 +3278,6 @@
     "metadata": {
       "description": "Time of Market Data Entry.",
       "display": "MDEntryTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrytime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "273"
     }
   },
@@ -4197,15 +3320,6 @@
           "doc": "Zero-Minus Tick"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tickdirection",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "274"
     }
   },
@@ -4218,19 +3332,6 @@
     "metadata": {
       "description": "Market posting quote / trade.",
       "display": "MDMkt",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdmkt",
-          "type": {
-            "type": "mic"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "275"
     }
   },
@@ -4713,15 +3814,6 @@
           "ep": 7,
           "sort": 52,
           "doc": "Suspended SAM"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quotecondition",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "276"
@@ -5442,15 +4534,6 @@
           "doc": "Adjusted ETH"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradecondition",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "277"
     }
   },
@@ -5463,15 +4546,6 @@
     "metadata": {
       "description": "Unique Market Data Entry identifier.",
       "display": "MDEntryID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentryid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "278"
     }
   },
@@ -5531,15 +4605,6 @@
           "doc": "Overlay"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdupdateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "279"
     }
   },
@@ -5552,15 +4617,6 @@
     "metadata": {
       "description": "Refers to a previous MDEntryID (278).",
       "display": "MDEntryRefID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentryrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "280"
     }
   },
@@ -5674,15 +4730,6 @@
           "doc": "Insufficient credit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdreqrejreason",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "281"
     }
   },
@@ -5695,19 +4742,6 @@
     "metadata": {
       "description": "Originator of a Market Data Entry",
       "display": "MDEntryOriginator",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentryoriginator",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "282"
     }
   },
@@ -5720,15 +4754,6 @@
     "metadata": {
       "description": "Identification of a Market Maker's location",
       "display": "LocationID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "locationid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "283"
     }
   },
@@ -5741,15 +4766,6 @@
     "metadata": {
       "description": "Identification of a Market Maker's desk",
       "display": "DeskID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "deskid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "284"
     }
   },
@@ -5776,15 +4792,6 @@
           "since": "4.2",
           "sort": 2,
           "doc": "Error"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "deletereason",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "285"
@@ -5844,22 +4851,6 @@
           "doc": "Theoretical Price value"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "openclosesettleflag",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "openclosesettlflag",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "286"
     }
   },
@@ -5872,15 +4863,6 @@
     "metadata": {
       "description": "Specifies the number of days that may elapse before delivery of the security",
       "display": "SellerDays",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "sellerdays",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "287"
     }
   },
@@ -5893,15 +4875,6 @@
     "metadata": {
       "description": "Buying party in a trade",
       "display": "MDEntryBuyer",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrybuyer",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "288"
     }
   },
@@ -5914,15 +4887,6 @@
     "metadata": {
       "description": "Selling party in a trade",
       "display": "MDEntrySeller",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentryseller",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "289"
     }
   },
@@ -5935,15 +4899,6 @@
     "metadata": {
       "description": "Display position of a bid or offer, numbered from most competitive to least competitive, per market side, beginning with 1.",
       "display": "MDEntryPositionNo",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "mdentrypositionno",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "290"
     }
   },
@@ -5978,15 +4933,6 @@
           "ep": 12,
           "sort": 3,
           "doc": "Restricted"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "financialstatus",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "291"
@@ -6182,15 +5128,6 @@
           "doc": "Succession Event"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "corporateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "292"
     }
   },
@@ -6203,15 +5140,6 @@
     "metadata": {
       "description": "Default Bid Size.",
       "display": "DefBidSize",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "defbidsize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "293"
     }
   },
@@ -6224,15 +5152,6 @@
     "metadata": {
       "description": "Default Offer Size.",
       "display": "DefOfferSize",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "defoffersize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "294"
     }
   },
@@ -6245,15 +5164,6 @@
     "metadata": {
       "description": "The number of quote entries for a QuoteSet.",
       "display": "NoQuoteEntries",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "noquoteentries",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "295"
     }
   },
@@ -6266,15 +5176,6 @@
     "metadata": {
       "description": "The number of sets of quotes in the message.",
       "display": "NoQuoteSets",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "noquotesets",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "296"
     }
   },
@@ -6469,22 +5370,6 @@
           "doc": "Quote not found"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoteackstatus",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.3",
-          "name": "quotestatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "297"
     }
   },
@@ -6562,15 +5447,6 @@
           "doc": "Cancel quotes for an issuer of underlying security"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quotecanceltype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "298"
     }
   },
@@ -6583,15 +5459,6 @@
     "metadata": {
       "description": "Unique identifier for a quote. The QuoteEntryID stays with the quote as a static identifier even if the quote is updated.",
       "display": "QuoteEntryID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoteentryid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "299"
     }
   }

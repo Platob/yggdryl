@@ -17,7 +17,6 @@
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
 //! | identifiers | `fix:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
-//! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
 //! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
 //! | directions | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
@@ -59,20 +58,18 @@
 //!
 //! # Versions
 //!
-//! The registry is version-agnostic: it holds every tag ever defined, and a
-//! version is a filter on the read, which is what "defined in one version,
-//! available in the others" means. [`FixField::lineage`](crate::FixField)
-//! carries what a field was called and typed at each version; `since`,
-//! `until` and deprecation derive from it rather than sit beside it, and
-//! [`FixRegistry::field_at`] filters one read by it. There is no
-//! registry-wide default version, and "FIX Latest" is never stored as one:
-//! [`FixRegistry::newest`] resolves it to the real pedigree the dictionary
-//! carries.
+//! The registry is version-blind: it holds every tag ever defined and filters
+//! by none. A dictionary is one reading of the protocol rather than a history
+//! of it, so a field is the field, under the one name and datatype the
+//! dictionary gives it. A spelling an earlier version used reaches it as an
+//! ordinary [alias](FixSpellings), stated by whoever built the dictionary;
+//! nothing here derives one from a date.
 //!
-//! The lineage carries enough to rename and retype a field between versions.
-//! The expression-driven normalization layer - conditions, lookups and value
-//! mappings - is not here and needs an evaluator; "transcoding" names both
-//! and only the lineage-driven half lives in this module.
+//! What a *value* was is the field's own business and stays: a
+//! [code](FixCode) carries the version it was declared at and the one that
+//! deprecated it, and a [`fix:replacements`](FixReplacement) rule says how a
+//! retired field or value is restated - which is what
+//! [`FixCodec::enrich_message`] applies.
 //!
 //! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
 //! separators - so a query spelled in any case or with any separator finds
@@ -162,7 +159,6 @@ mod identity;
 mod latest;
 mod lifecycle;
 mod lift;
-mod lineage;
 mod memo;
 mod messages;
 mod msg;
@@ -202,7 +198,6 @@ pub use entry::FixEntry;
 pub use field::FixSpellings;
 pub use lifecycle::FixLifecycle;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
-pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;

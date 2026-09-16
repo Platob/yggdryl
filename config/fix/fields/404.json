@@ -153,16 +153,6 @@
     "metadata": {
       "description": "The fxing time associated with the step schedule.",
       "display": "LegPaymentScheduleFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legpaymentschedulefixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40405"
     }
   },
@@ -2389,16 +2379,6 @@
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "LegProvisionOptionExerciseEarliestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legprovisionoptionexerciseearliesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40491"
     }
   },
@@ -2424,16 +2404,6 @@
     "metadata": {
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "LegProvisionOptionExerciseLatestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legprovisionoptionexerciselatesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40493"
     }
   },

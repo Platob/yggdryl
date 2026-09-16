@@ -1,9 +1,9 @@
 //! The canonical JSON documents the `fix:` namespace stores, read borrowed.
 //!
-//! Four `fix:` properties hold more than one text can say as a list: the
-//! per-version [lineage](super::lineage), the [code set](super::codes), the
-//! [directions](super::directions) a line is read under and the
-//! [replacements](super::replacements) a value is restated through. All are
+//! Three `fix:` properties hold more than one text can say as a list: the
+//! [code set](super::codes), the [directions](super::directions) a line is
+//! read under and the [replacements](super::replacements) a value is
+//! restated through. All are
 //! JSON, because a metadata value may hold no control character and so
 //! cannot be separator-framed, and all are read on hot paths where building a
 //! parse tree per ask would cost more than the lookup.
@@ -38,8 +38,6 @@ use crate::{Error, Result, Scalar, Version};
 pub(super) enum Refusal {
     /// A byte the grammar requires was not there.
     Expected(u8),
-    /// A literal the grammar requires was not there.
-    ExpectedToken(&'static str),
     /// A string ran to the end of the document.
     Unclosed,
     /// A word that may hold no escape held one.
@@ -83,7 +81,6 @@ impl Refusal {
         };
         let reason = match self {
             Self::Expected(byte) => format_smolstr!("expected {:?}", char::from(byte)),
-            Self::ExpectedToken(token) => format_smolstr!("expected {token:?}"),
             Self::Unclosed => SmolStr::new_static("expected a closing quote"),
             Self::Escaped(what) => format_smolstr!("expected {what:?} to hold no escape"),
             Self::NotANumber(what) => format_smolstr!("expected {what:?} to hold a decimal number"),
@@ -166,16 +163,6 @@ impl<'doc> Cursor<'doc> {
         Err(Refusal::Expected(byte))
     }
 
-    /// Steps over one expected literal.
-    #[inline]
-    pub(super) fn expect_all(&mut self, token: &'static str) -> Scan<()> {
-        if self.document[self.position..].starts_with(token) {
-            self.position += token.len();
-            return Ok(());
-        }
-        Err(Refusal::ExpectedToken(token))
-    }
-
     /// Reads one JSON string body, leaving its escapes in place.
     #[inline]
     pub(super) fn read_string(&mut self) -> Scan<&'doc str> {
@@ -214,48 +201,12 @@ impl<'doc> Cursor<'doc> {
         Ok(word)
     }
 
-    /// Reads one nested object, handing back its whole text.
-    ///
-    /// A datatype is the one value these documents hold that is a document
-    /// itself, because it is stored exactly as the field's own datatype is
-    /// and a parameterized one carries its parameters as keys. The braces
-    /// are balanced by scanning, strings skipped whole so a `{` inside one is
-    /// not counted, and the slice handed back is the input's own bytes - so
-    /// the crate's JSON reader parses it later without this scan allocating.
-    pub(super) fn read_document(&mut self, key: &'static str) -> Scan<&'doc str> {
-        let start = self.position;
-        self.expect(b'{')?;
-        let mut depth = 1_usize;
-        while depth > 0 {
-            match self.peek() {
-                Some(b'"') => {
-                    self.read_string()?;
-                    continue;
-                }
-                Some(b'{') => depth += 1,
-                Some(b'}') => depth -= 1,
-                Some(_) => {}
-                None => {
-                    self.position = start;
-                    return Err(Refusal::Unclosed);
-                }
-            }
-            self.position += 1;
-        }
-        let body = &self.document[start..self.position];
-        if body.len() < 2 {
-            self.position = start;
-            return Err(Refusal::NotANumber(key));
-        }
-        Ok(body)
-    }
-
     /// Reads one nested array, handing back the text between its brackets.
     ///
     /// A list of fills is the one array these documents hold whose elements
     /// are objects, and one whose objects hold lists of their own, so the
     /// brackets and braces are balanced together by scanning and strings are
-    /// skipped whole exactly as [`Self::read_document`] skips them. The
+    /// skipped whole exactly as [`Self::read_string`] skips a string. The
     /// elements stay unread: the caller's own grammar reads them out of the
     /// slice handed back, and a caller that only wants past them pays the
     /// skip.
@@ -333,16 +284,6 @@ impl<'doc> Cursor<'doc> {
             self.position = start;
             Refusal::NotAVersion(key)
         })
-    }
-
-    /// Reads `true`, the only spelling a flag key takes.
-    ///
-    /// A false flag is absent rather than written, so one declaration has one
-    /// stored form.
-    #[inline]
-    pub(super) fn read_flag(&mut self) -> Scan<bool> {
-        self.expect_all("true")?;
-        Ok(true)
     }
 
     /// Reads one key, holding it to the document's declared order.
@@ -636,15 +577,6 @@ impl Writer {
         Ok(())
     }
 
-    /// Writes one key whose value is an already-rendered document.
-    ///
-    /// The text comes from the crate's own JSON writer, so it is spliced
-    /// rather than re-escaped: escaping a document would make it a string.
-    pub(super) fn document(&mut self, first: bool, key: &str, value: &str) {
-        self.key(first, key);
-        self.text.push_str(value);
-    }
-
     /// Writes one number-valued key.
     pub(super) fn number(&mut self, first: bool, key: &str, value: impl fmt::Display) {
         self.key(first, key);
@@ -669,12 +601,6 @@ impl Writer {
             let _ = write!(self.text, "{value}");
         }
         self.text.push(']');
-    }
-
-    /// Writes one flag key, which exists only when true.
-    pub(super) fn flag(&mut self, first: bool, key: &str) {
-        self.key(first, key);
-        self.text.push_str("true");
     }
 
     /// Writes one array-of-words key.
@@ -742,7 +668,6 @@ enum Part {
     /// One datatype document, restated through the datatype's own writer, so
     /// its keys come back in the order that writer states them rather than
     /// in the order a JSON reader sorted them into.
-    Datatype,
     /// A list of fills, whose members are a list of fills again.
     Fills,
 }
@@ -750,17 +675,6 @@ enum Part {
 /// What each key of a code holds. The order is [`super::codes::KEYS`]'s, which
 /// stays the one owner of it; this says only which keys are not leaves.
 const CODE_PARTS: [Part; 9] = [Part::Leaf; 9];
-
-/// The same for a lineage entry, whose `type` is a datatype document.
-const LINEAGE_PARTS: [Part; 7] = [
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Datatype,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-];
 
 /// The same for a direction.
 const DIRECTION_PARTS: [Part; 2] = [Part::Leaf; 2];
@@ -790,7 +704,6 @@ const FILL_PARTS: [Part; 6] = [
 // one table read side by side and a key added to a reader without a part is a
 // build failure rather than a key this quietly stops carrying.
 const _: () = assert!(CODE_PARTS.len() == super::codes::KEYS.len());
-const _: () = assert!(LINEAGE_PARTS.len() == super::lineage::KEYS.len());
 const _: () = assert!(DIRECTION_PARTS.len() == super::directions::KEYS.len());
 const _: () = assert!(REPLACEMENT_PARTS.len() == super::replacements::KEYS.len());
 const _: () = assert!(FILL_PARTS.len() == super::replacements::FILL_KEYS.len());
@@ -804,8 +717,6 @@ const _: () = assert!(FILL_PARTS.len() == super::replacements::FILL_KEYS.len());
 pub(super) enum Kind {
     /// [`super::codes`], under `fix:codes`.
     Codes,
-    /// [`super::lineage`], under `fix:lineage`.
-    Lineage,
     /// [`super::directions`], under `fix:directions`.
     Directions,
     /// [`super::replacements`], under `fix:replacements`.
@@ -814,18 +725,12 @@ pub(super) enum Kind {
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 4] = [
-        Self::Codes,
-        Self::Lineage,
-        Self::Directions,
-        Self::Replacements,
-    ];
+    pub(super) const ALL: [Self; 3] = [Self::Codes, Self::Directions, Self::Replacements];
 
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
         match self {
             Self::Codes => "fix:codes",
-            Self::Lineage => "fix:lineage",
             Self::Directions => "fix:directions",
             Self::Replacements => "fix:replacements",
         }
@@ -840,7 +745,6 @@ impl Kind {
     const fn target(self) -> &'static str {
         match self {
             Self::Codes => "fix codes",
-            Self::Lineage => "fix lineage",
             Self::Directions => "fix directions",
             Self::Replacements => "fix replacements",
         }
@@ -851,7 +755,6 @@ impl Kind {
     const fn entry(self) -> (&'static [&'static str], &'static [Part]) {
         match self {
             Self::Codes => (&super::codes::KEYS, &CODE_PARTS),
-            Self::Lineage => (&super::lineage::KEYS, &LINEAGE_PARTS),
             Self::Directions => (&super::directions::KEYS, &DIRECTION_PARTS),
             Self::Replacements => (&super::replacements::KEYS, &REPLACEMENT_PARTS),
         }
@@ -873,10 +776,9 @@ impl Kind {
     /// The canonical text one dumped value restates.
     ///
     /// The entries keep the order the file gave them - a code set is ordered
-    /// by wire value and a lineage by version, and both are the writer's
-    /// business rather than this one's - while each entry's own keys are put
-    /// back into the order the grammar declares, whatever order the file
-    /// spelled them in.
+    /// by wire value, which is the writer's business rather than this one's -
+    /// while each entry's own keys are put back into the order the grammar
+    /// declares, whatever order the file spelled them in.
     ///
     /// # Errors
     ///
@@ -927,7 +829,6 @@ impl Kind {
             }
             let value = match part {
                 Part::Leaf => value.clone(),
-                Part::Datatype => crate::DataType::from_value(value.clone())?.into_value(),
                 Part::Fills => {
                     let fills = value.as_sequence().ok_or_else(|| {
                         self.refused(crate::text::expected_got(

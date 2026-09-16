@@ -8,15 +8,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegPhysicalSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legphysicalsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41600"
     }
   },
@@ -229,16 +220,6 @@
     "metadata": {
       "description": "The local market pricing or fixing time.",
       "display": "LegPricingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legpricingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41612"
     }
   },
@@ -299,15 +280,6 @@
     "metadata": {
       "description": "A named string value referenced from UnderlyingProtectionTermXIDRef(41314).",
       "display": "LegProtectionTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legprotectiontermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41617"
     }
   },
@@ -723,15 +695,6 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "LegStreamCalculationPeriodDatesXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcalculationperioddatesxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41641"
     }
   },
@@ -744,15 +707,6 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "LegStreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcalculationperioddatesxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41642"
     }
   },
@@ -2247,15 +2201,6 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "LegStreamCommodityXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcommodityxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41672"
     }
   },
@@ -2268,15 +2213,6 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "LegStreamCommodityXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcommodityxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41673"
     }
   },
@@ -4216,15 +4152,6 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "LegStreamCommoditySettlPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcommoditysettlperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41698"
     }
   },
@@ -4237,15 +4164,6 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "LegStreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamcommoditysettlperiodxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41699"
     }
   }

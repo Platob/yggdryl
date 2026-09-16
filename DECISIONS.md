@@ -3550,6 +3550,48 @@ file's own dialect, one unreadable file among many leaves the dictionary
 exactly as it was, and two grammars bound under one wire type are one
 message carrying both.
 
+## Amendment to decision 39: three documents, because the lineage went
+
+`fix:lineage` is retired, and with it the whole per-field version history:
+`FixLineage`, `FixLineageEntry`, `FixPedigree`, the `since`/`until`/
+`defined_at`/`deprecated_at`/`name_at`/`dtype_at` readers derived from it,
+`FixRegistry::{get_field_at, field_at, versions, newest}`, and the aliases the
+writer used to derive from a lineage's historical spellings. Decision 39's
+convention is unchanged and still the rule - a document is the array of its
+entries, stored as the JSON it is - but it governs three properties now:
+`fix:codes`, `fix:replacements`, `fix:directions`.
+
+What the lineage was carrying does not all go with it, and the split is the
+point. **A field is one reading.** The dictionary holds every tag ever
+defined under the one name and datatype the newest source gives it, and
+filters by no version; a spelling an earlier version used is written beside it
+as an ordinary `fix:aliases` entry, by the generator, so an old name still
+reaches the field and nothing derives one from a date. **A value still
+travels dated**, because a reader has to translate one: a `fix:codes` record
+keeps its `since` and its `deprecated`, and `fix:replacements` still says how
+a retired field or value is restated.
+
+What this costs, stated rather than discovered: a caller can no longer ask
+what a field was called or typed *at* a version, and `FixCodec::infer_version`
+no longer falls back to a dictionary version - a line stating neither
+`ApplVerID(1128)` nor a readable `BeginString(8)` is undated, and a row built
+from a schema spells `BeginString` from the crate's stated 4.4 default.
+`latest::restate` no longer stamps the crate's `version` column: the version a
+row carries is what the line said. `fix_lift` picks its source by the lift
+table's own order rather than by asking which source the message's version had
+deprecated, so that order is now the whole rule.
+
+**Written in:** `fix/document.rs` (`Kind` losing a variant, and `Part` losing
+the `Datatype` arm the lineage's `type` key was the only user of),
+`fix/field.rs` (the readers, `set_lineage`, `merge_with`'s lineage half and
+the alias derivation that hung off it), `fix/registry.rs` (the version-filtered
+reads and the held `newest` maximum, with the `departing`/`settle` pair that
+maintained it), `fix/latest.rs`, `fix/lift.rs`, `fix/codec.rs`,
+`fix/schema.rs`, `scripts/generate_fix_dictionary.py` (which stops writing the
+document and keeps writing the aliases), and `config/fix/fields/*.json`, from
+which 1,603 `fix:lineage` documents are gone.
+
+
 ## 40. The message identities are named for what they are: hashes
 
 Settled with the user's request to rename the two identity columns, and

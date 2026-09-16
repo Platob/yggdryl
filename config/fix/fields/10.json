@@ -80,15 +80,6 @@
           "doc": "Year"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingtimeunit",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1000"
     }
   },
@@ -173,15 +164,6 @@
           "doc": "Year"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legtimeunit",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1001"
     }
   },
@@ -225,15 +207,6 @@
           "doc": "Broker assigned"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocmethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1002"
     }
   },
@@ -246,15 +219,6 @@
     "metadata": {
       "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
       "display": "TradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1003"
     }
   },
@@ -267,15 +231,6 @@
     "metadata": {
       "description": "Used on a multi-sided trade to designate the ReportID",
       "display": "SideTradeReportID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetradereportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1005"
     }
   },
@@ -288,15 +243,6 @@
     "metadata": {
       "description": "Used on a multi-sided trade to convey order routing information",
       "display": "SideFillStationCd",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidefillstationcd",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1006"
     }
   },
@@ -309,15 +255,6 @@
     "metadata": {
       "description": "Used on a multi-sided trade to convey reason for execution",
       "display": "SideReasonCd",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidereasoncd",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1007"
     }
   },
@@ -765,22 +702,6 @@
           "doc": "Transaction from exercise"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetrdsubtyp",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "sidetrdsubtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1008"
     }
   },
@@ -794,22 +715,6 @@
       "description": "Used to indicate the quantity on one side of a multi-sided trade.",
       "display": "SideLastQty",
       "fix:aliases": "sideqty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sideqty",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "sidelastqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1009"
     }
   },
@@ -822,15 +727,6 @@
     "metadata": {
       "description": "Used to identify the event or source which gave rise to a message.",
       "display": "MessageEventSource",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "messageeventsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1011"
     }
   },
@@ -845,17 +741,6 @@
     "metadata": {
       "description": "Same as TrdRegTimestamp(769). Used in a multi-sided message to indicate relevant trade-side timestamp.",
       "display": "SideTrdRegTimestamp",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetrdregtimestamp",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1012"
     }
   },
@@ -1151,15 +1036,6 @@
           "doc": "Orderbook entry time"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetrdregtimestamptype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1013"
     }
   },
@@ -1172,15 +1048,6 @@
     "metadata": {
       "description": "Same as TrdRegTimestampOrigin(771). Used in a multi-sided message to indicate relevant trade-side origin or source of timestamp.",
       "display": "SideTrdRegTimestampSrc",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetrdregtimestampsrc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1014"
     }
   },
@@ -1209,15 +1076,6 @@
           "doc": "true - trade is an AsOf trade"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "asofindicator",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1015"
     }
   },
@@ -1230,15 +1088,6 @@
     "metadata": {
       "description": "Number of timestamp entries.",
       "display": "NoSideTrdRegTS",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nosidetrdregts",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1016"
     }
   },
@@ -1251,15 +1100,6 @@
     "metadata": {
       "description": "Expresses the risk of an option leg",
       "display": "LegOptionRatio",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legoptionratio",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1017"
     }
   },
@@ -1272,15 +1112,6 @@
     "metadata": {
       "description": "Identifies the number of parties identified with an instrument",
       "display": "NoInstrumentParties",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noinstrumentparties",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1018"
     }
   },
@@ -1293,15 +1124,6 @@
     "metadata": {
       "description": "PartyID value within an instrument party repeating group. Same values as PartyID (448)",
       "display": "InstrumentPartyID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrumentpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1019"
     }
   },
@@ -1314,15 +1136,6 @@
     "metadata": {
       "description": "Used to report volume with a trade",
       "display": "TradeVolume",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradevolume",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1020"
     }
   },
@@ -1358,15 +1171,6 @@
           "doc": "Order Depth"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdbooktype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1021"
     }
   },
@@ -1379,15 +1183,6 @@
     "metadata": {
       "description": "Describes a class of service for a given data feed, ie Regular and Market Maker, Bandwidth Intensive or Bandwidth Conservative",
       "display": "MDFeedType",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdfeedtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1022"
     }
   },
@@ -1400,15 +1195,6 @@
     "metadata": {
       "description": "Integer to convey the level of a bid or offer at a given price level. This is in contrast to MDEntryPositionNo(290) which is used to convey the position of an order within a price level.",
       "display": "MDPriceLevel",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdpricelevel",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1023"
     }
   },
@@ -1499,15 +1285,6 @@
           "doc": "Other market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdorigintype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1024"
     }
   },
@@ -1520,15 +1297,6 @@
     "metadata": {
       "description": "Indicates the first trade price of the day/session",
       "display": "FirstPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "firstpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1025"
     }
   },
@@ -1541,15 +1309,6 @@
     "metadata": {
       "description": "The spot rate for an FX entry",
       "display": "MDEntrySpotRate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdentryspotrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1026"
     }
   },
@@ -1562,15 +1321,6 @@
     "metadata": {
       "description": "Used for an F/X entry. The forward points to be added to or subtracted from the spot rate to get the \"all-in\" rate in MDEntryPx. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "MDEntryForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdentryforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1027"
     }
   },
@@ -1583,15 +1333,6 @@
     "metadata": {
       "description": "Indicates if an order, quote or trade was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
       "display": "ManualOrderIndicator",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "manualorderindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1028"
     }
   },
@@ -1604,15 +1345,6 @@
     "metadata": {
       "description": "Indicates if the customer directed this order to a specific execution venue \"Y\" or not \"N\".",
       "display": "CustDirectedOrder",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "custdirectedorder",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1029"
     }
   },
@@ -1625,20 +1357,6 @@
     "metadata": {
       "description": "Identifies the broker-dealer department that first took the order.",
       "display": "ReceivedDeptID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "receiveddeptid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 135,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1030"
     }
   },
@@ -2329,15 +2047,6 @@
           "doc": "Client - pit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "custorderhandlinginst",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1031"
     }
   },
@@ -2368,15 +2077,6 @@
           "ep": 133,
           "sort": 2,
           "doc": "FIA Execution Source Code"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "orderhandlinginstsource",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1032"
@@ -2546,15 +2246,6 @@
           "doc": "Treasury"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "desktype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1033"
     }
   },
@@ -2577,15 +2268,6 @@
             "Nasdoats"
           ],
           "doc": "FINRA OATS"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "desktypesource",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1034"
@@ -3278,15 +2960,6 @@
           "doc": "Client - pit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "deskorderhandlinginst",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1035"
     }
   },
@@ -3325,15 +2998,6 @@
           "doc": "Don't know / Rejected"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "execackstatus",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1036"
     }
   },
@@ -3346,15 +3010,6 @@
     "metadata": {
       "description": "Indicates the underlying position amount to be delivered",
       "display": "UnderlyingDeliveryAmount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingdeliveryamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1037"
     }
   },
@@ -3367,15 +3022,6 @@
     "metadata": {
       "description": "Maximum notional value for a capped financial instrument",
       "display": "UnderlyingCapValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcapvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1038"
     }
   },
@@ -3414,15 +3060,6 @@
           "doc": "Physical settlement required"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingsettlmethod",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1039"
     }
   },
@@ -3435,15 +3072,6 @@
     "metadata": {
       "description": "Used to carry an internal trade entity ID which may or may not be reported to the firm",
       "display": "SecondaryTradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondarytradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1040"
     }
   },
@@ -3456,15 +3084,6 @@
     "metadata": {
       "description": "The ID assigned to a trade by the Firm to track a trade within the Firm system. This ID can be assigned either before or after submission to the exchange or central counterpary",
       "display": "FirmTradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "firmtradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1041"
     }
   },
@@ -3477,15 +3096,6 @@
     "metadata": {
       "description": "Used to carry an internal firm assigned ID which may or may not be reported to the exchange or central counterpary",
       "display": "SecondaryFirmTradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondaryfirmtradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1042"
     }
   },
@@ -3514,15 +3124,6 @@
           "doc": "General"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collappltype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1043"
     }
   },
@@ -3535,15 +3136,6 @@
     "metadata": {
       "description": "Unit amount of the underlying security (shares) adjusted for pending corporate action not yet allocated.",
       "display": "UnderlyingAdjustedQuantity",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingadjustedquantity",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1044"
     }
   },
@@ -3556,15 +3148,6 @@
     "metadata": {
       "description": "Foreign exchange rate used to compute UnderlyingCurrentValue(885) (or market value) from UnderlyingCurrency(318) to Currency(15).",
       "display": "UnderlyingFXRate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingfxrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1045"
     }
   },
@@ -3590,15 +3173,6 @@
           "since": "4.4",
           "sort": 1,
           "doc": "Multiply"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingfxratecalc",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1046"
@@ -3641,15 +3215,6 @@
           "since": "4.4",
           "sort": 3,
           "doc": "Rolled"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocpositioneffect",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1047"
@@ -3696,22 +3261,6 @@
           "doc": "Cross as principal"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "dealingcapacity",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "dealingcapacity",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1048"
     }
   },
@@ -3740,15 +3289,6 @@
           "ep": 4,
           "sort": 2,
           "doc": "Random"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrmtassignmentmethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1049"
@@ -4021,15 +3561,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrumentpartyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1050"
@@ -5035,15 +4566,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrumentpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1051"
     }
   },
@@ -5056,15 +4578,6 @@
     "metadata": {
       "description": "Number of InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoInstrumentPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noinstrumentpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1052"
     }
   },
@@ -5077,15 +4590,6 @@
     "metadata": {
       "description": "PartySubID value within an instrument party repeating group.",
       "display": "InstrumentPartySubID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrumentpartysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1053"
     }
   },
@@ -5783,15 +5287,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "instrumentpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1054"
     }
   },
@@ -5804,15 +5299,6 @@
     "metadata": {
       "description": "The Currency in which the position Amount is denominated",
       "display": "PositionCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "positioncurrency",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1055"
     }
   },
@@ -5825,15 +5311,6 @@
     "metadata": {
       "description": "Used for the calculated quantity of the other side of the currency trade. Can be derived from LastQty and LastPx.",
       "display": "CalculatedCcyLastQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "calculatedccylastqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1056"
     }
   },
@@ -5868,15 +5345,6 @@
           "doc": "Order initiator is aggressor"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "aggressorindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1057"
     }
   },
@@ -5889,15 +5357,6 @@
     "metadata": {
       "description": "Identifies the number of parties identified with an underlying instrument",
       "display": "NoUndlyInstrumentParties",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noundlyinstrumentparties",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1058"
     }
   },
@@ -5911,22 +5370,6 @@
       "description": "PartyID value within an underlying instrument party repeating group.",
       "display": "UnderlyingInstrumentPartyID",
       "fix:aliases": "undlyinstrumentpartyid",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "undlyinstrumentpartyid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1059"
     }
   },
@@ -6198,22 +5641,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "undlyinstrumentpartyidsource",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentpartyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1060"
@@ -7220,22 +6647,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "undlyinstrumentpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1061"
     }
   },
@@ -7248,15 +6659,6 @@
     "metadata": {
       "description": "Number of Underlying InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoUndlyInstrumentPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noundlyinstrumentpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1062"
     }
   },
@@ -7270,22 +6672,6 @@
       "description": "PartySubID value within an underlying instrument party repeating group.",
       "display": "UnderlyingInstrumentPartySubID",
       "fix:aliases": "undlyinstrumentpartysubid",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "undlyinstrumentpartysubid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentpartysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1063"
     }
   },
@@ -7984,22 +7370,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "undlyinstrumentpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1064"
     }
   },
@@ -8012,15 +7382,6 @@
     "metadata": {
       "description": "The bid FX Swap points for an FX Swap. It is the \"far bid forward points - near offer forward point\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "BidSwapPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "bidswappoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1065"
     }
   },
@@ -8033,15 +7394,6 @@
     "metadata": {
       "description": "The offer FX Swap points for an FX Swap. It is the \"far offer forward points - near bid forward points\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "OfferSwapPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "offerswappoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1066"
     }
   },
@@ -8054,15 +7406,6 @@
     "metadata": {
       "description": "The bid FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegBidForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbidforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1067"
     }
   },
@@ -8075,15 +7418,6 @@
     "metadata": {
       "description": "The offer FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegOfferForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legofferforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1068"
     }
   },
@@ -8096,15 +7430,6 @@
     "metadata": {
       "description": "For FX Swap, this is used to express the differential between the far leg's bid/offer and the near leg's bid/offer. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "SwapPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "swappoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1069"
     }
   },
@@ -8158,15 +7483,6 @@
           "doc": "Initially tradeable"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdquotetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1070"
     }
   },
@@ -8179,15 +7495,6 @@
     "metadata": {
       "description": "For FX Swap, this is used to express the last market event for the differential between the far leg's bid/offer and the near leg's bid/offer in a fill or partial fill. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LastSwapPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastswappoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1071"
     }
   },
@@ -8200,15 +7507,6 @@
     "metadata": {
       "description": "The gross trade amount for this side of the trade. See also GrossTradeAmt (381) for additional definition.",
       "display": "SideGrossTradeAmt",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidegrosstradeamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1072"
     }
   },
@@ -8221,15 +7519,6 @@
     "metadata": {
       "description": "The forward points for this leg's fill event. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
       "display": "LegLastForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "leglastforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1073"
     }
   },
@@ -8242,15 +7531,6 @@
     "metadata": {
       "description": "Used for the calculated quantity of the other side of the currency for this leg. Can be derived from LegQty and LegLastPx.",
       "display": "LegCalculatedCcyLastQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legcalculatedccylastqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1074"
     }
   },
@@ -8263,15 +7543,6 @@
     "metadata": {
       "description": "The gross trade amount of the leg. For FX Futures this is used to express the notional value of a fill when LegLastQty and other quantity fields are express in terms of contract size.",
       "display": "LegGrossTradeAmt",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "leggrosstradeamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1075"
     }
   },
@@ -8286,17 +7557,6 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "MaturityTime",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "maturitytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1079"
     }
   },
@@ -8309,15 +7569,6 @@
     "metadata": {
       "description": "The ID reference to the order being hit or taken.",
       "display": "RefOrderID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "reforderid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1080"
     }
   },
@@ -8416,15 +7667,6 @@
           "doc": "Manual order identifier"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "reforderidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1081"
     }
   },
@@ -8437,15 +7679,6 @@
     "metadata": {
       "description": "Used for reserve orders when DisplayQty applies to the primary execution market (e.g.an ECN) and another quantity is to be shown at other markets (e.g. the exchange). On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
       "display": "SecondaryDisplayQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondarydisplayqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1082"
     }
   },
@@ -8472,15 +7705,6 @@
           "since": "4.4",
           "sort": 2,
           "doc": "Exhaust (when DisplayQty = 0)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displaywhen",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1083"
@@ -8526,15 +7750,6 @@
           "doc": "Undisclosed (invisible order)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displaymethod",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1084"
     }
   },
@@ -8547,15 +7762,6 @@
     "metadata": {
       "description": "Defines the lower quantity limit to a randomized refresh of DisplayQty.",
       "display": "DisplayLowQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displaylowqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1085"
     }
   },
@@ -8568,15 +7774,6 @@
     "metadata": {
       "description": "Defines the upper quantity limit to a randomized refresh of DisplayQty.",
       "display": "DisplayHighQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displayhighqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1086"
     }
   },
@@ -8589,15 +7786,6 @@
     "metadata": {
       "description": "Defines the minimum increment to be used when calculating a random refresh of DisplayQty. A user specifies this when he wants a larger increment than the standard provided by the market (e.g. the round lot size).",
       "display": "DisplayMinIncr",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displayminincr",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1087"
     }
   },
@@ -8610,15 +7798,6 @@
     "metadata": {
       "description": "Defines the quantity used to refresh DisplayQty.",
       "display": "RefreshQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "refreshqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1088"
     }
   },
@@ -8631,15 +7810,6 @@
     "metadata": {
       "description": "Allows orders to specify a minimum quantity that applies to every execution (one execution could be for multiple counter-orders). The order may still fill against smaller orders, but the cumulative quantity of the execution must be in multiples of the MatchIncrement.",
       "display": "MatchIncrement",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "matchincrement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1089"
     }
   },
@@ -8652,15 +7822,6 @@
     "metadata": {
       "description": "Allows an order to specify a maximum number of price levels to trade through. Only valid for aggressive orders and during continuous (autoexecution) trading sessions. Property lost when order is put on book. A partially filled order is assigned last trade price as limit price. Non-filled order behaves as ordinary Market or Limit.",
       "display": "MaxPriceLevels",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "maxpricelevels",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1090"
     }
   },
@@ -8673,15 +7834,6 @@
     "metadata": {
       "description": "Allows trader to explicitly request anonymity or disclosure in pre-trade market data feeds. Anonymity is relevant in markets where counterparties are regularly disclosed in order depth feeds. Disclosure is relevant when counterparties are not normally visible.",
       "display": "PreTradeAnonymity",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pretradeanonymity",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1091"
     }
   },
@@ -8722,15 +7874,6 @@
           "since": "4.4",
           "sort": 4,
           "doc": "Global (Across all markets)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "priceprotectionscope",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1092"
@@ -8774,15 +7917,6 @@
           "ep": 80,
           "sort": 4,
           "doc": "Round lot based upon UnitOfMeasure(996)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lottype",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1093"
@@ -8869,15 +8003,6 @@
           "doc": "Peg to Limit Price"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegpricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1094"
     }
   },
@@ -8890,15 +8015,6 @@
     "metadata": {
       "description": "The value of the reference price that the order is pegged to. PeggedRefPrice + PegOffsetValue (211) = PeggedPrice (839) unless the limit price (44, Price) is breached. The values may not be exact due to rounding.",
       "display": "PeggedRefPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "peggedrefprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1095"
     }
   },
@@ -9157,15 +8273,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegsecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1096"
     }
   },
@@ -9178,15 +8285,6 @@
     "metadata": {
       "description": "Defines the identity of the security off whose prices the order will peg.",
       "display": "PegSecurityID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegsecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1097"
     }
   },
@@ -9199,15 +8297,6 @@
     "metadata": {
       "description": "Defines the common, 'human understood' representation of the security off whose prices the order will Peg.",
       "display": "PegSymbol",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegsymbol",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1098"
     }
   },
@@ -9220,15 +8309,6 @@
     "metadata": {
       "description": "Security description of the security off whose prices the order will Peg.",
       "display": "PegSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pegsecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1099"
     }
   }

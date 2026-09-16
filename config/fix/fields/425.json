@@ -1674,16 +1674,6 @@
     "metadata": {
       "description": "The time when the quote is to be generated.",
       "display": "LegReturnRateQuoteTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legreturnratequotetime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42548"
     }
   },
@@ -1710,16 +1700,6 @@
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "LegReturnRateQuoteExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legreturnratequoteexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42550"
     }
   },
@@ -1858,16 +1838,6 @@
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "LegReturnRateValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legreturnratevaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42556"
     }
   },

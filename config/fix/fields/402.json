@@ -130,15 +130,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "PhysicalSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "physicalsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "40208"
     }
   },

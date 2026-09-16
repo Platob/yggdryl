@@ -12,9 +12,8 @@
 //! The lists are the union across every scraped version, because FIX
 //! Latest alone is not enough: it no longer lists `SecureDataLen(90)`
 //! in the header or `SignatureLength(93)` in the trailer, and a 4.2
-//! message carries both. Requiredness rides the lineage rather than a
-//! parallel table, because presence is already `nullable` on the field
-//! a version resolves to.
+//! message carries both. Requiredness is `nullable` on the field the
+//! dictionary holds, rather than a parallel table.
 
 /// The tags every version's standard header declares, in wire
 /// order.

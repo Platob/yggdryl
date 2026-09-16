@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Identifier of this LegStream for cross referencing elsewhere in the message.",
       "display": "LegStreamXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41700"
     }
   },
@@ -287,15 +278,6 @@
     "metadata": {
       "description": "Cross reference to another LegStream notional for duplicating its properties.",
       "display": "LegStreamNotionalXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legstreamnotionalxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41702"
     }
   },
@@ -2272,16 +2254,6 @@
     "metadata": {
       "description": "The averaging time for an Asian option.",
       "display": "UnderlyingComplexEventPeriodTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcomplexeventperiodtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41728"
     }
   },
@@ -2756,16 +2728,6 @@
     "metadata": {
       "description": "The local market fixing time.",
       "display": "UnderlyingComplexEventFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcomplexeventfixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41746"
     }
   },
@@ -3341,15 +3303,6 @@
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingDeliveryScheduleXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingdeliveryschedulexid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41758"
     }
   },

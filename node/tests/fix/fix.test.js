@@ -1236,9 +1236,11 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(stored.metadata['fix:tag'], '1')
   // A snapshot is the store's shape, so a document property is the JSON it
   // is; a `Field`'s own JSON is the core shape, where metadata is text.
-  assert.ok(Array.isArray(stored.metadata['fix:lineage']))
-  assert.equal(typeof held.metadata['fix:lineage'], 'string')
-  assert.deepEqual(stored.metadata['fix:lineage'], JSON.parse(held.metadata['fix:lineage']))
+  const coded = document.fields.find((field) => field.metadata['fix:codes'] !== undefined)
+  const codedHeld = JSON.parse(JSON.stringify(registry.fieldByTag(Number(coded.metadata['fix:tag']))))
+  assert.ok(Array.isArray(coded.metadata['fix:codes']))
+  assert.equal(typeof codedHeld.metadata['fix:codes'], 'string')
+  assert.deepEqual(coded.metadata['fix:codes'], JSON.parse(codedHeld.metadata['fix:codes']))
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 })
 

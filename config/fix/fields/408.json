@@ -1665,16 +1665,6 @@
     "metadata": {
       "description": "The fixing time associated with the step schedule.",
       "display": "PaymentScheduleFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "paymentschedulefixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40859"
     }
   },

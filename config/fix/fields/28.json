@@ -1643,23 +1643,6 @@
           "doc": "Routing arrangement in place"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "routingarrangmentindicator",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 256,
-          "name": "routingarrangementindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "2883"
     }
   },
@@ -1688,23 +1671,6 @@
           "ep": 256,
           "sort": 1,
           "doc": "Routing arrangement in place"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "contraroutingarrangmentindicator",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 256,
-          "name": "contraroutingarrangementindicator",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "2884"

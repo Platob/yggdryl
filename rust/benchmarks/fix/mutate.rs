@@ -1,9 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{
-    DataType, Field, FixCategory, FixCode, FixLineageEntry, FixPedigree, FixRegistry, Version,
-};
+use yggdryl::{DataType, Field, FixCategory, FixCode, FixRegistry};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -220,8 +218,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The one FIX-aware merge, over two realistic definitions of one tag: a
     // generator folds several sources into every field it writes, so this is
     // what a regeneration costs per tag.
-    let stored = merge_source("the stored wording", "2.7", "the stored reading");
-    let incoming = merge_source("the incoming wording", "5.0.2", "the incoming reading");
+    let stored = merge_source("the stored wording", "lastshares", "the stored reading");
+    let incoming = merge_source("the incoming wording", "qty", "the incoming reading");
     group.bench_function("merge_with", |bencher| {
         bencher.iter_batched(
             || incoming.clone(),
@@ -307,9 +305,8 @@ fn coded_catalog() -> FixRegistry {
     registry
 }
 
-/// One realistic definition of tag 32: dated, coded, described, aliased.
-fn merge_source(wording: &str, dated: &str, reading: &str) -> Field {
-    let version: Version = dated.parse().expect("a valid version");
+/// One realistic definition of tag 32: coded, described, aliased.
+fn merge_source(wording: &str, alias: &str, reading: &str) -> Field {
     let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).expect("a static tag");
     field
@@ -318,12 +315,12 @@ fn merge_source(wording: &str, dated: &str, reading: &str) -> Field {
         .expect("static alternate tags");
     field
         .as_fix_mut()
-        .set_description(wording)
-        .expect("a description");
+        .set_aliases([alias])
+        .expect("a spelling the field does not already take");
     field
         .as_fix_mut()
-        .set_lineage(&[FixLineageEntry::new(FixPedigree::new(version, None)).with_name("LastQty")])
-        .expect("a lineage agreeing with its field");
+        .set_description(wording)
+        .expect("a description");
     field
         .as_fix_mut()
         .set_codes(&[

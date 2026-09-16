@@ -22,22 +22,6 @@
           "deprecated": "4.1"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "2.7",
-          "name": "exdestination",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "exdestination",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "100"
     }
   },
@@ -129,15 +113,6 @@
           "since": "4.4",
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "2.7",
-          "name": "cxlrejreason",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "102"
@@ -404,15 +379,6 @@
           "since": "4.4",
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "2.7",
-          "name": "ordrejreason",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "103"
@@ -691,15 +657,6 @@
           "doc": "Negotiated spot"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "ioiqualifier",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "104"
     }
   },
@@ -711,19 +668,6 @@
     "nullable": true,
     "metadata": {
       "display": "WaveNo",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "waveno",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:tag": "105"
     }
   },
@@ -736,15 +680,6 @@
     "metadata": {
       "description": "Name of security issuer (e.g. International Business Machines, GNMA).",
       "display": "Issuer",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "issuer",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "106"
     }
   },
@@ -757,15 +692,6 @@
     "metadata": {
       "description": "Can be used by the venue or one of the trading parties to provide a non-normative textual description for the financial instrument.",
       "display": "SecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "securitydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "107"
     }
   },
@@ -778,15 +704,6 @@
     "metadata": {
       "description": "Heartbeat interval (seconds)",
       "display": "HeartBtInt",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "heartbtint",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "108"
     }
   },
@@ -798,19 +715,6 @@
     "nullable": true,
     "metadata": {
       "display": "ClientID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "clientid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.3",
@@ -843,22 +747,6 @@
     "metadata": {
       "description": "Minimum quantity of an order to be executed.",
       "display": "MinQty",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "minqty",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "minqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "110"
     }
   },
@@ -871,26 +759,6 @@
     "metadata": {
       "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
       "display": "MaxFloor",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "maxfloor",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "maxfloor",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "5.0",
@@ -913,15 +781,6 @@
     "metadata": {
       "description": "Identifier included in Test Request message to be returned in resulting Heartbeat",
       "display": "TestReqID",
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "testreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "112"
     }
   },
@@ -956,22 +815,6 @@
           "doc": "Indicates the party receiving message must report trade"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "3.0",
-          "name": "reporttoexch",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "reporttoexch",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "113"
     }
   },
@@ -1000,22 +843,6 @@
           "doc": "Indicates the broker is responsible for locating the stock"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "locatereqd",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "locatereqd",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "114"
     }
   },
@@ -1028,15 +855,6 @@
     "metadata": {
       "description": "Assigned value used to identify firm originating message if the message was delivered by a third party i.e. the third party firm identifier would be delivered in the SenderCompID field and the firm originating the message in this field.",
       "display": "OnBehalfOfCompID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "onbehalfofcompid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "115"
     }
   },
@@ -1049,15 +867,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
       "display": "OnBehalfOfSubID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "onbehalfofsubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "116"
     }
   },
@@ -1070,15 +879,6 @@
     "metadata": {
       "description": "Unique identifier for quote",
       "display": "QuoteID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "quoteid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "117"
     }
   },
@@ -1091,15 +891,6 @@
     "metadata": {
       "description": "Total amount due as the result of the transaction (e.g. for Buy order - principal + commission + fees) reported in currency of execution.",
       "display": "NetMoney",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "netmoney",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "118"
     }
   },
@@ -1113,15 +904,6 @@
       "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
       "display": "SettlCurrAmt",
       "fix:derivation": "grosstradeamt * settlcurrfxrate",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "settlcurramt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -1148,22 +930,6 @@
       "description": "Currency code of settlement denomination.",
       "display": "SettlCurrency",
       "fix:derivation": "currency",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "settlcurrency",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "settlcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -1211,22 +977,6 @@
           "doc": "Execute Forex After Security Trade"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "forexreq",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "forexreq",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "121"
     }
   },
@@ -1242,17 +992,6 @@
       "description": "Original time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\") when transmitting orders as the result of a resend request.",
       "display": "OrigSendingTime",
       "fix:derivation": "case when possdupflag then sendingtime end",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "origsendingtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "122"
     }
   },
@@ -1287,22 +1026,6 @@
           "doc": "Gap Fill Message, Msg Seq Num Field Valid"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "gapfillflag",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "gapfillflag",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "123"
     }
   },
@@ -1315,15 +1038,6 @@
     "metadata": {
       "description": "Number of executions or trades.",
       "display": "NoExecs",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "noexecs",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "124"
     }
   },
@@ -1349,19 +1063,6 @@
           "deprecated": "4.1"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "cxltype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:tag": "125"
     }
   },
@@ -1376,17 +1077,6 @@
     "metadata": {
       "description": "Time/Date of order expiration (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "ExpireTime",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "expiretime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "126"
     }
   },
@@ -1458,15 +1148,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "dkreason",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "127"
     }
   },
@@ -1479,15 +1160,6 @@
     "metadata": {
       "description": "Assigned value used to identify the firm targeted to receive the message if the message is delivered by a third party i.e. the third party firm identifier would be delivered in the TargetCompID (56) field and the ultimate receiver firm ID in this field.",
       "display": "DeliverToCompID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "delivertocompid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "128"
     }
   },
@@ -1500,15 +1172,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message recipient (i.e. trader) if the message is delivered by a third party",
       "display": "DeliverToSubID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "delivertosubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "129"
     }
   },
@@ -1543,22 +1206,6 @@
           "doc": "Natural"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "ioinaturalflag",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "ioinaturalflag",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "130"
     }
   },
@@ -1571,15 +1218,6 @@
     "metadata": {
       "description": "Unique identifier for a QuoteRequest(35=R).",
       "display": "QuoteReqID",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "quotereqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "131"
     }
   },
@@ -1593,15 +1231,6 @@
       "description": "Bid price/rate",
       "display": "BidPx",
       "fix:derivation": "bidspotrate + bidforwardpoints",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "bidpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "132"
     }
   },
@@ -1615,15 +1244,6 @@
       "description": "Offer price/rate",
       "display": "OfferPx",
       "fix:derivation": "offerspotrate + offerforwardpoints",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "offerpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "133"
     }
   },
@@ -1636,22 +1256,6 @@
     "metadata": {
       "description": "Quantity of bid",
       "display": "BidSize",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "bidsize",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "bidsize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "134"
     }
   },
@@ -1664,22 +1268,6 @@
     "metadata": {
       "description": "Quantity of offer",
       "display": "OfferSize",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "offersize",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "offersize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "135"
     }
   },
@@ -1692,15 +1280,6 @@
     "metadata": {
       "description": "Number of repeating groups of miscellaneous fees",
       "display": "NoMiscFees",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "nomiscfees",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "136"
     }
   },
@@ -1713,15 +1292,6 @@
     "metadata": {
       "description": "Miscellaneous fee value",
       "display": "MiscFeeAmt",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "miscfeeamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "137"
     }
   },
@@ -1734,22 +1304,6 @@
     "metadata": {
       "description": "Currency of miscellaneous fee",
       "display": "MiscFeeCurr",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "miscfeecurr",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "miscfeecurr",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "138"
     }
   },
@@ -2040,15 +1594,6 @@
           "doc": "Consumption Tax"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "miscfeetype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "139"
     }
   },
@@ -2061,15 +1606,6 @@
     "metadata": {
       "description": "Previous closing price of security.",
       "display": "PrevClosePx",
-      "fix:lineage": [
-        {
-          "since": "4.0",
-          "name": "prevclosepx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "140"
     }
   },
@@ -2098,22 +1634,6 @@
           "doc": "Yes, reset sequence numbers"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "resetseqnumflag",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "resetseqnumflag",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "141"
     }
   },
@@ -2126,15 +1646,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader)",
       "display": "SenderLocationID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "senderlocationid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "142"
     }
   },
@@ -2147,15 +1658,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message destination's location (i.e. geographic location and/or desk, trader)",
       "display": "TargetLocationID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "targetlocationid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "143"
     }
   },
@@ -2168,15 +1670,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party",
       "display": "OnBehalfOfLocationID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "onbehalfoflocationid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "144"
     }
   },
@@ -2189,15 +1682,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific message recipient's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party",
       "display": "DeliverToLocationID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "delivertolocationid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "145"
     }
   },
@@ -2210,15 +1694,6 @@
     "metadata": {
       "description": "Specifies the number of repeating symbols specified.",
       "display": "NoRelatedSym",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "norelatedsym",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "146"
     }
   },
@@ -2231,15 +1706,6 @@
     "metadata": {
       "description": "The subject of an Email message",
       "display": "Subject",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "subject",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "147"
     }
   },
@@ -2252,15 +1718,6 @@
     "metadata": {
       "description": "The headline of a News message",
       "display": "Headline",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "headline",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "148"
     }
   },
@@ -2273,15 +1730,6 @@
     "metadata": {
       "description": "A URI (Uniform Resource Identifier) or URL (Uniform Resource Locator) link to additional information (i.e. http://www.XYZ.com/research.html)",
       "display": "URLLink",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "urllink",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "149"
     }
   },
@@ -2467,22 +1915,6 @@
           "doc": "Released"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "exectype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "exectype",
-          "type": {
-            "type": "state"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.3",
@@ -2520,22 +1952,6 @@
       "description": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14).",
       "display": "LeavesQty",
       "fix:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "leavesqty",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.2",
-          "name": "leavesqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "151"
     }
   },
@@ -2548,15 +1964,6 @@
     "metadata": {
       "description": "Specifies the approximate order quantity desired in total monetary units vs. as tradeable units (e.g. number of shares). The broker or fund manager (for CIV orders) would be responsible for converting and calculating a tradeable unit (e.g. share) quantity (OrderQty (38)) based upon this amount to be used for the actual order and subsequent messages.",
       "display": "CashOrderQty",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashorderqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "152"
     }
   },
@@ -2569,15 +1976,6 @@
     "metadata": {
       "description": "AvgPx (6) for a specific AllocAccount (79)",
       "display": "AllocAvgPx",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "allocavgpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "153"
     }
   },
@@ -2590,15 +1988,6 @@
     "metadata": {
       "description": "NetMoney(118) for a specific AllocAccount(79).",
       "display": "AllocNetMoney",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "allocnetmoney",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "154"
     }
   },
@@ -2611,15 +2000,6 @@
     "metadata": {
       "description": "Foreign exchange rate used to compute SettlCurrAmt(119) from Currency(15) to SettlCurrency(120).",
       "display": "SettlCurrFxRate",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlcurrfxrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "155"
     }
   },
@@ -2650,15 +2030,6 @@
           "doc": "Multiply"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlcurrfxratecalc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "156"
     }
   },
@@ -2671,15 +2042,6 @@
     "metadata": {
       "description": "Number of Days of Interest for convertible bonds and fixed income. Note value may be negative.",
       "display": "NumDaysInterest",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "numdaysinterest",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "157"
     }
   },
@@ -2692,15 +2054,6 @@
     "metadata": {
       "description": "The amount the buyer compensates the seller for the portion of the next coupon interest payment the seller has earned but will not receive from the issuer because the issuer will send the next coupon payment to the buyer. Accrued Interest Rate is the annualized Accrued Interest amount divided by the purchase price of the bond.",
       "display": "AccruedInterestRate",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "accruedinterestrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "158"
     }
   },
@@ -2713,15 +2066,6 @@
     "metadata": {
       "description": "Amount of Accrued Interest for convertible bonds and fixed income",
       "display": "AccruedInterestAmt",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "accruedinterestamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "159"
     }
   },
@@ -2781,15 +2125,6 @@
           "doc": "Request reject"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlinstmode",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "160"
     }
   },
@@ -2802,15 +2137,6 @@
     "metadata": {
       "description": "Free format text related to a specific AllocAccount (79).",
       "display": "AllocText",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "alloctext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "161"
     }
   },
@@ -2823,15 +2149,6 @@
     "metadata": {
       "description": "Unique identifier for Settlement Instruction.",
       "display": "SettlInstID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlinstid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "162"
     }
   },
@@ -2874,15 +2191,6 @@
           "doc": "Restate"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlinsttranstype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "163"
     }
   },
@@ -2895,15 +2203,6 @@
     "metadata": {
       "description": "Unique identifier for an email thread (new and chain of replies)",
       "display": "EmailThreadID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "emailthreadid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "164"
     }
   },
@@ -2937,15 +2236,6 @@
           "since": "4.3",
           "sort": 3,
           "doc": "Investor (e.g. CIV use)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlinstsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "165"
@@ -3001,19 +2291,6 @@
           "name": "ParticipantTrustCompany",
           "since": "4.1",
           "deprecated": "4.3"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settllocation",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
         }
       ],
       "fix:replacements": [
@@ -4771,15 +4048,6 @@
         }
       ],
       "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitytype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -4818,17 +4086,6 @@
     "metadata": {
       "description": "Time the details within the message should take effect (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "EffectiveTime",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "effectivetime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "168"
     }
   },
@@ -4878,15 +4135,6 @@
           "doc": "AccountNet"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "standinstdbtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "169"
     }
   },
@@ -4899,15 +4147,6 @@
     "metadata": {
       "description": "Name of the Standing Instruction database represented with StandInstDbType (169) (i.e. the Global Custodian's name).",
       "display": "StandInstDbName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "standinstdbname",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "170"
     }
   },
@@ -4920,15 +4159,6 @@
     "metadata": {
       "description": "Unique identifier used on the Standing Instructions database for the Standing Instructions to be referenced.",
       "display": "StandInstDbID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "standinstdbid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "171"
     }
   },
@@ -4975,15 +4205,6 @@
           "doc": "Hold In Custody"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settldeliverytype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "172"
     }
   },
@@ -4995,19 +4216,6 @@
     "nullable": true,
     "metadata": {
       "display": "SettlDepositoryCode",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settldepositorycode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "173"
     }
   },
@@ -5019,19 +4227,6 @@
     "nullable": true,
     "metadata": {
       "display": "SettlBrkrCode",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlbrkrcode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "174"
     }
   },
@@ -5043,19 +4238,6 @@
     "nullable": true,
     "metadata": {
       "display": "SettlInstCode",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "settlinstcode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "175"
     }
   },
@@ -5067,19 +4249,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "176"
     }
   },
@@ -5091,19 +4260,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentCode",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentcode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "177"
     }
   },
@@ -5115,19 +4271,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentAcctNum",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentacctnum",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "178"
     }
   },
@@ -5139,19 +4282,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentAcctName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentacctname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "179"
     }
   },
@@ -5163,19 +4293,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentContactName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentcontactname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "180"
     }
   },
@@ -5187,19 +4304,6 @@
     "nullable": true,
     "metadata": {
       "display": "SecuritySettlAgentContactPhone",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "securitysettlagentcontactphone",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "181"
     }
   },
@@ -5211,19 +4315,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "182"
     }
   },
@@ -5235,19 +4326,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentCode",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentcode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "183"
     }
   },
@@ -5259,19 +4337,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentAcctNum",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentacctnum",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "184"
     }
   },
@@ -5283,19 +4348,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentAcctName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentacctname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "185"
     }
   },
@@ -5307,19 +4359,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentContactName",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentcontactname",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "186"
     }
   },
@@ -5331,19 +4370,6 @@
     "nullable": true,
     "metadata": {
       "display": "CashSettlAgentContactPhone",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "cashsettlagentcontactphone",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:tag": "187"
     }
   },
@@ -5356,15 +4382,6 @@
     "metadata": {
       "description": "Bid F/X spot rate.",
       "display": "BidSpotRate",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "bidspotrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "188"
     }
   },
@@ -5377,15 +4394,6 @@
     "metadata": {
       "description": "Bid F/X forward points added to spot rate. May be a negative value.",
       "display": "BidForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "bidforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "189"
     }
   },
@@ -5398,15 +4406,6 @@
     "metadata": {
       "description": "Offer F/X spot rate.",
       "display": "OfferSpotRate",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "offerspotrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "190"
     }
   },
@@ -5419,15 +4418,6 @@
     "metadata": {
       "description": "Offer F/X forward points added to spot rate. May be a negative value.",
       "display": "OfferForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "offerforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "191"
     }
   },
@@ -5440,19 +4430,6 @@
     "metadata": {
       "description": "OrderQty (38) of the future part of a F/X swap order.",
       "display": "OrderQty2",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "orderqty2",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "192"
     }
   },
@@ -5467,28 +4444,6 @@
       "description": "SettDate (64) of the future part of a F/X swap order.",
       "display": "SettlDate2",
       "fix:aliases": "futsettdate2",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "futsettdate2",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "settldate2",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "193"
     }
   },
@@ -5501,15 +4456,6 @@
     "metadata": {
       "description": "F/X spot rate.",
       "display": "LastSpotRate",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "lastspotrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "194"
     }
   },
@@ -5522,15 +4468,6 @@
     "metadata": {
       "description": "F/X forward points added to LastSpotRate(194). May be a negative value. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199.",
       "display": "LastForwardPoints",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "lastforwardpoints",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "195"
     }
   },
@@ -5543,15 +4480,6 @@
     "metadata": {
       "description": "Can be used to link two different Allocation messages (each with unique AllocID (70)) together, i.e. for F/X \"Netting\" or \"Swaps\". Should be unique.",
       "display": "AllocLinkID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "alloclinkid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "196"
     }
   },
@@ -5580,15 +4508,6 @@
           "doc": "FX Swap"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "alloclinktype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "197"
     }
   },
@@ -5601,15 +4520,6 @@
     "metadata": {
       "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
       "display": "SecondaryOrderID",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "secondaryorderid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "5.0.1",
@@ -5635,15 +4545,6 @@
     "metadata": {
       "description": "Number of repeating groups of IOIQualifiers (04).",
       "display": "NoIOIQualifiers",
-      "fix:lineage": [
-        {
-          "since": "4.1",
-          "name": "noioiqualifiers",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "199"
     }
   }

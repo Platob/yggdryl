@@ -591,15 +591,6 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "ComplexEventCreditEventsXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "complexeventcrediteventsxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2133"
     }
   },
@@ -685,15 +676,6 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "ComplexEventXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "complexeventxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2138"
     }
   },
@@ -706,15 +688,6 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "ComplexEventXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "complexeventxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2139"
     }
   },

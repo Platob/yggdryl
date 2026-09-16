@@ -768,16 +768,6 @@
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "UnderlyingOptionExerciseEarliestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingoptionexerciseearliesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41838"
     }
   },
@@ -791,16 +781,6 @@
     "metadata": {
       "description": "Latest exercise time. See also UnderlyingOptionExerciseEarliestTime(41838).",
       "display": "UnderlyingOptionExerciseLatestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingoptionexerciselatesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41839"
     }
   },
@@ -1552,16 +1532,6 @@
     "metadata": {
       "description": "The option exercise expiration time.",
       "display": "UnderlyingOptionExerciseExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingoptionexerciseexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41854"
     }
   },
@@ -2362,15 +2332,6 @@
     "metadata": {
       "description": "Identifier of this UnderlyingPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingpaymentschedulexid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41881"
     }
   },
@@ -2383,15 +2344,6 @@
     "metadata": {
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingpaymentschedulexidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41882"
     }
   },

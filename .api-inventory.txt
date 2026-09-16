@@ -550,7 +550,7 @@ impl<'field> FixField<'field>
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
 ### yggdryl::fix::document  [rust\src\fix\document.rs]
-pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:lineage/fix:replacements/fix:directions as the JSON they are)
+pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:replacements/fix:directions as the JSON they are)
 pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
 pub struct Words<'doc>  (re-exported at the crate root)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)

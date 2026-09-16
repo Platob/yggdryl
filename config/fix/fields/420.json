@@ -1700,15 +1700,6 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommoditySettlPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcommoditysettlperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42014"
     }
   },
@@ -1721,15 +1712,6 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "UnderlyingStreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcommoditysettlperiodxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42015"
     }
   },
@@ -1742,15 +1724,6 @@
     "metadata": {
       "description": "Identifier of this UnderlyingStream for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42016"
     }
   },
@@ -1775,15 +1748,6 @@
     "metadata": {
       "description": "Cross reference to another UnderlyingStream notional for duplicating its properties.",
       "display": "UnderlyingStreamNotionalXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamnotionalxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42018"
     }
   },
@@ -4016,16 +3980,6 @@
     "metadata": {
       "description": "Time of valuation.",
       "display": "UnderlyingCashSettlValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcashsettlvaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42046"
     }
   },
@@ -4272,15 +4226,6 @@
     "metadata": {
       "description": "Name referenced from UnderlyingSettlementTermXIDRef(41315).",
       "display": "UnderlyingCashSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcashsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42059"
     }
   },
@@ -4341,15 +4286,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "UnderlyingPhysicalSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingphysicalsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42064"
     }
   },
@@ -4494,15 +4430,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingProtectionTermXIDRef(41314).",
       "display": "UnderlyingProtectionTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprotectiontermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42076"
     }
   },

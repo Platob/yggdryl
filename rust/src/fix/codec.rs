@@ -1997,11 +1997,13 @@ impl FixCodec {
     /// Each step is a FIX rule rather than a heuristic. `ApplVerID(1128)`
     /// wins, because under FIXT.1.1 the session version says nothing about
     /// the application version. `BeginString(8)` follows, and `FIXT.1.1`
-    /// falls through rather than being taken literally. Then the dictionary's
-    /// real newest - never a sentinel.
+    /// falls through rather than being taken literally. A line that states
+    /// neither is undated: the dictionary is version-blind and has no version
+    /// of its own to lend, and a caller reading an undated row gets the
+    /// crate's stated default rather than a guess dressed as a fact.
     fn infer_version(&self, pairs: &[FixPair]) -> Option<Version> {
         if let Some(value) = value_of(pairs, b"1128") {
-            if let Some(version) = appl_ver_id(&String::from_utf8_lossy(value), &self.registry) {
+            if let Some(version) = appl_ver_id(&String::from_utf8_lossy(value)) {
                 return Some(version);
             }
         }
@@ -2013,12 +2015,12 @@ impl FixCodec {
                 }
             }
         }
-        self.registry.newest().map(|pedigree| pedigree.version())
+        None
     }
 }
 
 /// `ApplVerID`'s numeric and symbolic spellings.
-fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
+fn appl_ver_id(value: &str) -> Option<Version> {
     let spelling = match value {
         "0" | "FIX27" => "2.7",
         "1" | "FIX30" => "3.0",
@@ -2030,11 +2032,9 @@ fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
         "7" | "FIX50" => "5.0",
         "8" | "FIX50SP1" => "5.0.1",
         "9" | "FIX50SP2" => "5.0.2",
-        // "FIX Latest" is a moving label and resolves to the pedigree the
-        // dictionary actually carries, never to a sentinel.
-        "10" | "FIXLatest" => {
-            return registry.newest().map(|pedigree| pedigree.version());
-        }
+        // "FIX Latest" is a moving label rather than a version. A
+        // version-blind dictionary states none to resolve it against, so it
+        // names nothing here and the next rule answers.
         _ => return None,
     };
     spelling.parse().ok()
@@ -2741,20 +2741,11 @@ mod clock_intake_tests {
 
     #[test]
     fn deferred_clocks_use_the_source_resolved_version() {
-        use crate::{FixCode, FixLineageEntry, FixPedigree};
+        use crate::FixCode;
 
         let version = |text: &str| text.parse::<Version>().unwrap();
         let mut registry = FixRegistry::new();
         let mut sending = registry.field_by_tag(52).unwrap().clone();
-        sending
-            .as_fix_mut()
-            .set_lineage(&[
-                FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                    .with_name("SendingTimeOld"),
-                FixLineageEntry::new(FixPedigree::new(version("5.0.2"), None))
-                    .with_name("sendingtime"),
-            ])
-            .unwrap();
         sending
             .as_fix_mut()
             .set_codes(&[

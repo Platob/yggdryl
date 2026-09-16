@@ -13,7 +13,7 @@
 | Aspect | Rule |
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is dated `deprecated`, and an older spelling of a surviving code is one of its aliases |
-| History | `fix:lineage` dates a field's names and types; the generator writes `deprecated` and `removed` entries, so a field FIX retired is in the dictionary with the version that retired it |
+| History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it as a `fix:aliases` entry, and a field FIX retired is still in the dictionary under its own tag |
 | Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Identifiers | `fix:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
@@ -676,66 +676,47 @@ Reading a code's pedigree is Rust only:
     assert_eq!(registry.field_by_tag(327)?.as_fix().code_name("D"), Some("NewsDisseminationLegacy"));
     ```
 
-## Versions are a filter on the read
+## The dictionary holds one reading, and filters by no version
 
-Rust's `field_at` and `get_field_at` filter scalar lookup through `fix:lineage`; an undated field exists at every version. `FixField::since`, `until`, `defined_at`, `deprecated_at`, `name_at`, and `dtype_at` read the field's own history; `FixRegistry::versions` and `newest` summarize it.
+The registry is version-blind: it holds every tag ever defined and filters by
+none. A field is the field, under the one name and datatype the dictionary
+gives it, and a spelling an earlier version used reaches it as an ordinary
+[alias](#a-field-is-its-tag-and-its-name) the generator writes beside it.
 
-A field FIX retired is in the dictionary: the generator writes every tag some FIX 4.0 to 5.0 SP2 dictionary declares and the newest lacks - `ExecTransType(20)`, `Rule80A(47)`, `ExecBroker(76)`, `ClientID(109)` and thirty-four more - with a lineage entry per version that named it and a final `{"since": v, "removed": true}` at the first version that did not, so `until` answers that version and `get_field_at` stops answering there, while `field_by_tag` answers at every version because a capture holds what was sent. A field the newest version keeps but the specification deprecated - Orchestra's `deprecated` attribute, and the three appendix datings before a removal - carries `{"since": v, "deprecated": true}`, which `deprecated_at` reads and `defined_at` ignores.
+A field FIX retired is still in the dictionary: the generator writes every tag
+some FIX 4.0 to 5.0 SP2 dictionary declares and the newest lacks -
+`ExecTransType(20)`, `Rule80A(47)`, `ExecBroker(76)`, `ClientID(109)` and
+thirty-four more - so `field_by_tag` answers for it, because a capture holds
+what was sent.
 
-A `Version` has numeric major, minor, and patch parts, such as `5.0.2`; an optional extension-pack number belongs to `FixPedigree`. `fix:nulls` holds the field's explicit wire spellings for absence. These metadata documents remain on the field and round-trip through both bindings.
+What a *value* was does travel, because that is what a reader has to translate:
+a [code](#a-field-carries-its-own-code-set) carries the version it was declared
+at and the one that deprecated it, and
+[`fix:replacements`](#a-field-carries-what-replaced-it) says how a retired field
+or value is restated.
 
-Typed lineage construction and filtered registry reads are Rust only; the example builds one lineage, then reads the committed dictionary's own history the same way:
+A `Version` has numeric major, minor, and patch parts, such as `5.0.2`.
+`fix:nulls` holds the field's explicit wire spellings for absence. These
+metadata documents remain on the field and round-trip through both bindings.
 
 === "Rust"
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixLineageEntry, FixPedigree, FixRegistry, Version};
-
-    let mut quantity = DataType::Float64.nullable_field("LastQty");
-    quantity.as_fix_mut().set_tag(32)?;
-    quantity.as_fix_mut().set_lineage(&[
-        FixLineageEntry::new(FixPedigree::new("2.7".parse()?, None))
-            .with_name("LastShares").with_dtype("int"),
-        FixLineageEntry::new(FixPedigree::new("4.3".parse()?, None))
-            .with_name("LastQty").with_dtype("Qty"),
-    ])?;
-    assert_eq!(quantity.as_fix().name_at("4.2".parse()?), Some("LastShares"));
-    assert_eq!(quantity.as_fix().name_at("5.0.2".parse()?), Some("LastQty"));
-    assert_eq!(quantity.as_fix().since(), Some("2.7".parse::<Version>()?));
-    let registry = FixRegistry::from_fields([quantity])?;
-    assert_eq!(registry.field("LastShares")?.name(), "LastQty");
-    assert!(registry.get_field_at("2.6".parse()?, 32).is_none());
+    use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
 
-    // Rule80A: declared at 4.0, deprecated at 4.3, gone at 4.4 - and still a field.
+    // Rule80A: FIX stopped declaring it after 4.3, and it is still a field.
     let rule80a = registry.field_by_tag(47)?;
     assert_eq!(rule80a.name(), "rule80a");
-    assert_eq!(rule80a.as_fix().since(), Some("4.0".parse::<Version>()?));
-    assert!(!rule80a.as_fix().deprecated_at("4.2".parse()?));
-    assert!(rule80a.as_fix().deprecated_at("4.3".parse()?));
-    assert_eq!(rule80a.as_fix().until(), Some("4.4".parse::<Version>()?));
-    assert!(registry.get_field_at("4.2".parse()?, 47).is_some());
-    assert!(registry.get_field_at("4.4".parse()?, 47).is_none());
-    // LegQty: deprecated at 5.0 SP1 and never removed, so defined at the newest.
-    let legqty = registry.field_by_tag(687)?.as_fix();
-    assert!(legqty.deprecated_at("5.0.1".parse()?));
-    assert_eq!(legqty.until(), None);
-    let newest = registry.newest().map(FixPedigree::version);
-    assert_eq!(newest, Some("5.0.2".parse::<Version>()?));
-    assert!(legqty.defined_at(newest.expect("a dated dictionary")));
+    // A tag the newest specification kept answers the same way; there is no
+    // version to ask either of them about.
+    assert!(registry.get_field(687).is_some());
+    // The spelling an older version used reaches the field as an alias.
+    assert_eq!(registry.field("LastShares")?.name(), "lastqty");
     ```
-
-| Lineage entry key | Meaning |
-| --- | --- |
-| `since` | Required numeric dotted version; canonical entries are oldest first |
-| `ep` | Optional extension pack |
-| `name`, `type`, `doc` | Name, resolved datatype document, and description from that point |
-| `deprecated`, `removed` | The specification deprecated the field from this version, or stopped declaring it; a `removed` entry states no name or type, and `defined_at` is false from it on |
-
-`set_lineage` checks that the newest entry agrees with the field, resolves datatype spellings, derives historical aliases, and collapses unchanged entries. Earlier string entries immediately preceding a temporal type adopt that temporal interpretation; other retypes remain distinct. Duplicate pedigrees and unresolved datatypes fail atomically. An empty lineage removes its derived aliases; an undated field has no version filter, and `newest()` returns a real pedigree rather than a moving label or `Version::MAX`.
 
 ### `fix:nulls`, the spellings that mean nothing was sent
 
@@ -1062,7 +1043,6 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 | `fix:tag` | Must agree; identity is not merged |
 | `fix:branches` | Union, folded, sorted: every dictionary that contributed either side |
 | `fix:tags` | Combine alternate tags under collision validation |
-| `fix:lineage` | Merge by pedigree, incoming entry winning a shared point |
 | `fix:codes` | Merge by wire value, incoming code winning a shared value |
 | `fix:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
 | `fix:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |

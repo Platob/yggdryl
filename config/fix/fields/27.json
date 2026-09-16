@@ -2649,20 +2649,6 @@
     "metadata": {
       "description": "Specifies the foreign exchange benchmark rate fixing to be used in valuing the transaction. For example \"London 4 p.m.\" or \"Tokyo 3 p.m.\"",
       "display": "FXBenchmarkRateFix",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "fxbenchmarkratefix",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 293,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "2796"
     }
   },

@@ -17,18 +17,20 @@ fields have tags. A group references its ordinary int32 counter and contains
 a non-null component. Each field stores its enum records directly in
 fix:codes metadata. Datatypes resolve through the crate's logical-name table.
 
-The four ``fix:`` properties that hold a document - ``fix:codes``,
-``fix:lineage``, ``fix:replacements``, ``fix:directions`` - are written as the
-JSON arrays they are rather than as one escaped line, so an indented document
-renders a code set as a code set; the crate restates each as its canonical
-compact text when it reads the store back.
+The three ``fix:`` properties that hold a document - ``fix:codes``,
+``fix:replacements``, ``fix:directions`` - are written as the JSON arrays they
+are rather than as one escaped line, so an indented document renders a code set
+as a code set; the crate restates each as its canonical compact text when it
+reads the store back.
 
-The dictionary carries every cross-version fact the crate restates a message
-with, so no table of them lives in Rust: a field FIX removed is present with
-a lineage that ends in a removed entry, a field or code FIX deprecated says so
-at its version, a code set holds every value an older version declared and
-every older spelling of a surviving one, and a field whose value another field
-took over carries the fix:replacements document that says which and how.
+The dictionary is one reading of the protocol rather than a history of it: a
+field is written under the one name and datatype the newest source gives it,
+and every spelling an earlier version used is written beside it as a
+``fix:aliases`` entry, so an old name still reaches the field. What a *value*
+was does travel - a code set holds every value an older version declared and
+every older spelling of a surviving one, dated - and a field whose value
+another field took over carries the fix:replacements document that says which
+and how.
 
 Usage::
 
@@ -471,75 +473,6 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
 # charset or bound it declares. Mirrors `DataTypeId::is_temporal` and
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
-TEMPORAL_TAGS = {"date32", "date64", "time32", "time64", "datetime64"}
-TEXT_TAGS = {"string"}
-
-
-def back_type(entries: list[dict[str, Any]]) -> None:
-    """Adopt a temporal type backward over the string entries preceding it.
-
-    The Python half of `back_type` in `rust/src/fix/lineage.rs`, with that
-    function's reasoning: a field FIX transmitted as text and later declared
-    temporal was always carrying an instant, so stating the later type at the
-    earlier version is what the crate can consistently parse. Only a string
-    yields, and only to a temporal - every other pair is a real constraint the
-    later version added.
-    """
-    for at in range(len(entries) - 1, 0, -1):
-        later = entries[at].get("type")
-        if not isinstance(later, dict) or later.get("type") not in TEMPORAL_TAGS:
-            continue
-        earlier = at
-        while earlier > 0:
-            held = entries[earlier - 1].get("type")
-            if not isinstance(held, dict) or held.get("type") not in TEXT_TAGS:
-                break
-            earlier -= 1
-            entries[earlier]["type"] = later
-
-
-def lineage_document(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`fix:lineage`, keys in the order the reader expects.
-
-    This is the Python half of `FixLineage::render` and makes the same two
-    derivations, so a generated dictionary and a hand-built or merged one hold
-    one document:
-
-    - the datatype is stored resolved, as the crate's serialized type and
-      exactly as the field's own ``dtype`` is stored, so a parameterized type
-      carries its parameters and ``char`` and ``String`` are one ``string``;
-    - an entry stating nothing its predecessor did not is dropped, because a
-      dated point repeating what was already true is not a point in a history.
-
-    The oldest entry is never dropped - it is what ``since`` reads - and ``ep``
-    is the entry's date rather than one of its statements, so an extension
-    pack that changed nothing is exactly the entry worth dropping. Whether a
-    field has a lineage at all is decided by the caller, before this: the
-    specification dating a field twice is what gives it a history, and
-    normalizing how that history is written must not take it away.
-    """
-    order = ["since", "ep", "name", "type", "deprecated", "removed", "doc"]
-    stated = ["name", "deprecated", "removed", "doc"]
-    resolved: list[dict[str, Any]] = []
-    for entry in entries:
-        held = dict(entry)
-        if held.get("type") is not None:
-            held["type"] = dtype_document(held["type"])
-        resolved.append(held)
-    back_type(resolved)
-
-    rendered: list[dict[str, Any]] = []
-    for held in resolved:
-        if rendered:
-            kept = rendered[-1]
-            if held.get("type") == kept.get("type") and all(
-                held.get(key) == kept.get(key) for key in stated
-            ):
-                continue
-        rendered.append({key: held[key] for key in order if held.get(key) not in (None, False)})
-    return rendered
-
-
 def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """`fix:codes`, ordered by wire value with `value` leading each record."""
     order = ["value", "name", "since", "ep", "deprecated", "sort", "group", "aliases", "doc"]
@@ -559,34 +492,6 @@ def camel_case(description: str) -> str:
 # QuickFIX description would spell them differently. `State::from_spelling`
 # knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
 LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
-
-# Deprecations the specification dated in Appendix 6-F before the removal the
-# QuickFIX history shows, which no scraped source states as an attribute.
-HAND_DATED_DEPRECATIONS = {47: "4.3", 219: "4.3", 370: "4.3"}
-
-
-def place_entry(entries: list[dict[str, Any]], since: str, ep: int | None, flag: str) -> None:
-    """State `flag` at one pedigree, merging into the entry already dated there.
-
-    The Rust writer refuses two entries at one pedigree, so a flag dated where
-    the history already has a point joins that point; elsewhere it is its own
-    entry, kept in the pedigree order the reader walks - version first, and a
-    version's base statement before any extension pack against it.
-    """
-    for entry in entries:
-        if (entry["since"], entry.get("ep")) == (since, ep):
-            entry[flag] = True
-            return
-
-    def pedigree(entry: dict[str, Any]) -> tuple[tuple[int, int, int], bool, int]:
-        return version_key(entry["since"]), entry.get("ep") is not None, entry.get("ep") or 0
-
-    placed = {"since": since, "ep": ep, flag: True}
-    at = len(entries)
-    while at > 0 and pedigree(entries[at - 1]) > pedigree(placed):
-        at -= 1
-    entries.insert(at, placed)
-
 
 def fold_legacy_codes(
     tag: int,
@@ -1397,15 +1302,12 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         entries = [dict(entry) for entry in history[tag]]
         current = entries[-1]
         name, fix_type = current["name"], current["type"]
-        entries.append({"since": version_after(named[tag][-1], latest["version"]), "removed": True})
-        if tag in HAND_DATED_DEPRECATIONS:
-            place_entry(entries, HAND_DATED_DEPRECATIONS[tag], None, "deprecated")
         display = next(
             parsed[source.source_id]["fields"][tag]["name"]
             for source in reversed(SOURCES)
             if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
         )
-        metadata = {"fix:tag": str(tag), "display": display, "fix:lineage": lineage_document(entries)}
+        metadata = {"fix:tag": str(tag), "display": display}
         aliases = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if aliases:
             metadata["fix:aliases"] = ",".join(dict.fromkeys(aliases))
@@ -1445,31 +1347,25 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 # disagree - tag 327 is `HaltReasonInt` in the QuickFIX
                 # FIX.5.0SP2 file and `HaltReason` in Orchestra Latest - the
                 # higher-priority source replaces the lower rather than
-                # standing beside it, which is the same rule a lineage merge
-                # follows and the one `FixLineage::render` enforces.
+                # standing beside it, which is the rule a field merge follows.
                 entries[-1] = current
             else:
                 entries.append(current)
-        if field["deprecated"]:
-            place_entry(entries, field["deprecated"], field["deprecated_ep"], "deprecated")
-
         metadata: dict[str, str] = {"fix:tag": str(tag)}
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:
             metadata["description"] = field["doc"]
-        # A field is dated only when it has a history to state: it was named
-        # or typed otherwise once, appeared later than the dictionary's own
-        # version, or was deprecated.
-        if len(entries) > 1 or entries[0]["since"] != latest["version"] or entries[0].get("deprecated"):
-            metadata["fix:lineage"] = lineage_document(entries)
-            aliases = []
-            for entry in entries:
-                spelling = entry.get("name")
-                if spelling and spelling != name and spelling not in aliases:
-                    aliases.append(spelling)
-            if aliases:
-                metadata["fix:aliases"] = ",".join(aliases)
+        # Every spelling an earlier version gave this tag is an alias of the
+        # one name the dictionary holds it under. A field no version spelled
+        # otherwise states none, because the only entry names the field.
+        aliases = []
+        for entry in entries:
+            spelling = entry.get("name")
+            if spelling and spelling != name and spelling not in aliases:
+                aliases.append(spelling)
+        if aliases:
+            metadata["fix:aliases"] = ",".join(aliases)
         code_set_name = field["code_set"] or field["type"] or ""
         if field["code_set"] and code_set_name not in latest["code_sets"]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
@@ -1947,9 +1843,8 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
         "//! The lists are the union across every scraped version, because FIX",
         "//! Latest alone is not enough: it no longer lists `SecureDataLen(90)`",
         "//! in the header or `SignatureLength(93)` in the trailer, and a 4.2",
-        "//! message carries both. Requiredness rides the lineage rather than a",
-        "//! parallel table, because presence is already `nullable` on the field",
-        "//! a version resolves to.",
+        "//! message carries both. Requiredness is `nullable` on the field the",
+        "//! dictionary holds, rather than a parallel table.",
         "",
     ]
     for name, tags, what in [

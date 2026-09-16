@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Used to express the floor price of a capped put",
       "display": "FloorPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "floorprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1200"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
       "display": "NoStrikeRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nostrikerules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1201"
     }
   },
@@ -50,15 +32,6 @@
     "metadata": {
       "description": "Starting price for the range to which the StrikeIncrement applies. Price refers to the price of the underlying",
       "display": "StartStrikePxRange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "startstrikepxrange",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1202"
     }
   },
@@ -71,15 +44,6 @@
     "metadata": {
       "description": "Ending price of the range to which the StrikeIncrement applies. Price refers to the price of the underlying",
       "display": "EndStrikePxRange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "endstrikepxrange",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1203"
     }
   },
@@ -92,15 +56,6 @@
     "metadata": {
       "description": "Value by which strike price should be incremented within the specified price range.",
       "display": "StrikeIncrement",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "strikeincrement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1204"
     }
   },
@@ -113,15 +68,6 @@
     "metadata": {
       "description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
       "display": "NoTickRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notickrules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1205"
     }
   },
@@ -134,15 +80,6 @@
     "metadata": {
       "description": "Starting price range for specified tick increment",
       "display": "StartTickPriceRange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "starttickpricerange",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1206"
     }
   },
@@ -155,15 +92,6 @@
     "metadata": {
       "description": "Ending price range for the specified tick increment",
       "display": "EndTickPriceRange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "endtickpricerange",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1207"
     }
   },
@@ -176,15 +104,6 @@
     "metadata": {
       "description": "Tick increment for stated price range. Specifies the valid price increments at which a security can be quoted and traded",
       "display": "TickIncrement",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tickincrement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1208"
     }
   },
@@ -255,15 +174,6 @@
           "ep": 138,
           "sort": 6,
           "doc": "Traded as spread"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tickruletype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1209"
@@ -606,15 +516,6 @@
           "doc": "Text"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nestedinstrattribtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1210"
     }
   },
@@ -627,15 +528,6 @@
     "metadata": {
       "description": "Attribute value appropriate to the NestedInstrAttribType field",
       "display": "NestedInstrAttribValue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nestedinstrattribvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1211"
     }
   },
@@ -650,17 +542,6 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "LegMaturityTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legmaturitytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1212"
     }
   },
@@ -675,17 +556,6 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "UnderlyingMaturityTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyingmaturitytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1213"
     }
   },
@@ -698,15 +568,6 @@
     "metadata": {
       "description": "Ticker symbol. Common, human understood representation of the security.",
       "display": "DerivativeSymbol",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesymbol",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1214"
     }
   },
@@ -737,15 +598,6 @@
           "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesymbolsfx",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1215"
     }
   },
@@ -758,15 +610,6 @@
     "metadata": {
       "description": "Security identifier value (e.g. CUSIP, SEDOL, ISIN, etc).",
       "display": "DerivativeSecurityID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1216"
     }
   },
@@ -1025,15 +868,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1217"
     }
   },
@@ -1046,15 +880,6 @@
     "metadata": {
       "description": "Number of alternate derivative security IDs.",
       "display": "NoDerivativeSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noderivativesecurityaltid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1218"
     }
   },
@@ -1067,15 +892,6 @@
     "metadata": {
       "description": "Alternate derivative security identifier value of DerivativeSecurityAltIDSource(1220) type.",
       "display": "DerivativeSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityaltid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1219"
     }
   },
@@ -1334,15 +1150,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityaltidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1220"
     }
   },
@@ -1355,15 +1162,6 @@
     "metadata": {
       "description": "Refer to definition of LowLimitPrice(1148)",
       "display": "SecondaryLowLimitPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "secondarylowlimitprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1221"
     }
   },
@@ -1376,15 +1174,6 @@
     "metadata": {
       "description": "Allows maturity rule to be referenced via an identifier so that rules do not need to be explicitly enumerated",
       "display": "MaturityRuleID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maturityruleid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1222"
     }
   },
@@ -1397,15 +1186,6 @@
     "metadata": {
       "description": "Allows strike rule to be referenced via an identifier so that rules do not need to be explicitly enumerated",
       "display": "StrikeRuleID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "strikeruleid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1223"
     }
   },
@@ -1418,15 +1198,6 @@
     "metadata": {
       "description": "Refer to definition of UnitOfMeasureQty(1147)",
       "display": "LegUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1224"
     }
   },
@@ -1440,23 +1211,6 @@
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
       "display": "DerivativeOptPayoutAmount",
       "fix:aliases": "derivativeoptpayamount",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeoptpayamount",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 52,
-          "name": "derivativeoptpayoutamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1225"
     }
   },
@@ -1472,18 +1226,6 @@
     "metadata": {
       "description": "Ending maturity month year for an option class",
       "display": "EndMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "endmaturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "1226"
     }
   },
@@ -1496,15 +1238,6 @@
     "metadata": {
       "description": "Identifies an entire suite of products for a given market. In Futures this may be \"interest rates\", \"agricultural\", \"equity indexes\", etc.",
       "display": "ProductComplex",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "productcomplex",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1227"
     }
   },
@@ -1517,15 +1250,6 @@
     "metadata": {
       "description": "Identifies an entire suite of products for a given market.",
       "display": "DerivativeProductComplex",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeproductcomplex",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1228"
     }
   },
@@ -1538,15 +1262,6 @@
     "metadata": {
       "description": "Increment between successive maturities for an option class",
       "display": "MaturityMonthYearIncrement",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maturitymonthyearincrement",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1229"
     }
   },
@@ -1559,15 +1274,6 @@
     "metadata": {
       "description": "Refer to definition of HighLimitPrice(1149)",
       "display": "SecondaryHighLimitPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "secondaryhighlimitprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1230"
     }
   },
@@ -1580,15 +1286,6 @@
     "metadata": {
       "description": "Minimum lot size allowed based on lot type specified in LotType(1093)",
       "display": "MinLotSize",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "minlotsize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1231"
     }
   },
@@ -1601,15 +1298,6 @@
     "metadata": {
       "description": "Number of execution instructions",
       "display": "NoExecInstRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noexecinstrules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1232"
     }
   },
@@ -1634,15 +1322,6 @@
     "metadata": {
       "description": "Number of Lot Type Rules",
       "display": "NoLotTypeRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nolottyperules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1234"
     }
   },
@@ -1655,15 +1334,6 @@
     "metadata": {
       "description": "Number of Match Rules",
       "display": "NoMatchRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nomatchrules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1235"
     }
   },
@@ -1676,15 +1346,6 @@
     "metadata": {
       "description": "Number of maturity rules in MarurityRules component block",
       "display": "NoMaturityRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nomaturityrules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1236"
     }
   },
@@ -1697,15 +1358,6 @@
     "metadata": {
       "description": "Number of order types",
       "display": "NoOrdTypeRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noordtyperules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1237"
     }
   },
@@ -2442,15 +2094,6 @@
     "metadata": {
       "description": "Number of time in force techniques",
       "display": "NoTimeInForceRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notimeinforcerules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1239"
     }
   },
@@ -2463,15 +2106,6 @@
     "metadata": {
       "description": "Refer to definition for TradingReferencePrice(1150)",
       "display": "SecondaryTradingReferencePrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "secondarytradingreferenceprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1240"
     }
   },
@@ -2487,18 +2121,6 @@
     "metadata": {
       "description": "Starting maturity month year for an option class",
       "display": "StartMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "startmaturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "1241"
     }
   },
@@ -2511,15 +2133,6 @@
     "metadata": {
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities",
       "display": "FlexProductEligibilityIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "flexproducteligibilityindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1242"
     }
   },
@@ -2532,15 +2145,6 @@
     "metadata": {
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
       "display": "DerivFlexProductEligibilityIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivflexproducteligibilityindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1243"
     }
   },
@@ -2553,15 +2157,6 @@
     "metadata": {
       "description": "Used to indicate a derivatives security that can be defined using flexible terms. The terms commonly permitted to be defined by market participants are expiration date and strike price. FlexibleIndicator is an alternative CFICode(461) Standard/Non-standard attribute.",
       "display": "FlexibleIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "flexibleindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1244"
     }
   },
@@ -2574,15 +2169,6 @@
     "metadata": {
       "description": "Used when the trading currency can differ from the price currency",
       "display": "TradingCurrency",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradingcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "1245"
     }
   },
@@ -2688,15 +2274,6 @@
           "doc": "MONEYMARKET"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeproduct",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1246"
     }
   },
@@ -2709,15 +2286,6 @@
     "metadata": {
       "description": "An exchange specific name assigned to a group of related securities which may be concurrently affected by market events and actions.",
       "display": "DerivativeSecurityGroup",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecuritygroup",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1247"
     }
   },
@@ -2730,15 +2298,6 @@
     "metadata": {
       "description": "The type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values.",
       "display": "DerivativeCFICode",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativecficode",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1248"
     }
   },
@@ -4256,15 +3815,6 @@
           "doc": "Yankee Certificate Of Deposit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecuritytype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1249"
     }
   },
@@ -4277,15 +3827,6 @@
     "metadata": {
       "description": "Sub-type qualification/identification of the security type.",
       "display": "DerivativeSecuritySubType",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecuritysubtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1250"
     }
   },
@@ -4301,18 +3842,6 @@
     "metadata": {
       "description": "Month and Year of the maturity (used for standardized futures and options).",
       "display": "DerivativeMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativematuritymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "1251"
     }
   },
@@ -4326,16 +3855,6 @@
     "metadata": {
       "description": "Date of maturity.",
       "display": "DerivativeMaturityDate",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativematuritydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1252"
     }
   },
@@ -4350,17 +3869,6 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified.",
       "display": "DerivativeMaturityTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativematuritytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1253"
     }
   },
@@ -4373,15 +3881,6 @@
     "metadata": {
       "description": "Indicator to determine if instrument is settle on open.",
       "display": "DerivativeSettleOnOpenFlag",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesettleonopenflag",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1254"
     }
   },
@@ -4410,15 +3909,6 @@
           "ep": 4,
           "sort": 2,
           "doc": "Random"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrmtassignmentmethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1255"
@@ -4521,15 +4011,6 @@
           "doc": "Suspended"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecuritystatus",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1256"
     }
   },
@@ -4542,15 +4023,6 @@
     "metadata": {
       "description": "Values may include BIC for the depository or custodian who maintain ownership records, the ISO country code for the location of the record, or the value ZZ to specify physical ownership of the security (e.g. stock certificate).",
       "display": "DerivativeInstrRegistry",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrregistry",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1257"
     }
   },
@@ -4563,15 +4035,6 @@
     "metadata": {
       "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN).",
       "display": "DerivativeCountryOfIssue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativecountryofissue",
-          "type": {
-            "type": "country"
-          }
-        }
-      ],
       "fix:tag": "1258"
     }
   },
@@ -4584,15 +4047,6 @@
     "metadata": {
       "description": "A two-character state or province abbreviation.",
       "display": "DerivativeStateOrProvinceOfIssue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativestateorprovinceofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1259"
     }
   },
@@ -4605,15 +4059,6 @@
     "metadata": {
       "description": "Identifies the locale or region of issue.",
       "display": "DerivativeLocaleOfIssue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativelocaleofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1260"
     }
   },
@@ -4626,15 +4071,6 @@
     "metadata": {
       "description": "Strike price for an option.",
       "display": "DerivativeStrikePrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativestrikeprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1261"
     }
   },
@@ -4647,15 +4083,6 @@
     "metadata": {
       "description": "Currency in which the strike price is denominated.",
       "display": "DerivativeStrikeCurrency",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativestrikecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "1262"
     }
   },
@@ -4668,15 +4095,6 @@
     "metadata": {
       "description": "Multiplier applied to the strike price for the purpose of calculating the settlement value.",
       "display": "DerivativeStrikeMultiplier",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativestrikemultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1263"
     }
   },
@@ -4689,15 +4107,6 @@
     "metadata": {
       "description": "The number of shares/units for the financial instrument involved in the option trade.",
       "display": "DerivativeStrikeValue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativestrikevalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1264"
     }
   },
@@ -4710,15 +4119,6 @@
     "metadata": {
       "description": "Provided to support versioning of option contracts as a result of corporate actions or events. Use of this field is defined by counterparty agreement or market conventions.",
       "display": "DerivativeOptAttribute",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeoptattribute",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1265"
     }
   },
@@ -4731,15 +4131,6 @@
     "metadata": {
       "description": "Specifies the ratio or multiply factor to convert from nominal units (e.g. contracts) to total units (e.g. shares) (e.g. 1.0, 100, 1000, etc.).",
       "display": "DerivativeContractMultiplier",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativecontractmultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1266"
     }
   },
@@ -4752,15 +4143,6 @@
     "metadata": {
       "description": "Minimum price increase for a given exchange-traded Instrument.",
       "display": "DerivativeMinPriceIncrement",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeminpriceincrement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1267"
     }
   },
@@ -4773,15 +4155,6 @@
     "metadata": {
       "description": "Minimum price increment amount associated with the minimum price increment.",
       "display": "DerivativeMinPriceIncrementAmount",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeminpriceincrementamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1268"
     }
   },
@@ -5506,15 +4879,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1269"
     }
   },
@@ -5527,15 +4891,6 @@
     "metadata": {
       "description": "Used to indicate the quantity of the underlying commodity unit of measure on which the contract is based.",
       "display": "DerivativeUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1270"
     }
   },
@@ -5620,15 +4975,6 @@
           "doc": "Year"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativetimeunit",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1271"
     }
   },
@@ -5641,15 +4987,6 @@
     "metadata": {
       "description": "Market used to help identify a security.",
       "display": "DerivativeSecurityExchange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityexchange",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "1272"
     }
   },
@@ -5662,15 +4999,6 @@
     "metadata": {
       "description": "Position limit for a given exchange-traded product.",
       "display": "DerivativePositionLimit",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativepositionlimit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1273"
     }
   },
@@ -5683,15 +5011,6 @@
     "metadata": {
       "description": "Position limit in the near-term contract for a given exchange-traded product.",
       "display": "DerivativeNTPositionLimit",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativentpositionlimit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1274"
     }
   },
@@ -5704,15 +5023,6 @@
     "metadata": {
       "description": "Name of security issuer.",
       "display": "DerivativeIssuer",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeissuer",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1275"
     }
   },
@@ -5726,16 +5036,6 @@
     "metadata": {
       "description": "The date on which the security is issued.",
       "display": "DerivativeIssueDate",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeissuedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1276"
     }
   },
@@ -5748,15 +5048,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) DerivativeEncodedSecurityDesc (1281) field.",
       "display": "DerivativeEncodedIssuerLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeencodedissuerlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1277"
     }
   },
@@ -5769,15 +5060,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the DerivativeIssuer(1275) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DerivativeIssuer(1275) field.",
       "display": "DerivativeEncodedIssuer",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeencodedissuer",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1278"
     }
   },
@@ -5790,15 +5072,6 @@
     "metadata": {
       "description": "Can be used by the venue or one of the trading parties to provide a non-normative textual description for the financial instrument.",
       "display": "DerivativeSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1279"
     }
   },
@@ -5811,15 +5084,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) DerivativeEncodedSecurityDesc (1281) field.",
       "display": "DerivativeEncodedSecurityDescLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeencodedsecuritydesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1280"
     }
   },
@@ -5832,15 +5096,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the DerivativeSecurityDesc(1279) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DerivativeSecurityDesc(1279) field.",
       "display": "DerivativeEncodedSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeencodedsecuritydesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1281"
     }
   },
@@ -5853,15 +5108,6 @@
     "metadata": {
       "description": "The length of the DerivativeSecurityXML(1283) data block.",
       "display": "DerivativeSecurityXMLLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityxmllen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1282"
     }
   },
@@ -5874,15 +5120,6 @@
     "metadata": {
       "description": "XML definition for the security.",
       "display": "DerivativeSecurityXML",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityxml",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1283"
     }
   },
@@ -5895,15 +5132,6 @@
     "metadata": {
       "description": "The schema used to validate the contents of DerivativeSecurityXML(1283).",
       "display": "DerivativeSecurityXMLSchema",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesecurityxmlschema",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1284"
     }
   },
@@ -5919,18 +5147,6 @@
     "metadata": {
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "DerivativeContractSettlMonth",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativecontractsettlmonth",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "1285"
     }
   },
@@ -5943,15 +5159,6 @@
     "metadata": {
       "description": "Number of repeating DerivativeEventType entries.",
       "display": "NoDerivativeEvents",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noderivativeevents",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1286"
     }
   },
@@ -6198,15 +5405,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeeventtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1287"
     }
   },
@@ -6220,16 +5418,6 @@
     "metadata": {
       "description": "Date of event.",
       "display": "DerivativeEventDate",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeeventdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1288"
     }
   },
@@ -6244,17 +5432,6 @@
     "metadata": {
       "description": "Specific time of event. To be used in combination with DerivativeEventDate(1288).",
       "display": "DerivativeEventTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeeventtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1289"
     }
   },
@@ -6267,15 +5444,6 @@
     "metadata": {
       "description": "Predetermined price of issue at event.",
       "display": "DerivativeEventPx",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeeventpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1290"
     }
   },
@@ -6288,15 +5456,6 @@
     "metadata": {
       "description": "Comments related to the event.",
       "display": "DerivativeEventText",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeeventtext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1291"
     }
   },
@@ -6309,15 +5468,6 @@
     "metadata": {
       "description": "Number of repeating derivative instrument party entries.",
       "display": "NoDerivativeInstrumentParties",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noderivativeinstrumentparties",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1292"
     }
   },
@@ -6330,15 +5480,6 @@
     "metadata": {
       "description": "Party identifier/code.",
       "display": "DerivativeInstrumentPartyID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrumentpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1293"
     }
   },
@@ -6609,15 +5750,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrumentpartyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1294"
@@ -7623,15 +6755,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrumentpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1295"
     }
   },
@@ -7644,15 +6767,6 @@
     "metadata": {
       "description": "Number of derivative instrument party sub IDs.",
       "display": "NoDerivativeInstrumentPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noderivativeinstrumentpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1296"
     }
   },
@@ -7665,15 +6779,6 @@
     "metadata": {
       "description": "Party sub-identifier.",
       "display": "DerivativeInstrumentPartySubID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrumentpartysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1297"
     }
   },
@@ -8371,15 +7476,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrumentpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1298"
     }
   },
@@ -8424,22 +7520,6 @@
           "ep": 161,
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeexercisestyle",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "derivativeexercisestyle",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1299"

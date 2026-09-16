@@ -227,16 +227,6 @@
     "metadata": {
       "description": "The averaging time for an Asian option.",
       "display": "ComplexEventPeriodTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "complexeventperiodtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41009"
     }
   },
@@ -711,16 +701,6 @@
     "metadata": {
       "description": "The local market fixing time.",
       "display": "ComplexEventFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "complexeventfixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41027"
     }
   },
@@ -1296,15 +1276,6 @@
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "DeliveryScheduleXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "deliveryschedulexid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41039"
     }
   },

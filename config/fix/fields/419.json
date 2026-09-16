@@ -3982,16 +3982,6 @@
     "metadata": {
       "description": "The local market pricing or fixing time.",
       "display": "UnderlyingPricingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingpricingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41952"
     }
   },
@@ -4070,15 +4060,6 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCalculationPeriodDatesXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcalculationperioddatesxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41957"
     }
   },
@@ -4091,15 +4072,6 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "UnderlyingStreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcalculationperioddatesxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41958"
     }
   },
@@ -5594,15 +5566,6 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcommodityxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41988"
     }
   },
@@ -5615,15 +5578,6 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingstreamcommodityxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41989"
     }
   },

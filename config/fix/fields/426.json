@@ -20,15 +20,6 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "PaymentStreamCompoundingXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "paymentstreamcompoundingxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42601"
     }
   },

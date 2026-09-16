@@ -204,16 +204,6 @@
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "LegOptionExerciseEarliestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legoptionexerciseearliesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41509"
     }
   },
@@ -227,16 +217,6 @@
     "metadata": {
       "description": "The latest exercise time. See also LegOptionExerciseEarliestTime(41509).",
       "display": "LegOptionExerciseLatestTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legoptionexerciselatesttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41510"
     }
   },
@@ -988,16 +968,6 @@
     "metadata": {
       "description": "The option exercise expiration time.",
       "display": "LegOptionExerciseExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legoptionexerciseexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41525"
     }
   },
@@ -1177,15 +1147,6 @@
     "metadata": {
       "description": "Identifier of this LegPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "LegPaymentScheduleXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legpaymentschedulexid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41533"
     }
   },
@@ -1198,15 +1159,6 @@
     "metadata": {
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "LegPaymentScheduleXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legpaymentschedulexidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41534"
     }
   },

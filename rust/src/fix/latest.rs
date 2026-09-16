@@ -1,4 +1,4 @@
-//! A message restated at its registry's newest version.
+//! A message restated under the dictionary its registry holds.
 //!
 //! A capture holds what each session spoke: a FIX 4.2 report states its
 //! fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as
@@ -7,9 +7,9 @@
 //! `OrderCapacity(528)` and `Trade`. Every consumer then restates them
 //! independently, which is how two systems come to disagree about one
 //! message. This pass restates a message once, from what the dictionary
-//! itself says: the registry's field for every tag, the aliases and lineage
-//! that reach it, and the [`fix:replacements`](super::replacements) each
-//! retired field or value carries. Nothing here holds a table of rules.
+//! itself says: the registry's field for every tag, the aliases that reach
+//! it, and the [`fix:replacements`](super::replacements) each retired field
+//! or value carries. Nothing here holds a table of rules.
 //!
 //! # The row only
 //!
@@ -30,8 +30,8 @@
 //! applies all-or-nothing: every field it would fill is computed and
 //! checked, and one target that cannot take its value blocks the whole
 //! rule. A target takes a value when it is absent, null, already equal, or
-//! holds a code its set no longer declares at the registry's newest version;
-//! anything else is a stated current value and stands.
+//! holds a code its set declares deprecated; anything else is a stated
+//! current value and stands.
 
 use std::sync::Arc;
 
@@ -42,9 +42,9 @@ use super::codes::FixCodeValue;
 use super::msg::FixMsg;
 use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEntry};
 use super::schema::item_fields;
-use super::{FixPedigree, FixRegistry, occurrence_name};
+use super::{FixRegistry, occurrence_name};
 use crate::types::{Code, State};
-use crate::{DataType, Field, Result, Scalar, Version};
+use crate::{DataType, Field, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -450,9 +450,6 @@ struct Restater<'msg> {
     registry: &'msg FixRegistry,
     /// The root's `MsgType(35)`, which every `msgtypes` filter reads.
     msgtype: Option<&'msg str>,
-    /// The registry's newest version, which decides whether a held code
-    /// still stands.
-    newest: Option<Version>,
 }
 
 impl<'msg> Restater<'msg> {
@@ -845,7 +842,7 @@ impl<'msg> Restater<'msg> {
     }
 
     /// Whether a target takes `value`: absent, null, already equal, or
-    /// holding a code its set no longer declares at the newest version.
+    /// holding a code its set declares deprecated.
     fn writable(&self, target: &Field, held: Option<&Scalar>, value: &Scalar) -> bool {
         let Some(held) = held else {
             return true;
@@ -882,10 +879,15 @@ impl<'msg> Restater<'msg> {
             .all(|token| view.code(token).is_some_and(|code| self.current(code)))
     }
 
-    /// Whether a code is still declared at the registry's newest version.
+    /// Whether the set still declares a code.
+    ///
+    /// The dictionary is the whole of what is current: it holds one reading
+    /// of every code, so a code it dates as deprecated is retired and one it
+    /// does not is stated. There is no version to compare that date against,
+    /// because a registry holds every tag ever defined and filters by none.
+    #[expect(clippy::unused_self, reason = "read as a method beside `stands`")]
     fn current(&self, code: FixCodeValue<'_>) -> bool {
-        code.deprecated()
-            .is_none_or(|deprecated| self.newest.is_some_and(|newest| newest < deprecated))
+        code.deprecated().is_none()
     }
 }
 
@@ -898,13 +900,12 @@ fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
     converted(known, value)
 }
 
-/// The message restated at its registry's newest version.
+/// The message restated under the dictionary its registry holds.
 ///
 /// The levels are rebuilt whole, because canonicalizing merges and drops
-/// children and a group's item is the union of what its occurrences hold;
-/// the one write that follows - the crate's `version` child taking the
-/// registry's newest version, replacing a stated one or appended - lands
-/// through [`FixMsg::set`] like every other write into a row.
+/// children and a group's item is the union of what its occurrences hold.
+/// The `version` a row carries is left as it is: it is what the line said,
+/// and no pass here pins one.
 ///
 /// # Errors
 ///
@@ -916,13 +917,11 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
         return Ok(msg);
     };
     let values = msg.as_value().as_sequence().unwrap_or_default();
-    let newest = msg.registry().newest().map(FixPedigree::version);
     let (fields, values) = {
         let restater = Restater {
             msg: &msg,
             registry: msg.registry(),
             msgtype: msg.get_by_tag(35).and_then(Scalar::as_str),
-            newest,
         };
         restater
             .level(Level::unpack(children, values), None)?
@@ -938,16 +937,11 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
     );
     let registry = Arc::clone(msg.registry());
     let entries = msg.into_entries();
-    let mut restated = FixMsg::settled_parts(
+    FixMsg::settled_parts(
         registry,
         root,
         Scalar::from_sequence(values),
         entries,
         super::identity::Assertions::default(),
-    )?;
-    if let Some(newest) = newest {
-        let spelled = format_smolstr!("{newest}");
-        restated.set(super::VERSION_TAG_NAME.0, Scalar::from(spelled.as_str()))?;
-    }
-    Ok(restated)
+    )
 }

@@ -100,7 +100,7 @@ pub enum CategoryCommand {
         #[arg(long, default_value_t = 40)]
         limit: usize,
     },
-    /// Read one definition, its references, lineage, and inline enum codes.
+    /// Read one definition, its references and inline enum codes.
     Read {
         /// Definition name; fields also accept a tag.
         key: String,

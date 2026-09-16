@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Enumeration defining the encryption method used to encrypt password fields.",
       "display": "EncryptedPasswordMethod",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encryptedpasswordmethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1400"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Length of the EncryptedPassword(1402) field",
       "display": "EncryptedPasswordLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encryptedpasswordlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1401"
     }
   },
@@ -50,15 +32,6 @@
     "metadata": {
       "description": "Encrypted password - encrypted via the method specified in the field EncryptedPasswordMethod(1400)",
       "display": "EncryptedPassword",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encryptedpassword",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1402"
     }
   },
@@ -71,15 +44,6 @@
     "metadata": {
       "description": "Length of the EncryptedNewPassword(1404) field",
       "display": "EncryptedNewPasswordLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encryptednewpasswordlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1403"
     }
   },
@@ -92,15 +56,6 @@
     "metadata": {
       "description": "Encrypted new password - encrypted via the method specified in the field EncryptedPasswordMethod(1400)",
       "display": "EncryptedNewPassword",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encryptednewpassword",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1404"
     }
   },
@@ -115,22 +70,6 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "UnderlyingLegMaturityTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegmaturitytime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1405"
     }
   },
@@ -143,15 +82,6 @@
     "metadata": {
       "description": "The extension pack number associated with an application message.",
       "display": "RefApplExtID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "refapplextid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1406"
     }
   },
@@ -164,15 +94,6 @@
     "metadata": {
       "description": "The extension pack number that is the default for a FIX session.",
       "display": "DefaultApplExtID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "defaultapplextid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1407"
     }
   },
@@ -185,15 +106,6 @@
     "metadata": {
       "description": "The default custom application version ID that is the default for a session.",
       "display": "DefaultCstmApplVerID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "defaultcstmapplverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1408"
     }
   },
@@ -296,15 +208,6 @@
           "doc": "Received MsgSeqNum(34) is too low."
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "sessionstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1409"
     }
   },
@@ -317,15 +220,6 @@
     "metadata": {
       "description": "Indicates that the application version identified in the fields RefApplVerID(1130), RefApplExtID(1406), and RefCstmApplVerID(1131) is the default for the message type identified in RefMsgType(372) field.",
       "display": "DefaultVerIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "defaultverindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1410"
     }
   },
@@ -1023,15 +917,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nested4partysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1411"
     }
   },
@@ -1044,15 +929,6 @@
     "metadata": {
       "description": "Refer to definition of PartySubID(523)",
       "display": "Nested4PartySubID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nested4partysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1412"
     }
   },
@@ -1065,15 +941,6 @@
     "metadata": {
       "description": "Refer to definition of NoPartySubIDs(802)",
       "display": "NoNested4PartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nonested4partysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1413"
     }
   },
@@ -1086,15 +953,6 @@
     "metadata": {
       "description": "Refer to definition of NoPartyIDs(453)",
       "display": "NoNested4PartyIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nonested4partyids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1414"
     }
   },
@@ -1107,15 +965,6 @@
     "metadata": {
       "description": "Refer to definition of PartyID(448)",
       "display": "Nested4PartyID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nested4partyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1415"
     }
   },
@@ -1386,15 +1235,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nested4partyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1416"
@@ -2400,15 +2240,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nested4partyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1417"
     }
   },
@@ -2421,15 +2252,6 @@
     "metadata": {
       "description": "Fill quantity for the leg instrument",
       "display": "LegLastQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "leglastqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1418"
     }
   },
@@ -2476,15 +2298,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyingexercisestyle",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1419"
     }
   },
@@ -2529,15 +2342,6 @@
           "ep": 161,
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legexercisestyle",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1420"
@@ -3264,15 +3068,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legpriceunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1421"
     }
   },
@@ -3285,15 +3080,6 @@
     "metadata": {
       "description": "Refer to definition of PriceUnitOfMeasureQty(1192)",
       "display": "LegPriceUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legpriceunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1422"
     }
   },
@@ -3306,15 +3092,6 @@
     "metadata": {
       "description": "Refer to definition of UnitOfMeasureQty(1147)",
       "display": "UnderlyingUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyingunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1423"
     }
   },
@@ -4039,15 +3816,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyingpriceunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1424"
     }
   },
@@ -4060,15 +3828,6 @@
     "metadata": {
       "description": "Refer to definition of PriceUnitOfMeasureQty(1192)",
       "display": "UnderlyingPriceUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyingpriceunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1425"
     }
   },
@@ -4111,15 +3870,6 @@
           "doc": "Application message re-send completed."
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "applreporttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1426"
     }
   },
@@ -4132,15 +3882,6 @@
     "metadata": {
       "description": "When reporting trades, used to reference the identifier of the execution (ExecID) being reported if different ExecIDs were assigned to each side of the trade.",
       "display": "SideExecID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "sideexecid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1427"
     }
   },
@@ -4153,15 +3894,6 @@
     "metadata": {
       "description": "Time lapsed from order entry until match, based on the unit of time specified in OrderDelayUnit. Default is seconds if OrderDelayUnit is not specified. Value = 0, indicates the aggressor (the initiating side of the trade).",
       "display": "OrderDelay",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "orderdelay",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1428"
     }
   },
@@ -4269,15 +4001,6 @@
           "ep": 77,
           "sort": 5,
           "doc": "nanoseconds"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "orderdelayunit",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1429"
@@ -4404,15 +4127,6 @@
           "doc": "Other market (lowercase \"z\")"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "venuetype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1430"
     }
   },
@@ -4448,15 +4162,6 @@
           "ep": 77,
           "sort": 2,
           "doc": "Order Changed"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "refordidreason",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1431"
@@ -4505,15 +4210,6 @@
           "doc": "All other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "origcustordercapacity",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1432"
     }
   },
@@ -4526,15 +4222,6 @@
     "metadata": {
       "description": "Used to reference a previously submitted ApplReqID (1346) from within a subsequent ApplicationMessageRequest(MsgType=BW)",
       "display": "RefApplReqID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "refapplreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1433"
     }
   },
@@ -4562,15 +4249,6 @@
           "ep": 79,
           "sort": 1,
           "doc": "Proprietary (user supplied) model"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "modeltype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1434"
@@ -4610,15 +4288,6 @@
           "doc": "Days"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "contractmultiplierunit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1435"
     }
   },
@@ -4654,15 +4323,6 @@
           "ep": 80,
           "sort": 2,
           "doc": "Days"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "legcontractmultiplierunit",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1436"
@@ -4702,15 +4362,6 @@
           "doc": "Days"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingcontractmultiplierunit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1437"
     }
   },
@@ -4746,15 +4397,6 @@
           "ep": 80,
           "sort": 2,
           "doc": "Days"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "derivativecontractmultiplierunit",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1438"
@@ -4858,15 +4500,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "flowscheduletype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1439"
     }
   },
@@ -4966,15 +4599,6 @@
           "ep": 238,
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "legflowscheduletype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1440"
@@ -5078,15 +4702,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingflowscheduletype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1441"
     }
   },
@@ -5186,15 +4801,6 @@
           "ep": 238,
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "derivativeflowscheduletype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1442"
@@ -5301,15 +4907,6 @@
           "doc": "Auction execution after firm order commitment"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "fillliquidityind",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1443"
     }
   },
@@ -5414,15 +5011,6 @@
           "doc": "Auction execution after firm order commitment"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "sideliquidityind",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1444"
     }
   },
@@ -5435,15 +5023,6 @@
     "metadata": {
       "description": "Number of rate sources being specified.",
       "display": "NoRateSources",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "noratesources",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1445"
     }
   },
@@ -5497,15 +5076,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "ratesource",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1446"
     }
   },
@@ -5535,15 +5105,6 @@
           "doc": "Secondary"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "ratesourcetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1447"
     }
   },
@@ -5556,15 +5117,6 @@
     "metadata": {
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "ReferencePage",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "referencepage",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1448"
     }
   },
@@ -5608,15 +5160,6 @@
           "ep": 83,
           "sort": 3,
           "doc": "No Restructuring specified"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "restructuringtype",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1449"
@@ -5680,15 +5223,6 @@
           "doc": "Senior"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "seniority",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1450"
     }
   },
@@ -5701,15 +5235,6 @@
     "metadata": {
       "description": "Indicates the notional percentage of the deal that is still outstanding based on the remaining components of the index.",
       "display": "NotionalPercentageOutstanding",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "notionalpercentageoutstanding",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1451"
     }
   },
@@ -5722,15 +5247,6 @@
     "metadata": {
       "description": "Used to reflect the Original value prior to the application of a credit event. See NotionalPercentageOutstanding(1451).",
       "display": "OriginalNotionalPercentageOutstanding",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "originalnotionalpercentageoutstanding",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1452"
     }
   },
@@ -5774,15 +5290,6 @@
           "ep": 83,
           "sort": 3,
           "doc": "No Restructuring specified"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingrestructuringtype",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1453"
@@ -5846,15 +5353,6 @@
           "doc": "Senior"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingseniority",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1454"
     }
   },
@@ -5867,15 +5365,6 @@
     "metadata": {
       "description": "See NotionalPercentageOutstanding(1451)",
       "display": "UnderlyingNotionalPercentageOutstanding",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingnotionalpercentageoutstanding",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1455"
     }
   },
@@ -5888,15 +5377,6 @@
     "metadata": {
       "description": "See OriginalNotionalPercentageOutstanding(1452)",
       "display": "UnderlyingOriginalNotionalPercentageOutstanding",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingoriginalnotionalpercentageoutstanding",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1456"
     }
   },
@@ -5909,15 +5389,6 @@
     "metadata": {
       "description": "Lower bound percentage of the loss that the tranche can endure.",
       "display": "AttachmentPoint",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "attachmentpoint",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1457"
     }
   },
@@ -5930,15 +5401,6 @@
     "metadata": {
       "description": "Upper bound percentage of the loss the tranche can endure.",
       "display": "DetachmentPoint",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "detachmentpoint",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1458"
     }
   },
@@ -5951,15 +5413,6 @@
     "metadata": {
       "description": "See AttachmentPoint(1457).",
       "display": "UnderlyingAttachmentPoint",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingattachmentpoint",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1459"
     }
   },
@@ -5972,15 +5425,6 @@
     "metadata": {
       "description": "See DetachmentPoint(1458).",
       "display": "UnderlyingDetachmentPoint",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingdetachmentpoint",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1460"
     }
   },
@@ -5993,15 +5437,6 @@
     "metadata": {
       "description": "Identifies the number of target parties identified in a mass action.",
       "display": "NoTargetPartyIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "notargetpartyids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1461"
     }
   },
@@ -6014,15 +5449,6 @@
     "metadata": {
       "description": "PartyID value within an target party repeating group.",
       "display": "TargetPartyID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "targetpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1462"
     }
   },
@@ -6293,15 +5719,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "targetpartyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1463"
@@ -7307,15 +6724,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "targetpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1464"
     }
   },
@@ -7328,15 +6736,6 @@
     "metadata": {
       "description": "Specifies an identifier for a Security List",
       "display": "SecurityListID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "securitylistid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1465"
     }
   },
@@ -7349,15 +6748,6 @@
     "metadata": {
       "description": "Specifies a reference from one Security List to another. Used to support a hierarchy of Security Lists.",
       "display": "SecurityListRefID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "securitylistrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1466"
     }
   },
@@ -7370,15 +6760,6 @@
     "metadata": {
       "description": "Specifies a description or name of a Security List.",
       "display": "SecurityListDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "securitylistdesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1467"
     }
   },
@@ -7391,15 +6772,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedSecurityListDesc(1469) field.",
       "display": "EncodedSecurityListDescLen",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "encodedsecuritylistdesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1468"
     }
   },
@@ -7412,15 +6784,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the SecurityListDesc(1467) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the SecurityListDesc(1467) field.",
       "display": "EncodedSecurityListDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "encodedsecuritylistdesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1469"
     }
   },
@@ -7467,15 +6830,6 @@
           "doc": "Newspaper List"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "securitylisttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1470"
     }
   },
@@ -7514,15 +6868,6 @@
           "doc": "GICS (Global Industry Classification Standard) published by Standards & Poor"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "securitylisttypesource",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1471"
     }
   },
@@ -7535,15 +6880,6 @@
     "metadata": {
       "description": "Unique identifier for a News message",
       "display": "NewsID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "newsid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1472"
     }
   },
@@ -7597,15 +6933,6 @@
           "doc": "Other News"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "newscategory",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1473"
     }
   },
@@ -7621,18 +6948,6 @@
     "metadata": {
       "description": "The national language in which the news item is provided.",
       "display": "LanguageCode",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "languagecode",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 2
-          }
-        }
-      ],
       "fix:tag": "1474"
     }
   },
@@ -7645,15 +6960,6 @@
     "metadata": {
       "description": "Number of News reference items",
       "display": "NoNewsRefIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "nonewsrefids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1475"
     }
   },
@@ -7666,15 +6972,6 @@
     "metadata": {
       "description": "Reference to another News message identified by NewsID(1474).",
       "display": "NewsRefID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "newsrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1476"
     }
   },
@@ -7718,15 +7015,6 @@
           "ep": 190,
           "sort": 3,
           "doc": "Withdrawal"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "newsreftype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1477"
@@ -7773,15 +7061,6 @@
           "ep": 92,
           "sort": 4,
           "doc": "Strike set to optimal value"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "strikepricedeterminationmethod",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1478"
@@ -7838,15 +7117,6 @@
           "doc": "Greater than underlying is in-the-money(ITM)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "strikepriceboundarymethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1479"
     }
   },
@@ -7859,15 +7129,6 @@
     "metadata": {
       "description": "Used in combination with StrikePriceBoundaryMethod to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
       "display": "StrikePriceBoundaryPrecision",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "strikepriceboundaryprecision",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1480"
     }
   },
@@ -7912,15 +7173,6 @@
           "ep": 92,
           "sort": 4,
           "doc": "Average value (Asian option)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "underlyingpricedeterminationmethod",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1481"
@@ -8009,15 +7261,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "optpayouttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1482"
     }
   },
@@ -8030,15 +7273,6 @@
     "metadata": {
       "description": "Number of complex event occurrences.",
       "display": "NoComplexEvents",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "nocomplexevents",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1483"
     }
   },
@@ -8237,15 +7471,6 @@
           "doc": "Rolling Barrier"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1484"
     }
   },
@@ -8258,15 +7483,6 @@
     "metadata": {
       "description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
       "display": "ComplexOptPayoutAmount",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexoptpayoutamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1485"
     }
   },
@@ -8279,15 +7495,6 @@
     "metadata": {
       "description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the ComplexEventType(1484).",
       "display": "ComplexEventPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1486"
     }
   },
@@ -8342,15 +7549,6 @@
           "doc": "Greater than ComplexEventPrice(1486)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventpriceboundarymethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1487"
     }
   },
@@ -8363,15 +7561,6 @@
     "metadata": {
       "description": "Used in combination with ComplexEventPriceBoundaryMethod to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
       "display": "ComplexEventPriceBoundaryPrecision",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventpriceboundaryprecision",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1488"
     }
   },
@@ -8450,15 +7639,6 @@
           "doc": "As specified in Master Confirmation"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventpricetimetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1489"
     }
   },
@@ -8489,15 +7669,6 @@
           "doc": "Or"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventcondition",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1490"
     }
   },
@@ -8510,15 +7681,6 @@
     "metadata": {
       "description": "Number of complex event date occurrences for a given complex event.",
       "display": "NoComplexEventDates",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "nocomplexeventdates",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1491"
     }
   },
@@ -8533,17 +7695,6 @@
     "metadata": {
       "description": "Specifies the start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "display": "ComplexEventStartDate",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventstartdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1492"
     }
   },
@@ -8558,17 +7709,6 @@
     "metadata": {
       "description": "Specifies the end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "display": "ComplexEventEndDate",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventenddate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1493"
     }
   },
@@ -8581,15 +7721,6 @@
     "metadata": {
       "description": "Number of complex event time occurrences for a given complex event date",
       "display": "NoComplexEventTimes",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "nocomplexeventtimes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1494"
     }
   },
@@ -8603,16 +7734,6 @@
     "metadata": {
       "description": "Specifies the start time of the time range on which a complex event date is effective.",
       "display": "ComplexEventStartTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventstarttime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1495"
     }
   },
@@ -8626,16 +7747,6 @@
     "metadata": {
       "description": "Specifies the end time of the time range on which a complex event date is effective.",
       "display": "ComplexEventEndTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "complexeventendtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1496"
     }
   },
@@ -8648,15 +7759,6 @@
     "metadata": {
       "description": "Unique identifier for the stream assignment request provided by the requester.",
       "display": "StreamAsgnReqID",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgnreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1497"
     }
   },
@@ -8687,15 +7789,6 @@
           "doc": "Stream assignment for existing customer(s)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgnreqtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1498"
     }
   },
@@ -8708,15 +7801,6 @@
     "metadata": {
       "description": "Number of assignment requests.",
       "display": "NoAsgnReqs",
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "noasgnreqs",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1499"
     }
   }

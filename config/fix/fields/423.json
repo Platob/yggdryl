@@ -2096,15 +2096,6 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "LegDividendPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legdividendperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "42385"
     }
   },

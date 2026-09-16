@@ -185,7 +185,6 @@
       })
       body.append(details.element)
     }
-    if (meta['fix:lineage']) body.append(jsonPanel('Native lineage metadata', meta['fix:lineage']))
     body.append(jsonPanel('Native Field document', field))
     return body
   }

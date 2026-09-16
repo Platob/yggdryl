@@ -37,15 +37,6 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "StreamCommoditySettlPeriodXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcommoditysettlperiodxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41301"
     }
   },
@@ -58,15 +49,6 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "StreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamcommoditysettlperiodxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41302"
     }
   },
@@ -79,15 +61,6 @@
     "metadata": {
       "description": "Identifier of this Stream for cross referencing elsewhere in the message.",
       "display": "StreamXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41303"
     }
   },
@@ -112,15 +85,6 @@
     "metadata": {
       "description": "Cross reference to another Stream notional for duplicating its properties.",
       "display": "StreamNotionalXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "streamnotionalxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41305"
     }
   },
@@ -1782,15 +1746,6 @@
     "metadata": {
       "description": "Reference to the protection terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the ProtectionTerms repeating group that applies to this Underlying.",
       "display": "UnderlyingProtectionTermXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingprotectiontermxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41314"
     }
   },
@@ -1803,15 +1758,6 @@
     "metadata": {
       "description": "Reference to the cash or physical settlement terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the appropriate repeating group that applies to this Underlying.",
       "display": "UnderlyingSettlTermXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingsettltermxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41315"
     }
   },
@@ -2809,16 +2755,6 @@
     "metadata": {
       "description": "Time of valuation.",
       "display": "LegCashSettlValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcashsettlvaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41349"
     }
   },
@@ -3065,15 +3001,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegCashSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcashsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41362"
     }
   },
@@ -3377,16 +3304,6 @@
     "metadata": {
       "description": "Averaging time for an Asian option.",
       "display": "LegComplexEventPeriodTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcomplexeventperiodtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41378"
     }
   },
@@ -3861,16 +3778,6 @@
     "metadata": {
       "description": "The local market fixing time.",
       "display": "LegComplexEventFixingTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcomplexeventfixingtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "41396"
     }
   },

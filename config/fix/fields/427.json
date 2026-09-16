@@ -1686,16 +1686,6 @@
     "metadata": {
       "description": "The time when the quote is to be generated.",
       "display": "ReturnRateQuoteTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "returnratequotetime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42749"
     }
   },
@@ -1722,16 +1712,6 @@
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "ReturnRateQuoteExpirationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "returnratequoteexpirationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42751"
     }
   },
@@ -1870,16 +1850,6 @@
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "ReturnRateValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "returnratevaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "42757"
     }
   },

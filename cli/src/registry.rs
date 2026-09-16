@@ -205,32 +205,6 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         style::entry("aliases", &aliases.join(", "));
     }
 
-    let lineage: Vec<Vec<String>> = view
-        .lineage()
-        .map(|entry| {
-            let entry = entry?;
-            Ok(vec![
-                entry.since().to_string(),
-                entry.ep().map_or_else(String::new, |ep| ep.to_string()),
-                entry.name().unwrap_or_default().to_owned(),
-                entry
-                    .parse_dtype()?
-                    .map(|dtype| dtype.to_string())
-                    .unwrap_or_default(),
-                if entry.is_deprecated() {
-                    "deprecated"
-                } else {
-                    ""
-                }
-                .to_owned(),
-            ])
-        })
-        .collect::<Result<Vec<_>>>()?;
-    if !lineage.is_empty() {
-        style::heading("lineage");
-        style::table(&["since", "ep", "name", "type", "state"], &lineage);
-    }
-
     let codes: Vec<Vec<String>> = view
         .codes()
         .map(|code| {

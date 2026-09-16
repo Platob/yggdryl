@@ -1189,15 +1189,6 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "LegComplexEventCreditEventsXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcomplexeventcrediteventsxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2242"
     }
   },
@@ -1296,15 +1287,6 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "LegComplexEventXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcomplexeventxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2248"
     }
   },
@@ -1317,15 +1299,6 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "LegComplexEventXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legcomplexeventxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2249"
     }
   },
@@ -3745,15 +3718,6 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "UnderlyingComplexEventCreditEventsXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcomplexeventcrediteventsxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2277"
     }
   },
@@ -3839,15 +3803,6 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "UnderlyingComplexEventXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcomplexeventxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2282"
     }
   },
@@ -3860,15 +3815,6 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "UnderlyingComplexEventXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingcomplexeventxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2283"
     }
   },

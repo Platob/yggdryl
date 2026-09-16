@@ -897,16 +897,6 @@
     "metadata": {
       "description": "The time of valuation.",
       "display": "CashSettlValuationTime",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "cashsettlvaluationtime",
-          "type": {
-            "type": "time64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "40025"
     }
   },
@@ -1165,15 +1155,6 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "CashSettlTermXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "cashsettltermxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "40039"
     }
   },

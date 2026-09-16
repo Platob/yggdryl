@@ -8,15 +8,6 @@
     "metadata": {
       "description": "TotalNetValue is determined as follows:",
       "display": "TotalNetValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "totalnetvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "900"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Starting consideration less repayments",
       "display": "CashOutstanding",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "cashoutstanding",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "901"
     }
   },
@@ -50,15 +32,6 @@
     "metadata": {
       "description": "Collateral Assignment Identifier",
       "display": "CollAsgnID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgnid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "902"
     }
   },
@@ -108,15 +81,6 @@
           "doc": "Reverse"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgntranstype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "903"
     }
   },
@@ -129,15 +93,6 @@
     "metadata": {
       "description": "Collateral Response Identifier",
       "display": "CollRespID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collrespid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "904"
     }
   },
@@ -194,15 +149,6 @@
           "ep": 192,
           "sort": 6,
           "doc": "Transaction completed with warning - see Text(58) for further information."
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgnresptype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "905"
@@ -268,15 +214,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgnrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "906"
     }
   },
@@ -289,15 +226,6 @@
     "metadata": {
       "description": "Collateral Assignment Identifier to which a transaction refers",
       "display": "CollAsgnRefID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collasgnrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "907"
     }
   },
@@ -310,15 +238,6 @@
     "metadata": {
       "description": "Collateral Report Identifier",
       "display": "CollRptID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collrptid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "908"
     }
   },
@@ -331,15 +250,6 @@
     "metadata": {
       "description": "Collateral Inquiry Identifier",
       "display": "CollInquiryID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collinquiryid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "909"
     }
   },
@@ -397,15 +307,6 @@
           "doc": "Reused"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "910"
     }
   },
@@ -418,15 +319,6 @@
     "metadata": {
       "description": "Total number of reports returned in response to a request.",
       "display": "TotNumReports",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "totnumreports",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "911"
     }
   },
@@ -461,15 +353,6 @@
           "doc": "Last message"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastrptrequested",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "912"
     }
   },
@@ -482,15 +365,6 @@
     "metadata": {
       "description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
       "display": "AgreementDesc",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "agreementdesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "913"
     }
   },
@@ -503,15 +377,6 @@
     "metadata": {
       "description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
       "display": "AgreementID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "agreementid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "914"
     }
   },
@@ -525,16 +390,6 @@
     "metadata": {
       "description": "A reference to the date the underlying agreement specified by AgreementID and AgreementDesc was executed.",
       "display": "AgreementDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "agreementdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "915"
     }
   },
@@ -548,16 +403,6 @@
     "metadata": {
       "description": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral",
       "display": "StartDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "startdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "916"
     }
   },
@@ -571,16 +416,6 @@
     "metadata": {
       "description": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral",
       "display": "EndDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "enddate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "917"
     }
   },
@@ -593,15 +428,6 @@
     "metadata": {
       "description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
       "display": "AgreementCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "agreementcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "918"
     }
   },
@@ -652,15 +478,6 @@
           "doc": "Deliver-by-Value"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "deliverytype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "919"
     }
   },
@@ -673,15 +490,6 @@
     "metadata": {
       "description": "Accrued Interest Amount applicable to a financing transaction on the End Date.",
       "display": "EndAccruedInterestAmt",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "endaccruedinterestamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "920"
     }
   },
@@ -694,15 +502,6 @@
     "metadata": {
       "description": "Starting dirty cash consideration of a financing deal, i.e. paid to the seller on the Start Date.",
       "display": "StartCash",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "startcash",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "921"
     }
   },
@@ -715,15 +514,6 @@
     "metadata": {
       "description": "Ending dirty cash consideration of a financing deal. i.e. reimbursed to the buyer on the End Date.",
       "display": "EndCash",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "endcash",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "922"
     }
   },
@@ -736,15 +526,6 @@
     "metadata": {
       "description": "Unique identifier for a User Request.",
       "display": "UserRequestID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "userrequestid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "923"
     }
   },
@@ -795,15 +576,6 @@
           "doc": "Request Throttle Limit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "userrequesttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "924"
     }
   },
@@ -816,15 +588,6 @@
     "metadata": {
       "description": "New Password or passphrase",
       "display": "NewPassword",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "newpassword",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "925"
     }
   },
@@ -905,15 +668,6 @@
           "doc": "Throttle parameters changed"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "userstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "926"
     }
   },
@@ -926,15 +680,6 @@
     "metadata": {
       "description": "A text description associated with a user status.",
       "display": "UserStatusText",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "userstatustext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "927"
     }
   },
@@ -977,15 +722,6 @@
           "doc": "In Process"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "statusvalue",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "928"
     }
   },
@@ -998,15 +734,6 @@
     "metadata": {
       "description": "A text description associated with a network status.",
       "display": "StatusText",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "statustext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "929"
     }
   },
@@ -1019,15 +746,6 @@
     "metadata": {
       "description": "Assigned value used to identify a firm.",
       "display": "RefCompID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "refcompid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "930"
     }
   },
@@ -1040,15 +758,6 @@
     "metadata": {
       "description": "Assigned value used to identify specific elements within a firm.",
       "display": "RefSubID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "refsubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "931"
     }
   },
@@ -1061,15 +770,6 @@
     "metadata": {
       "description": "Unique identifier for a network response.",
       "display": "NetworkResponseID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "networkresponseid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "932"
     }
   },
@@ -1082,15 +782,6 @@
     "metadata": {
       "description": "Unique identifier for a network resquest.",
       "display": "NetworkRequestID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "networkrequestid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "933"
     }
   },
@@ -1103,15 +794,6 @@
     "metadata": {
       "description": "Identifier of the previous Network Response message sent to a counterparty, used to allow incremental updates.",
       "display": "LastNetworkResponseID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastnetworkresponseid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "934"
     }
   },
@@ -1154,15 +836,6 @@
           "doc": "Level of Detail, then NoCompID's becomes required"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "networkrequesttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "935"
     }
   },
@@ -1175,15 +848,6 @@
     "metadata": {
       "description": "Number of CompID entries in a repeating group.",
       "display": "NoCompIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nocompids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "936"
     }
   },
@@ -1212,15 +876,6 @@
           "doc": "Incremental Update"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "networkstatusresponsetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "937"
     }
   },
@@ -1233,15 +888,6 @@
     "metadata": {
       "description": "Number of CollInquiryQualifier entries in a repeating group.",
       "display": "NoCollInquiryQualifier",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nocollinquiryqualifier",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "938"
     }
   },
@@ -1350,15 +996,6 @@
           "doc": "Deemed verified"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "trdrptstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "939"
     }
   },
@@ -1394,15 +1031,6 @@
           "doc": "Affirmed"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "affirmstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "940"
     }
   },
@@ -1415,15 +1043,6 @@
     "metadata": {
       "description": "Currency in which the strike price of an underlying instrument is denominated",
       "display": "UnderlyingStrikeCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingstrikecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "941"
     }
   },
@@ -1436,15 +1055,6 @@
     "metadata": {
       "description": "Currency in which the strike price of a instrument leg of a multileg instrument is denominated",
       "display": "LegStrikeCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legstrikecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "942"
     }
   },
@@ -1457,15 +1067,6 @@
     "metadata": {
       "description": "A code that represents a time interval in which a fill or trade occurred.",
       "display": "TimeBracket",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "timebracket",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "943"
     }
   },
@@ -1499,15 +1100,6 @@
           "since": "4.4",
           "sort": 3,
           "doc": "Remove"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collaction",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "944"
@@ -1557,15 +1149,6 @@
           "since": "4.4",
           "sort": 5,
           "doc": "Rejected"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collinquirystatus",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "945"
@@ -1659,15 +1242,6 @@
           "doc": "Other (further information in Text (58) field)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "collinquiryresult",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "946"
     }
   },
@@ -1680,15 +1254,6 @@
     "metadata": {
       "description": "Currency in which the StrikePrice is denominated.",
       "display": "StrikeCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strikecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "947"
     }
   },
@@ -1701,15 +1266,6 @@
     "metadata": {
       "description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
       "display": "NoNested3PartyIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nonested3partyids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "948"
     }
   },
@@ -1722,15 +1278,6 @@
     "metadata": {
       "description": "PartyID value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartyID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested3partyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "949"
     }
   },
@@ -2001,15 +1548,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested3partyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "950"
@@ -3015,15 +2553,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested3partyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "951"
     }
   },
@@ -3036,15 +2565,6 @@
     "metadata": {
       "description": "Number of Nested3PartySubIDs (953) entries",
       "display": "NoNested3PartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nonested3partysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "952"
     }
   },
@@ -3057,15 +2577,6 @@
     "metadata": {
       "description": "PartySubID value within a \"third instance\" Nested repeating group.",
       "display": "Nested3PartySubID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested3partysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "953"
     }
   },
@@ -3763,15 +3274,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nested3partysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "954"
     }
   },
@@ -3787,18 +3289,6 @@
     "metadata": {
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "LegContractSettlMonth",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legcontractsettlmonth",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "955"
     }
   },
@@ -3812,16 +3302,6 @@
     "metadata": {
       "description": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
       "display": "LegInterestAccrualDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "leginterestaccrualdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "956"
     }
   },
@@ -3834,15 +3314,6 @@
     "metadata": {
       "description": "Indicates number of strategy parameters",
       "display": "NoStrategyParameters",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nostrategyparameters",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "957"
     }
   },
@@ -3855,15 +3326,6 @@
     "metadata": {
       "description": "Name of parameter",
       "display": "StrategyParameterName",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strategyparametername",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "958"
     }
   },
@@ -4087,15 +3549,6 @@
           "doc": "PriceOffset"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strategyparametertype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "959"
     }
   },
@@ -4108,15 +3561,6 @@
     "metadata": {
       "description": "Value of the parameter",
       "display": "StrategyParameterValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strategyparametervalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "960"
     }
   },
@@ -4129,15 +3573,6 @@
     "metadata": {
       "description": "Host assigned entity ID that can be used to reference all components of a cross; sides + strategy + legs. Used as the primary key with which to refer to the Cross Order for cancellation and replace. The HostCrossID will also be used to link together components of the Cross Order. For example, each individual Execution Report associated with the order will carry HostCrossID in order to tie back to the original cross order.",
       "display": "HostCrossID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "hostcrossid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "961"
     }
   },
@@ -4152,17 +3587,6 @@
     "metadata": {
       "description": "Indicates how long the order as specified in the side stays in effect. SideTimeInForce allows a two-sided cross order to specify order behavior separately for each side. Absence of this field indicates that TimeInForce should be referenced. SideTimeInForce will override TimeInForce if both are provided.",
       "display": "SideTimeInForce",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "sidetimeinforce",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "962"
     }
   },
@@ -4175,15 +3599,6 @@
     "metadata": {
       "description": "Unique identifier for the Market Data Report.",
       "display": "MDReportID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "mdreportid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "963"
     }
   },
@@ -4196,15 +3611,6 @@
     "metadata": {
       "description": "Identifies a Security List message.",
       "display": "SecurityReportID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "securityreportid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "964"
     }
   },
@@ -4305,15 +3711,6 @@
           "doc": "Suspended"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "securitystatus",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "965"
     }
   },
@@ -4326,15 +3723,6 @@
     "metadata": {
       "description": "Indicator to determine if instrument is settle on open",
       "display": "SettleOnOpenFlag",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "settleonopenflag",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "966"
     }
   },
@@ -4347,15 +3735,6 @@
     "metadata": {
       "description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
       "display": "StrikeMultiplier",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strikemultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "967"
     }
   },
@@ -4368,15 +3747,6 @@
     "metadata": {
       "description": "Used for derivatives. The number of shares/units for the financial instrument involved in the option trade.",
       "display": "StrikeValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "strikevalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "968"
     }
   },
@@ -4389,15 +3759,6 @@
     "metadata": {
       "description": "Minimum price increase for a given exchange-traded Instrument",
       "display": "MinPriceIncrement",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "minpriceincrement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "969"
     }
   },
@@ -4410,15 +3771,6 @@
     "metadata": {
       "description": "Position Limit for a given exchange-traded product.",
       "display": "PositionLimit",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "positionlimit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "970"
     }
   },
@@ -4431,15 +3783,6 @@
     "metadata": {
       "description": "Position Limit in the near-term contract for a given exchange-traded product.",
       "display": "NTPositionLimit",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "ntpositionlimit",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "971"
     }
   },
@@ -4452,15 +3795,6 @@
     "metadata": {
       "description": "Percent of the Strike Price that this underlying represents.",
       "display": "UnderlyingAllocationPercent",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingallocationpercent",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "972"
     }
   },
@@ -4473,15 +3807,6 @@
     "metadata": {
       "description": "Cash amount associated with the underlying component.",
       "display": "UnderlyingCashAmount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcashamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "973"
     }
   },
@@ -4508,15 +3833,6 @@
           "since": "4.4",
           "sort": 1,
           "doc": "FIXED"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcashtype",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "974"
@@ -4577,15 +3893,6 @@
           "doc": "T+4"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingsettlementtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "975"
     }
   },
@@ -4599,16 +3906,6 @@
     "metadata": {
       "description": "Date associated to the quantity that is being reported for the position.",
       "display": "QuantityDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "quantitydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "976"
     }
   },
@@ -4621,15 +3918,6 @@
     "metadata": {
       "description": "Unique identifier for the Contrary Intention report",
       "display": "ContIntRptID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "contintrptid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "977"
     }
   },
@@ -4642,15 +3930,6 @@
     "metadata": {
       "description": "Indicates if the contrary intention was received after the exchange imposed cutoff time",
       "display": "LateIndicator",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lateindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "978"
     }
   },
@@ -4663,15 +3942,6 @@
     "metadata": {
       "description": "Originating source of the request.",
       "display": "InputSource",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "inputsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "979"
     }
   },
@@ -4710,15 +3980,6 @@
           "doc": "Modify"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "securityupdateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "980"
     }
   },
@@ -4731,15 +3992,6 @@
     "metadata": {
       "description": "Number of Expiration Qty entries",
       "display": "NoExpiration",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "noexpiration",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "981"
     }
   },
@@ -4790,22 +4042,6 @@
           "doc": "Difference"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "exptype",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.1",
-          "name": "expirationqtytype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "982"
     }
   },
@@ -4818,15 +4054,6 @@
     "metadata": {
       "description": "Expiration Quantity associated with the Expiration Type",
       "display": "ExpQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "expqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "983"
     }
   },
@@ -4839,15 +4066,6 @@
     "metadata": {
       "description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
       "display": "NoUnderlyingAmounts",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nounderlyingamounts",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "984"
     }
   },
@@ -4860,15 +4078,6 @@
     "metadata": {
       "description": "Amount to pay in order to receive the underlying instrument",
       "display": "UnderlyingPayAmount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingpayamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "985"
     }
   },
@@ -4881,15 +4090,6 @@
     "metadata": {
       "description": "Amount to collect in order to deliver the underlying instrument",
       "display": "UnderlyingCollectAmount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingcollectamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "986"
     }
   },
@@ -4903,16 +4103,6 @@
     "metadata": {
       "description": "Date the underlying instrument will settle. Used for derivatives that deliver into more than one underlying instrument. Settlement dates can vary across underlying instruments.",
       "display": "UnderlyingSettlementDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingsettlementdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "987"
     }
   },
@@ -4925,15 +4115,6 @@
     "metadata": {
       "description": "Settlement status of the underlying instrument. Used for derivatives that deliver into more than one underlying instrument. Settlement can be delayed for an underlying instrument.",
       "display": "UnderlyingSettlementStatus",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingsettlementstatus",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "988"
     }
   },
@@ -4946,15 +4127,6 @@
     "metadata": {
       "description": "Will allow the intermediary to specify an allocation ID generated by their system.",
       "display": "SecondaryIndividualAllocID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "secondaryindividualallocid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "989"
     }
   },
@@ -4967,15 +4139,6 @@
     "metadata": {
       "description": "Additional attribute to store the Trade ID of the Leg.",
       "display": "LegReportID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legreportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "990"
     }
   },
@@ -4988,15 +4151,6 @@
     "metadata": {
       "description": "Specifies average price rounded to quoted precision.",
       "display": "RndPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rndpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "991"
     }
   },
@@ -5025,15 +4179,6 @@
           "doc": "Third Party Allocation"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "individualalloctype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "992"
     }
   },
@@ -5046,15 +4191,6 @@
     "metadata": {
       "description": "Capacity of customer in the allocation block.",
       "display": "AllocCustomerCapacity",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "alloccustomercapacity",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "993"
     }
   },
@@ -5067,15 +4203,6 @@
     "metadata": {
       "description": "The Tier the trade was matched by the clearing system.",
       "display": "TierCode",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tiercode",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "994"
     }
   },
@@ -5800,15 +4927,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "unitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "996"
     }
   },
@@ -5891,15 +5009,6 @@
           "since": "4.4",
           "sort": 6,
           "doc": "Year"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "timeunit",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "997"
@@ -6626,15 +5735,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "underlyingunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "998"
     }
   },
@@ -7357,15 +6457,6 @@
           "sort": 68,
           "group": "Variable Quantity UOM",
           "doc": "Yard"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legunitofmeasure",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "999"

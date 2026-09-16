@@ -500,15 +500,6 @@
           "doc": "Terminate/Unassign"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0.1",
-          "name": "streamasgntype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1617"
     }
   },

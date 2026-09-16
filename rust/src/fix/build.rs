@@ -577,8 +577,8 @@ pub(super) fn preserves_value(registry: &FixRegistry, memo: &Memo, key: &[u8]) -
 /// The version a message is said to be read at when nothing decided one.
 ///
 /// FIX 4.4, which is the version the standard header is ordered by here and
-/// the one a bare capture with no dictionary lineage is most likely to be.
-fn default_version() -> Version {
+/// the one a bare capture that names none is most likely to be.
+pub(super) fn default_version() -> Version {
     "4.4".parse().unwrap_or(Version::MIN)
 }
 
@@ -1000,11 +1000,11 @@ impl<'registry> Builder<'registry> {
 
     /// The field a key builds under, as the dictionary declares it.
     ///
-    /// A field the dictionary knows is the registry's own, under the name and
-    /// the datatype it holds at every version: a tag is one column whatever
+    /// A field the dictionary knows is the registry's own, under the one name
+    /// and datatype the dictionary gives it: a tag is one column whatever
     /// spelling a version gave it, and a row that renamed itself per version
-    /// is a row no two captures share. What each version called it stays
-    /// readable through the field's [lineage](super::lineage). One the
+    /// is a row no two captures share. A spelling an earlier version used
+    /// reaches the field as an ordinary [alias](super::FixSpellings). One the
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
     /// A dialect that spelled one name over two tags is why `scope` is

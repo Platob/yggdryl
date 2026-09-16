@@ -198,15 +198,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoterejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "300"
     }
   },
@@ -250,15 +241,6 @@
           "doc": "Summary Acknowledgement"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoteresponselevel",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "301"
     }
   },
@@ -271,15 +253,6 @@
     "metadata": {
       "description": "Unique id for the Quote Set.",
       "display": "QuoteSetID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quotesetid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "302"
     }
   },
@@ -316,15 +289,6 @@
           "doc": "Confirm quote"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoterequesttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "303"
     }
   },
@@ -338,22 +302,6 @@
       "description": "Total number of quotes for the quote set.",
       "display": "TotNoQuoteEntries",
       "fix:aliases": "totquoteentries",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "totquoteentries",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "totnoquoteentries",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "304"
     }
   },
@@ -613,22 +561,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingidsource",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.3",
-          "name": "underlyingsecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "305"
     }
   },
@@ -641,15 +573,6 @@
     "metadata": {
       "description": "Underlying security's Issuer.",
       "display": "UnderlyingIssuer",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingissuer",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "306"
     }
   },
@@ -662,15 +585,6 @@
     "metadata": {
       "description": "Description of the underlying security.",
       "display": "UnderlyingSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "307"
     }
   },
@@ -683,15 +597,6 @@
     "metadata": {
       "description": "Underlying security's SecurityExchange. Can be used to identify the underlying security.",
       "display": "UnderlyingSecurityExchange",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsecurityexchange",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "308"
     }
   },
@@ -704,15 +609,6 @@
     "metadata": {
       "description": "Underlying security's SecurityID.",
       "display": "UnderlyingSecurityID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "309"
     }
   },
@@ -2230,15 +2126,6 @@
           "doc": "Yankee Certificate Of Deposit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -2275,15 +2162,6 @@
     "metadata": {
       "description": "Underlying security's Symbol.",
       "display": "UnderlyingSymbol",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsymbol",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "311"
     }
   },
@@ -2314,15 +2192,6 @@
           "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingsymbolsfx",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "312"
     }
   },
@@ -2338,18 +2207,6 @@
     "metadata": {
       "description": "Underlying security's MaturityMonthYear. Can be used with standardized derivatives vs. the UnderlyingMaturityDate (542) field.",
       "display": "UnderlyingMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingmaturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "313"
     }
   },
@@ -2361,19 +2218,6 @@
     "nullable": true,
     "metadata": {
       "display": "UnderlyingMaturityDay",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingmaturityday",
-          "type": {
-            "type": "int8"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.3",
@@ -2433,15 +2277,6 @@
           "doc": "Chooser"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingputorcall",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "315"
     }
   },
@@ -2454,15 +2289,6 @@
     "metadata": {
       "description": "Underlying security's StrikePrice.",
       "display": "UnderlyingStrikePrice",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingstrikeprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "316"
     }
   },
@@ -2475,15 +2301,6 @@
     "metadata": {
       "description": "Underlying security's OptAttribute.",
       "display": "UnderlyingOptAttribute",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingoptattribute",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "317"
     }
   },
@@ -2496,15 +2313,6 @@
     "metadata": {
       "description": "Underlying security's currency.",
       "display": "UnderlyingCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "underlyingcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "318"
     }
   },
@@ -2516,19 +2324,6 @@
     "nullable": true,
     "metadata": {
       "display": "RatioQty",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "ratioqty",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.3",
-          "removed": true
-        }
-      ],
       "fix:tag": "319"
     }
   },
@@ -2541,15 +2336,6 @@
     "metadata": {
       "description": "Unique ID of a Security Definition Request.",
       "display": "SecurityReqID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securityreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "320"
     }
   },
@@ -2642,15 +2428,6 @@
           "doc": "MarketID or MarketID + MarketSegmentID"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securityrequesttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "321"
     }
   },
@@ -2663,15 +2440,6 @@
     "metadata": {
       "description": "Unique ID of a Security Definition message.",
       "display": "SecurityResponseID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securityresponseid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "322"
     }
   },
@@ -2726,15 +2494,6 @@
           "doc": "Cannot match selection criteria"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securityresponsetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "323"
     }
   },
@@ -2747,15 +2506,6 @@
     "metadata": {
       "description": "Unique ID of a Security Status Request or a Security Mass Status Request message.",
       "display": "SecurityStatusReqID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securitystatusreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "324"
     }
   },
@@ -2788,15 +2538,6 @@
             "Yes"
           ],
           "doc": "Message is being sent unsolicited"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "unsolicitedindicator",
-          "type": {
-            "type": "boolean"
-          }
         }
       ],
       "fix:tag": "325"
@@ -3022,15 +2763,6 @@
           "doc": "Market on Close Imbalance Buy"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "securitytradingstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "326"
     }
   },
@@ -3136,22 +2868,6 @@
           "deprecated": "5.0.2"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "haltreasonchar",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "haltreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "327"
     }
   },
@@ -3184,15 +2900,6 @@
             "Yes"
           ],
           "doc": "Halt was due to common stock being halted"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "inviewofcommon",
-          "type": {
-            "type": "boolean"
-          }
         }
       ],
       "fix:tag": "328"
@@ -3229,15 +2936,6 @@
           "doc": "Halt was due to related security being halted"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "duetorelated",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "329"
     }
   },
@@ -3250,15 +2948,6 @@
     "metadata": {
       "description": "Quantity bought.",
       "display": "BuyVolume",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "buyvolume",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "330"
     }
   },
@@ -3271,15 +2960,6 @@
     "metadata": {
       "description": "Quantity sold.",
       "display": "SellVolume",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "sellvolume",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "331"
     }
   },
@@ -3292,15 +2972,6 @@
     "metadata": {
       "description": "Represents an indication of the high end of the price range for a security prior to the open or reopen",
       "display": "HighPx",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "highpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "332"
     }
   },
@@ -3313,15 +2984,6 @@
     "metadata": {
       "description": "Represents an indication of the low end of the price range for a security prior to the open or reopen",
       "display": "LowPx",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "lowpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "333"
     }
   },
@@ -3357,15 +3019,6 @@
           "doc": "Correction"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "adjustment",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "334"
     }
   },
@@ -3378,15 +3031,6 @@
     "metadata": {
       "description": "Unique ID of a Trading Session Status message.",
       "display": "TradSesReqID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "335"
     }
   },
@@ -3457,15 +3101,6 @@
           "doc": "Holiday"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradingsessionid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "336"
     }
   },
@@ -3478,15 +3113,6 @@
     "metadata": {
       "description": "Identifies the trader (e.g. \"badge number\") of the ContraBroker.",
       "display": "ContraTrader",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "contratrader",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "337"
     }
   },
@@ -3530,15 +3156,6 @@
           "doc": "Voice"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesmethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "338"
     }
   },
@@ -3572,15 +3189,6 @@
           "since": "4.2",
           "sort": 3,
           "doc": "Production"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesmode",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "339"
@@ -3666,15 +3274,6 @@
           "doc": "Delayed"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "340"
     }
   },
@@ -3689,17 +3288,6 @@
     "metadata": {
       "description": "Starting time of the trading session",
       "display": "TradSesStartTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesstarttime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "341"
     }
   },
@@ -3714,17 +3302,6 @@
     "metadata": {
       "description": "Time of the opening of the trading session",
       "display": "TradSesOpenTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesopentime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "342"
     }
   },
@@ -3739,17 +3316,6 @@
     "metadata": {
       "description": "Time of the pre-closed of the trading session",
       "display": "TradSesPreCloseTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsespreclosetime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "343"
     }
   },
@@ -3764,17 +3330,6 @@
     "metadata": {
       "description": "Closing time of the trading session",
       "display": "TradSesCloseTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesclosetime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "344"
     }
   },
@@ -3789,17 +3344,6 @@
     "metadata": {
       "description": "End time of the trading session",
       "display": "TradSesEndTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "tradsesendtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "345"
     }
   },
@@ -3812,15 +3356,6 @@
     "metadata": {
       "description": "Number of orders in the market.",
       "display": "NumberOfOrders",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "numberoforders",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "346"
     }
   },
@@ -3859,15 +3394,6 @@
           "deprecated": "5.0"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "messageencoding",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "347"
     }
   },
@@ -3880,15 +3406,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedIssuer (349) field.",
       "display": "EncodedIssuerLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedissuerlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "348"
     }
   },
@@ -3901,15 +3418,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the Issuer field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Issuer field.",
       "display": "EncodedIssuer",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedissuer",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "349"
     }
   },
@@ -3922,15 +3430,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedSecurityDesc (351) field.",
       "display": "EncodedSecurityDescLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedsecuritydesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "350"
     }
   },
@@ -3943,15 +3442,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the SecurityDesc (107) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the SecurityDesc field.",
       "display": "EncodedSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedsecuritydesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "351"
     }
   },
@@ -3964,15 +3454,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedListExecInst (353) field.",
       "display": "EncodedListExecInstLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedlistexecinstlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "352"
     }
   },
@@ -3985,15 +3466,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the ListExecInst (69) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ListExecInst field.",
       "display": "EncodedListExecInst",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedlistexecinst",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "353"
     }
   },
@@ -4006,15 +3478,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedText (355) field.",
       "display": "EncodedTextLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedtextlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "354"
     }
   },
@@ -4027,15 +3490,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the Text (58) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Text(58) field.",
       "display": "EncodedText",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedtext",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "355"
     }
   },
@@ -4048,15 +3502,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedSubject (357) field.",
       "display": "EncodedSubjectLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedsubjectlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "356"
     }
   },
@@ -4069,15 +3514,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the Subject (147) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Subject field.",
       "display": "EncodedSubject",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedsubject",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "357"
     }
   },
@@ -4090,15 +3526,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedHeadline (359) field.",
       "display": "EncodedHeadlineLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedheadlinelen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "358"
     }
   },
@@ -4111,15 +3538,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the Headline (148) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the Headline field.",
       "display": "EncodedHeadline",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedheadline",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "359"
     }
   },
@@ -4132,15 +3550,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedAllocText (361) field.",
       "display": "EncodedAllocTextLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedalloctextlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "360"
     }
   },
@@ -4153,15 +3562,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the AllocText (161) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AllocText field.",
       "display": "EncodedAllocText",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedalloctext",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "361"
     }
   },
@@ -4174,15 +3574,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingIssuer (363) field.",
       "display": "EncodedUnderlyingIssuerLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedunderlyingissuerlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "362"
     }
   },
@@ -4195,15 +3586,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingIssuer (306) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingIssuer field.",
       "display": "EncodedUnderlyingIssuer",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedunderlyingissuer",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "363"
     }
   },
@@ -4216,15 +3598,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingSecurityDesc (365) field.",
       "display": "EncodedUnderlyingSecurityDescLen",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedunderlyingsecuritydesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "364"
     }
   },
@@ -4237,15 +3610,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingSecurityDesc (307) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingSecurityeDesc field.",
       "display": "EncodedUnderlyingSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "encodedunderlyingsecuritydesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "365"
     }
   },
@@ -4258,15 +3622,6 @@
     "metadata": {
       "description": "Executed price for an AllocAccount (79) entry used when using \"executed price\" vs. \"average price\" allocations (e.g. Japan).",
       "display": "AllocPrice",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "allocprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "366"
     }
   },
@@ -4281,17 +3636,6 @@
     "metadata": {
       "description": "Indicates expiration time of this particular QuoteSet (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
       "display": "QuoteSetValidUntilTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quotesetvaliduntiltime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "367"
     }
   },
@@ -4500,15 +3844,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "quoteentryrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "368"
     }
   },
@@ -4521,22 +3856,6 @@
     "metadata": {
       "description": "The last MsgSeqNum (34) value received by the FIX engine and processed by downstream application, such as trading engine or order routing system. Can be specified on every message sent. Useful for detecting a backlog with a counterparty.",
       "display": "LastMsgSeqNumProcessed",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "lastmsgseqnumprocessed",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.3",
-          "name": "lastmsgseqnumprocessed",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "369"
     }
   },
@@ -4550,25 +3869,6 @@
     "nullable": true,
     "metadata": {
       "display": "OnBehalfOfSendingTime",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "onbehalfofsendingtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        },
-        {
-          "since": "4.3",
-          "deprecated": true
-        },
-        {
-          "since": "4.4",
-          "removed": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.3",
@@ -4601,15 +3901,6 @@
     "metadata": {
       "description": "The tag number of the FIX field being referenced.",
       "display": "RefTagID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "reftagid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "371"
     }
   },
@@ -5890,15 +5181,6 @@
           "doc": "DerivativeSecurityListRequest"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "refmsgtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "372"
     }
   },
@@ -6059,15 +5341,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "sessionrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "373"
     }
   },
@@ -6096,15 +5369,6 @@
           "doc": "New"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "bidrequesttranstype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "374"
     }
   },
@@ -6117,15 +5381,6 @@
     "metadata": {
       "description": "Identifies contra broker. Standard NASD market-maker mnemonic is preferred.",
       "display": "ContraBroker",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "contrabroker",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "375"
     }
   },
@@ -6138,15 +5393,6 @@
     "metadata": {
       "description": "ID used to represent this transaction for compliance purposes (e.g. OATS reporting).",
       "display": "ComplianceID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "complianceid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "376"
     }
   },
@@ -6179,15 +5425,6 @@
             "Yes"
           ],
           "doc": "Was solicited"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "solicitedflag",
-          "type": {
-            "type": "boolean"
-          }
         }
       ],
       "fix:tag": "377"
@@ -6363,15 +5600,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "execrestatementreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "378"
     }
   },
@@ -6384,15 +5612,6 @@
     "metadata": {
       "description": "The value of the business-level \"ID\" field on the message being referenced.",
       "display": "BusinessRejectRefID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "businessrejectrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "379"
     }
   },
@@ -6495,15 +5714,6 @@
           "doc": "Throttle limit exceeded, session will be disconnected"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "businessrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "380"
     }
   },
@@ -6517,15 +5727,6 @@
       "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
       "display": "GrossTradeAmt",
       "fix:derivation": "case when msgtype in ('8', '9') then lastqty * lastpx end",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "grosstradeamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "381"
     }
   },
@@ -6538,15 +5739,6 @@
     "metadata": {
       "description": "The number of ContraBroker (375) entries.",
       "display": "NoContraBrokers",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nocontrabrokers",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "382"
     }
   },
@@ -6559,15 +5751,6 @@
     "metadata": {
       "description": "Maximum number of bytes supported for a single message.",
       "display": "MaxMessageSize",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "maxmessagesize",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "383"
     }
   },
@@ -6580,15 +5763,6 @@
     "metadata": {
       "description": "Number of MsgTypes (35) in repeating group.",
       "display": "NoMsgTypes",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nomsgtypes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "384"
     }
   },
@@ -6617,15 +5791,6 @@
           "doc": "Send"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "msgdirection",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "385"
     }
   },
@@ -6638,15 +5803,6 @@
     "metadata": {
       "description": "Number of TradingSessionIDs (336) in repeating group.",
       "display": "NoTradingSessions",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "notradingsessions",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "386"
     }
   },
@@ -6659,15 +5815,6 @@
     "metadata": {
       "description": "Total volume (quantity) traded.",
       "display": "TotalVolumeTraded",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "totalvolumetraded",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "387"
     }
   },
@@ -6739,15 +5886,6 @@
           "doc": "Average Price Guarantee"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "discretioninst",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "388"
     }
   },
@@ -6761,22 +5899,6 @@
       "description": "Amount (signed) added to the \"related to\" price specified via DiscretionInst (388), in the context of DiscretionOffsetType (842)",
       "display": "DiscretionOffsetValue",
       "fix:aliases": "discretionoffset",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "discretionoffset",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "discretionoffsetvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "389"
     }
   },
@@ -6789,15 +5911,6 @@
     "metadata": {
       "description": "For bid lists, unique identifier for BidResponse(35=I) as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day.",
       "display": "BidID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "bidid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "390"
     }
   },
@@ -6810,15 +5923,6 @@
     "metadata": {
       "description": "Unique identifier for a Bid Request as assigned by institution. Uniqueness must be guaranteed within a single trading day.",
       "display": "ClientBidID",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "clientbidid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "391"
     }
   },
@@ -6831,15 +5935,6 @@
     "metadata": {
       "description": "Descriptive name for list order.",
       "display": "ListName",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "listname",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "392"
     }
   },
@@ -6853,22 +5948,6 @@
       "description": "Total number of securities.",
       "display": "TotNoRelatedSym",
       "fix:aliases": "totalnumsecurities",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "totalnumsecurities",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "totnorelatedsym",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "393"
     }
   },
@@ -6904,15 +5983,6 @@
           "doc": "No bidding process"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "bidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "394"
     }
   },
@@ -6925,15 +5995,6 @@
     "metadata": {
       "description": "Total number of tickets.",
       "display": "NumTickets",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "numtickets",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "395"
     }
   },
@@ -6946,15 +6007,6 @@
     "metadata": {
       "description": "Amounts in currency",
       "display": "SideValue1",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "sidevalue1",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "396"
     }
   },
@@ -6967,15 +6019,6 @@
     "metadata": {
       "description": "Amounts in currency",
       "display": "SideValue2",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "sidevalue2",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "397"
     }
   },
@@ -6988,15 +6031,6 @@
     "metadata": {
       "description": "Number of BidDescriptor (400) entries.",
       "display": "NoBidDescriptors",
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "nobiddescriptors",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "398"
     }
   },
@@ -7030,15 +6064,6 @@
           "since": "4.3",
           "sort": 3,
           "doc": "Index"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.2",
-          "name": "biddescriptortype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "399"

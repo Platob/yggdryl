@@ -379,15 +379,6 @@
     "metadata": {
       "description": "Cross reference to another notional amount for duplicating its properties.",
       "display": "UnderlyingNotionalXIDRef",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyingnotionalxidref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2619"
     }
   },
@@ -820,15 +811,6 @@
     "metadata": {
       "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
       "display": "UnderlyingInstrumentXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "underlyinginstrumentxid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "2631"
     }
   },

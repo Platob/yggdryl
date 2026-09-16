@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Identifies the market segment",
       "display": "MarketSegmentID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketsegmentid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1300"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Identifies the market",
       "display": "MarketID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketid",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "1301"
     }
   },
@@ -84,15 +66,6 @@
           "doc": "Years"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maturitymonthyearincrementunits",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1302"
     }
   },
@@ -129,15 +102,6 @@
           "ep": 52,
           "sort": 3,
           "doc": "YearMonthWeek"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maturitymonthyearformat",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1303"
@@ -186,15 +150,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "strikeexercisestyle",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1304"
     }
   },
@@ -233,15 +188,6 @@
           "doc": "Percentage"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "secondarypricelimittype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1305"
     }
   },
@@ -278,15 +224,6 @@
           "ep": 52,
           "sort": 3,
           "doc": "Percentage"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "pricelimittype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1306"
@@ -768,15 +705,6 @@
           "doc": "Allow facilitation"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "execinstvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1308"
     }
   },
@@ -789,15 +717,6 @@
     "metadata": {
       "description": "Allows trading rules to be expressed by trading session",
       "display": "NoTradingSessionRules",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notradingsessionrules",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1309"
     }
   },
@@ -810,15 +729,6 @@
     "metadata": {
       "description": "Number of Market Segments on which a security may trade.",
       "display": "NoMarketSegments",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nomarketsegments",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1310"
     }
   },
@@ -831,15 +741,6 @@
     "metadata": {
       "description": "Number of instrument attributes.",
       "display": "NoDerivativeInstrAttrib",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noderivativeinstrattrib",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1311"
     }
   },
@@ -851,15 +752,6 @@
     "nullable": true,
     "metadata": {
       "display": "NoNestedInstrAttrib",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nonestedinstrattrib",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1312"
     }
   },
@@ -1200,15 +1092,6 @@
           "doc": "Text"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrattribtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1313"
     }
   },
@@ -1221,15 +1104,6 @@
     "metadata": {
       "description": "Attribute value appropriate to the DerivativeInstrAttribValue(1313) field.",
       "display": "DerivativeInstrAttribValue",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeinstrattribvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1314"
     }
   },
@@ -1954,15 +1828,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativepriceunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1315"
     }
   },
@@ -1975,15 +1840,6 @@
     "metadata": {
       "description": "Used to express the UOM Quantity of the price if different from the contract.",
       "display": "DerivativePriceUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativepriceunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1316"
     }
   },
@@ -2020,15 +1876,6 @@
           "ep": 52,
           "sort": 2,
           "doc": "Physical settlement required"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativesettlmethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1317"
@@ -2075,15 +1922,6 @@
           "ep": 52,
           "sort": 1,
           "doc": "Standard, money per unit of a physical"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativepricequotemethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1318"
@@ -2141,22 +1979,6 @@
           "doc": "futures style with an attached cash adjustment"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativefuturesvaluationmethod",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "derivativevaluationmethod",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1319"
     }
   },
@@ -2187,15 +2009,6 @@
           "doc": "user requested"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativelistmethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1320"
     }
   },
@@ -2208,15 +2021,6 @@
     "metadata": {
       "description": "Used to express the ceiling price of a capped call.",
       "display": "DerivativeCapPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativecapprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1321"
     }
   },
@@ -2229,15 +2033,6 @@
     "metadata": {
       "description": "Used to express the floor price of a capped put.",
       "display": "DerivativeFloorPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativefloorprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1322"
     }
   },
@@ -2280,15 +2075,6 @@
           "ep": 238,
           "sort": 4,
           "doc": "Chooser"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "derivativeputorcall",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1323"
@@ -2337,15 +2123,6 @@
           "doc": "Snapshot"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "listupdateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1324"
     }
   },
@@ -2358,15 +2135,6 @@
     "metadata": {
       "description": "Reference to a parent Market Segment. See MarketSegmentID(1300)",
       "display": "ParentMktSegmID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "parentmktsegmid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1325"
     }
   },
@@ -2379,15 +2147,6 @@
     "metadata": {
       "description": "Trading Session description",
       "display": "TradingSessionDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradingsessiondesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1326"
     }
   },
@@ -2426,15 +2185,6 @@
           "doc": "Modify"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradsesupdateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1327"
     }
   },
@@ -2447,15 +2197,6 @@
     "metadata": {
       "description": "Identifies the reason for rejection.",
       "display": "RejectText",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "rejecttext",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1328"
     }
   },
@@ -2468,15 +2209,6 @@
     "metadata": {
       "description": "This is a multiplier that Clearing (Fee system) will use to calculate fees and will be sent to the firms on their confirms.",
       "display": "FeeMultiplier",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "feemultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1329"
     }
   },
@@ -2489,20 +2221,6 @@
     "metadata": {
       "description": "Refer to definition for Symbol(55)",
       "display": "UnderlyingLegSymbol",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsymbol",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1330"
     }
   },
@@ -2515,20 +2233,6 @@
     "metadata": {
       "description": "Refer to definition for SymbolSfx(65)",
       "display": "UnderlyingLegSymbolSfx",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsymbolsfx",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1331"
     }
   },
@@ -2541,20 +2245,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityID(48)",
       "display": "UnderlyingLegSecurityID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecurityid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1332"
     }
   },
@@ -2567,20 +2257,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityIDSource(22)",
       "display": "UnderlyingLegSecurityIDSource",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1333"
     }
   },
@@ -2593,20 +2269,6 @@
     "metadata": {
       "description": "Refer to definition for NoSecurityAltID(454)",
       "display": "NoUnderlyingLegSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nounderlyinglegsecurityaltid",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1334"
     }
   },
@@ -2619,20 +2281,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityAltID(455)",
       "display": "UnderlyingLegSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecurityaltid",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1335"
     }
   },
@@ -2645,20 +2293,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityAltIDSource(456)",
       "display": "UnderlyingLegSecurityAltIDSource",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecurityaltidsource",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1336"
     }
   },
@@ -2671,20 +2305,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityType(167)",
       "display": "UnderlyingLegSecurityType",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1337"
     }
   },
@@ -2697,20 +2317,6 @@
     "metadata": {
       "description": "Refer to definition for SecuritySubType(762)",
       "display": "UnderlyingLegSecuritySubType",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecuritysubtype",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1338"
     }
   },
@@ -2726,23 +2332,6 @@
     "metadata": {
       "description": "Refer to definition for MaturityMonthYear(200)",
       "display": "UnderlyingLegMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegmaturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1339"
     }
   },
@@ -2755,20 +2344,6 @@
     "metadata": {
       "description": "Refer to definition for StrikePrice(202)",
       "display": "UnderlyingLegStrikePrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegstrikeprice",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1340"
     }
   },
@@ -2781,20 +2356,6 @@
     "metadata": {
       "description": "Refer to definition for SecurityExchange(207)",
       "display": "UnderlyingLegSecurityExchange",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecurityexchange",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1341"
     }
   },
@@ -2807,20 +2368,6 @@
     "metadata": {
       "description": "Number of Underlyings, Identifies the Underlying of the Leg",
       "display": "NoOfLegUnderlyings",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nooflegunderlyings",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1342"
     }
   },
@@ -2833,20 +2380,6 @@
     "metadata": {
       "description": "Refer to definition for PutOrCall(201)",
       "display": "UnderlyingLegPutOrCall",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegputorcall",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1343"
     }
   },
@@ -2859,20 +2392,6 @@
     "metadata": {
       "description": "Refer to definition for CFICode(461)",
       "display": "UnderlyingLegCFICode",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegcficode",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1344"
     }
   },
@@ -2886,21 +2405,6 @@
     "metadata": {
       "description": "Date of maturity.",
       "display": "UnderlyingLegMaturityDate",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegmaturitydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1345"
     }
   },
@@ -2913,15 +2417,6 @@
     "metadata": {
       "description": "Unique identifier for request",
       "display": "ApplReqID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1346"
     }
   },
@@ -2992,15 +2487,6 @@
           "doc": "Cancel retransmission and unsubscribe to the specified applications"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applreqtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1347"
     }
   },
@@ -3039,15 +2525,6 @@
           "doc": "Messages not available"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applresponsetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1348"
     }
   },
@@ -3060,15 +2537,6 @@
     "metadata": {
       "description": "Total number of messages included in transmission.",
       "display": "ApplTotalMessageCount",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "appltotalmessagecount",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1349"
     }
   },
@@ -3081,15 +2549,6 @@
     "metadata": {
       "description": "Application sequence number of last message in transmission",
       "display": "ApplLastSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "appllastseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1350"
     }
   },
@@ -3102,15 +2561,6 @@
     "metadata": {
       "description": "Specifies number of application id occurrences",
       "display": "NoApplIDs",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noapplids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1351"
     }
   },
@@ -3123,15 +2573,6 @@
     "metadata": {
       "description": "Used to indicate that a message is being sent in response to an Application Message Request. It is possible for both ApplResendFlag and PossDupFlag to be set on the same message if the Sender's cache size is greater than zero and the message is being resent due to a session level resend request",
       "display": "ApplResendFlag",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applresendflag",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1352"
     }
   },
@@ -3144,15 +2585,6 @@
     "metadata": {
       "description": "Identifier for the Applicaton Message Request Ack",
       "display": "ApplResponseID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applresponseid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1353"
     }
   },
@@ -3191,15 +2623,6 @@
           "doc": "User not authorized for application"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applresponseerror",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1354"
     }
   },
@@ -3212,15 +2635,6 @@
     "metadata": {
       "description": "Reference to the unique application identifier which corresponds to ApplID(1180) from the Application Sequence Group component",
       "display": "RefApplID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "refapplid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1355"
     }
   },
@@ -3233,15 +2647,6 @@
     "metadata": {
       "description": "Identifier for the Application Sequence Reset",
       "display": "ApplReportID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applreportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1356"
     }
   },
@@ -3254,15 +2659,6 @@
     "metadata": {
       "description": "Application sequence number of last message in transmission.",
       "display": "RefApplLastSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "refappllastseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1357"
     }
   },
@@ -3307,15 +2703,6 @@
           "doc": "Chooser"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legputorcall",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1358"
     }
   },
@@ -3328,15 +2715,6 @@
     "metadata": {
       "description": "Total number of fill entries across all messages. Should be the sum of all NoFills(1362) in each message that has repeating list of fill entries related to the same ExecID(17). Used to support fragmentation.",
       "display": "TotNoFills",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "totnofills",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1361"
     }
   },
@@ -3348,15 +2726,6 @@
     "nullable": true,
     "metadata": {
       "display": "NoFills",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nofills",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1362"
     }
   },
@@ -3369,15 +2738,6 @@
     "metadata": {
       "description": "Refer to ExecID(17). Used when multiple partial fills are reported in single Execution Report. ExecID and FillExecID should not overlap,",
       "display": "FillExecID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "fillexecid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1363"
     }
   },
@@ -3390,15 +2750,6 @@
     "metadata": {
       "description": "Price of Fill. Refer to LastPx(31).",
       "display": "FillPx",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "fillpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1364"
     }
   },
@@ -3411,15 +2762,6 @@
     "metadata": {
       "description": "Quantity of Fill. Refer to LastQty(32).",
       "display": "FillQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "fillqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1365"
     }
   },
@@ -3432,15 +2774,6 @@
     "metadata": {
       "description": "The AllocID(70) of an individual leg of a multileg order.",
       "display": "LegAllocID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legallocid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1366"
     }
   },
@@ -3453,15 +2786,6 @@
     "metadata": {
       "description": "Identifies settlement currency for the leg level allocation.",
       "display": "LegAllocSettlCurrency",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legallocsettlcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "1367"
     }
   },
@@ -3528,15 +2852,6 @@
           "doc": "Outage resolved"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradsesevent",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1368"
     }
   },
@@ -3549,15 +2864,6 @@
     "metadata": {
       "description": "Unique identifier of Order Mass Cancel Report or Order Mass Action Report message as assigned by sell-side (broker, exchange, ECN)",
       "display": "MassActionReportID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "massactionreportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1369"
     }
   },
@@ -3570,15 +2876,6 @@
     "metadata": {
       "description": "Number of not affected orders in the repeating group of order ids.",
       "display": "NoNotAffectedOrders",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nonotaffectedorders",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1370"
     }
   },
@@ -3591,15 +2888,6 @@
     "metadata": {
       "description": "OrderID(37) of an order not affected by a mass cancel or mass action request.",
       "display": "NotAffectedOrderID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notaffectedorderid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1371"
     }
   },
@@ -3612,15 +2900,6 @@
     "metadata": {
       "description": "ClOrdID(11) of an order not affected by a mass cancel or mass action request.",
       "display": "NotAffOrigClOrdID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notafforigclordid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1372"
     }
   },
@@ -3657,15 +2936,6 @@
           "ep": 58,
           "sort": 3,
           "doc": "Cancel orders"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "massactiontype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1373"
@@ -3778,15 +3048,6 @@
           "doc": "All orders for a market segment (or multiple segments)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "massactionscope",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1374"
     }
   },
@@ -3822,15 +3083,6 @@
           "ep": 131,
           "sort": 2,
           "doc": "Completed"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "massactionresponse",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1375"
@@ -3950,15 +3202,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "massactionrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1376"
     }
   },
@@ -3995,15 +3238,6 @@
           "ep": 59,
           "sort": 3,
           "doc": "User-defined, Non-Securitized, Multileg"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "multilegmodel",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1377"
@@ -4068,15 +3302,6 @@
           "doc": "Multiplied Price"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "multilegpricemethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1378"
     }
   },
@@ -4089,15 +3314,6 @@
     "metadata": {
       "description": "Specifies the volatility of an instrument leg.",
       "display": "LegVolatility",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legvolatility",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1379"
     }
   },
@@ -4110,15 +3326,6 @@
     "metadata": {
       "description": "The continuously-compounded annualized dividend yield of the underlying(s) of an option. Used as a parameter to theoretical option pricing models.",
       "display": "DividendYield",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "dividendyield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1380"
     }
   },
@@ -4131,15 +3338,6 @@
     "metadata": {
       "description": "Refer to definition for DividendYield(1380).",
       "display": "LegDividendYield",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legdividendyield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1381"
     }
   },
@@ -4152,15 +3350,6 @@
     "metadata": {
       "description": "Specifies the currency ratio between the currency used for a multileg price and the currency used by the outright book defined by the leg. Example: Multileg quoted in EUR, outright leg in USD and 1 EUR = 0,7 USD then CurrencyRatio = 0.7",
       "display": "CurrencyRatio",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "currencyratio",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1382"
     }
   },
@@ -4173,15 +3362,6 @@
     "metadata": {
       "description": "Specifies the currency ratio between the currency used for a multileg price and the currency used by the outright book defined by the leg. Example: Multileg quoted in EUR, outright leg in USD and 1 EUR = 0,7 USD then LegCurrencyRatio = 0.7",
       "display": "LegCurrencyRatio",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legcurrencyratio",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1383"
     }
   },
@@ -4661,15 +3841,6 @@
           "doc": "Allow facilitation"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legexecinst",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1384"
     }
   },
@@ -4730,15 +3901,6 @@
           "ep": 100,
           "sort": 6,
           "doc": "Bid and Offer OCO"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "contingencytype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "1385"
@@ -4811,15 +3973,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "listrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1386"
     }
   },
@@ -4832,15 +3985,6 @@
     "metadata": {
       "description": "Number of trade reporting indicators",
       "display": "NoTrdRepIndicators",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "notrdrepindicators",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1387"
     }
   },
@@ -5844,15 +4988,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "trdreppartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1388"
     }
   },
@@ -5865,15 +5000,6 @@
     "metadata": {
       "description": "Specifies whether the trade should be reported (or not) to parties of the provided TrdRepPartyRole(1388). Used to override standard reporting behavior by the receiver of the trade report and thereby complements the PublTrdIndicator( tag1390).",
       "display": "TrdRepIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "trdrepindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1389"
     }
   },
@@ -5920,15 +5046,6 @@
           "doc": "Published"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradepublishindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1390"
     }
   },
@@ -5941,20 +5058,6 @@
     "metadata": {
       "description": "Refer to definition of OptAttribute(206)",
       "display": "UnderlyingLegOptAttribute",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegoptattribute",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1391"
     }
   },
@@ -5967,20 +5070,6 @@
     "metadata": {
       "description": "Refer to definition of SecurityDesc(107)",
       "display": "UnderlyingLegSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "underlyinglegsecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "ep": 187,
-          "deprecated": true
-        }
-      ],
       "fix:tag": "1392"
     }
   },
@@ -5993,15 +5082,6 @@
     "metadata": {
       "description": "Unique ID of a Market Definition Request message.",
       "display": "MarketReqID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1393"
     }
   },
@@ -6014,15 +5094,6 @@
     "metadata": {
       "description": "Market Definition message identifier.",
       "display": "MarketReportID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketreportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1394"
     }
   },
@@ -6061,15 +5132,6 @@
           "doc": "Modify"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketupdateaction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1395"
     }
   },
@@ -6082,15 +5144,6 @@
     "metadata": {
       "description": "Description or name of Market Segment",
       "display": "MarketSegmentDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "marketsegmentdesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1396"
     }
   },
@@ -6103,15 +5156,6 @@
     "metadata": {
       "description": "Byte length of encoded (non-ASCII characters) EncodedMktSegmDesc(1324) field.",
       "display": "EncodedMktSegmDescLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encodedmktsegmdesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1397"
     }
   },
@@ -6124,15 +5168,6 @@
     "metadata": {
       "description": "Encoded (non-ASCII characters) representation of the MarketSegmDesc(1396) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the MarketSegmDesc field.",
       "display": "EncodedMktSegmDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "encodedmktsegmdesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1398"
     }
   },
@@ -6145,15 +5180,6 @@
     "metadata": {
       "description": "Used to specify a new application sequence number.",
       "display": "ApplNewSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applnewseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1399"
     }
   }

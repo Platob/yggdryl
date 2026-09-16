@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's Symbol.",
       "display": "LegSymbol",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsymbol",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "600"
     }
   },
@@ -47,15 +38,6 @@
           "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsymbolsfx",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "601"
     }
   },
@@ -68,15 +50,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityID.",
       "display": "LegSecurityID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "602"
     }
   },
@@ -335,15 +308,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "603"
     }
   },
@@ -356,15 +320,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's NoSecurityAltID.",
       "display": "NoLegSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nolegsecurityaltid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "604"
     }
   },
@@ -377,15 +332,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityAltID.",
       "display": "LegSecurityAltID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecurityaltid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "605"
     }
   },
@@ -644,15 +590,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecurityaltidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "606"
     }
   },
@@ -758,15 +695,6 @@
           "doc": "MONEYMARKET"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legproduct",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "607"
     }
   },
@@ -779,15 +707,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's CFICode.",
       "display": "LegCFICode",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcficode",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "608"
     }
   },
@@ -2305,15 +2224,6 @@
           "doc": "Yankee Certificate Of Deposit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecuritytype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -2353,18 +2263,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's MaturityMonthYear.",
       "display": "LegMaturityMonthYear",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legmaturitymonthyear",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "610"
     }
   },
@@ -2378,16 +2276,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's MaturityDate.",
       "display": "LegMaturityDate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legmaturitydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "611"
     }
   },
@@ -2400,15 +2288,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's StrikePrice.",
       "display": "LegStrikePrice",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legstrikeprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "612"
     }
   },
@@ -2421,15 +2300,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's OptAttribute.",
       "display": "LegOptAttribute",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legoptattribute",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "613"
     }
   },
@@ -2442,15 +2312,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's ContractMultiplier.",
       "display": "LegContractMultiplier",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcontractmultiplier",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "614"
     }
   },
@@ -2463,15 +2324,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's CouponRate.",
       "display": "LegCouponRate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcouponrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "615"
     }
   },
@@ -2484,15 +2336,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityExchange.",
       "display": "LegSecurityExchange",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecurityexchange",
-          "type": {
-            "type": "mic"
-          }
-        }
-      ],
       "fix:tag": "616"
     }
   },
@@ -2505,15 +2348,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's Issuer.",
       "display": "LegIssuer",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legissuer",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "617"
     }
   },
@@ -2526,15 +2360,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's EncodedIssuerLen.",
       "display": "EncodedLegIssuerLen",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "encodedlegissuerlen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "618"
     }
   },
@@ -2547,15 +2372,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's EncodedIssuer.",
       "display": "EncodedLegIssuer",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "encodedlegissuer",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "619"
     }
   },
@@ -2568,15 +2384,6 @@
     "metadata": {
       "description": "Description of a multileg instrument.",
       "display": "LegSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "620"
     }
   },
@@ -2589,15 +2396,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's EncodedSecurityDescLen.",
       "display": "EncodedLegSecurityDescLen",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "encodedlegsecuritydesclen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "621"
     }
   },
@@ -2610,15 +2408,6 @@
     "metadata": {
       "description": "Multileg instrument's individual security's EncodedSecurityDesc.",
       "display": "EncodedLegSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "encodedlegsecuritydesc",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "622"
     }
   },
@@ -2631,15 +2420,6 @@
     "metadata": {
       "description": "The ratio of quantity for this individual leg relative to the entire multileg security.",
       "display": "LegRatioQty",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legratioqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "623"
     }
   },
@@ -2772,15 +2552,6 @@
           "ep": 222,
           "sort": 17,
           "doc": "Sell undisclosed"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legside",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "624"
@@ -2916,15 +2687,6 @@
           "ep": 300,
           "sort": 99,
           "doc": "Other"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradingsessionsubid",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "625"
@@ -3142,15 +2904,6 @@
           "doc": "Accept"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "alloctype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "626"
     }
   },
@@ -3163,15 +2916,6 @@
     "metadata": {
       "description": "Number of HopCompID entries in repeating group.",
       "display": "NoHops",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nohops",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "627"
     }
   },
@@ -3184,15 +2928,6 @@
     "metadata": {
       "description": "Assigned value used to identify the third party firm which delivered a specific message either from the firm which originated the message or from another third party (if multiple \"hops\" are performed). It is recommended that this value be the SenderCompID (49) of the third party.",
       "display": "HopCompID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "hopcompid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "628"
     }
   },
@@ -3207,17 +2942,6 @@
     "metadata": {
       "description": "Time that HopCompID (628) sent the message. It is recommended that this value be the SendingTime (52) of the message sent by the third party.",
       "display": "HopSendingTime",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "hopsendingtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "629"
     }
   },
@@ -3230,15 +2954,6 @@
     "metadata": {
       "description": "Reference identifier assigned by HopCompID (628) associated with the message sent. It is recommended that this value be the MsgSeqNum (34) of the message sent by the third party.",
       "display": "HopRefID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "hoprefid",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "630"
     }
   },
@@ -3251,15 +2966,6 @@
     "metadata": {
       "description": "Mid price/rate.",
       "display": "MidPx",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "midpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "631"
     }
   },
@@ -3272,15 +2978,6 @@
     "metadata": {
       "description": "Bid yield",
       "display": "BidYield",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "bidyield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "632"
     }
   },
@@ -3293,15 +2990,6 @@
     "metadata": {
       "description": "Mid yield",
       "display": "MidYield",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "midyield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "633"
     }
   },
@@ -3314,15 +3002,6 @@
     "metadata": {
       "description": "Offer yield",
       "display": "OfferYield",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "offeryield",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "634"
     }
   },
@@ -3435,15 +3114,6 @@
           "doc": "All other ownership types"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "clearingfeeindicator",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "635"
     }
   },
@@ -3478,15 +3148,6 @@
           "doc": "Order is currently being worked"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "workingindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "636"
     }
   },
@@ -3499,15 +3160,6 @@
     "metadata": {
       "description": "Execution price assigned to a leg of a multileg instrument.",
       "display": "LegLastPx",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "leglastpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "637"
     }
   },
@@ -3536,15 +3188,6 @@
           "doc": "Lost Priority as result of order change"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "priorityindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "638"
     }
   },
@@ -3557,15 +3200,6 @@
     "metadata": {
       "description": "Amount of price improvement.",
       "display": "PriceImprovement",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "priceimprovement",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "639"
     }
   },
@@ -3578,19 +3212,6 @@
     "metadata": {
       "description": "Price of the future part of a F/X swap order.",
       "display": "Price2",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "price2",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "640"
     }
   },
@@ -3603,19 +3224,6 @@
     "metadata": {
       "description": "F/X forward points of the future part of a F/X swap order added to LastSpotRate(194). May be a negative value.",
       "display": "LastForwardPoints2",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "lastforwardpoints2",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "641"
     }
   },
@@ -3628,19 +3236,6 @@
     "metadata": {
       "description": "Bid F/X forward points of the future portion of a F/X swap quote added to spot rate. May be a negative value.",
       "display": "BidForwardPoints2",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "bidforwardpoints2",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "642"
     }
   },
@@ -3653,19 +3248,6 @@
     "metadata": {
       "description": "Offer F/X forward points of the future portion of a F/X swap quote added to spot rate. May be a negative value.",
       "display": "OfferForwardPoints2",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "offerforwardpoints2",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:tag": "643"
     }
   },
@@ -3678,15 +3260,6 @@
     "metadata": {
       "description": "RFQ Request ID - used to identify an RFQ Request.",
       "display": "RFQReqID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "rfqreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "644"
     }
   },
@@ -3699,15 +3272,6 @@
     "metadata": {
       "description": "Used to indicate the best bid in a market",
       "display": "MktBidPx",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "mktbidpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "645"
     }
   },
@@ -3720,15 +3284,6 @@
     "metadata": {
       "description": "Used to indicate the best offer in a market",
       "display": "MktOfferPx",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "mktofferpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "646"
     }
   },
@@ -3741,15 +3296,6 @@
     "metadata": {
       "description": "Used to indicate a minimum quantity for a bid.",
       "display": "MinBidSize",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "minbidsize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "647"
     }
   },
@@ -3762,15 +3308,6 @@
     "metadata": {
       "description": "Used to indicate a minimum quantity for an offer. If this field is used the OfferSize (135) field is interpreted as the maximum offer size.",
       "display": "MinOfferSize",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "minoffersize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "648"
     }
   },
@@ -3783,15 +3320,6 @@
     "metadata": {
       "description": "Unique identifier for Quote Status Request.",
       "display": "QuoteStatusReqID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "quotestatusreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "649"
     }
   },
@@ -3826,15 +3354,6 @@
           "doc": "Legal Confirm"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legalconfirm",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "650"
     }
   },
@@ -3847,15 +3366,6 @@
     "metadata": {
       "description": "The calculated or traded price for the underlying instrument that corresponds to a derivative. Used for transactions that include the cash instrument and the derivative.",
       "display": "UnderlyingLastPx",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyinglastpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "651"
     }
   },
@@ -3868,15 +3378,6 @@
     "metadata": {
       "description": "The calculated or traded quantity for the underlying instrument that corresponds to a derivative. Used for transactions that include the cash instrument and the derivative.",
       "display": "UnderlyingLastQty",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyinglastqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "652"
     }
   },
@@ -3889,15 +3390,6 @@
     "metadata": {
       "description": "Unique identifier for a specific leg (uniqueness not defined as part of the FIX specification). LegRefID(654) be used to reference the value from LegID(1788).",
       "display": "LegRefID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "654"
     }
   },
@@ -3910,15 +3402,6 @@
     "metadata": {
       "description": "Unique indicator for a specific leg for the ContraBroker (375).",
       "display": "ContraLegRefID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "contralegrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "655"
     }
   },
@@ -3931,15 +3414,6 @@
     "metadata": {
       "description": "Foreign exchange rate used to compute the bid \"SettlCurrAmt\" (119) from Currency (15) to SettlCurrency (120)",
       "display": "SettlCurrBidFxRate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "settlcurrbidfxrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "656"
     }
   },
@@ -3952,15 +3426,6 @@
     "metadata": {
       "description": "Foreign exchange rate used to compute the offer \"SettlCurrAmt\" (119) from Currency (15) to SettlCurrency (120)",
       "display": "SettlCurrOfferFxRate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "settlcurrofferfxrate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "657"
     }
   },
@@ -4119,15 +3584,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "quoterequestrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "658"
     }
   },
@@ -4140,15 +3596,6 @@
     "metadata": {
       "description": "ID within repeating group of sides which is used to represent this transaction for compliance purposes (e.g. OATS reporting).",
       "display": "SideComplianceID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "sidecomplianceid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "659"
     }
   },
@@ -4210,15 +3657,6 @@
           "since": "4.4",
           "sort": 99,
           "doc": "Other (custom or proprietary)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "acctidsource",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "660"
@@ -4284,15 +3722,6 @@
           "doc": "Other (custom or proprietary)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocacctidsource",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "661"
     }
   },
@@ -4305,15 +3734,6 @@
     "metadata": {
       "description": "Specifies the price of the benchmark.",
       "display": "BenchmarkPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "benchmarkprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "662"
     }
   },
@@ -4516,15 +3936,6 @@
           "doc": "Yield"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "benchmarkpricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "663"
     }
   },
@@ -4537,15 +3948,6 @@
     "metadata": {
       "description": "Message reference for Confirmation",
       "display": "ConfirmID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "confirmid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "664"
     }
   },
@@ -4595,15 +3997,6 @@
           "doc": "Request Rejected"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "confirmstatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "665"
     }
   },
@@ -4639,15 +4032,6 @@
           "doc": "Cancel"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "confirmtranstype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "666"
     }
   },
@@ -4663,18 +4047,6 @@
     "metadata": {
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "ContractSettlMonth",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "contractsettlmonth",
-          "type": {
-            "type": "string",
-            "layout": "fixed_string",
-            "charset": "us-ascii",
-            "fixed": 8
-          }
-        }
-      ],
       "fix:tag": "667"
     }
   },
@@ -4703,15 +4075,6 @@
           "doc": "Bearer"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "deliveryform",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "668"
     }
   },
@@ -4724,15 +4087,6 @@
     "metadata": {
       "description": "Last price expressed in percent-of-par. Conditionally required for Fixed Income trades when LastPx (31) is expressed in Yield, Spread, Discount or any other type.",
       "display": "LastParPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "lastparpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "669"
     }
   },
@@ -4745,15 +4099,6 @@
     "metadata": {
       "description": "Number of Allocations for the leg",
       "display": "NoLegAllocs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nolegallocs",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "670"
     }
   },
@@ -4766,15 +4111,6 @@
     "metadata": {
       "description": "Allocation Account for the leg",
       "display": "LegAllocAccount",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legallocaccount",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "671"
     }
   },
@@ -4787,15 +4123,6 @@
     "metadata": {
       "description": "Reference for the individual allocation ticket",
       "display": "LegIndividualAllocID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legindividualallocid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "672"
     }
   },
@@ -4808,15 +4135,6 @@
     "metadata": {
       "description": "Leg allocation quantity.",
       "display": "LegAllocQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legallocqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "673"
     }
   },
@@ -4880,22 +4198,6 @@
           "doc": "Other (custom or proprietary)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legallocacctidsource",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "legallocacctidsource",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "674"
     }
   },
@@ -4908,15 +4210,6 @@
     "metadata": {
       "description": "Identifies settlement currency for the Leg.",
       "display": "LegSettlCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legsettlcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "675"
     }
   },
@@ -4929,15 +4222,6 @@
     "metadata": {
       "description": "LegBenchmarkPrice (679) currency",
       "display": "LegBenchmarkCurveCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbenchmarkcurvecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "676"
     }
   },
@@ -5373,15 +4657,6 @@
           "doc": "Warsaw Interbank Offered Rate"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbenchmarkcurvename",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "677"
     }
   },
@@ -5394,15 +4669,6 @@
     "metadata": {
       "description": "Identifies the point on the Leg Benchmark Curve.",
       "display": "LegBenchmarkCurvePoint",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbenchmarkcurvepoint",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "678"
     }
   },
@@ -5415,15 +4681,6 @@
     "metadata": {
       "description": "Used to identify the price of the benchmark security.",
       "display": "LegBenchmarkPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbenchmarkprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "679"
     }
   },
@@ -5626,15 +4883,6 @@
           "doc": "Yield"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbenchmarkpricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "680"
     }
   },
@@ -5647,15 +4895,6 @@
     "metadata": {
       "description": "Bid price of this leg.",
       "display": "LegBidPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legbidpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "681"
     }
   },
@@ -5702,15 +4941,6 @@
           "doc": "Undisclosed Quantity"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legioiqty",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "682"
     }
   },
@@ -5723,15 +4953,6 @@
     "metadata": {
       "description": "Number of leg stipulation entries",
       "display": "NoLegStipulations",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "nolegstipulations",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "683"
     }
   },
@@ -5744,15 +4965,6 @@
     "metadata": {
       "description": "Offer price of this leg.",
       "display": "LegOfferPx",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legofferpx",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "684"
     }
   },
@@ -5765,15 +4977,6 @@
     "metadata": {
       "description": "Quantity ordered of this leg.",
       "display": "LegOrderQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legorderqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "685"
     }
   },
@@ -5976,15 +5179,6 @@
           "doc": "Yield"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legpricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "686"
     }
   },
@@ -5997,19 +5191,6 @@
     "metadata": {
       "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
       "display": "LegQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legqty",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0.1",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "5.0",
@@ -6827,15 +6008,6 @@
           "doc": "Yield to Maturity (when YieldType(235) and Yield(236) show a different yield)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legstipulationtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "688"
     }
   },
@@ -6848,15 +6020,6 @@
     "metadata": {
       "description": "For Fixed Income, value of stipulation.",
       "display": "LegStipulationValue",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legstipulationvalue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "689"
     }
   },
@@ -6899,15 +6062,6 @@
           "doc": "Proceeds"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "legswaptype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "690"
     }
   },
@@ -6920,15 +6074,6 @@
     "metadata": {
       "description": "For Fixed Income, identifies MBS / ABS pool.",
       "display": "Pool",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "pool",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "691"
     }
   },
@@ -7124,15 +6269,6 @@
           "doc": "Yield Spread (swaps)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "quotepricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "692"
     }
   },
@@ -7145,15 +6281,6 @@
     "metadata": {
       "description": "Message reference for Quote Response",
       "display": "QuoteRespID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "quoterespid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "693"
     }
   },
@@ -7256,15 +6383,6 @@
           "ep": 159,
           "sort": 9,
           "doc": "Tied"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "quoteresptype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "694"
@@ -7543,15 +6661,6 @@
           "doc": "Negotiated spot"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "quotequalifier",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "695"
     }
   },
@@ -7565,16 +6674,6 @@
     "metadata": {
       "description": "Date to which the yield has been calculated (i.e. maturity, par call or current call, pre-refunded date).",
       "display": "YieldRedemptionDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "yieldredemptiondate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "696"
     }
   },
@@ -7587,15 +6686,6 @@
     "metadata": {
       "description": "Price to which the yield has been calculated.",
       "display": "YieldRedemptionPrice",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "yieldredemptionprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "697"
     }
   },
@@ -7798,15 +6888,6 @@
           "doc": "Yield"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "yieldredemptionpricetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "698"
     }
   },
@@ -7819,15 +6900,6 @@
     "metadata": {
       "description": "The identifier of the benchmark security, e.g. Treasury against Corporate bond.",
       "display": "BenchmarkSecurityID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "benchmarksecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "699"
     }
   }

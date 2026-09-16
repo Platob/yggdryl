@@ -57,8 +57,6 @@ pub struct Report {
     pub categories: Vec<(FixCategory, usize)>,
     /// How many code records were walked.
     pub codes: usize,
-    /// How many lineage entries were walked.
-    pub entries: usize,
 }
 
 impl Report {
@@ -85,7 +83,6 @@ pub fn check(registry: &FixRegistry) -> Report {
         findings: Vec::new(),
         categories: Vec::new(),
         codes: 0,
-        entries: 0,
     };
     for category in FixCategory::ALL {
         let mut count = 0;
@@ -132,39 +129,6 @@ pub fn check(registry: &FixRegistry) -> Report {
                     }
                 }
             }
-            for entry in view.lineage() {
-                match entry {
-                    Ok(_) => report.entries += 1,
-                    Err(error) => {
-                        report.findings.push(Finding {
-                            level: Level::Fail,
-                            check: "lineage",
-                            subject: named.clone(),
-                            detail: format!("its lineage stops at {error}"),
-                        });
-                        break;
-                    }
-                }
-            }
-
-            // A lineage whose newest entry names something else is a lineage
-            // about another field.
-            let newest = view
-                .lineage()
-                .filter_map(std::result::Result::ok)
-                .filter_map(yggdryl::FixLineageEntry::name)
-                .last();
-            if let Some(newest) = newest {
-                if !newest.eq_ignore_ascii_case(field.name()) {
-                    report.findings.push(Finding {
-                        level: Level::Warn,
-                        check: "lineage",
-                        subject: named.clone(),
-                        detail: format!("its newest lineage entry names {newest:?}"),
-                    });
-                }
-            }
-
             duplicated_codes(&mut report, field, &named);
             shaped_group(&mut report, field, &named);
         }
@@ -230,7 +194,6 @@ pub fn render(report: &Report) {
         style::entry(category.as_str(), &count.to_string());
     }
     style::entry("codes", &report.codes.to_string());
-    style::entry("lineage entries", &report.entries.to_string());
 
     if report.findings.is_empty() {
         style::good("nothing to report");

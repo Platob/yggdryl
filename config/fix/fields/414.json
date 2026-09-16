@@ -559,15 +559,6 @@
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "LegDeliveryScheduleXID",
-      "fix:lineage": [
-        {
-          "since": "5.0.2",
-          "name": "legdeliveryschedulexid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "41410"
     }
   },

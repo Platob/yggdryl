@@ -3,20 +3,16 @@
 //! `config/fix` is a contract rather than a code path: it is the seed every
 //! test in these phases loads, and the one path this suite names.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::{
     DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
-    TimeUnit, Timezone, Version,
+    TimeUnit, Timezone,
 };
 
 fn seed() -> FixRegistry {
     super::committed_registry().as_ref().clone()
-}
-
-fn version(text: &str) -> Version {
-    text.parse().expect("a valid version")
 }
 
 #[test]
@@ -35,14 +31,9 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
     assert_eq!(last_qty.dtype(), &DataType::Float64);
     assert_eq!(last_qty.as_metadata().get("display"), Some("LastQty"));
 
+    // The dictionary holds one reading of the tag, under one name and one
+    // datatype; the spellings earlier versions used reach it as aliases.
     let view = last_qty.as_fix();
-    assert_eq!(view.since(), Some(version("2.7")));
-    assert_eq!(view.name_at(version("4.2")), Some("lastshares"));
-    assert_eq!(view.name_at(version("4.4")), Some("lastqty"));
-    assert_eq!(
-        view.dtype_at(version("4.0")).unwrap(),
-        Some(DataType::Int32)
-    );
     assert_eq!(view.aliases().collect::<Vec<_>>(), ["lastshares"]);
 
     // A query by either spelling answers the same field, and the
@@ -54,16 +45,6 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
             "{spelling}"
         );
     }
-
-    // "FIX Latest" is a real pedigree the dictionary carries, never a
-    // sentinel at the top of the value space.
-    let newest = registry.newest().expect("a dated dictionary");
-    assert_eq!(newest.version(), version("5.0.2"));
-    assert!(newest.ep().is_some());
-    assert_ne!(newest.version(), Version::MAX);
-    let versions = registry.versions();
-    assert!(versions.contains(&version("2.7")), "{versions:?}");
-    assert!(versions.contains(&version("4.4")), "{versions:?}");
 }
 
 #[test]
@@ -309,7 +290,6 @@ fn every_stored_document_walks_to_its_end() {
     let registry = seed();
     let mut with_codes = 0_usize;
     let mut codes = 0_usize;
-    let mut entries = 0_usize;
     for field in registry.iter() {
         let view = field.as_fix();
         // A refusal ends a borrowed walk, and the walk is what resolution
@@ -330,10 +310,7 @@ fn every_stored_document_walks_to_its_end() {
     }
     for field in registry.iter() {
         assert!(field.as_metadata().get("fix:codeset").is_none());
-        for entry in field.as_fix().lineage() {
-            entry.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
-            entries += 1;
-        }
+        assert!(field.as_metadata().get("fix:lineage").is_none());
     }
     // A dictionary this size is the point: a truncation that hides one code
     // in twenty thousand is exactly what nobody notices by reading.
@@ -342,10 +319,6 @@ fn every_stored_document_walks_to_its_end() {
         codes > 10_000,
         "{codes} enum records stored with their fields"
     );
-    // Fewer than there are fields, and deliberately: a field whose only
-    // history is "as it is now" states none (P3).
-    assert!(entries > 1_500, "{entries} lineage entries in all");
-
     // The spelling the truncation hid, end to end.
     let role = registry.field_by_tag(452).expect("PartyRole");
     assert_eq!(role.as_fix().code_value("ClearingFirm"), Some("4"));
@@ -423,89 +396,6 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     assert_eq!(utc, 74, "instants stated in UTC");
 }
 
-#[test]
-fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
-    let registry = seed();
-    let mut census: BTreeMap<(String, String), usize> = BTreeMap::new();
-    for field in registry.iter() {
-        let view = field.as_fix();
-        let held: Vec<_> = view
-            .lineage()
-            .map(|entry| entry.expect("a readable entry"))
-            .collect();
-        for pair in held.windows(2) {
-            let (Some(older), Some(newer)) = (
-                pair[0].parse_dtype().expect("a resolvable type"),
-                pair[1].parse_dtype().expect("a resolvable type"),
-            ) else {
-                continue;
-            };
-            if older == newer {
-                continue;
-            }
-            // A text field that later declared itself temporal was always
-            // carrying the instant, so it no longer reads as a retype. A
-            // string-to-string retype cannot survive at all, because two
-            // spellings of one type are now one value and this arm is only
-            // reached where the types differ.
-            assert!(
-                !(older.id().is_string() && newer.id().is_temporal()),
-                "{} still states a string before a temporal",
-                field.name()
-            );
-            // One temporal is restated as another only where the *zone*
-            // changed, which is a real change and not a spelling: a field the
-            // specification moved from `UTCDateOnly` to `LocalMktDate` stopped
-            // stating a zone, and the reading has to say so. Precision never
-            // drifts.
-            if older.id().is_temporal() && newer.id().is_temporal() {
-                let (
-                    DataType::DateTime64 {
-                        unit: older_unit, ..
-                    },
-                    DataType::DateTime64 {
-                        unit: newer_unit, ..
-                    },
-                ) = (&older, &newer)
-                else {
-                    panic!("{} retypes one temporal family to another", field.name())
-                };
-                assert_eq!(older_unit, newer_unit, "{}", field.name());
-            }
-            *census
-                .entry((older.to_string(), newer.to_string()))
-                .or_default() += 1;
-        }
-    }
-    let total: usize = census.values().sum();
-    // 66 before decision 14: tag 385 was retyped to `msgdirection` at 5.0.2
-    // and is text carrying its code set again, so the retype is gone.
-    assert_eq!(total, 65, "surviving retypes: {census:?}");
-    assert_eq!(
-        census
-            .iter()
-            .map(|((older, newer), count)| (older.as_str(), newer.as_str(), *count))
-            .collect::<Vec<_>>(),
-        [
-            // A UTC date restated as a local market date: the zone went away,
-            // and the reading says so rather than calling both a day.
-            ("datetime64(ns,\"UTC\")", "datetime64(ns)", 12),
-            ("float64", "utf8", 1),
-            ("int32", "float64", 13),
-            ("int32", "int64", 6),
-            ("int32", "utf8", 8),
-            ("utf8", "boolean", 9),
-            ("utf8", "country", 1),
-            ("utf8", "currency", 3),
-            ("utf8", "int32", 6),
-            ("utf8", "mic", 3),
-            ("utf8", "side", 1),
-            // `OrdStatus` and `ExecType`: the order's state, read as one type.
-            ("utf8", "state", 2),
-        ]
-    );
-}
-
 /// The committed dictionary's hash, pinned as a literal (decision 13).
 ///
 /// The registry hash walks scalar fields, then `[Components, Groups]` with
@@ -557,8 +447,8 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// nothing else, so its description says so and its column is nullable. The
 /// last thing to move it is the canonical documents becoming the arrays they
 /// always were: `fix:codes` is `[{...}]` where it was `{"codes":[{...}]}`,
-/// and `fix:lineage`, `fix:replacements` and `fix:directions` lose the same
-/// wrapper, so every shipped field carrying one holds different text for the
+/// and `fix:replacements` and `fix:directions` lose the same wrapper, so
+/// every shipped field carrying one holds different text for the
 /// same facts. The last thing to move it is `instuuid` retiring: the
 /// instrument is the scope a chain hangs its identifiers under, digested
 /// from what the message says it is, and never a column - so 65016 joins

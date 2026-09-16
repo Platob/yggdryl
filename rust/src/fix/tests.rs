@@ -14,8 +14,8 @@ use crate::fix::{
 };
 use crate::holder::local::Folder;
 use crate::{
-    DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixLineage,
-    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
+    DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
+    FixRegistry, MimeType, Scalar, Version,
 };
 
 /// One path, resolved once, as every FIX navigator now takes it.
@@ -3428,260 +3428,8 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
     );
 }
 
-/// The worked case: tag 32 is `LastShares` typed `int` in 4.0, `LastShares`
-/// typed `Qty` from 4.2, and `LastQty` from 4.3 on.
-fn last_qty() -> Field {
-    let mut field = DataType::Float64.nullable_field("LastQty");
-    field.as_fix_mut().set_tag(32).unwrap();
-    field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
-                .with_name("LastShares")
-                .with_dtype("int"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_name("LastShares")
-                .with_dtype("Qty"),
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None))
-                .with_name("LastQty")
-                .with_dtype("Qty"),
-        ])
-        .unwrap();
-    field
-}
-
 fn version(text: &str) -> Version {
     text.parse().unwrap()
-}
-
-#[test]
-fn a_lineage_answers_the_name_and_datatype_of_every_version_it_holds() {
-    let field = last_qty();
-    let view = field.as_fix();
-
-    assert_eq!(view.since(), Some(version("2.7")));
-    assert_eq!(view.until(), None);
-    assert_eq!(view.name_at(version("4.2")), Some("LastShares"));
-    assert_eq!(view.name_at(version("4.3")), Some("LastQty"));
-    assert_eq!(view.name_at(version("5.0.2")), Some("LastQty"));
-    // A version older than the first entry states nothing, so the caller
-    // falls back to the field's own name.
-    assert_eq!(view.name_at(version("2.6")), None);
-
-    assert_eq!(
-        view.dtype_at(version("4.0")).unwrap(),
-        Some(DataType::Int32)
-    );
-    // `Qty` is a FIX `float`, and the logical-name table says so.
-    assert_eq!(
-        view.dtype_at(version("4.4")).unwrap(),
-        Some(DataType::Float64)
-    );
-}
-
-#[test]
-fn two_entries_at_one_version_order_by_extension_pack() {
-    let mut field = DataType::utf8().nullable_field("BasisPoints");
-    field.as_fix_mut().set_tag(9999).unwrap();
-    field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("5.0.2"), Some(309)))
-                .with_name("BasisPoints"),
-            FixLineageEntry::new(FixPedigree::new(version("5.0.2"), Some(204)))
-                .with_name("Superseded"),
-            FixLineageEntry::new(FixPedigree::new(version("5.0.2"), None)).with_name("Base"),
-        ])
-        .unwrap();
-
-    let dated: Vec<_> = field
-        .as_fix()
-        .lineage()
-        .map(|entry| {
-            let entry = entry.unwrap();
-            (entry.ep(), entry.name().unwrap())
-        })
-        .collect();
-    assert_eq!(
-        dated,
-        [
-            (None, "Base"),
-            (Some(204), "Superseded"),
-            (Some(309), "BasisPoints"),
-        ]
-    );
-    // The newest reading is the last written, so resolution is a scan that
-    // stops rather than a sort.
-    assert_eq!(
-        field.as_fix().name_at(version("5.0.2")),
-        Some("BasisPoints")
-    );
-}
-
-#[test]
-fn a_lineage_rewrites_the_aliases_it_implies_and_a_query_by_either_answers() {
-    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
-
-    let aliases: Vec<_> = registry
-        .field_by_tag(32)
-        .unwrap()
-        .as_fix()
-        .aliases()
-        .collect();
-    assert_eq!(aliases, ["LastShares"]);
-    assert_eq!(registry.field("LastShares").unwrap().name(), "LastQty");
-    assert_eq!(registry.field("LastQty").unwrap().name(), "LastQty");
-}
-
-#[test]
-fn a_version_filters_the_read_and_the_registry_stays_version_agnostic() {
-    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
-
-    // The dictionary holds the tag whatever version is asked for; only the
-    // read is filtered.
-    assert_eq!(
-        registry.field_at(version("4.2"), 32).unwrap().name(),
-        "LastQty"
-    );
-    let refused = registry.field_at(version("2.6"), 32).unwrap_err();
-    assert!(refused.to_string().contains("2.6"), "{refused}");
-    assert!(registry.get_field_at(version("2.6"), 32).is_none());
-
-    assert_eq!(
-        registry.versions(),
-        [version("2.7"), version("4.2"), version("4.3")]
-    );
-    assert_eq!(
-        registry.newest(),
-        Some(FixPedigree::new(version("4.3"), None))
-    );
-    // "FIX Latest" is the real pedigree the dictionary carries, never a
-    // sentinel at the top of the value space.
-    assert_ne!(registry.newest().unwrap().version(), Version::MAX);
-}
-
-#[test]
-fn a_removed_entry_ends_the_field_and_a_field_with_no_lineage_answers_everywhere() {
-    let mut retired = DataType::utf8().nullable_field("Retired");
-    retired.as_fix_mut().set_tag(9998).unwrap();
-    retired
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.0"), None)).with_name("Retired"),
-            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).remove(),
-        ])
-        .unwrap();
-    let view = retired.as_fix();
-    assert_eq!(view.until(), Some(version("4.4")));
-    assert!(view.defined_at(version("4.3")));
-    assert!(!view.defined_at(version("4.4")));
-    assert!(!view.defined_at(version("5.0.2")));
-
-    let undated = tagged("Symbol", 55);
-    let view = undated.as_fix();
-    assert_eq!(view.since(), None);
-    assert_eq!(view.until(), None);
-    assert_eq!(view.name_at(version("4.2")), None);
-    assert_eq!(view.dtype_at(version("4.2")).unwrap(), None);
-    // No history is no filter, so an undated dictionary resolves as before.
-    assert!(view.defined_at(version("4.2")));
-    assert!(view.defined_at(Version::MIN));
-}
-
-#[test]
-fn a_lineage_disagreeing_with_its_own_field_is_refused_naming_both_sides() {
-    let mut field = DataType::utf8().nullable_field("LastQty");
-    field.as_fix_mut().set_tag(32).unwrap();
-
-    let error = field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastShares")
-        ])
-        .unwrap_err();
-    let rendered = error.to_string();
-    assert!(rendered.contains("LastShares"), "{rendered}");
-    assert!(rendered.contains("LastQty"), "{rendered}");
-    // A refusal leaves the field exactly as it was.
-    assert_eq!(field.as_fix().lineage().count(), 0);
-    assert_eq!(field.as_fix().aliases().count(), 0);
-
-    let error = field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_dtype("int")
-        ])
-        .unwrap_err();
-    let rendered = error.to_string();
-    assert!(rendered.contains("int32"), "{rendered}");
-    assert!(rendered.contains("utf8"), "{rendered}");
-}
-
-#[test]
-fn two_entries_sharing_one_pedigree_are_refused() {
-    let mut field = DataType::utf8().nullable_field("Twice");
-    field.as_fix_mut().set_tag(9997).unwrap();
-
-    let error = field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
-        ])
-        .unwrap_err();
-    assert!(
-        matches!(&error, Error::Parse { target, .. } if *target == "fix lineage"),
-        "{error}"
-    );
-    assert!(error.to_string().contains("EP1"), "{error}");
-}
-
-#[test]
-fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
-    let field = last_qty();
-    let stored = field
-        .as_metadata()
-        .get("fix:lineage")
-        .expect("the lineage is stored")
-        .to_owned();
-    assert_eq!(
-        stored,
-        concat!(
-            r#"["#,
-            r#"{"since":"2.7","name":"LastShares","type":{"type":"int32"}},"#,
-            r#"{"since":"4.2","name":"LastShares","type":{"type":"float64"}},"#,
-            r#"{"since":"4.3","name":"LastQty","type":{"type":"float64"}}]"#,
-        )
-    );
-
-    // Rewriting what was read back produces the same text.
-    let entries: Vec<_> = field
-        .as_fix()
-        .lineage()
-        .map(|entry| entry.unwrap())
-        .collect();
-    let mut rebuilt = DataType::Float64.nullable_field("LastQty");
-    rebuilt.as_fix_mut().set_tag(32).unwrap();
-    rebuilt.as_fix_mut().set_lineage(&entries).unwrap();
-    assert_eq!(
-        rebuilt.as_metadata().get("fix:lineage"),
-        Some(stored.as_str())
-    );
-
-    // Keys follow the document's declared order, so a reordered one is
-    // refused rather than mis-scanned.
-    let reordered = r#"[{"name":"LastShares","since":"2.7"}]"#;
-    let mut edited = DataType::utf8().nullable_field("LastShares");
-    edited.set_metadata([("fix:lineage", reordered)]).unwrap();
-    let error = edited.as_fix().dtype_at(version("4.2")).unwrap_err();
-    assert!(
-        matches!(&error, Error::Parse { target, position, .. }
-            if *target == "fix lineage" && *position == reordered.find(r#""since""#).unwrap()),
-        "{error}"
-    );
-    // A read that cannot parse answers nothing rather than a wrong answer.
-    assert_eq!(edited.as_fix().name_at(version("4.2")), None);
-    assert_eq!(edited.as_fix().since(), None);
 }
 
 /// The committed dictionary, as the codec every enrichment case reads with.
@@ -3882,106 +3630,6 @@ fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
     field.as_fix_mut().set_nulls(["NONE"]).unwrap();
     field.as_fix_mut().set_nulls::<[&str; 0], &str>([]).unwrap();
     assert_eq!(field.get_metadata("fix:nulls"), None);
-}
-
-#[test]
-fn a_lineage_stores_the_type_a_spelling_resolves_to_and_drops_a_rename_of_it() {
-    let mut field = DataType::utf8().nullable_field("account");
-    field.as_fix_mut().set_tag(1).unwrap();
-    // The specification renamed the type without changing it: `char` and
-    // `String` are one `string`.
-    field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
-                .with_name("account")
-                .with_dtype("char"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_name("account")
-                .with_dtype("String"),
-        ])
-        .unwrap();
-    assert_eq!(
-        field.as_metadata().get("fix:lineage"),
-        Some(r#"[{"since":"2.7","name":"account","type":{"type":"string"}}]"#)
-    );
-    // The oldest entry survives, so `since` still dates the field.
-    assert_eq!(field.as_fix().since(), Some(version("2.7")));
-    // And the type is answered at both versions, from the one entry left.
-    assert_eq!(
-        field.as_fix().dtype_at(version("4.4")).unwrap(),
-        Some(DataType::utf8())
-    );
-}
-
-#[test]
-fn only_a_type_equivalent_entry_collapses() {
-    // Each of these differs from its predecessor in exactly one stated fact,
-    // so none of them collapses.
-    for entries in [
-        vec![
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
-                .with_name("kept")
-                .with_dtype("char"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_name("renamed")
-                .with_dtype("String"),
-        ],
-        vec![
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_dtype("String")
-                .deprecate(),
-        ],
-        vec![
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_dtype("String")
-                .remove(),
-        ],
-        vec![
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
-                .with_dtype("String")
-                .with_doc("said differently"),
-        ],
-        // A genuine retype is a change, whatever the spellings look like.
-        vec![
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("int"),
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("Qty"),
-        ],
-    ] {
-        let mut field = DataType::utf8().nullable_field("kept");
-        // The last two cases retype to something the field is not, so the
-        // lineage is rendered directly rather than through the agreement
-        // check `set_lineage` makes.
-        let rendered = FixLineage::render(&entries).expect("the entries render");
-        let held: Vec<_> = FixLineage::over(Some(&rendered))
-            .map(|entry| entry.expect("a readable entry"))
-            .collect();
-        assert_eq!(held.len(), 2, "{rendered}");
-        field.as_fix_mut().set_tag(9993).unwrap();
-    }
-
-    // An extension pack that stated nothing new is exactly what collapses:
-    // `ep` dates the statement rather than being one.
-    let rendered = FixLineage::render(&[
-        FixLineageEntry::new(FixPedigree::new(version("5.0.2"), None)).with_dtype("char"),
-        FixLineageEntry::new(FixPedigree::new(version("5.0.2"), Some(309))).with_dtype("String"),
-    ])
-    .expect("the entries render");
-    assert_eq!(rendered, r#"[{"since":"5.0.2","type":{"type":"string"}}]"#);
-}
-
-#[test]
-fn an_empty_lineage_removes_the_document_and_the_aliases_it_derived() {
-    let mut field = last_qty();
-    assert_eq!(field.as_fix().aliases().count(), 1);
-
-    field.as_fix_mut().set_lineage(&[]).unwrap();
-    assert_eq!(field.as_metadata().get("fix:lineage"), None);
-    assert_eq!(field.as_metadata().get("fix:aliases"), None);
-    assert_eq!(field.as_fix().since(), None);
 }
 
 /// Fixture A: the standard `SideCodeSet`, dated as the specification dates it.
@@ -4255,7 +3903,6 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // hand edit - there is one shape, and this is not it.
     for (property, wrapped) in [
         ("fix:codes", r#"{"codes":[{"value":"1","name":"Buy"}]}"#),
-        ("fix:lineage", r#"{"entries":[{"since":"4.4"}]}"#),
         (
             "fix:directions",
             r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
@@ -4267,7 +3914,6 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
         let view = wrapper.as_fix();
         let error = match property {
             "fix:codes" => view.codes().next().unwrap().unwrap_err(),
-            "fix:lineage" => view.lineage().next().unwrap().unwrap_err(),
             "fix:directions" => view.directions().next().unwrap().unwrap_err(),
             _ => view.replacements().next().unwrap().unwrap_err(),
         };
@@ -4349,16 +3995,10 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     let mut stored = DataType::utf8().nullable_field("LastQty");
     stored.as_fix_mut().set_tag(32).unwrap();
     stored.as_fix_mut().set_tags(&[65, 66]).unwrap();
+    stored.as_fix_mut().set_aliases(["lastshares"]).unwrap();
     stored
         .as_fix_mut()
         .set_description("the stored wording")
-        .unwrap();
-    stored
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_name("LastShares"),
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
-        ])
         .unwrap();
     stored
         .as_fix_mut()
@@ -4372,21 +4012,10 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     let mut incoming = DataType::utf8().nullable_field("LastQty");
     incoming.as_fix_mut().set_tag(32).unwrap();
     incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
+    incoming.as_fix_mut().set_aliases(["qty"]).unwrap();
     incoming
         .as_fix_mut()
         .set_description("the incoming wording")
-        .unwrap();
-    incoming
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
-            // This entry states a type the 4.3 one does not, so the merge is
-            // read on three pedigrees rather than on the collapse of two
-            // that say the same thing.
-            FixLineageEntry::new(FixPedigree::new(version("5.0.2"), None))
-                .with_name("LastQty")
-                .with_dtype("String"),
-        ])
         .unwrap();
     incoming
         .as_fix_mut()
@@ -4405,12 +4034,6 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     assert_eq!(merged.tags().unwrap(), [67, 66, 65]);
     // The description is never compared: incoming has one, so it wins.
     assert_eq!(merged.description(), Some("the incoming wording"));
-    // Lineages merge by pedigree and re-sort oldest first.
-    let dated: Vec<_> = merged
-        .lineage()
-        .map(|entry| entry.unwrap().since())
-        .collect();
-    assert_eq!(dated, [version("2.7"), version("4.3"), version("5.0.2")]);
     // Codes merge by wire value; the incoming wins a shared one and the
     // stored keeps a value only it has.
     assert_eq!(merged.code_name("1"), Some("Shared"));
@@ -4420,9 +4043,8 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     );
     assert_eq!(merged.code_name("5"), Some("IncomingOnly"));
     assert_eq!(merged.code_name("9"), Some("StoredOnly"));
-    // The aliases are rewritten from the merged lineage, never left as the
-    // union, so the derivation stays the writer's.
-    assert_eq!(merged.aliases().collect::<Vec<_>>(), ["LastShares"]);
+    // Aliases union, incoming first, folded and deduplicated.
+    assert_eq!(merged.aliases().collect::<Vec<_>>(), ["qty", "lastshares"]);
 }
 
 #[test]
@@ -4515,13 +4137,7 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     field.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().set_tags(&[65]).unwrap();
     field.as_fix_mut().set_description("wording").unwrap();
-    field
-        .as_fix_mut()
-        .set_lineage(&[
-            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_name("LastShares"),
-            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
-        ])
-        .unwrap();
+    field.as_fix_mut().set_aliases(["lastshares"]).unwrap();
     field
         .as_fix_mut()
         .set_codes(&[FixCode::new("Shared", "1")])
@@ -5106,69 +4722,6 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
 }
 
 #[test]
-fn a_temporal_type_is_adopted_backward_and_no_other_family_is() {
-    // A field FIX carried as text before it declared it temporal: the
-    // earlier entry adopts the later type and the two then state one thing.
-    let rendered = FixLineage::render(&[
-        FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("String"),
-        FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype("UTCTimestamp"),
-    ])
-    .expect("the entries render");
-    assert_eq!(
-        rendered,
-        concat!(
-            r#"[{"since":"4.2","type":"#,
-            r#"{"type":"datetime64","unit":"nanosecond","timezone":"UTC"}}]"#,
-        )
-    );
-
-    // Two temporal eras each take their own preceding run of strings.
-    let rendered = FixLineage::render(&[
-        FixLineageEntry::new(FixPedigree::new(version("4.0"), None)).with_dtype("String"),
-        FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("LocalMktDate"),
-        FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_dtype("String"),
-        FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype("UTCTimeOnly"),
-    ])
-    .expect("the entries render");
-    assert_eq!(
-        rendered,
-        concat!(
-            r#"[{"since":"4","type":{"type":"datetime64","unit":"nanosecond"}},"#,
-            r#"{"since":"4.3","type":{"type":"time64","unit":"nanosecond"}}]"#,
-        )
-    );
-
-    // Every other later type is a constraint the earlier version did not
-    // carry, so nothing is adopted backward and both entries stand.
-    for (earlier, later) in [
-        ("String", "Boolean"),
-        ("String", "Currency"),
-        ("String", "Exchange"),
-        ("String", "Country"),
-        ("String", "int"),
-        ("int", "Qty"),
-        ("int", "SeqNum"),
-        ("int", "char"),
-        ("PriceOffset", "char"),
-        // A temporal never yields either: the earlier type already held an
-        // instant, and widening it backward would restate a real retype. The
-        // zone is what differs here - `UTCDateOnly` and `UTCTimestamp` are one
-        // type now, both being an instant in UTC.
-        ("LocalMktDate", "UTCTimestamp"),
-    ] {
-        let rendered = FixLineage::render(&[
-            FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype(earlier),
-            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype(later),
-        ])
-        .expect("the entries render");
-        let held: Vec<_> = FixLineage::over(Some(&rendered))
-            .map(|entry| entry.expect("a readable entry"))
-            .collect();
-        assert_eq!(held.len(), 2, "{earlier} -> {later}: {rendered}");
-    }
-}
-
-#[test]
 fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
     // G8-R7: an earlier entry may only adopt a later temporal type where the
     // text FIX actually transmitted at the earlier version still parses as
@@ -5285,82 +4838,6 @@ fn every_committed_field(registry: &FixRegistry) -> Vec<Field> {
     out
 }
 
-#[test]
-fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
-    let registry = committed();
-    let mut lineages = 0_usize;
-    let mut entries = 0_usize;
-    for field in every_committed_field(&registry) {
-        let view = field.as_fix();
-        let Some(stored) = field.as_metadata().get("fix:lineage") else {
-            continue;
-        };
-        lineages += 1;
-        let held: Vec<_> = view
-            .lineage()
-            .map(|entry| entry.expect("a readable entry"))
-            .collect();
-        assert!(!held.is_empty(), "{} keeps its oldest entry", field.name());
-        entries += held.len();
-
-        // Every stored type resolves: the generator writes the crate's own
-        // serialized datatype, so nothing here is an unresolvable spelling.
-        // An entry stating no type is a deprecation or a removal, a dated
-        // point about the field that has no type to state.
-        for entry in &held {
-            let dtype = entry.parse_dtype().expect("a resolvable type");
-            assert!(
-                dtype.is_some() || entry.is_deprecated() || entry.is_removed(),
-                "{} at {}",
-                field.name(),
-                entry.since()
-            );
-        }
-
-        // The cross-host assertion: the dictionary generator wrote this
-        // document in Python, and re-rendering the entries it holds through
-        // the Rust writer must reproduce it byte for byte, or the two hosts
-        // have forked on either normalization or collapse.
-        //
-        // A version is canonicalized first because the two hosts spell one
-        // version two ways and always have: the generator carries the source
-        // file's own `4.0` while `Version` displays the same value as `4`.
-        // Both parse to one version, so this is a spelling the assertion
-        // must not be sensitive to; every other byte it is.
-        assert_eq!(
-            FixLineage::render(&held).expect("the entries render"),
-            canonical_versions(stored),
-            "{}",
-            field.name()
-        );
-
-        // Nothing collapsible survives: two adjacent entries always differ in
-        // something one of them states.
-        for pair in held.windows(2) {
-            let (older, newer) = (pair[0], pair[1]);
-            assert!(
-                older.parse_dtype().unwrap() != newer.parse_dtype().unwrap()
-                    || older.name() != newer.name()
-                    || older.is_deprecated() != newer.is_deprecated()
-                    || older.is_removed() != newer.is_removed()
-                    || older.doc() != newer.doc(),
-                "{} states nothing new at {}",
-                field.name(),
-                newer.since()
-            );
-        }
-    }
-    assert_eq!(lineages, 1_603, "fields carrying a lineage");
-    // 1,926 before these two phases: 268 entries stated nothing their
-    // predecessor did not once types were resolved and the temporal ones
-    // adopted backward, and one more was a second statement about one dated
-    // point. Two more since: `OrdStatus` and `ExecType` retyped to the crate's
-    // `state`, which each lineage records, less the one the generic MsgType
-    // datatype's removal collapses back, less the one tag 385's retype to a
-    // direction datatype stated before decision 14 typed it as text again.
-    assert_eq!(entries, 1_802, "lineage entries");
-}
-
 /// Every tag and group one owned fill names is one the dictionary has.
 fn assert_fills_resolve(registry: &FixRegistry, fills: &[FixFill], owner: &str) {
     for fill in fills {
@@ -5408,11 +4885,11 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
         assert!(!held.is_empty(), "{} declares a code", field.name());
         codes += held.len();
 
-        // The cross-host assertion, as for the lineage: the generator wrote
-        // this set in Python, and the Rust writer must reproduce it byte for
-        // byte - key order, sort order, escaping, the legacy codes' dates
-        // and aliases - versions canonicalized for the reason the lineage
-        // assertion states.
+        // The cross-host assertion: the generator wrote this set in Python,
+        // and the Rust writer must reproduce it byte for byte - key order,
+        // sort order, escaping, the legacy codes' dates and aliases - with
+        // versions canonicalized first, because the two hosts spell a
+        // version their own way and neither spelling is the document.
         assert_eq!(
             FixCodes::render(&held).expect("the codes render"),
             canonical_versions(stored),
@@ -5448,7 +4925,7 @@ fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
         // document in Python, and re-rendering the entries it holds through
         // the Rust writer must reproduce it byte for byte, or the two hosts
         // have forked on key order or spelling. Versions are canonicalized
-        // first, for the reason the lineage assertion states.
+        // first, because the two hosts spell one their own way.
         assert_eq!(
             FixReplacements::render(&held).expect("the entries render"),
             canonical_versions(stored),

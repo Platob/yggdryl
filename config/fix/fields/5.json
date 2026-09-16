@@ -8,15 +8,6 @@
     "metadata": {
       "description": "Account number at agent bank for distributions.",
       "display": "CashDistribAgentAcctNumber",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "cashdistribagentacctnumber",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "500"
     }
   },
@@ -29,15 +20,6 @@
     "metadata": {
       "description": "Free format Payment reference to assist with reconciliation of distributions.",
       "display": "CashDistribPayRef",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "cashdistribpayref",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "501"
     }
   },
@@ -50,15 +32,6 @@
     "metadata": {
       "description": "Name of account at agent bank for distributions.",
       "display": "CashDistribAgentAcctName",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "cashdistribagentacctname",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "502"
     }
   },
@@ -72,16 +45,6 @@
     "metadata": {
       "description": "The start date of the card as specified on the card being used for payment.",
       "display": "CardStartDate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "cardstartdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "503"
     }
   },
@@ -95,16 +58,6 @@
     "metadata": {
       "description": "The date written on a cheque or date payment should be submitted to the relevant clearing system.",
       "display": "PaymentDate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "paymentdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "504"
     }
   },
@@ -117,15 +70,6 @@
     "metadata": {
       "description": "Identifies sender of a payment, e.g. the payment remitter or a customer reference number.",
       "display": "PaymentRemitterID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "paymentremitterid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "505"
     }
   },
@@ -166,15 +110,6 @@
           "since": "4.3",
           "sort": 2,
           "doc": "Rejected"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registstatus",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "506"
@@ -324,15 +259,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registrejreasoncode",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "507"
     }
   },
@@ -345,15 +271,6 @@
     "metadata": {
       "description": "Reference identifier for the RegistID(513) with Cancel and Replace RegistTransType(514) transaction types.",
       "display": "RegistRefID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "508"
     }
   },
@@ -367,22 +284,6 @@
       "description": "Set of Registration name and address details, possibly including phone, fax etc.",
       "display": "RegistDtls",
       "fix:aliases": "registdetls",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registdetls",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "registdtls",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "509"
     }
   },
@@ -395,15 +296,6 @@
     "metadata": {
       "description": "The number of Distribution Instructions on a Registration Instructions message",
       "display": "NoDistribInsts",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nodistribinsts",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "510"
     }
   },
@@ -416,15 +308,6 @@
     "metadata": {
       "description": "Email address relating to Registration name and address details",
       "display": "RegistEmail",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registemail",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "511"
     }
   },
@@ -437,15 +320,6 @@
     "metadata": {
       "description": "The amount of each distribution to go to this beneficiary, expressed as a percentage",
       "display": "DistribPercentage",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "distribpercentage",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "512"
     }
   },
@@ -458,15 +332,6 @@
     "metadata": {
       "description": "Unique identifier of the registration details as assigned by institution or intermediary.",
       "display": "RegistID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "513"
     }
   },
@@ -502,15 +367,6 @@
           "doc": "Cancel"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "registtranstype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "514"
     }
   },
@@ -525,17 +381,6 @@
     "metadata": {
       "description": "For CIV - a date and time stamp to indicate the fund valuation point with respect to which a order was priced by the fund manager.",
       "display": "ExecValuationPoint",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "execvaluationpoint",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "515"
     }
   },
@@ -548,15 +393,6 @@
     "metadata": {
       "description": "For CIV specifies the approximate order quantity desired. For a CIV Sale it specifies percentage of investor's total holding to be sold. For a CIV switch/exchange it specifies percentage of investor's cash realised from sales to be re-invested. The executing broker, intermediary or fund manager is responsible for converting and calculating OrderQty (38) in shares/units for subsequent messages.",
       "display": "OrderPercent",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "orderpercent",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "516"
     }
   },
@@ -592,15 +428,6 @@
           "doc": "Tenants in Common"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "ownershiptype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "517"
     }
   },
@@ -613,15 +440,6 @@
     "metadata": {
       "description": "The number of Contract Amount details on an Execution Report message",
       "display": "NoContAmts",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nocontamts",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "518"
     }
   },
@@ -741,15 +559,6 @@
           "doc": "Exit Charge Amount"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "contamttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "519"
     }
   },
@@ -762,15 +571,6 @@
     "metadata": {
       "description": "Value of Contract Amount, e.g. a financial amount or percentage as indicated by ContAmtType (519).",
       "display": "ContAmtValue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "contamtvalue",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "520"
     }
   },
@@ -783,15 +583,6 @@
     "metadata": {
       "description": "Specifies currency for the Contract amount if different from the Deal Currency - see \"Appendix 6-A; Valid Currency Codes\".",
       "display": "ContAmtCurr",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "contamtcurr",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "521"
     }
   },
@@ -969,15 +760,6 @@
           "doc": "Fiduciaries"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "ownertype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "522"
     }
   },
@@ -990,15 +772,6 @@
     "metadata": {
       "description": "Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.",
       "display": "PartySubID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "partysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "523"
     }
   },
@@ -1011,15 +784,6 @@
     "metadata": {
       "description": "PartyID value within a nested repeating group.",
       "display": "NestedPartyID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nestedpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "524"
     }
   },
@@ -1292,15 +1056,6 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nestedpartyidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "525"
     }
   },
@@ -1313,15 +1068,6 @@
     "metadata": {
       "description": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system.",
       "display": "SecondaryClOrdID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "secondaryclordid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "526"
     }
   },
@@ -1334,15 +1080,6 @@
     "metadata": {
       "description": "Assigned by the party which accepts the order. Can be used to provide the ExecID (17) used by an exchange or executing system.",
       "display": "SecondaryExecID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "secondaryexecid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "527"
     }
   },
@@ -1405,15 +1142,6 @@
           "since": "4.3",
           "sort": 6,
           "doc": "Agent for Other Member"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "ordercapacity",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "528"
@@ -1562,15 +1290,6 @@
           "doc": "Normal Course Issuer Bid (NCIB)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "orderrestrictions",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "529"
     }
   },
@@ -1672,15 +1391,6 @@
           "ep": 85,
           "sort": 12,
           "doc": "Cancel orders for an issuer of underlying security"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "masscancelrequesttype",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "530"
@@ -1790,15 +1500,6 @@
           "ep": 85,
           "sort": 12,
           "doc": "Cancel orders for an issuer of underlying security"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "masscancelresponse",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "531"
@@ -1913,22 +1614,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "masscancelrejectreason",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0",
-          "name": "masscancelrejectreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "532"
     }
   },
@@ -1941,15 +1626,6 @@
     "metadata": {
       "description": "Total number of orders affected by either the OrderMassActionRequest(MsgType=CA) or OrderMassCancelRequest(MsgType=Q).",
       "display": "TotalAffectedOrders",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "totalaffectedorders",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "533"
     }
   },
@@ -1962,15 +1638,6 @@
     "metadata": {
       "description": "Number of affected orders in the repeating group of order ids.",
       "display": "NoAffectedOrders",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "noaffectedorders",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "534"
     }
   },
@@ -1983,15 +1650,6 @@
     "metadata": {
       "description": "OrderID(37) of an order affected by a mass cancel or mass action request.",
       "display": "AffectedOrderID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "affectedorderid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "535"
     }
   },
@@ -2004,15 +1662,6 @@
     "metadata": {
       "description": "SecondaryOrderID(198) of an order affected by a mass cancel or mass action request.",
       "display": "AffectedSecondaryOrderID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "affectedsecondaryorderid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "536"
     }
   },
@@ -2061,15 +1710,6 @@
           "ep": 126,
           "sort": 5,
           "doc": "Initially tradeable"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "quotetype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "537"
@@ -3075,15 +2715,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nestedpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "538"
     }
   },
@@ -3096,15 +2727,6 @@
     "metadata": {
       "description": "Number of NestedPartyID (524), NestedPartyIDSource (525), and NestedPartyRole (538) entries",
       "display": "NoNestedPartyIDs",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nonestedpartyids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "539"
     }
   },
@@ -3117,19 +2739,6 @@
     "metadata": {
       "description": "Total Amount of Accrued Interest for convertible bonds and fixed income",
       "display": "TotalAccruedInterestAmt",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "totalaccruedinterestamt",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "4.4",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "4.4",
@@ -3153,16 +2762,6 @@
     "metadata": {
       "description": "Date of maturity.",
       "display": "MaturityDate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "maturitydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "541"
     }
   },
@@ -3176,16 +2775,6 @@
     "metadata": {
       "description": "Underlying security's maturity date.",
       "display": "UnderlyingMaturityDate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyingmaturitydate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "542"
     }
   },
@@ -3198,15 +2787,6 @@
     "metadata": {
       "description": "Values may include BIC for the depository or custodian who maintain ownership records, the ISO country code for the location of the record, or the value \"ZZ\" to specify physical ownership of the security (e.g. stock certificate).",
       "display": "InstrRegistry",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "instrregistry",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "543"
     }
   },
@@ -3242,15 +2822,6 @@
           "doc": "Margin Close"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "cashmargin",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "544"
     }
   },
@@ -3263,15 +2834,6 @@
     "metadata": {
       "description": "PartySubID value within a nested repeating group.",
       "display": "NestedPartySubID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nestedpartysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "545"
     }
   },
@@ -3307,15 +2869,6 @@
           "doc": "Global"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "scope",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "546"
     }
   },
@@ -3344,15 +2897,6 @@
           "doc": "Client has responsibility for implicitly deleting bids or offers falling outside the MarketDepth of the request"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "mdimplicitdelete",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "547"
     }
   },
@@ -3365,15 +2909,6 @@
     "metadata": {
       "description": "Identifier for a cross order. Must be unique during a given trading day. Recommend that firms use the order date as part of the CrossID for Good Till Cancel (GT) orders.",
       "display": "CrossID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "crossid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "548"
     }
   },
@@ -3456,15 +2991,6 @@
           "doc": "Customer to customer cross"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "crosstype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "549"
     }
   },
@@ -3500,15 +3026,6 @@
           "doc": "Sell side is prioritized"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "crossprioritization",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "550"
     }
   },
@@ -3521,15 +3038,6 @@
     "metadata": {
       "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
       "display": "OrigCrossID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "origcrossid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "551"
     }
   },
@@ -3558,15 +3066,6 @@
           "doc": "Both Sides"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nosides",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "552"
     }
   },
@@ -3579,15 +3078,6 @@
     "metadata": {
       "description": "Userid or username.",
       "display": "Username",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "username",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "553"
     }
   },
@@ -3600,15 +3090,6 @@
     "metadata": {
       "description": "Password or passphrase.",
       "display": "Password",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "password",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "554"
     }
   },
@@ -3621,15 +3102,6 @@
     "metadata": {
       "description": "Number of InstrumentLeg repeating group instances.",
       "display": "NoLegs",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nolegs",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "555"
     }
   },
@@ -3642,15 +3114,6 @@
     "metadata": {
       "description": "Currency associated with a particular Leg's quantity",
       "display": "LegCurrency",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "556"
     }
   },
@@ -3664,22 +3127,6 @@
       "description": "Used to support fragmentation. Indicates total number of security types when multiple Security Type messages are used to return results.",
       "display": "TotNoSecurityTypes",
       "fix:aliases": "totalnumsecuritytypes",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "totalnumsecuritytypes",
-          "type": {
-            "type": "int32"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "totnosecuritytypes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "557"
     }
   },
@@ -3692,15 +3139,6 @@
     "metadata": {
       "description": "Number of Security Type repeating group instances.",
       "display": "NoSecurityTypes",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nosecuritytypes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "558"
     }
   },
@@ -3755,15 +3193,6 @@
           "ep": 52,
           "sort": 6,
           "doc": "MarketID or MarketID + MarketSegmentID"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "securitylistrequesttype",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "559"
@@ -3821,15 +3250,6 @@
           "doc": "Request for instrument data not supported"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "securityrequestresult",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "560"
     }
   },
@@ -3842,15 +3262,6 @@
     "metadata": {
       "description": "The trading lot size of a security",
       "display": "RoundLot",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "roundlot",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "561"
     }
   },
@@ -3863,15 +3274,6 @@
     "metadata": {
       "description": "The minimum order quantity (as expressed by TradeVolType(1786)) that can be submitted for a security.",
       "display": "MinTradeVol",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "mintradevol",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "562"
     }
   },
@@ -3904,15 +3306,6 @@
           "since": "4.4",
           "sort": 2,
           "doc": "Report by instrument legs belonging to the multileg security only (do not report status of multileg security)"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "multilegrpttypereq",
-          "type": {
-            "type": "int32"
-          }
         }
       ],
       "fix:tag": "563"
@@ -3973,15 +3366,6 @@
           "doc": "Rolled"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legpositioneffect",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "564"
     }
   },
@@ -4010,15 +3394,6 @@
           "doc": "Uncovered"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcoveredoruncovered",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "565"
     }
   },
@@ -4031,15 +3406,6 @@
     "metadata": {
       "description": "Price for leg of a multileg",
       "display": "LegPrice",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "566"
     }
   },
@@ -4068,15 +3434,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradsesstatusrejreason",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "567"
     }
   },
@@ -4089,15 +3446,6 @@
     "metadata": {
       "description": "Trade Capture Report Request ID",
       "display": "TradeRequestID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "traderequestid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "568"
     }
   },
@@ -4146,15 +3494,6 @@
           "doc": "Advisories that match criteria"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "traderequesttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "569"
     }
   },
@@ -4189,15 +3528,6 @@
           "doc": "Previously reported to counterparty or market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "previouslyreported",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "570"
     }
   },
@@ -4210,15 +3540,6 @@
     "metadata": {
       "description": "Unique identifier of trade capture report",
       "display": "TradeReportID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradereportid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "571"
     }
   },
@@ -4231,15 +3552,6 @@
     "metadata": {
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
       "display": "TradeReportRefID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradereportrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "572"
     }
   },
@@ -4280,15 +3592,6 @@
           "ep": 246,
           "sort": 3,
           "doc": "Mismatched"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "matchstatus",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "573"
@@ -4583,15 +3886,6 @@
           "doc": "Summarized match using A5 exact match criteria except quantity is summarized"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "matchtype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "574"
     }
   },
@@ -4626,19 +3920,6 @@
           "doc": "Treat as odd lot"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "oddlot",
-          "type": {
-            "type": "boolean"
-          }
-        },
-        {
-          "since": "5.0",
-          "deprecated": true
-        }
-      ],
       "fix:replacements": [
         {
           "since": "5.0",
@@ -4664,15 +3945,6 @@
     "metadata": {
       "description": "Number of clearing instructions",
       "display": "NoClearingInstructions",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "noclearinginstructions",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "576"
     }
   },
@@ -4792,15 +4064,6 @@
           "doc": "Automatic posting mode (trade posting to the position account number specified)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "clearinginstruction",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "577"
     }
   },
@@ -4813,15 +4076,6 @@
     "metadata": {
       "description": "Type of input device or system from which the trade was entered.",
       "display": "TradeInputSource",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradeinputsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "578"
     }
   },
@@ -4834,15 +4088,6 @@
     "metadata": {
       "description": "Specific device number, terminal number or station where trade was entered",
       "display": "TradeInputDevice",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "tradeinputdevice",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "579"
     }
   },
@@ -4855,15 +4100,6 @@
     "metadata": {
       "description": "Number of Date fields provided in date range",
       "display": "NoDates",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "nodates",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "580"
     }
   },
@@ -4967,15 +4203,6 @@
           "doc": "Equities specialist"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "accounttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "581"
     }
   },
@@ -5026,15 +4253,6 @@
           "doc": "Retail customer"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "custordercapacity",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "582"
     }
   },
@@ -5047,15 +4265,6 @@
     "metadata": {
       "description": "Permits order originators to tie together groups of orders in which trades resulting from orders are associated for a specific purpose, for example the calculation of average execution price for a customer or to associate lists submitted to a broker as waves of a larger program trade.",
       "display": "ClOrdLinkID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "clordlinkid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "583"
     }
   },
@@ -5068,15 +4277,6 @@
     "metadata": {
       "description": "Value assigned by issuer of Mass Status Request to uniquely identify the request",
       "display": "MassStatusReqID",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "massstatusreqid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "584"
     }
   },
@@ -5163,15 +4363,6 @@
           "doc": "Status for orders for an issuer"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "massstatusreqtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "585"
     }
   },
@@ -5186,17 +4377,6 @@
     "metadata": {
       "description": "The most recent (or current) modification TransactTime (tag 60) reported on an Execution Report for the order. The OrigOrdModTime is provided as an optional field on Order Cancel Request and Order Cancel Replace Requests to identify that the state of the order has not changed since the request was issued. The use of this approach is not recommended.",
       "display": "OrigOrdModTime",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "origordmodtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "586"
     }
   },
@@ -5298,22 +4478,6 @@
           "doc": "FX Spot Next settlement (Spot+1, aka next day)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legsettlmnttyp",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "legsettltype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "587"
     }
   },
@@ -5328,24 +4492,6 @@
       "description": "Refer to description for SettlDate[64]",
       "display": "LegSettlDate",
       "fix:aliases": "legfutsettdate",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legfutsettdate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        },
-        {
-          "since": "4.4",
-          "name": "legsettldate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "588"
     }
   },
@@ -5379,15 +4525,6 @@
           "since": "4.4",
           "sort": 3,
           "doc": "Accumulate"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "daybookinginst",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "589"
@@ -5425,15 +4562,6 @@
           "doc": "Aggregate executions for this symbol, side, and settlement date"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "bookingunit",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "590"
     }
   },
@@ -5462,15 +4590,6 @@
           "doc": "Do not pro-rata - discuss first"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "preallocmethod",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "591"
     }
   },
@@ -5483,15 +4602,6 @@
     "metadata": {
       "description": "Underlying security's CountryOfIssue.",
       "display": "UnderlyingCountryOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyingcountryofissue",
-          "type": {
-            "type": "country"
-          }
-        }
-      ],
       "fix:tag": "592"
     }
   },
@@ -5504,15 +4614,6 @@
     "metadata": {
       "description": "Underlying security's StateOrProvinceOfIssue.",
       "display": "UnderlyingStateOrProvinceOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyingstateorprovinceofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "593"
     }
   },
@@ -5525,15 +4626,6 @@
     "metadata": {
       "description": "Underlying security's LocaleOfIssue.",
       "display": "UnderlyingLocaleOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyinglocaleofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "594"
     }
   },
@@ -5546,15 +4638,6 @@
     "metadata": {
       "description": "Underlying security's InstrRegistry.",
       "display": "UnderlyingInstrRegistry",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "underlyinginstrregistry",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "595"
     }
   },
@@ -5567,15 +4650,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's CountryOfIssue.",
       "display": "LegCountryOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legcountryofissue",
-          "type": {
-            "type": "country"
-          }
-        }
-      ],
       "fix:tag": "596"
     }
   },
@@ -5588,15 +4662,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's StateOrProvinceOfIssue.",
       "display": "LegStateOrProvinceOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "legstateorprovinceofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "597"
     }
   },
@@ -5609,15 +4674,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's LocaleOfIssue.",
       "display": "LegLocaleOfIssue",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "leglocaleofissue",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "598"
     }
   },
@@ -5630,15 +4686,6 @@
     "metadata": {
       "description": "Multileg instrument's individual leg security's InstrRegistry.",
       "display": "LegInstrRegistry",
-      "fix:lineage": [
-        {
-          "since": "4.3",
-          "name": "leginstrregistry",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "599"
     }
   }

@@ -46,15 +46,6 @@
           "doc": "On Order Entry or order modification entry"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggertype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1100"
     }
   },
@@ -90,15 +81,6 @@
           "doc": "Cancel"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggeraction",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1101"
     }
   },
@@ -111,15 +93,6 @@
     "metadata": {
       "description": "The price at which the trigger should hit.",
       "display": "TriggerPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggerprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1102"
     }
   },
@@ -132,15 +105,6 @@
     "metadata": {
       "description": "Defines the common, 'human understood' representation of the security whose prices will be tracked by the trigger logic.",
       "display": "TriggerSymbol",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggersymbol",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1103"
     }
   },
@@ -153,15 +117,6 @@
     "metadata": {
       "description": "Defines the identity of the security whose prices will be tracked by the trigger logic.",
       "display": "TriggerSecurityID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggersecurityid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1104"
     }
   },
@@ -420,15 +375,6 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggersecurityidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1105"
     }
   },
@@ -441,15 +387,6 @@
     "metadata": {
       "description": "Defines the security description of the security whose prices will be tracked by the trigger logic.",
       "display": "TriggerSecurityDesc",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggersecuritydesc",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1106"
     }
   },
@@ -506,15 +443,6 @@
           "doc": "Best Mid"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggerpricetype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1107"
     }
   },
@@ -557,15 +485,6 @@
           "doc": "Global (Across all markets)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggerpricetypescope",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1108"
     }
   },
@@ -594,15 +513,6 @@
           "doc": "Trigger if the price of the specified type goes UP to or through the specified Trigger Price."
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggerpricedirection",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1109"
     }
   },
@@ -615,15 +525,6 @@
     "metadata": {
       "description": "The Price that the order should have after the trigger has hit. Could be applicable for any trigger type, but must be specified for Trigger Type 1.",
       "display": "TriggerNewPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggernewprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1110"
     }
   },
@@ -654,15 +555,6 @@
           "doc": "Limit"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggerordertype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1111"
     }
   },
@@ -675,15 +567,6 @@
     "metadata": {
       "description": "The Quantity the order should have after the trigger has hit.",
       "display": "TriggerNewQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggernewqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1112"
     }
   },
@@ -752,15 +635,6 @@
           "ep": 190,
           "sort": 7,
           "doc": "Holiday"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggertradingsessionid",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1113"
@@ -895,15 +769,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "triggertradingsessionsubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1114"
     }
   },
@@ -989,15 +854,6 @@
           "doc": "Internal Cross Order"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "ordercategory",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1115"
     }
   },
@@ -1010,15 +866,6 @@
     "metadata": {
       "description": "Number of RootPartyID (1117), RootPartyIDSource (1118), and RootPartyRole (1119) entries",
       "display": "NoRootPartyIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "norootpartyids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1116"
     }
   },
@@ -1031,15 +878,6 @@
     "metadata": {
       "description": "PartyID value within a root parties component. Same values as PartyID (448)",
       "display": "RootPartyID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rootpartyid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1117"
     }
   },
@@ -1310,15 +1148,6 @@
           "sort": 19,
           "group": "For all PartyRoles",
           "doc": "Korea Short Selling Registration Number"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rootpartyidsource",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1118"
@@ -2324,15 +2153,6 @@
           "doc": "Originating Market"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rootpartyrole",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1119"
     }
   },
@@ -2345,15 +2165,6 @@
     "metadata": {
       "description": "Number of RootPartySubID (1121) and RootPartySubIDType (1122) entries",
       "display": "NoRootPartySubIDs",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "norootpartysubids",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1120"
     }
   },
@@ -2366,15 +2177,6 @@
     "metadata": {
       "description": "PartySubID value within a root parties component. Same values as PartySubID (523)",
       "display": "RootPartySubID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rootpartysubid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1121"
     }
   },
@@ -3072,15 +2874,6 @@
           "doc": "Contact name"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rootpartysubidtype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1122"
     }
   },
@@ -3160,15 +2953,6 @@
           "ep": 227,
           "sort": 8,
           "doc": "One-party report for auto-match"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tradehandlinginstr",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1123"
@@ -3252,15 +3036,6 @@
           "doc": "One-party report for auto-match"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "origtradehandlinginstr",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1124"
     }
   },
@@ -3274,16 +3049,6 @@
     "metadata": {
       "description": "Used to preserve original trade date when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "display": "OrigTradeDate",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "origtradedate",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond"
-          }
-        }
-      ],
       "fix:tag": "1125"
     }
   },
@@ -3296,15 +3061,6 @@
     "metadata": {
       "description": "Used to preserve original trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "display": "OrigTradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "origtradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1126"
     }
   },
@@ -3317,15 +3073,6 @@
     "metadata": {
       "description": "Used to preserve original secondary trade id when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "display": "OrigSecondaryTradeID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "origsecondarytradeid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1127"
     }
   },
@@ -3417,15 +3164,6 @@
           "doc": "FIX50SP2"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "applverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1128"
     }
   },
@@ -3438,15 +3176,6 @@
     "metadata": {
       "description": "Specifies a custom extension to a message being applied at the message level. Enumerated field",
       "display": "CstmApplVerID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "cstmapplverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1129"
     }
   },
@@ -3538,15 +3267,6 @@
           "doc": "FIX50SP2"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "refapplverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1130"
     }
   },
@@ -3559,15 +3279,6 @@
     "metadata": {
       "description": "Specifies a custom extension to a message being applied at the session level.",
       "display": "RefCstmApplVerID",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "refcstmapplverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1131"
     }
   },
@@ -3582,17 +3293,6 @@
     "metadata": {
       "description": "Transact time in the local date-time stamp with a TZ offset to UTC identified",
       "display": "TZTransactTime",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "tztransacttime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1132"
     }
   },
@@ -3642,15 +3342,6 @@
           "doc": "MIC (ISO 10383 - Market Identifier Code)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "exdestinationidsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1133"
     }
   },
@@ -3663,15 +3354,6 @@
     "metadata": {
       "description": "Indicates that the reported price that is different from the market price. The price difference should be stated by using field 828 TrdType and, if required, field 829 TrdSubType",
       "display": "ReportedPxDiff",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "reportedpxdiff",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1134"
     }
   },
@@ -3684,15 +3366,6 @@
     "metadata": {
       "description": "Indicates the system or medium on which the report has been published",
       "display": "RptSys",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "rptsys",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1135"
     }
   },
@@ -3705,15 +3378,6 @@
     "metadata": {
       "description": "ClearingFeeIndicator(635) for Allocation, see ClearingFeeIndicator(635) for permitted values.",
       "display": "AllocClearingFeeIndicator",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "allocclearingfeeindicator",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1136"
     }
   },
@@ -3805,15 +3469,6 @@
           "doc": "FIX50SP2"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "defaultapplverid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1137"
     }
   },
@@ -3826,15 +3481,6 @@
     "metadata": {
       "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
       "display": "DisplayQty",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "displayqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1138"
     }
   },
@@ -3847,15 +3493,6 @@
     "metadata": {
       "description": "Free format text string related to exchange.",
       "display": "ExchangeSpecialInstructions",
-      "fix:lineage": [
-        {
-          "since": "4.4",
-          "name": "exchangespecialinstructions",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1139"
     }
   },
@@ -3868,15 +3505,6 @@
     "metadata": {
       "description": "The maximum order quantity (as expressed by TradeVolType(1786)) that can be submitted for a security.",
       "display": "MaxTradeVol",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maxtradevol",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1140"
     }
   },
@@ -3889,15 +3517,6 @@
     "metadata": {
       "description": "The number of feed types and corresponding book depths associated with a security",
       "display": "NoMDFeedTypes",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nomdfeedtypes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1141"
     }
   },
@@ -3910,15 +3529,6 @@
     "metadata": {
       "description": "The types of algorithm used to match orders in a specific security. Possilbe value types are FIFO, Allocation, Pro-rata, Lead Market Maker, Currency Calender.",
       "display": "MatchAlgorithm",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "matchalgorithm",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1142"
     }
   },
@@ -3931,15 +3541,6 @@
     "metadata": {
       "description": "The maximum price variation of an execution from one event to the next for a given security. Expressed in absolute price terms.",
       "display": "MaxPriceVariation",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "maxpricevariation",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1143"
     }
   },
@@ -3986,15 +3587,6 @@
           "doc": "Both Implied-in and Implied-out"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "impliedmarketindicator",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1144"
     }
   },
@@ -4009,17 +3601,6 @@
     "metadata": {
       "description": "Specific time of event. To be used in combination with EventDate [866]",
       "display": "EventTime",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "eventtime",
-          "type": {
-            "type": "datetime64",
-            "unit": "nanosecond",
-            "timezone": "UTC"
-          }
-        }
-      ],
       "fix:tag": "1145"
     }
   },
@@ -4033,15 +3614,6 @@
       "description": "Minimum price increment amount associated with MinPriceIncrement(969). For listed derivatives, the value can be calculated by multiplying MinPriceIncrement(969) with ContractMultiplier(231).",
       "display": "MinPriceIncrementAmount",
       "fix:derivation": "minpriceincrement * contractmultiplier",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "minpriceincrementamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1146"
     }
   },
@@ -4054,15 +3626,6 @@
     "metadata": {
       "description": "Used to indicate the quantity of the underlying commodity unit of measure on which the contract is based, such as, 2500 lbs of lean cattle, 1000 barrels of crude oil, 1000 bushels of corn, etc. UnitOfMeasureQty is required for UnitOfMeasure(996) Variable Quantity UOMs enumerations. Refer to the definition of UnitOfMeasure(996) for more information on the use of UnitOfMeasureQty.",
       "display": "UnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "unitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1147"
     }
   },
@@ -4075,15 +3638,6 @@
     "metadata": {
       "description": "Allowable low limit price for the trading day. A key parameter in validating order price. Used as the lower band for validating order prices. Orders submitted with prices below the lower limit will be rejected",
       "display": "LowLimitPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "lowlimitprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1148"
     }
   },
@@ -4096,15 +3650,6 @@
     "metadata": {
       "description": "Allowable high limit price for the trading day. A key parameter in validating order price. Used as the upper band for validating order prices. Orders submitted with prices above the upper limit will be rejected",
       "display": "HighLimitPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "highlimitprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1149"
     }
   },
@@ -4117,15 +3662,6 @@
     "metadata": {
       "description": "Reference price for the current trading price range usually representing the mid price between the HighLimitPrice and LowLimitPrice. The value may be the settlement price or closing price of the prior trading day.",
       "display": "TradingReferencePrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "tradingreferenceprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1150"
     }
   },
@@ -4138,15 +3674,6 @@
     "metadata": {
       "description": "An exchange specific name assigned to a group of related securities which may be concurrently affected by market events and actions.",
       "display": "SecurityGroup",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "securitygroup",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1151"
     }
   },
@@ -4159,15 +3686,6 @@
     "metadata": {
       "description": "Allow sequencing of Legs for a Strategy to be captured",
       "display": "LegNumber",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "legnumber",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1152"
     }
   },
@@ -4180,15 +3698,6 @@
     "metadata": {
       "description": "Settlement cycle in which the settlement obligation was generated",
       "display": "SettlementCycleNo",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlementcycleno",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1153"
     }
   },
@@ -4201,15 +3710,6 @@
     "metadata": {
       "description": "Used to identify the trading currency on the Trade Capture Report Side",
       "display": "SideCurrency",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "sidecurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "1154"
     }
   },
@@ -4222,15 +3722,6 @@
     "metadata": {
       "description": "Used to identify the settlement currency on the Trade Capture Report Side",
       "display": "SideSettlCurrency",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "sidesettlcurrency",
-          "type": {
-            "type": "currency"
-          }
-        }
-      ],
       "fix:tag": "1155"
     }
   },
@@ -4243,15 +3734,6 @@
     "metadata": {
       "description": "The extension pack number associated with an application message.",
       "display": "ApplExtID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applextid",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1156"
     }
   },
@@ -4264,15 +3746,6 @@
     "metadata": {
       "description": "Net flow of Currency 1",
       "display": "CcyAmt",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "ccyamt",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1157"
     }
   },
@@ -4285,15 +3758,6 @@
     "metadata": {
       "description": "Used to group Each Settlement Party",
       "display": "NoSettlDetails",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nosettldetails",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1158"
     }
   },
@@ -4324,15 +3788,6 @@
           "doc": "Final"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligmode",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1159"
     }
   },
@@ -4345,15 +3800,6 @@
     "metadata": {
       "description": "Message identifier for Settlement Obligation Report",
       "display": "SettlObligMsgID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligmsgid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1160"
     }
   },
@@ -4366,15 +3812,6 @@
     "metadata": {
       "description": "Unique ID for this settlement instruction.",
       "display": "SettlObligID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1161"
     }
   },
@@ -4421,15 +3858,6 @@
           "doc": "Restate"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligtranstype",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1162"
     }
   },
@@ -4442,15 +3870,6 @@
     "metadata": {
       "description": "Required where SettlInstTransType is Cancel or Replace",
       "display": "SettlObligRefID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligrefid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1163"
     }
   },
@@ -4505,15 +3924,6 @@
           "doc": "Seller's settlement instructions"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlobligsource",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1164"
     }
   },
@@ -4526,15 +3936,6 @@
     "metadata": {
       "description": "Number of settlement obligations",
       "display": "NoSettlOblig",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nosettloblig",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1165"
     }
   },
@@ -4547,15 +3948,6 @@
     "metadata": {
       "description": "Unique identifier for a quote message.",
       "display": "QuoteMsgID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "quotemsgid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1166"
     }
   },
@@ -4642,15 +4034,6 @@
           "doc": "Expired"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "quoteentrystatus",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1167"
     }
   },
@@ -4663,15 +4046,6 @@
     "metadata": {
       "description": "Specifies the number of canceled quotes",
       "display": "TotNoCxldQuotes",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "totnocxldquotes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1168"
     }
   },
@@ -4684,15 +4058,6 @@
     "metadata": {
       "description": "Specifies the number of accepted quotes",
       "display": "TotNoAccQuotes",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "totnoaccquotes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1169"
     }
   },
@@ -4705,15 +4070,6 @@
     "metadata": {
       "description": "Specifies the number of rejected quotes",
       "display": "TotNoRejQuotes",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "totnorejquotes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1170"
     }
   },
@@ -4748,15 +4104,6 @@
             "Yes"
           ],
           "doc": "Private Quote"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "privatequote",
-          "type": {
-            "type": "boolean"
-          }
         }
       ],
       "fix:tag": "1171"
@@ -4805,15 +4152,6 @@
           "doc": "Primary Market Maker(s)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "respondenttype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1172"
     }
   },
@@ -4826,15 +4164,6 @@
     "metadata": {
       "description": "Describes a class of sub book, e.g. for the separation of various lot types. The Sub Book Type indicates that the following Market Data Entries belong to a non-integrated Sub Book. Whenever provided the Sub Book must be used together with MDPriceLevel and MDEntryPositionNo in order to sort the order properly.",
       "display": "MDSubBookType",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "mdsubbooktype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1173"
     }
   },
@@ -4934,15 +4263,6 @@
           "doc": "Corporate action"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "securitytradingevent",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1174"
     }
   },
@@ -4955,15 +4275,6 @@
     "metadata": {
       "description": "Number of statistics indicator repeating group entries",
       "display": "NoStatsIndicators",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "nostatsindicators",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1175"
     }
   },
@@ -5010,15 +4321,6 @@
           "doc": "Turnover (Price * Qty)"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "statstype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1176"
     }
   },
@@ -5031,15 +4333,6 @@
     "metadata": {
       "description": "The number of secondary sizes specifies in this entry",
       "display": "NoOfSecSizes",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "noofsecsizes",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1177"
     }
   },
@@ -5078,15 +4371,6 @@
           "doc": "Do not trade through"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "mdsecsizetype",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1178"
     }
   },
@@ -5099,15 +4383,6 @@
     "metadata": {
       "description": "A part of the MDEntrySize(271) that represents secondary interest as specified by MDSecSizeType(1178).",
       "display": "MDSecSize",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "mdsecsize",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1179"
     }
   },
@@ -5120,15 +4395,6 @@
     "metadata": {
       "description": "Identifies the application with which a message is associated. Used only if application sequencing is in effect.",
       "display": "ApplID",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applid",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1180"
     }
   },
@@ -5141,15 +4407,6 @@
     "metadata": {
       "description": "Data sequence number to be used when FIX session is not in effect",
       "display": "ApplSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1181"
     }
   },
@@ -5162,15 +4419,6 @@
     "metadata": {
       "description": "Beginning range of application sequence numbers",
       "display": "ApplBegSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applbegseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1182"
     }
   },
@@ -5183,15 +4431,6 @@
     "metadata": {
       "description": "Ending range of application sequence numbers",
       "display": "ApplEndSeqNum",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "applendseqnum",
-          "type": {
-            "type": "int64"
-          }
-        }
-      ],
       "fix:tag": "1183"
     }
   },
@@ -5204,15 +4443,6 @@
     "metadata": {
       "description": "The length of the SecurityXML(1185) data block.",
       "display": "SecurityXMLLen",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "securityxmllen",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1184"
     }
   },
@@ -5225,15 +4455,6 @@
     "metadata": {
       "description": "XML definition for the security.",
       "display": "SecurityXML",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "securityxml",
-          "type": {
-            "type": "binary"
-          }
-        }
-      ],
       "fix:tag": "1185"
     }
   },
@@ -5246,15 +4467,6 @@
     "metadata": {
       "description": "The schema used to validate the contents of SecurityXML(1185).",
       "display": "SecurityXMLSchema",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "securityxmlschema",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1186"
     }
   },
@@ -5267,15 +4479,6 @@
     "metadata": {
       "description": "Set by the sender to tell the receiver to perform an immediate refresh of the book due to disruptions in the accompanying real-time feed",
       "display": "RefreshIndicator",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "refreshindicator",
-          "type": {
-            "type": "boolean"
-          }
-        }
-      ],
       "fix:tag": "1187"
     }
   },
@@ -5288,15 +4491,6 @@
     "metadata": {
       "description": "Annualized volatility for option model calculations",
       "display": "Volatility",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "volatility",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1188"
     }
   },
@@ -5309,15 +4503,6 @@
     "metadata": {
       "description": "Time to expiration in years calculated as the number of days remaining to expiration divided by 365 days per year.",
       "display": "TimeToExpiration",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "timetoexpiration",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1189"
     }
   },
@@ -5330,15 +4515,6 @@
     "metadata": {
       "description": "Interest rate. Usually some form of short term rate.",
       "display": "RiskFreeRate",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "riskfreerate",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1190"
     }
   },
@@ -6063,15 +5239,6 @@
           "doc": "Yard"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "priceunitofmeasure",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1191"
     }
   },
@@ -6084,15 +5251,6 @@
     "metadata": {
       "description": "Used to express the UOM Quantity of the price if different from the contract. In futures, this can be different for physically delivered products in which price is quoted in a unit size different from the contract, i.e. a Cattle Future contract has a UOMQty of 40,000 and a PriceUOMQty of 100.",
       "display": "PriceUnitOfMeasureQty",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "priceunitofmeasureqty",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1192"
     }
   },
@@ -6129,15 +5287,6 @@
           "ep": 52,
           "sort": 2,
           "doc": "Physical settlement required"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "settlmethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1193"
@@ -6186,15 +5335,6 @@
           "doc": "Other"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "exercisestyle",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1194"
     }
   },
@@ -6208,22 +5348,6 @@
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
       "display": "OptPayoutAmount",
       "fix:aliases": "optpayamount",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "optpayamount",
-          "type": {
-            "type": "float64"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "optpayoutamount",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1195"
     }
   },
@@ -6268,15 +5392,6 @@
           "ep": 52,
           "sort": 1,
           "doc": "Standard, money per unit of a physical"
-        }
-      ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "pricequotemethod",
-          "type": {
-            "type": "string"
-          }
         }
       ],
       "fix:tag": "1196"
@@ -6334,22 +5449,6 @@
           "doc": "futures style with an attached cash adjustment"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "futuresvaluationmethod",
-          "type": {
-            "type": "string"
-          }
-        },
-        {
-          "since": "5.0.2",
-          "name": "valuationmethod",
-          "type": {
-            "type": "string"
-          }
-        }
-      ],
       "fix:tag": "1197"
     }
   },
@@ -6380,15 +5479,6 @@
           "doc": "user requested"
         }
       ],
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "listmethod",
-          "type": {
-            "type": "int32"
-          }
-        }
-      ],
       "fix:tag": "1198"
     }
   },
@@ -6401,15 +5491,6 @@
     "metadata": {
       "description": "Used to express the ceiling price of a capped call",
       "display": "CapPrice",
-      "fix:lineage": [
-        {
-          "since": "5.0",
-          "name": "capprice",
-          "type": {
-            "type": "float64"
-          }
-        }
-      ],
       "fix:tag": "1199"
     }
   }
