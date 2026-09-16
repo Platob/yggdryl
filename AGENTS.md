@@ -5,11 +5,30 @@ Node (`node/`) - and the `ygg` CLI (`cli/`). Rust owns `DataType`, `Field`,
 `Scalar`, identifiers, I/O, codecs, shared enums; a binding redirects into it and
 implements nothing of its own.
 
-One direction, every gate blocking:
+One direction, each layer settled before the next opens:
 
-**Rust core -> Gate 1 -> Python -> Gate 2 -> Node -> Gate 3 -> docs -> Gate 4.**
+**Rust core -> Python -> Node -> docs.**
 
-Never open the next stage, or report done, over a red or unrun gate. Report exact
+Two speeds of checking, and the fast one is the instruction:
+
+- **Smoke while you build.** After every edit that changes behavior, run the
+  smallest command that *executes* what was just written - one target, one
+  filter, debug build, default features. Warm, that is under a second, and a
+  defect it catches costs one edit; the same defect found after the bindings and
+  the pages are written costs four, and a design flaw it was hiding costs the
+  branch. [Smoke loop](#smoke-loop) is normative, and the rest of this file
+  assumes it.
+- **CI proves the change.** The exhaustive matrix - two feature lanes, two MSRV
+  toolchains, seven exchange jobs against outside implementations, both pyarrow
+  legs, a JVM, every documentation example in three languages - is
+  `.github/workflows/ci.yml`'s work, never a local rehearsal of it. Push the
+  branch and read the run. §2 says what each job proves, what CI never runs, and
+  what to do with a red one.
+
+A layer opens when the one below it smokes clean and its contract is settled,
+not when a local sweep has rehearsed CI. Done means: smoke clean, pushed, CI
+read and green, and the local-only checks in §2 run. Never report done over an
+unrun smoke check, an unpushed branch, or a red or unread CI run. Report exact
 results and exact skipped checks.
 
 ## Workflow
@@ -20,19 +39,20 @@ results and exact skipped checks.
    schema, no second dispatcher - and the [Patterns](#patterns) the core already
    has for equivalences, the handle stack, row accessors, how outside data
    becomes a resolved type, and what is zero copy.
-3. **Implement in Rust**: behavior, edges, errors, `rust/tests/`,
-   `rust/benchmarks/`, rustdoc examples, both directions of any exchange format.
-   Delete what it replaces in the same commit.
-4. **Gate 1** green and the core contract settled before a binding exists.
-5. **Python** (§3): redirects, parity tests, boundary benchmarks -> **Gate 2**.
-6. **Node** (§4): the same -> **Gate 3**.
-7. **Docs** (§5): every layer touched, examples in all three languages ->
-   **Gate 4**.
-8. **Handoff** (§5): sweeps, inventories, cleanup, report.
+3. **Implement in Rust, smoking each step**: behavior, edges, errors,
+   `rust/tests/`, `rust/benchmarks/`, rustdoc examples, both directions of any
+   exchange format. Delete what it replaces in the same commit. The narrow test
+   runs before the next edit, never after the layer.
+4. **Settle the core** - smoke clean, cost pinned, contract decided - before a
+   binding exists. Never pin an unsettled design by writing a binding first.
+5. **Python** (§3): redirects, parity tests, boundary benchmarks.
+6. **Node** (§4): the same.
+7. **Docs** (§5): every layer touched, examples in all three languages.
+8. **Push and read CI** (§2), then **handoff** (§5): sweeps, inventories,
+   local-only checks, cleanup, report.
 
 Rust-only is complete work when the core is the requested scope; a missing
-binding is documented as Rust-only. Never pin an unsettled design by writing a
-binding first.
+binding is documented as Rust-only.
 
 ### Common changes, in order
 
@@ -48,6 +68,58 @@ binding first.
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
+
+## Smoke loop
+
+A smoke check is the smallest command that *executes* what was just written: one
+target, one filter, debug build, default features. It is not a reduced gate and
+it proves nothing about the change as a whole - it is the feedback that keeps a
+defect one edit away from its cause, and it is what makes §2 a formality instead
+of a discovery. Run the narrowest loop that can fail, and widen only when it
+passes.
+
+| Loop | Command | Answers |
+| --- | --- | --- |
+| it builds | `cargo check -p yggdryl --all-targets` | types and borrows, and every test and benchmark still compiling against the changed signature |
+| it behaves | `cargo test -p yggdryl --test <theme> <filter>` | the `rust/tests/<theme>.rs` suite mirroring the `src/` subtree touched |
+| a private pin holds | `cargo test -p yggdryl --lib <module>::` | the `#[cfg(test)]` module beside code no integration test can reach |
+| the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
+| it still costs what it claims | `cargo test -p yggdryl --test iobase_calls <filter>` / `--test allocations` | the pinned `IOBase` call counts and allocation claims for that surface |
+| it got faster or slower | `cargo bench -p yggdryl --bench <name> -- <filter> --quick` | direction only; a number a page states comes from the release run |
+| a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
+| the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
+| the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
+| a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
+
+The measured costs that shape the loop: an already-built theme suite is under a
+second (`--test types` is 603 tests in 0.45s), the first build of a target is
+about a minute and a half, re-checking the crate after an edit is about thirty
+seconds, `--all-targets` costs roughly ten seconds more than `--lib` and is
+worth it because it catches a test or benchmark left behind by a changed
+signature, and `--test iobase_calls` unfiltered is half a minute - so filter it
+to the surface touched.
+
+Three habits are what make the loop pay:
+
+- **Smoke the refusal first.** Write the refusal, the edge, or the pinned count
+  before the happy path and run it while it can still fail. A check that has
+  never been red has never been a check: `rust/tests/interop/` shipped reading
+  tests that printed `SKIPPED`, reported `ok`, and had never once run under CI
+  until a job existed to write the input they read.
+- **Read the cost, not just the color.** `iobase_calls`, `allocations`, and a
+  `--quick` bench are the fast way to see a per-row parse, a re-open, a stray
+  clone, or a materialized stream while the change is still small enough to
+  restructure. A count that moved is a design answer, not a number to re-pin -
+  §1's cost rules say which direction it was allowed to move.
+- **Widen on a signal, not on a schedule.** The gated features, the whole theme,
+  the other binding, the docs pass: each earns its turn by the narrower one
+  passing. Rehearsing CI locally costs tens of minutes and proves what the push
+  proves in parallel for free.
+
+`cargo test --all-targets` executes every Criterion target at its smoke corpus,
+because `benchmarks/bench_profile.rs::corpus` selects small fixtures in a debug
+build. Benchmarks therefore compile and run in the ordinary loop, and only
+`cargo bench` measures.
 
 ## Always
 
@@ -109,7 +181,7 @@ typed and called through its signature field, opaque to pushdown.
 blocker, or enables the next action; each fact once; outcome first (state,
 evidence, next action). No greeting, praise, throat-clearing, repeated context,
 narrated tool use, reassurance, sign-off, restated request. Progress at start,
-material change, blocker, gate result. Handoff keys: `Goal`, `Invariants`,
+material change, blocker, check or CI result. Handoff keys: `Goal`, `Invariants`,
 `State`, `Checks` (command + exact result), `Blockers`, `Next` (exact command);
 omit empty, resolved, stale. Brevity never drops a contract, safety boundary,
 error semantic, edge case, verification result, or material uncertainty.
@@ -1014,63 +1086,92 @@ surface; these bind a change to `text/`.
   offsets, dictionary reachability vary per batch; an exact cast returns the
   caller's own batch.
 
-# 2. Gate 1 - Rust validation
+# 2. Validation - smoke locally, prove in CI
 
-Blocking; run from the repository root. Nothing below starts until it is green.
+Local work is the [smoke loop](#smoke-loop). Proof is `.github/workflows/ci.yml`
+on the pushed branch, plus `docs.yml` for the site. Do not rehearse the matrix
+locally: two feature lanes, two MSRV toolchains, seven exchange jobs, a JVM,
+both pyarrow legs, and every documentation example in three languages cost tens
+of minutes on one machine and run in parallel there for nothing.
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --locked -p yggdryl --all-targets --no-deps -- -D warnings
-cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings
-cargo test --locked -p yggdryl --all-targets                            # default features
-cargo test --locked -p yggdryl --all-targets --features "parquet iceberg"
-cargo test --locked -p yggdryl --doc                                    # rustdoc examples
-RUSTDOCFLAGS="-D warnings" cargo doc --locked -p yggdryl --no-deps
-cargo check --locked -p yggdryl --profile bench --benches
-```
+## Before you push
 
-MSRV, and the feature-off builds a schema-only consumer gets:
+Five commands, all warm from the loop, that catch most of what CI would reject:
 
 ```bash
-cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
-cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
-cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features object --lib
-cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
+cargo fmt --all                                            # the formatter, not the check
+cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets                        # default features; benches at smoke corpus
+cargo test -p yggdryl --doc                                # rustdoc examples, the pages' examples
+git status --short                                         # generated files and inventories committed
 ```
 
-Cost-model and allocation claims are assertions, not arguments - every derived
-`IOBase` surface touched re-runs its pinned count:
+Then the pre-push block of each layer the change actually touched - §3 for
+Python, §4 for Node, §5 for docs - and nothing at all for a layer it did not.
+
+A file that is generated and was not regenerated is the cheapest CI failure to
+prevent and the most common one: `rust/src/charset/tables.rs`, `node/index.js`,
+`node/index.d.ts`, the manifests under `docs/assets/`, and the hand-maintained
+`.api-inventory.txt` / `.api-bindings.txt`, which nothing checks at all.
+
+## What CI proves
+
+Read this instead of running it. CI passes `--locked` to every cargo and
+maturin command, so a `Cargo.lock` that would have to move is a failure there
+and not a silent update.
+
+| Job | Proves | The one command that reproduces it |
+| --- | --- | --- |
+| Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
+| Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features object --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
+| Iceberg Rust 1.94 | the official Iceberg boundary at its own, later MSRV | `cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg` |
+| S3 / Azure / Google exchange | the object stores against MinIO with boto3, Azurite with azure-storage-blob, fake-gcs-server with google-cloud-storage - signatures and dialects against implementations that answer 403 | `python scripts/check_object_interop.py`, `check_azure_interop.py`, `check_gcs_interop.py`; each fetches its own server |
+| ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
+| PyIceberg exchange | v1, v2, and v3 tables against PyIceberg | `python scripts/check_iceberg_interop.py` |
+| Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
+| Python binding wheel | `stage_cli.py`, the maturin wheel, and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3 |
+| Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
+| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
+| Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
+| `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
+
+## What CI never runs
+
+These have no job, so a push cannot find them. They belong to the change that
+makes them stale, and a skipped one is reported as skipped:
 
 ```bash
-cargo test --locked -p yggdryl --test iobase_calls --test allocations
+python scripts/generate_charset_tables.py --check   # rust/src/charset/tables.rs drift
+python scripts/check_charset_interop.py             # every code page against Python's codecs
 ```
-
-Generated tables are checked for drift rather than trusted:
-
-```bash
-python scripts/generate_charset_tables.py --check
-```
-
-Exchange formats, both directions, against outside implementations; a skipped
-half is a failure, not a pass:
-
-```bash
-python scripts/check_charset_interop.py    # Python codecs, every code page
-python scripts/check_zip_interop.py       # Python zipfile
-python scripts/check_avro_interop.py      # fastavro, plus the apache-avro probe
-python scripts/check_object_interop.py        # MinIO + boto3
-python scripts/check_iceberg_interop.py   # PyIceberg, v1/v2/v3 tables
-```
-
-Benchmarks for every touched surface, release build, numbers regenerated:
 
 ```bash
 cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
+npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>
+python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
 ```
+
+CI compiles the benchmark targets and executes them at smoke corpus; it never
+measures. A Performance table on a page is regenerated by the release run above,
+on the machine that table names, or it is not changed at all.
+`scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries and
+belongs to a FIX data change. `.api-inventory.txt` and `.api-bindings.txt` are
+hand-maintained.
+
+## A red run
+
+Read the failing job's log before touching anything: the matrix names the lane,
+the feature set, the toolchain, and the interpreter, and a failure in one leg
+only is usually a feature gate or a version floor rather than the behavior.
+Reproduce it with the narrowest local command that can show it - that leg's
+feature flags, the one interop script, the one pyarrow version - fix the cause,
+smoke it, push again. Never re-run a job to see whether it passes this time,
+never skip, relax, or quarantine a check to make it green, and never report a
+run that has not been read.
 
 # 3. Python
 
-Gate 1 first. Rules shared by both extensions:
+The core settles first (§1). Rules shared by both extensions:
 
 - Reach every stable core domain; a missing binding is documented as Rust-only.
 - Expose only the `Scalar.float`, `decimal`, `date`, `time`, `datetime`,
@@ -1119,30 +1220,42 @@ Python-only:
 - Structured codec facades stay byte-oriented and native, `cls=` is explicit
   reconstruction, and encoders never close caller-owned streams.
 
-## Gate 2 - Python validation
+## Python checks
 
-Blocking.
+The loop is an in-place debug extension and one scoped suite; before pushing,
+the same over the whole tree plus the type checker:
 
 ```bash
-python scripts/stage_cli.py               # maturin copies wheel-data; it builds no binary
-maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
-python -m pip install --force-reinstall --no-deps python/dist/*.whl
-python -m pytest python/tests
-python -m mypy --strict --config-file python/pyproject.toml \
+V=python/.venv/bin/python
+$V -m maturin develop -m python/Cargo.toml     # in place, debug, no wheel
+$V -m pytest python/tests/<area> -x -q         # the loop
+$V -m pytest python/tests                      # before pushing
+$V -m mypy --strict --config-file python/pyproject.toml \
   python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
-python python/benchmarks/<name>.py        # boundary benchmarks, release wheel
 ```
 
-- Run the tests under both `pyarrow==18.*` and `pyarrow>=18`.
-- Install `pandas`, `polars`, `tzdata`, `xxhash` first or those suites skip
-  silently; a silent skip is a failed check.
-- Iceberg-with-Spark is opt-in: `python scripts/setup_spark_interop.py`, then
-  `python -m pytest python/tests/media/test_spark_interop.py -m spark_interop`.
-- The wheel must carry `yggdryl-<version>.data/scripts/ygg`.
+- `python/.venv` is where the extension is installed and where
+  `scripts/check_docs_examples.py --lang python` looks for its interpreter, so
+  every Python command is that interpreter and never the ambient one.
+- Install `pandas`, `polars`, `tzdata`, and `xxhash` into it or those suites
+  skip silently, locally and anywhere else. A silent skip is a failed check,
+  never a pass.
+- The wheel path - `python scripts/stage_cli.py`, `maturin build --locked
+  --manifest-path python/Cargo.toml --interpreter python --out python/dist`,
+  `python -m pip install --force-reinstall --no-deps python/dist/*.whl` - is
+  what CI does and what a boundary benchmark needs. It is not the loop, and the
+  wheel it builds must carry `yggdryl-<version>.data/scripts/ygg`.
+- Both pyarrow legs (`pyarrow==18.*`, `pyarrow>=18`) are CI's; run one locally,
+  and only pin a second interpreter when a failure names the version.
+- Iceberg-with-Spark has its own CI job and is opt-in locally - `python
+  scripts/setup_spark_interop.py`, then `python -m pytest
+  python/tests/media/test_spark_interop.py -m spark_interop` - so run it only
+  when changing that boundary.
 
 # 4. Node
 
-Gate 2 first; the shared binding rules in §3 hold here too. JavaScript-only:
+Python settles first; the shared binding rules in §3 hold here too.
+JavaScript-only:
 
 - camelCase at the boundary only, over native state: JS equality/comparison/hash
   helpers, cloning, child iteration, `Map`-like metadata.
@@ -1162,19 +1275,28 @@ Gate 2 first; the shared binding rules in §3 hold here too. JavaScript-only:
 - Reserved identities `javascript:builtins.<Name>`, `javascript:<application>`,
   `yggdryl:<native>`; detect native identity, never `constructor.name`.
 
-## Gate 3 - Node validation
+## Node checks
 
-Blocking.
+The loop is the debug addon and one test file:
 
 ```bash
-npm ci --prefix node
+npm ci --prefix node                                     # once
+npm run --prefix node build:debug                        # after a Rust or binding edit
+node --test node/tests/<area>/<file>.test.js
+```
+
+Before pushing a Node change, the audit and the files the build generates:
+
+```bash
 npm run --prefix node test:package:debug                 # build + loader/type audit + package files
 git diff --exit-code -- node/index.js node/index.d.ts    # generated loader and declarations current
 npm test --prefix node                                   # node --test plus tsc --noEmit
 node scripts/build_docs_playground.js --check            # generated docs manifests not stale
 node scripts/build_docs_fix.js --check
-npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>   # release addon
 ```
+
+`npm run --prefix node bench:<...>` measures the release addon and has no CI
+job - §2.
 
 # 5. Documentation
 
@@ -1212,31 +1334,43 @@ section change together. What binds every page:
   measured method, names machine/runtime/build, compares a trusted baseline, and
   ends with its regenerate command; `docs/benchmarks.md` only indexes them.
 
-## Gate 4 - Documentation validation
+## Documentation checks
 
-Blocking.
+`mkdocs build --strict` is seconds and catches the nav and link breakage a page
+move causes, so it runs on every push that touches `docs/`, `mkdocs.yml`, or
+`README.md`:
+
+```bash
+python -m mkdocs build --strict --config-file mkdocs.yml
+```
+
+The example runner has no per-page filter: it is a whole-language pass, one
+process per block on a pool one process wide per core (a block spends most of
+its life importing the extension; `--jobs N` narrows it when the machine has to
+stay responsive). Run the language whose examples were edited, once, before
+pushing; CI runs all three.
 
 ```bash
 python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg object
 python scripts/check_docs_examples.py --lang python       # runs under python/.venv
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
-python -m mkdocs build --strict --config-file mkdocs.yml
 ```
-
-The scripting halves run one process per block on a pool one process wide per
-core, since a block spends most of its life importing the extension; `--jobs N`
-narrows it when a machine has to stay responsive.
 
 ## Handoff
 
 - Sweep for dead code, duplicated logic, retired symbols, stale docs, Rust-only
   bindings a stable core no longer justifies.
-- `.api-inventory.txt` and `.api-bindings.txt` are hand-maintained: a change
-  adding or retiring a public name edits them in the same change.
+- `.api-inventory.txt` and `.api-bindings.txt` are hand-maintained and checked
+  by nothing: a change adding or retiring a public name edits them in the same
+  change.
+- Run the §2 local-only checks the change made stale - charset table drift,
+  charset interop, and the benchmark behind any number a page now states.
+- Push, then read the run. A branch whose CI has not been read is not handed
+  off, and a red one is §2's "A red run", not a caveat.
 - Remove only generated targets, site output, virtual environments, binaries,
   caches, and `node_modules` that validation created; preserve unrelated work.
-- Report gate results, failures, exact skipped checks, material caveats - nothing
-  else.
+- Report CI status per job that failed, the local-only checks run, exact skipped
+  checks, material caveats - nothing else.
 
 # 6. Releases
 
