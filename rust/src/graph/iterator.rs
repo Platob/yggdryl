@@ -38,9 +38,11 @@ enum Source<E, I> {
 /// Two elements never chain against their order. One that is
 /// [`Element::is_before`] the live element - out of order on a walk the
 /// caller called sorted - is yielded as it came and changes nothing; one the
-/// element's own reading refuses is yielded as it came and still stands as
-/// the live one. An element under no live identity is yielded as it came,
-/// and stands.
+/// element's own reading refuses, or that following changes nothing on, is
+/// yielded as it came and still stands as the live one. An element under
+/// no live identity is yielded as it came, and stands. What the walk yields
+/// is always the caller's own copy: the live element is a clone the walk
+/// keeps, never a reference into it.
 ///
 /// Opened over elements the caller says are sorted, the walk reads them as
 /// they come and yields each as it is read; over elements the caller does
@@ -66,7 +68,7 @@ enum Source<E, I> {
 ///
 /// # #[derive(Clone)]
 /// # struct Event {
-/// #     uuid: Uuid, xuuid: Option<Uuid>, identifiers: BTreeMap<String, String>, parents: Vec<Uuid>,
+/// #     uuid: Uuid, crossuuid: Option<Uuid>, identifiers: BTreeMap<String, String>, parents: Vec<Uuid>,
 /// #     unix: i128, hashcode: u64, xhashcode: u64, state: State, sequence_num: u64,
 /// #     creation_unix: Option<i128>, expiration_unix: Option<i128>,
 /// #     previous_unix: Option<i128>, previous_uuid: Option<Uuid>, snapshot_unix: Option<i128>,
@@ -74,13 +76,14 @@ enum Source<E, I> {
 /// # impl Element for Event {
 /// #     fn get_current_uuid(&self) -> Uuid { self.uuid }
 /// #     fn set_current_uuid(&mut self, uuid: Uuid) { self.uuid = uuid; }
-/// #     fn get_xuuid(&self) -> Option<Uuid> { self.xuuid }
-/// #     fn set_xuuid(&mut self, xuuid: Option<Uuid>) { self.xuuid = xuuid; }
+/// #     fn get_crossuuid(&self) -> Option<Uuid> { self.crossuuid }
+/// #     fn set_crossuuid(&mut self, crossuuid: Option<Uuid>) { self.crossuuid = crossuuid; }
 /// #     fn get_identifiers(&self) -> &BTreeMap<String, String> { &self.identifiers }
 /// #     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) { self.identifiers = identifiers; }
 /// #     fn get_parentuuids(&self) -> &[Uuid] { &self.parents }
 /// #     fn set_parentuuids(&mut self, parents: Vec<Uuid>) { self.parents = parents; }
 /// #     fn is_after(&self, other: &Self) -> bool { self.unix > other.unix }
+/// #     fn finalize(&mut self) {}
 /// #     fn with_previous(self, previous: &Self) -> Option<Self> { self.following(previous) }
 /// #     fn merge_with(self, other: &Self) -> Option<Self> { self.merging(other) }
 /// # }
@@ -111,7 +114,7 @@ enum Source<E, I> {
 /// // `is_after` by instant and `with_previous` delegating to `following`.
 /// let event = |uuid: u128, order: u128, unix: i128, state: &str| Event {
 ///     uuid: Uuid::from_v8(uuid),
-///     xuuid: Some(Uuid::from_v8(order)),
+///     crossuuid: Some(Uuid::from_v8(order)),
 ///     state: State::from_spelling(state).expect("a shipped state"),
 ///     unix,
 /// #   identifiers: BTreeMap::new(), parents: Vec::new(), hashcode: 0, xhashcode: 0, sequence_num: 0,
@@ -294,7 +297,7 @@ where
 /// or the element's own where it has none.
 fn chain_identity<E: Element>(element: &E) -> Uuid {
     element
-        .get_xuuid()
+        .get_crossuuid()
         .unwrap_or_else(|| element.get_current_uuid())
 }
 

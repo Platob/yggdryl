@@ -92,24 +92,6 @@ const QUOTES: &[&str] = &["S", "i", "W", "X", "b", "R"];
 /// The message types carrying a fill.
 const FILLS: &[&str] = &["8", "AE", "AK"];
 
-/// The sides that take the bid lane, as the crate's own explicit values.
-///
-/// Domain knowledge, written where a reviewer can check it: Orchestra does not
-/// publish which side takes which lane. A stated side is already the explicit
-/// value its dictionary's code set named - `BUY` for a `1` - so a lane is
-/// decided by that value alone and never by matching text: a `SSHORTEX`
-/// spelling `SELL` inside it is a fact about English, and reasoning from it
-/// is exactly what these listings exist to avoid.
-const BID_LANE: &[&str] = &["BUY", "BUYMINUS"];
-
-/// The sides that take the ask lane, as the crate's own explicit values.
-///
-/// Everything absent from both listings - `CROSS`, `CROSSSH`, `CROSSSHX`,
-/// `UNDISC`, `ASDEF`, `OPPOSITE`, and a side stated as none - takes no lane.
-/// A cross is both sides at once and `OPPOSITE` means "whatever the other leg
-/// was", so neither can fill one.
-const ASK_LANE: &[&str] = &["SELL", "SELLPLUS", "SSHORT", "SSHORTEX", "SELLUND"];
-
 /// Every facet, in the order a batch writer's columns take.
 ///
 /// Names obey the field-name rule - lowercase letters and digits, no
@@ -537,29 +519,33 @@ impl FixMsg {
     /// state a quote that never existed. The message type is what tells the
     /// two apart.
     fn lane_of(&self, facet: &str, msgtype: &str) -> Option<(i32, &Scalar)> {
-        let (lane, tag) = match facet {
-            "bidpx" => (BID_LANE, 44),
-            "askpx" => (ASK_LANE, 44),
-            "bidsize" => (BID_LANE, 38),
-            "asksize" => (ASK_LANE, 38),
+        let (bid, tag) = match facet {
+            "bidpx" => (true, 44),
+            "askpx" => (false, 44),
+            "bidsize" => (true, 38),
+            "asksize" => (false, 38),
             _ => return None,
         };
-        if !ORDERS.contains(&msgtype) || !self.in_lane(lane) {
+        if !ORDERS.contains(&msgtype) || !self.in_lane(bid) {
             return None;
         }
         Some((tag, self.flat(tag)?))
     }
 
-    /// Whether this message's stated side takes `lane`.
+    /// Whether this message's stated side takes the bid lane, or the ask
+    /// lane where `bid` is false, as [`Side::is_bid`](crate::types::Side::is_bid)
+    /// and [`Side::is_ask`](crate::types::Side::is_ask)
+    /// say.
     ///
     /// The stored side is the explicit value the dictionary's code set named
-    /// when the message was built, so the listing is consulted for that
-    /// value as it stands; a side held as text is read by its spelling
-    /// first, so a wire code or a name a caller wrote in answers the same.
-    fn in_lane(&self, lane: &'static [&'static str]) -> bool {
+    /// when the message was built, so the side is read as it stands; a side
+    /// held as text is read by its spelling first, so a wire code or a name
+    /// a caller wrote in answers the same.
+    fn in_lane(&self, bid: bool) -> bool {
         let Some(text) = self.flat(54).and_then(Scalar::as_str) else {
             return false;
         };
-        crate::types::Side::from_spelling(text).is_some_and(|side| lane.contains(&side.as_str()))
+        crate::types::Side::from_spelling(text)
+            .is_some_and(|side| if bid { side.is_bid() } else { side.is_ask() })
     }
 }

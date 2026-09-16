@@ -5,11 +5,13 @@ pub(crate) mod casts;
 
 mod dtypes;
 mod fields;
+mod fixed;
 mod parser;
 pub(crate) mod scalars;
 
 pub use dtypes::DecimalType;
 pub(crate) use dtypes::validate_decimal;
 pub use fields::*;
+pub use fixed::Decimal;
 pub use scalars::{Decimal32, Decimal64, Decimal128, Decimal256, DecimalValue};
 pub(crate) use scalars::{validate_decimal_value, validate_decimal256_value};

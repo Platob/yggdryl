@@ -136,3 +136,138 @@ mod restating {
         assert_eq!(Scalar::from(105_i64).decimal_unscaled_at(1), None);
     }
 }
+
+mod fixed {
+    use yggdryl::types::Decimal;
+    use yggdryl::{DataType, Scalar};
+
+    #[test]
+    fn a_fixed_decimal_is_decimal128_at_eighteen_digits_already_applied() {
+        let px: Decimal = "82.5".parse().unwrap();
+        assert_eq!(px.units(), 82_500_000_000_000_000_000);
+        assert_eq!(Decimal::from_units(px.units()), Some(px));
+        assert_eq!(px.to_string(), "82.5");
+        assert_eq!(Decimal::from_int(100).to_string(), "100");
+        assert_eq!(Decimal::ZERO.to_string(), "0");
+        assert_eq!(
+            "-0.000000000000000001".parse::<Decimal>().unwrap().units(),
+            -1
+        );
+        assert_eq!(Decimal::dtype(), DataType::decimal128(38, 18).unwrap());
+        assert_eq!(DataType::DECIMAL, DataType::decimal128(38, 18).unwrap());
+        // The scalar is the column's value, and reads back.
+        let scalar = Scalar::from(px);
+        assert_eq!(scalar.as_d128(), Some((px.units(), 18)));
+        assert_eq!(Decimal::from_scalar(&scalar), Some(px));
+        assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+        assert_eq!(Decimal::from_scalar(&Scalar::from(82.5_f64)), Some(px));
+        assert_eq!(
+            Decimal::from_scalar(&Scalar::from(100_i64)),
+            Some(Decimal::from_int(100))
+        );
+        assert_eq!(Decimal::from_scalar(&Scalar::from("82.5")), Some(px));
+        assert_eq!(px.to_f64(), 82.5);
+        assert_eq!(Decimal::from_f64(82.5), Some(px));
+        assert_eq!(Decimal::from_f64(f64::NAN), None);
+    }
+
+    #[test]
+    fn fixed_arithmetic_is_exact_bounded_and_truncates_toward_zero() {
+        let px: Decimal = "82.5".parse().unwrap();
+        let qty = Decimal::from_int(1_000);
+        assert_eq!((px * qty).to_string(), "82500");
+        assert_eq!((px + Decimal::from_int(1)).to_string(), "83.5");
+        assert_eq!((px - Decimal::from_int(100)).to_string(), "-17.5");
+        assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
+        assert_eq!((-px).abs(), px);
+        assert!(px.is_positive() && (-px).is_negative() && Decimal::ZERO.is_zero());
+        // A third is truncated at the eighteenth digit, never rounded up.
+        assert_eq!(
+            (Decimal::ONE / Decimal::from_int(3)).to_string(),
+            "0.333333333333333333"
+        );
+        assert_eq!(
+            Decimal::parse("1.123456789")
+                .unwrap()
+                .truncated(4)
+                .to_string(),
+            "1.1234"
+        );
+        // Past thirty-eight digits there is no value.
+        assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
+        assert_eq!(Decimal::MAX.checked_mul(Decimal::from_int(2)), None);
+        assert_eq!(Decimal::ONE.checked_div(Decimal::ZERO), None);
+        assert_eq!(Decimal::MIN.checked_sub(Decimal::ONE), None);
+        assert_eq!(Decimal::from_units(i128::MAX), None);
+        // Sums fold as integers do.
+        assert_eq!(
+            [px, px, px].into_iter().sum::<Decimal>().to_string(),
+            "247.5"
+        );
+        let mut held = px;
+        held += Decimal::from_int(1);
+        held *= Decimal::from_int(2);
+        assert_eq!(held.to_string(), "167");
+    }
+
+    #[test]
+    fn fixed_text_is_read_as_leniently_as_a_number_can_be() {
+        for (text, expected) in [
+            ("", "0"),
+            ("  82.5\t", "82.5"),
+            ("+1.50", "1.5"),
+            ("-0.000000000000000001", "-0.000000000000000001"),
+            (".5", "0.5"),
+            ("5.", "5"),
+            ("1,250,000.25", "1250000.25"),
+            ("1_000", "1000"),
+            ("1'000", "1000"),
+            ("1 000", "1000"),
+            ("2.5e3", "2500"),
+            ("2.5E+3", "2500"),
+            ("1E-2", "0.01"),
+            ("125e-1", "12.5"),
+            // Digits past the eighteenth fractional one are truncated.
+            ("0.1234567890123456789", "0.123456789012345678"),
+            ("-0.9999999999999999999", "-0.999999999999999999"),
+            ("1e-30", "0"),
+            (
+                "99999999999999999999.999999999999999999",
+                "99999999999999999999.999999999999999999",
+            ),
+        ] {
+            assert_eq!(
+                Decimal::parse(text).unwrap().to_string(),
+                expected,
+                "{text:?}"
+            );
+        }
+        for refused in [
+            "-",
+            "+",
+            ".",
+            "1.2.3",
+            "abc",
+            "NaN",
+            "inf",
+            "1e",
+            "1e+",
+            "1e1.5",
+            ",1",
+            "1..",
+            "100000000000000000000",
+            "1e21",
+            "1e400",
+        ] {
+            assert!(Decimal::parse(refused).is_err(), "{refused:?}");
+        }
+        // Text held as a scalar reads the same way.
+        assert_eq!(
+            Decimal::from_scalar(&Scalar::from("1,250.5"))
+                .unwrap()
+                .to_string(),
+            "1250.5"
+        );
+        assert_eq!(Decimal::from_scalar(&Scalar::from("x")), None);
+    }
+}

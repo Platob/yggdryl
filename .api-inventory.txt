@@ -927,16 +927,18 @@ pub mod iterator;
 pub trait Element  (one element of a graph: its own identity, the identity it has in another graph, the names it goes by, its parents' identities and the order it stands in, all read and written; object-safe but for the order and the by-value readings)
   fn get_current_uuid(&self) -> Uuid
   fn set_current_uuid(&mut self, uuid: Uuid)
-  fn get_xuuid(&self) -> Option<Uuid>  (the cross element: what this element is in another graph, where it has one)
-  fn set_xuuid(&mut self, xuuid: Option<Uuid>)
+  fn get_crossuuid(&self) -> Option<Uuid>  (the cross element: what this element is in another graph, where it has one)
+  fn set_crossuuid(&mut self, crossuuid: Option<Uuid>)
   fn get_identifiers(&self) -> &BTreeMap<String, String>  (the names the element goes by elsewhere, each under the scheme that issued it; empty where no system named it)
   fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>)  (replaces the map whole)
   fn get_parentuuids(&self) -> &[Uuid]  (the element's own ordered list; empty for a root)
   fn set_parentuuids(&mut self, parents: Vec<Uuid>)  (replaces the list whole; an empty one makes a root)
   fn is_after(&self, other: &Self) -> bool where Self: Sized  (the order the implementor states - a timed element's instant, a node's lineage; with `is_before` one strict weak order: never after itself, and neither-nor is equal)
   fn is_before(&self, other: &Self) -> bool where Self: Sized  (provided: `other.is_after(self)`)
-  fn with_previous(self, previous: &Self) -> Option<Self> where Self: Sized  (this element stated as the one after `previous`, or nothing where it cannot follow it; the implementor's, and a timed element delegates to `TimeElement::following`)
-  fn merge_with(self, other: &Self) -> Option<Self> where Self: Sized  (provided: another statement of the same element folded in - the cross element where this one states none, the identifiers this one lacks, the parents' union in this element's order then the other's; nothing for another element; a timed element delegates to `TimeElement::merging`)
+  fn finalize(&mut self)  (the implementor's: recomputes the hashing and resets the identity where it derives from the content - a timed element hands its content's digest to `TimeElement::finalized`, an assigned identity does nothing; every provided reading calls it once it changed the element)
+  fn digest(&self) -> Xxh3  (provided: the digest of what the element states started - an XXH3-64 state fed the cross element, the names it goes by and its parents, each under its own name, through the typed accessors and never an instant - for an implementor's `finalize` to feed its own content behind and read `as_u64`)
+  fn with_previous(self, previous: &Self) -> Option<Self> where Self: Sized  (this element stated as the one after `previous`, or nothing where it cannot follow it or following changes nothing; the implementor's, and a timed element delegates to `TimeElement::following`)
+  fn merge_with(self, other: &Self) -> Option<Self> where Self: Sized  (provided: another statement of the same element folded in - the cross element where this one states none, the identifiers this one lacks, the parents' union in this element's order then the other's - and finalized; nothing for another element or a fold that changes nothing; a timed element delegates to `TimeElement::merging`)
 pub trait TimeElement: Element  (an element that happened at one instant, stands in one state, sits at one place in its chain and digests to one code)
   fn get_unix(&self) -> i128  (nanoseconds since the Unix epoch, UTC)
   fn set_unix(&mut self, unix: i128)
@@ -960,17 +962,19 @@ pub trait TimeElement: Element  (an element that happened at one instant, stands
   fn set_snapshot_unix(&mut self, unix: Option<i128>)
   fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: records the predecessor's identity and instant, the place after the predecessor's (saturating), takes the names the predecessor went by that this element lacks, and folds the lifecycle; nothing for its own predecessor or one that happened after it)
   fn merging(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge, then the later statement's instant and codes, the further place in the chain, the folded lifecycle, and this element's predecessor and snapshot instant else the other's; nothing for another element)
-  fn fold_lifecycle(&mut self, other: &Self) where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states)
+  fn fold_lifecycle(&mut self, other: &Self) -> bool where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states; whether any moved)
+  fn finalized(&mut self, hashcode: u64)  (provided: records the code and resets the current identity to `time_uuid`, keeping it where the instant has no UUIDv7; what an implementor's `Element::finalize` hands its content's digest to)
+  fn digest_timed(&self) -> Xxh3  (provided: `Element::digest` continued with the cross code, the state, the place in the chain and the predecessor's identity; no instant)
   fn txhash(&self) -> Result<TxHash>  (provided: `unix` at nanosecond resolution coupled with `hashcode` as an XXH3-64 digest; ArithmeticOverflow past signed 64-bit nanoseconds)
   fn time_uuid(&self) -> Result<Uuid>  (provided: the UUIDv7 `TxHash::into_uuid` answers for `txhash`, the instant in front so identities sort by instant first, to the microsecond; what an implementor's `Element::get_current_uuid` answers where its identity is its instant and content)
-  fn time_xuuid(&self) -> Result<Option<Uuid>>  (provided: the same coupling of `creation_unix` with `xhashcode`; None where the creation is unknown)
+  fn time_crossuuid(&self) -> Result<Option<Uuid>>  (provided: the same coupling of `creation_unix` with `xhashcode`; None where the creation is unknown)
 pub trait MarketElement: TimeElement  (an element that happened in a market: a price, a quantity, a side, the instrument as the market names it and the market it traded on)
-  fn get_px(&self) -> f64
-  fn set_px(&mut self, px: f64)
+  fn get_px(&self) -> Decimal  (exact: `decimal128(38, 18)` preapplied)
+  fn set_px(&mut self, px: Decimal)
   fn get_currency(&self) -> &Currency
   fn set_currency(&mut self, currency: Currency)
-  fn get_qty(&self) -> f64
-  fn set_qty(&mut self, qty: f64)
+  fn get_qty(&self) -> Decimal
+  fn set_qty(&mut self, qty: Decimal)
   fn get_unit(&self) -> &str  (the unit the quantity is counted in, as the market spells it)
   fn set_unit(&mut self, unit: String)
   fn get_side(&self) -> &Side  (FIX's Side(54), the crate's code)
@@ -987,7 +991,10 @@ pub trait MarketElement: TimeElement  (an element that happened in a market: a p
   fn set_cficode(&mut self, cficode: Option<Cfi>)
   fn get_miccode(&self) -> Option<&Mic>  (the market it traded on, ISO 10383, where known)
   fn set_miccode(&mut self, miccode: Option<Mic>)
-  fn merging_market(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the timed merge, then the later statement's price, quantity and unit, and the currency, the side and each instrument code the better of the two as `CodeValue::merge_with` reads them - the later statement leading, the earlier filling what it leaves unknown, a code only one names that one's; nothing for another element)
+  fn get_bidpx(&self) -> Option<Decimal>  // and set_bidpx(Option<Decimal>), get_bidcurrency() -> Option<&Currency> / set_bidcurrency(Option<Currency>), get_bidqty() -> Option<Decimal> / set_bidqty, get_bidunit() -> Option<&str> / set_bidunit(Option<String>): the bid lane, what the element would pay; and get_askpx, get_askcurrency, get_askqty, get_askunit with their setters: the ask lane, what it would be paid
+  fn digest_market(&self) -> Xxh3  (provided: `digest_timed` continued with the price, the currency, the quantity, the unit, the side, each instrument code and the market named, and each lane fact stated)
+  fn fill_lanes(&mut self) where Self: Sized  (provided: fills the lane the side implies - `Side::is_bid` the bid, `Side::is_ask` the ask, neither nothing - from the price, the currency, the quantity and the unit, where the lane states nothing of its own; what a lane states stands)
+  fn merging_market(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the timed merge, then the later statement's price, quantity, unit and lane facts, and the currency, the side and each instrument code the better of the two as `CodeValue::merge_with` reads them - the later statement leading, the earlier filling what it leaves unknown, a code only one names that one's - and finalized; nothing for another element or a fold that changes nothing)
 
 ### yggdryl::graph::iterator  [rust\src\graph\iterator.rs]
 pub struct ElementIterator<E, I>  (a walk over timed elements that chains each one to the live element it follows and yields it enriched: the live elements are kept under the identity every incarnation of one thing shares - the cross element, else the element's own - and an element arriving under a live identity is stated as the one after it by its own `with_previous`; the yielded element stands as the live one where still alive (live state, not past its expiration) and retires the identity where not; one before the live element is yielded as it came and changes nothing, one its reading refuses is yielded as it came and stands; Debug)
@@ -2907,6 +2914,26 @@ pub struct ArrowCastPlan
 pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
+### yggdryl::types::decimal::fixed  [rust\src\types\decimal\fixed.rs]
+pub struct Decimal  (one exact decimal at eighteen fractional digits and thirty-eight digits of precision - `decimal128(38, 18)` preapplied - as one i128 of units; Copy, Default (zero), Eq, Ord, Hash, Display (no trailing zero behind the point), Debug, FromStr; Add/Sub/Mul/Div and their assign forms refuse an overflow as the integers' do, Neg, Sum; From<i64>; From<Decimal> for Decimal128 and for Scalar (a `Decimal128` at scale 18); re-exported at yggdryl::Decimal)
+  pub const SCALE: i8 = 18
+  pub const PRECISION: u8 = 38
+  pub const ZERO: Self; pub const ONE: Self; pub const MAX: Self; pub const MIN: Self  (thirty-eight nines, eighteen fractional, and its negation)
+  pub const fn from_units(units: i128) -> Option<Self>  (the `decimal128(38, 18)` coefficient; None past the precision)
+  pub const fn units(self) -> i128
+  pub const fn from_int(value: i64) -> Self
+  pub fn from_f64(value: f64) -> Option<Self>  (rounded to eighteen digits; None for a non-finite float or one past the precision)
+  pub fn to_f64(self) -> f64
+  pub fn parse(text: &str) -> Result<Self>  (lenient, one pass, no allocation: surrounding ASCII whitespace ignored, an empty text zero, an optional sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, digits past the eighteenth fractional one truncated toward zero, an `e` exponent; refuses text stating no number and a value past thirty-eight digits with Error::Parse)
+  pub fn from_scalar(value: &Scalar) -> Option<Self>  (an exact decimal restated at eighteen digits, a whole integer, a finite float, or text `parse` reads)
+  pub const fn dtype() -> DataType  (DataType::DECIMAL)
+  pub const fn is_zero(self) -> bool; pub const fn is_negative(self) -> bool; pub const fn is_positive(self) -> bool; pub const fn abs(self) -> Self
+  pub fn checked_add(self, other: Self) -> Option<Self>  // and checked_sub, checked_mul, checked_div: None past the precision, checked_div also for a divisor of nothing; mul and div keep eighteen digits and truncate the rest toward zero, widening to 256 bits for the one product
+  pub fn truncated(self, places: u8) -> Self  (the value at `places` fractional digits, the rest truncated toward zero)
+  pub const fn into_decimal128(self) -> Decimal128
+impl DataType
+  pub const DECIMAL: Self  (`decimal128(38, 18)`, what every Decimal is)
+
 ### yggdryl::types::decimal  [rust\src\types\decimal\scalars.rs]
 pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn d128(unscaled: i128, scale: i8) -> Self
@@ -3725,6 +3752,8 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Si
   pub fn is_failed(&self) -> bool  // State only
   pub fn read(spelling: &str) -> Result<Self>  // Side and State: the value contract's reading, refusing a spelling that names none
   pub fn from_spelling(spelling: &str) -> Option<Self>  // Side and State: the FIX wire code (unfolded), the specification's name (folded) or the stored value, onto the one explicit value
+  pub fn is_bid(&self) -> bool  // Side only: BUY, BUYMINUS take the bid lane of a quote
+  pub fn is_ask(&self) -> bool  // Side only: SELL, SELLPLUS, SSHORT, SSHORTEX, SELLUND take the ask lane; a cross, UNDISC, ASDEF, OPPOSITE and UNKNOWN take neither
   // Cfi only: the ISO 10962 semantics, beside the value rather than in `fix`
   pub const LENGTH: usize = 6
   pub const UNKNOWN: char = 'X'

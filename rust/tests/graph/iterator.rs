@@ -12,7 +12,7 @@ use super::element::{Event, filled};
 /// One event of the thing `order` identifies across its life.
 fn incarnation(uuid: u128, order: u128, unix: i128) -> Event {
     let mut event = Event::at(uuid, unix);
-    event.set_xuuid(Some(Uuid::from_v8(order)));
+    event.set_crossuuid(Some(Uuid::from_v8(order)));
     event
 }
 

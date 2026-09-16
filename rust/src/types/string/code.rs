@@ -631,6 +631,46 @@ impl Side {
     /// The spelling of a side stated as none.
     const UNKNOWN: &str = "UNKNOWN";
 
+    /// The sides that take the bid lane of a quote: a party willing to pay.
+    ///
+    /// Domain knowledge, written where a reviewer can check it: Orchestra
+    /// does not publish which side takes which lane.
+    const BID: [&str; 2] = ["BUY", "BUYMINUS"];
+
+    /// The sides that take the ask lane of a quote: a party willing to be
+    /// paid. Everything in neither listing - a cross, `UNDISC`, `ASDEF`,
+    /// `OPPOSITE`, a side stated as none - takes no lane: a cross is both
+    /// sides at once and `OPPOSITE` means "whatever the other leg was".
+    const ASK: [&str; 5] = ["SELL", "SELLPLUS", "SSHORT", "SSHORTEX", "SELLUND"];
+
+    /// Whether this side takes the bid lane of a quote.
+    ///
+    /// ```
+    /// use yggdryl::types::Side;
+    ///
+    /// assert!(Side::read("Buy").unwrap().is_bid());
+    /// assert!(!Side::read("SellShort").unwrap().is_bid());
+    /// assert!(!Side::read("Cross").unwrap().is_bid());
+    /// ```
+    #[must_use]
+    pub fn is_bid(&self) -> bool {
+        Self::BID.contains(&self.as_str())
+    }
+
+    /// Whether this side takes the ask lane of a quote.
+    ///
+    /// ```
+    /// use yggdryl::types::Side;
+    ///
+    /// assert!(Side::read("SellShortExempt").unwrap().is_ask());
+    /// assert!(!Side::read("Buy").unwrap().is_ask());
+    /// assert!(!Side::read("Opposite").unwrap().is_ask());
+    /// ```
+    #[must_use]
+    pub fn is_ask(&self) -> bool {
+        Self::ASK.contains(&self.as_str())
+    }
+
     /// The better of two sides: this one, unless it is `UNKNOWN`.
     fn merged(self, other: &Self) -> Self {
         if self.as_str() == Self::UNKNOWN {

@@ -72,6 +72,26 @@ The selectors validate once and pick the physical width at construction.
     assert.throws(() => DataType.time('year_month'), /temporal resolution/)
     ```
 
+## Decimal
+
+`Decimal` is `decimal128(38, 18)` preapplied: one `i128` of units at eighteen fractional digits, bounded to thirty-eight digits, so a price and a quantity add, multiply and compare as integers do and land in a `decimal128(38, 18)` column exactly. `DataType::DECIMAL` is that datatype. Multiplication and division widen to 256 bits and truncate the rest toward zero; a result past the precision is an overflow the checked operations answer as `None` and the operators refuse as the integers' do. Text reads leniently - whitespace, an empty text as nothing, grouping with `,` `_` `'` or a space, a leading or trailing point, an exponent, extra fractional digits truncated - and refuses only what states no number or a value past the precision. Rust only: a market element's price and quantity are held as it.
+
+```rust
+use yggdryl::types::Decimal;
+use yggdryl::{DataType, Scalar};
+
+let px: Decimal = "82.5".parse()?;
+let qty = Decimal::from_int(1_000);
+assert_eq!((px * qty).to_string(), "82500");
+assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
+assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
+assert_eq!(Decimal::parse("")?, Decimal::ZERO);
+assert_eq!(Decimal::dtype(), DataType::DECIMAL);
+assert_eq!(Scalar::from(px).as_d128(), Some((82_500_000_000_000_000_000, 18)));
+assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
+```
+
 ## Selectors
 
 | Call | Result |
