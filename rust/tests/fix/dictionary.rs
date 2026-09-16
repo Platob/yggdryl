@@ -401,9 +401,9 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 /// The registry hash walks scalar fields, then `[Components, Groups]` with
 /// the messages among the components in name order, so a change to that walk
 /// or to any shipped document moves this number on purpose, in the commit that
-/// says why. It moved when every registry began to carry the crate's own
-/// `pluginconfig` beside the shipped dictionary's own components, as every
-/// registry already carries the crate's own fields; for the builtin altids
+/// says why. It moved when the crate's own `pluginconfig` message went - a
+/// registry carries the crate's own fields and no message of the crate's -
+/// as it had moved when every registry began to carry it; for the builtin altids
 /// group and the generated component identifier declarations; for the three
 /// lifecycle identities renamed and typed as UUIDs; for the chain's scoped
 /// lifecycle recipe described in its field; for the previous clock and UUID
@@ -456,11 +456,11 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_294_191_169_587_294_217);
-    assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
+    assert_eq!(registry.stable_hash(), 10_885_025_894_600_962_413);
+    assert_eq!(registry.msgtypes().count(), 181);
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        928 + super::crated_messages() + super::crated_components()
+        928 + super::crated_components()
     );
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
 }

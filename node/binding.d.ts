@@ -99,8 +99,6 @@ import {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  Plugin,
-  Plugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -130,8 +128,6 @@ export type {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  Plugin,
-  Plugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -547,7 +543,6 @@ declare module './index' {
 
   interface FixDefinitionIterator extends IterableIterator<Field> {}
   interface MsgTypeIterator extends IterableIterator<MsgType> {}
-  interface Plugins extends IterableIterator<Plugin> {}
   interface FixMessages extends IterableIterator<FixMsg> {
     next(): IteratorResult<FixMsg>
   }
@@ -561,11 +556,8 @@ declare module './index' {
     parseTextLines(lines: Iterable<TextLine>): FixMessages
     /**
      * A stream of messages filled with what each implies, one at a time,
-     * remembering every `pluginconfig` it passes by the plugin's `Name`: a
-     * later message naming that plugin takes its `SenderCompID` and
-     * `TargetCompID` where it stated none of its own. The memory dies with
-     * the iterator, and `enrichMessage` - one message, not a stream - has
-     * none.
+     * each as `enrichMessage` fills one; nothing is carried from one message
+     * to the next.
      */
     enrichMessages(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -3164,15 +3156,6 @@ export interface FixMsgConstructor {
   readonly prototype: FixMsg
 }
 
-/** One native configuration with ordinary JavaScript scalar intake. */
-export interface PluginConstructor {
-  new (mbean: string | null, attributes: unknown): Plugin
-  readonly prototype: Plugin
-  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): Plugins
-  fromJsonScalar(document: unknown): Plugins
-  fromFixmsg(message: FixMsg): Plugin
-}
-
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
@@ -3197,8 +3180,6 @@ export interface Fix {
   readonly MsgType: abstract new () => MsgType
   /** A lazy stream of messages: what every stage of `FixCodec` answers. */
   readonly FixMessages: abstract new () => FixMessages
-  readonly Plugin: PluginConstructor
-  readonly Plugins: abstract new () => Plugins
   /**
    * The state a stream of messages has reached, one chain per live event:
    * `fill` names each message's chain by `code` (else by identifier),
@@ -3251,16 +3232,6 @@ export interface Fix {
    * (60) clocks, so a new registry's `size` is 36.
    */
   crateFields(): Field[]
-  /** The native ULBridge scalar definitions. */
-  pluginFields(): Field[]
-  /**
-   * The message those definitions make up: FIX's own `MsgType` beside every
-   * plugin attribute and the `BeginString`, `SenderCompID` and
-   * `TargetCompID` a configuration also states. Its name is the type a
-   * configuration reads as and `field.fix.msgtype` the code it answers on
-   * tag 35; every registry holds it from construction.
-   */
-  pluginMessage(): Field
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
   /** Install the process-wide registry before anything resolves it. */

@@ -81,8 +81,7 @@ line carries and nothing for a line that carries none.
 | a frame stating no checksum | one, ending where the next unmarked `8=` opens |
 | a bridge row, then a frame | two: the row is a message and the frame the next; a tag run behind a bridge row that opens no frame stays part of it, which is the mixed form a bridge writes |
 | a FIXML document | one, whatever prose a transport wrote in front of it |
-| a bulk [configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) | one per configuration a response named, each reading as `pluginconfig` |
-| a document naming no configuration | none at all: an error-only answer, a request with no value, a wildcard that selected nothing, or a JSON body that is not a Jolokia answer |
+| a JSON document | [one, named `unknown`, with no entries](capture.md#a-json-document-is-one-message-stating-nothing): a Jolokia answer, a bulk or wildcard answer, an error-only answer and a bare `{"a":1}` alike, carrying only what the row stated around it |
 | a sentence | none at all |
 
 What opens a frame is the rule the scanner locates a line's first frame by, read
@@ -101,9 +100,7 @@ it, so a space-separated frame still reads. `ACCOUNT=A1|SIDE=1` is a message and
 `After Enrichment -> ACCOUNT=A1 SIDE=1` is a sentence.
 
 `unknown` names a frame, a bridge row or a document that stated no type - never
-a line that stated no frame, and never a
-[configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own),
-whose type the crate states where the document stated none.
+a line that stated no frame.
 
 === "Rust"
 
@@ -219,10 +216,10 @@ acceptance of an order.
 ## Every shape a capture holds
 
 The corpus contains numeric and named frames, packed and numeric groups,
-derived values and malformed inputs. [Configuration bodies](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own)
-use the same native parsing pipeline and expand to one message for each
-configuration they select, exactly as a line expands to one for
-[each frame it carries](#a-line-yields-none-one-or-many-messages).
+derived values and malformed inputs. A line expands to one message for
+[each frame it carries](#a-line-yields-none-one-or-many-messages), and a
+[JSON document](capture.md#a-json-document-is-one-message-stating-nothing) to
+one stating nothing.
 
 <div class="ygg-fx" data-fix="frames" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.
@@ -238,7 +235,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - `XmlData(213)` is read into the line that carried it, whichever of the two things a bridge writes into it: a row of its own pairs, or the FIXML the tag is named for. Either becomes real fields resolved to real tags rather than one opaque value, a nested element's attributes flattening the way a packed occurrence already does. The field still holds the bytes it arrived as and the wire re-emits them exactly, because a reading of a value is not a second arrival; a document that will not parse fills nothing and the value stays whole.
 - A row a data field carries is a message of its own type, at its own version, and is read against both. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's `BeginString` is the envelope's version and says nothing about which FIX the row was written to, which is routinely a later one than the session speaks. The row states neither, so its type falls to what it declares and its version to the crate's own 4.4. A version the caller pinned is the caller speaking for the whole run and answers for the row too, and the frame's own statements stay the frame's.
 - A key nothing names at all is kept under its own spelling and its arrival value, its arrival entry carrying tag 0 - a name or a numeric key alike, since tag 0 is never a registry identity. Nothing is dropped for being unexplained.
-- Bulk and wildcard configuration input yields all selected configurations; empty answers yield none. A conversion error propagates and fuses the cursor.
+- A JSON document, a bulk or wildcard answer as much as a single one, is one `unknown` message carrying only what the row stated; nothing inside the document is read.
 - The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text/index.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.
 
 ## Commands

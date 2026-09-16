@@ -17,7 +17,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix, hashing } = require('yggdryl')
+const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, hashing } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
@@ -509,13 +509,11 @@ test('protocol and MsgType inference stays native and shallow', () => {
     ],
     ['level=INFO message=random', MimeType.KEYVALUE, null],
     [
-      // A bridge configuration document is JSON, which is what it is:
-      // what makes one *this* reader's is a shape the codec reads rather
-      // than a name the scan gives it.
-      '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
-        'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+      // A JSON document is JSON, which is what it is, and it declares no
+      // type: the codec reads none and names such a row `unknown`.
+      '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}',
       MimeType.JSON,
-      'Plugin',
+      null,
     ],
   ]
   for (const [line, protocol, msgtype] of cases) {
@@ -529,42 +527,35 @@ test('protocol and MsgType inference stays native and shallow', () => {
   assert.equal(fix.FixCodec.inferMsgtypeBytes(Buffer.from('35=AE|')).toString(), 'AE')
   assert.equal(fix.FixCodec.inferMsgtypeText('MSGTYPE=AE|'), 'AE')
 
-  // A bridge configuration document states no half of the exchange on its
-  // own, and the `send` its own payload spells is never read as the marker:
-  // which way it moved is the prose in front of it, read into FIX's own
-  // tag 385 by the rules the dictionary carries on that field.
+  // A JSON document states no half of the exchange on its own, and a
+  // `send` its own payload spells is never read as the marker: which way it
+  // moved is the prose in front of it, read into FIX's own tag 385 by the
+  // rules the dictionary carries on that field. The document itself is a
+  // body the codec does not read: the row is one message named `unknown`,
+  // stating no type and no entries, whatever the document says inside.
   const answered =
-    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
-    '"type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:' +
-    'name=Router_TradeCapture,plugin-type=FIX,type=Plugin":' +
-    '{"Name":"Router_TradeCapture"}},"status":200}'
-  assert.ok(MimeType.inferText(answered).equals(MimeType.JSON))
-  // The ObjectName the answer keys its `value` by states the type, and it is
-  // the first one the shallow scan reaches: the wildcard the request echoes
-  // names none.
-  assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'Plugin')
-  const codec = new fix.FixCodec(new fix.FixRegistry())
-  const read = (line) => codec.parseLine(Buffer.from(line)).next().value
-  assert.equal(read(answered).getByTag(385), null)
-  assert.equal(read('Response: ' + answered).byTag(385).asJs(), 'R')
-  const selected =
-    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
-    'name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},' +
-    '"value":{"Name":"Router_TradeCapture"},"status":200}'
-  assert.equal(read(selected).getByTag(385), null)
-  assert.equal(read('Request: ' + selected).byTag(385).asJs(), 'S')
-  // A direction is the line's and a message is the document's, read apart:
-  // a read that selected nothing and a request not yet answered both name
-  // no plugin, so neither states a message - there is no envelope left to
-  // make a row out of - and the prose in front of one makes it no more one.
-  const empty =
-    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
-    '"type":"read"},"value":{},"status":200}'
+    '{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},' +
+    '"value":{"Name":"Router_TradeCapture","Version":"4.7.0"},"status":200}'
   const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-  for (const [body, verb] of [[empty, 'Response'], [asked, 'Request']]) {
-    assert.equal(codec.parseLine(Buffer.from(body)).next().done, true)
-    const prosed = `[Jolokia] (DEBUG) ${verb}: ${body}`
-    assert.equal(codec.parseLine(Buffer.from(prosed)).next().done, true)
+  assert.ok(MimeType.inferText(answered).equals(MimeType.JSON))
+  assert.equal(fix.FixCodec.inferMsgtypeText(answered), null)
+  const codec = new fix.FixCodec(new fix.FixRegistry())
+  const read = (line) => {
+    const messages = codec.parseLine(Buffer.from(line))
+    const message = messages.next().value
+    assert.equal(messages.next().done, true, line)
+    assert.equal(message.field.name, 'unknown', line)
+    assert.equal(message.getByTag(35), null, line)
+    assert.equal(message.getByName('Name'), null, line)
+    assert.deepEqual(message.arrivals(), [], line)
+    return message
+  }
+  // A direction is the line's, read apart from the document: prose in front
+  // of it spells one, and a duration behind it is the line's too.
+  for (const [body, verb, code] of [[answered, 'Response', 'R'], [asked, 'Request', 'S']]) {
+    assert.equal(read(body).getByTag(385), null)
+    assert.equal(read(`${verb}: ${body}`).byTag(385).asJs(), code)
+    assert.equal(read(`[Jolokia] (DEBUG) ${verb}: ${body} (12 ms)`).byTag(385).asJs(), code)
   }
 })
 
@@ -1268,13 +1259,9 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'FixMsg',
       'FixRegistry',
       'MsgType',
-      'Plugin',
-      'Plugins',
       'crateFields',
       'globalRegistry',
       'installGlobalRegistry',
-      'pluginFields',
-      'pluginMessage',
       'schema',
       'schemaCarrying',
       'schemaTags',
@@ -1446,102 +1433,42 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
 
 // A Jolokia answer as a bridge log line writes it: a timestamp and a reader
 // in front of the document, the duration the call took behind it.
-const CONFIGURATION = Buffer.from(
+const DOCUMENT = Buffer.from(
   '2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":' +
-    '"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,' +
-    'plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting",' +
+    '"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Router_OrderRouting",' +
     '"Version":"4.7.0","SenderCompID":"CLI.PROD.TRD","TargetCompID":"ST.PROD",' +
     '"BeginString":"FIX.4.4","CurrentPort":9726,"State":"logged"},"status":200} (12 ms)',
 )
 
-// A bridge line on one plugin, with no comp ids of its own: what ten million
-// lines behind one configuration look like.
-function pluginRow(plugin) {
-  return Buffer.from(`MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID=${plugin}|`)
-}
-
-function bridge() {
-  const registry = seed()
-  registry.withPluginFields()
-  return registry
-}
-
-test('a configuration is a message the crate registered', () => {
-  const message = new fix.FixCodec(bridge()).parseLine(CONFIGURATION).next().value
-  // The name the crate registered the code under, and the code itself.
-  assert.equal(message.field.name, 'pluginconfig')
-  assert.equal(message.byTag(35).asJs(), 'UCFG')
-
-  // Registering it is nobody's choice: a registry that never asked for the
-  // plugin fields still holds the message, because a component holds its
-  // members by value and the code is the crate's own.
-  const plain = new fix.FixRegistry()
-  assert.equal(plain.msgtype('UCFG').name, 'pluginconfig')
-  const held = plain.definition('components', 'pluginconfig')
-  assert.equal(held.name, fix.pluginMessage().name)
-  assert.ok(held.dtype.equals(fix.pluginMessage().dtype))
-  assert.equal(held.fix.msgtype, 'UCFG')
-  assert.equal(plain.getFieldByTag(20010), null)
-  assert.deepEqual(plain.dialects(), [])
-  // FIX's own `MsgType` opens the component, the plugin attributes follow,
-  // and the three FIX fields a configuration also states close it.
-  const component = fix.pluginMessage()
-  assert.equal(component.fix.msgtype, 'UCFG')
-  const named = []
-  for (let at = 0; at < component.fieldLen; at += 1) named.push(component.fieldAt(at).name)
-  assert.equal(named[0], 'MsgType')
-  assert.deepEqual(named.slice(1, -3), fix.pluginFields().map(field => field.name))
-  assert.deepEqual(named.slice(-3), ['BeginString', 'SenderCompID', 'TargetCompID'])
-
-  // A built child, not a pair: the document sent no `35=`, so the arrival
-  // record holds none and the wire re-emits exactly as it did before the
-  // type existed.
-  const wire = message.intoBytes('|'.charCodeAt(0)).toString()
-  assert.equal(wire.includes('35='), false)
-  assert.equal(wire.includes('MsgType'), false)
-  assert.ok(wire.startsWith('SessionInterface=com.ullink.ulbridge'), wire)
-})
-
-test('the enriching stream fills a row from the configuration that named its plugin', () => {
-  const codec = new fix.FixCodec(bridge())
-  const one = body => codec.parseLine(body).next().value
-  const named = 'Router_OrderRouting'
-  const config = one(CONFIGURATION)
-
-  // Alone, a row naming a plugin states no comp ids and gains none: there is
-  // nothing yet to fill them from.
-  const [bare] = [...codec.enrichMessages([one(pluginRow(named))])]
-  assert.equal(bare.getByTag(49), null)
-  assert.equal(bare.getByTag(56), null)
-
-  // Behind the configuration that named it, the same row takes the session's
-  // two ends.
-  const filled = [...codec.enrichMessages([config, one(pluginRow(named))])]
-  assert.equal(filled[0].field.name, 'pluginconfig')
-  assert.equal(filled[1].byTag(49).asJs(), 'CLI.PROD.TRD')
-  assert.equal(filled[1].byTag(56).asJs(), 'ST.PROD')
-  // Not the begin string: every built message already fills tag 8 from the
-  // version its row was read at, so there is never one absent to fill.
-  assert.equal(filled[1].byTag(8).asJs(), bare.byTag(8).asJs())
-
-  // A row that stated its own 49 keeps it, which is what makes the pass
-  // idempotent; the one it did not state is still filled.
-  const stated = Buffer.from(`MSGTYPE=8|PLUGINID=${named}|SENDERCOMPID=ITS.OWN|`)
-  const held = [...codec.enrichMessages([config, one(stated)])][1]
-  assert.equal(held.byTag(49).asJs(), 'ITS.OWN')
-  assert.equal(held.byTag(56).asJs(), 'ST.PROD')
-
-  // A row naming a plugin no configuration named gains nothing, and so does
-  // one naming no plugin at all.
-  for (const untouched of [pluginRow('Someone_Else'), Buffer.from('MSGTYPE=8|ACCOUNT=ACCT-000117|')]) {
-    const last = [...codec.enrichMessages([config, one(untouched)])][1]
-    assert.equal(last.getByTag(49), null)
-    assert.equal(last.getByTag(56), null)
+test('a JSON document is one unknown message carrying only what the row stated', () => {
+  const codec = new fix.FixCodec(new fix.FixRegistry(), { captureNames: ['pluginid'] })
+  const one = (body, captures) => {
+    const messages = codec.parseTextLine(new TextLine(0, body, captures))
+    const message = messages.next().value
+    assert.equal(messages.next().done, true)
+    return message
   }
-
-  // The memory is the stream's: one message is not a stream, so the door
-  // that takes one remembers nothing and fills nothing.
-  assert.equal(codec.enrichMessage(one(pluginRow(named))).getByTag(49), null)
+  const message = one(DOCUMENT, ['Router_OrderRouting'])
+  // The codec reads no document: the row is a message that stated no type
+  // and no entries, so nothing inside the document reaches a field - the
+  // comp ids and the begin string it spells included - and the wire
+  // re-emits nothing.
+  assert.equal(message.field.name, 'unknown')
+  assert.deepEqual(message.arrivals(), [])
+  assert.equal(message.intoBytes('|'.charCodeAt(0)).length, 0)
+  for (const absent of [35, 49, 56]) assert.equal(message.getByTag(absent), null)
+  assert.equal(message.getByName('Name'), null)
+  // What the row stated beside the document is carried: the direction the
+  // prose in front of it spells, and the capture its header declared.
+  assert.equal(message.byTag(385).asJs(), 'R')
+  assert.equal(message.byName('pluginid').asJs(), 'Router_OrderRouting')
+  // A later row naming the same plugin gains nothing from it: the enriching
+  // stream carries nothing from one message to the next.
+  const later = one(Buffer.from('MSGTYPE=8|ACCOUNT=ACCT-000117|'), ['Router_OrderRouting'])
+  const filled = [...codec.enrichMessages([message, later])]
+  assert.equal(filled[0].field.name, 'unknown')
+  assert.equal(filled[1].getByTag(49), null)
+  assert.equal(filled[1].getByTag(56), null)
 })
 
 test('the enriching pass restates before it fills', () => {

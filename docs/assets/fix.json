@@ -102,8 +102,8 @@
     "codes": 27209,
     "aliases": 46,
     "alternates": 0,
-    "messages": 182,
-    "components": 930,
+    "messages": 181,
+    "components": 929,
     "columns": 120,
     "memberships": 0,
     "dialects": 0,
@@ -84005,553 +84005,6 @@
           "fix:tag": "1074179"
         },
         "name": "physicalsettlterm",
-        "nullable": false
-      },
-      {
-        "dtype": {
-          "fields": [
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "fix:tag": "35"
-              },
-              "name": "MsgType",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The ObjectName of the MBean this occurrence answers for.",
-                "display": "SessionInterface",
-                "fix:branches": "plugin",
-                "fix:tag": "20010"
-              },
-              "name": "SessionInterface",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The ObjectName's own type property: what this MBean is.",
-                "display": "MBeanType",
-                "fix:branches": "plugin",
-                "fix:tag": "20011"
-              },
-              "name": "MBeanType",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The ObjectName's plugin-type property: the protocol the plugin speaks.",
-                "display": "PluginType",
-                "fix:branches": "plugin",
-                "fix:tag": "20012"
-              },
-              "name": "PluginType",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The name the bridge knows this session interface by.",
-                "display": "Name",
-                "fix:branches": "plugin",
-                "fix:tag": "20013"
-              },
-              "name": "Name",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The category the bridge files this session interface under.",
-                "display": "Category",
-                "fix:branches": "plugin",
-                "fix:tag": "20014"
-              },
-              "name": "Category",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The identifier the bridge holds this session interface under.",
-                "display": "Guid",
-                "fix:branches": "plugin",
-                "fix:tag": "20015"
-              },
-              "name": "Guid",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Prepended to every identifier this session interface issues.",
-                "display": "Prefix",
-                "fix:branches": "plugin",
-                "fix:tag": "20016"
-              },
-              "name": "Prefix",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Appended to every identifier this session interface issues.",
-                "display": "Suffix",
-                "fix:branches": "plugin",
-                "fix:tag": "20017"
-              },
-              "name": "Suffix",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Whatever an operator wrote about this session interface.",
-                "display": "Comment",
-                "fix:branches": "plugin",
-                "fix:tag": "20018"
-              },
-              "name": "Comment",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "What the session is doing now: logged, stopped, and the rest; the document spells it State.",
-                "display": "PluginState",
-                "fix:branches": "plugin",
-                "fix:tag": "20019"
-              },
-              "name": "PluginState",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Which side of the connection this is: A accepts, I initiates.",
-                "display": "Type",
-                "fix:branches": "plugin",
-                "fix:tag": "20020"
-              },
-              "name": "Type",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The plugin version this session interface runs; the document spells it Version.",
-                "display": "PluginVersion",
-                "fix:branches": "plugin",
-                "fix:tag": "20021"
-              },
-              "name": "PluginVersion",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The host the session connects to first.",
-                "display": "PrimaryHost",
-                "fix:branches": "plugin",
-                "fix:tag": "20022"
-              },
-              "name": "PrimaryHost",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The port on the primary host.",
-                "display": "PrimaryPort",
-                "fix:branches": "plugin",
-                "fix:tag": "20023"
-              },
-              "name": "PrimaryPort",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The host the session falls back to.",
-                "display": "BackupHost",
-                "fix:branches": "plugin",
-                "fix:tag": "20024"
-              },
-              "name": "BackupHost",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The port on the backup host; -1 where none is declared.",
-                "display": "BackupPort",
-                "fix:branches": "plugin",
-                "fix:tag": "20025"
-              },
-              "name": "BackupPort",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The host the session is connected to now.",
-                "display": "CurrentHost",
-                "fix:branches": "plugin",
-                "fix:tag": "20026"
-              },
-              "name": "CurrentHost",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The port the session is connected on now.",
-                "display": "CurrentPort",
-                "fix:branches": "plugin",
-                "fix:tag": "20027"
-              },
-              "name": "CurrentPort",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The sequence number the session expects to receive next.",
-                "display": "IncomingMsgSeqNum",
-                "fix:branches": "plugin",
-                "fix:tag": "20028"
-              },
-              "name": "IncomingMsgSeqNum",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The sequence number the session will send next.",
-                "display": "OutgoingMsgSeqNum",
-                "fix:branches": "plugin",
-                "fix:tag": "20029"
-              },
-              "name": "OutgoingMsgSeqNum",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The log level this session interface runs at; -1 inherits.",
-                "display": "LogLevel",
-                "fix:branches": "plugin",
-                "fix:tag": "20030"
-              },
-              "name": "LogLevel",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "The scheduling priority the bridge gives this session.",
-                "display": "PriorityLevel",
-                "fix:branches": "plugin",
-                "fix:tag": "20031"
-              },
-              "name": "PriorityLevel",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "int64"
-              },
-              "metadata": {
-                "description": "Which isolation pool the session's load is placed in.",
-                "display": "LoadIsolation",
-                "fix:branches": "plugin",
-                "fix:tag": "20032"
-              },
-              "name": "LoadIsolation",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "boolean"
-              },
-              "metadata": {
-                "description": "Whether the session raises notifications.",
-                "display": "NotificationsStatus",
-                "fix:branches": "plugin",
-                "fix:tag": "20033"
-              },
-              "name": "NotificationsStatus",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "boolean"
-              },
-              "metadata": {
-                "description": "Whether the configuration on disk is ahead of the running one.",
-                "display": "NeedReload",
-                "fix:branches": "plugin",
-                "fix:tag": "20034"
-              },
-              "name": "NeedReload",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The jar the plugin class was loaded from.",
-                "display": "BinaryName",
-                "fix:branches": "plugin",
-                "fix:tag": "20035"
-              },
-              "name": "BinaryName",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The plugin class this session interface runs.",
-                "display": "ClassName",
-                "fix:branches": "plugin",
-                "fix:tag": "20036"
-              },
-              "name": "ClassName",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The revision string the plugin build carries.",
-                "display": "RevisionInformation",
-                "fix:branches": "plugin",
-                "fix:tag": "20037"
-              },
-              "name": "RevisionInformation",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The oldest bridge revision this plugin will run on.",
-                "display": "MinimumBridgeRevision",
-                "fix:branches": "plugin",
-                "fix:tag": "20038"
-              },
-              "name": "MinimumBridgeRevision",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The session's init file, as the INI text it is.",
-                "display": "InitFileContent",
-                "fix:branches": "plugin",
-                "fix:tag": "20039"
-              },
-              "name": "InitFileContent",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The actions this session interface offers, as the JSON array it is.",
-                "display": "ExtendedActions",
-                "fix:branches": "plugin",
-                "fix:tag": "20040"
-              },
-              "name": "ExtendedActions",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The enrichment chain attached to this session interface, as the JSON array it is.",
-                "display": "Enrichments",
-                "fix:branches": "plugin",
-                "fix:tag": "20041"
-              },
-              "name": "Enrichments",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The plugin's class hierarchy and revisions, as the JSON array it is.",
-                "display": "ClassHierarchy",
-                "fix:branches": "plugin",
-                "fix:tag": "20042"
-              },
-              "name": "ClassHierarchy",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The extensions this session interface declares, as the JSON array it is.",
-                "display": "Resources",
-                "fix:branches": "plugin",
-                "fix:tag": "20043"
-              },
-              "name": "Resources",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "boolean"
-              },
-              "metadata": {
-                "description": "Whether the session's CBlock has changed under it since it loaded.",
-                "display": "NeedCFBReload",
-                "fix:branches": "plugin",
-                "fix:tag": "20044"
-              },
-              "name": "NeedCFBReload",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The CBlocks this session interface loaded and their revisions, as the JSON array it is.",
-                "display": "CFBInfos",
-                "fix:branches": "plugin",
-                "fix:tag": "20045"
-              },
-              "name": "CFBInfos",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The products this plugin is built for, as the JSON array it is.",
-                "display": "targetProducts",
-                "fix:branches": "plugin",
-                "fix:tag": "20046"
-              },
-              "name": "targetProducts",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The configuration-manager extension version this plugin declares.",
-                "display": "cm-extension",
-                "fix:branches": "plugin",
-                "fix:tag": "20047"
-              },
-              "name": "cm-extension",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "fix:tag": "8"
-              },
-              "name": "BeginString",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "fix:tag": "49"
-              },
-              "name": "SenderCompID",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "fix:tag": "56"
-              },
-              "name": "TargetCompID",
-              "nullable": true
-            }
-          ],
-          "type": "struct"
-        },
-        "metadata": {
-          "fix:msgtype": "UCFG",
-          "fix:tag": "368812"
-        },
-        "name": "pluginconfig",
         "nullable": false
       },
       {
@@ -383356,7 +382809,7 @@
         "ORDER-1",
         "AAPL",
         "XNAS",
-        "1",
+        "BUY",
         100,
         10.5,
         "2",
@@ -383367,7 +382820,7 @@
         "029",
         "2024-02-01T12:34:56.123000000Z",
         "2024-02-01T12:34:56.123000000Z",
-        "l6+9Ru1INMAyDVY8qHD5MQ==",
+        "l6+9Ru1INMCoq+mvC2Fm7A==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null
@@ -383417,7 +382870,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -383544,7 +382997,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -383988,7 +383441,7 @@
         "40TRADE",
         "80FILLED",
         "AAPL",
-        "1",
+        "BUY",
         10.5,
         100,
         100,
@@ -383999,7 +383452,7 @@
         "249",
         "2024-02-01T12:34:57.900000000Z",
         "2024-02-01T12:34:57.900000000Z",
-        "l6+9R1czEwB7/TS0VY/VtQ==",
+        "l6+9R1czEwBA97lB9rQEfw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null
@@ -384043,7 +383496,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 31,
@@ -384196,7 +383649,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -384697,7 +384150,7 @@
         "VENUE",
         "ORDER-2",
         "BRN",
-        "1",
+        "BUY",
         50,
         41.25,
         2,
@@ -384724,7 +384177,7 @@
         "055",
         "2024-02-01T12:35:02.000000000Z",
         "2024-02-01T12:35:02.000000000Z",
-        "l6+9SEuUHAAdGkbuduM5gQ==",
+        "l6+9SEuUHAB8yOTitfRkbw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -384763,7 +384216,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -384900,7 +384353,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -390189,7 +389642,7 @@
         "ORDER-1",
         "O-9",
         "AAPL",
-        "1",
+        "BUY",
         150,
         10.75,
         "2",
@@ -390198,7 +389651,7 @@
         "104",
         "2024-02-01T12:36:00.000000000Z",
         "2024-02-01T12:36:00.000000000Z",
-        "l6+9Vcyl4AAd5ETy0vMAng==",
+        "l6+9Vcyl4AD02UbEzw0/Vg==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -390237,7 +389690,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -390359,7 +389812,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -390689,7 +390142,7 @@
         "US0378331005",
         "4",
         "XNAS",
-        "1",
+        "BUY",
         100,
         10.5,
         "USD",
@@ -390697,7 +390150,7 @@
         "045",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACmDbIz9CQ52A==",
+        "l6aAQgI8FABvVateGi1rNw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -390736,7 +390189,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -390822,7 +390275,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -391673,7 +391126,7 @@
       "value": [
         "FIX.4.4",
         "TTF",
-        "1",
+        "BUY",
         1200,
         41.25,
         2,
@@ -391687,7 +391140,7 @@
         "4.4",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACxjn01DIcXzw==",
+        "l6aAQgI8FAAgp7U8ooR/ew==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -391708,7 +391161,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -391763,7 +391216,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -392034,13 +391487,13 @@
         "D",
         "ORDER-4",
         "AAPL",
-        "1",
+        "BUY",
         100,
         "4.4",
         "122",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FAAGwahgqXFtWQ==",
+        "l6aAQgI8FAAHVwiZatTJXQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -392067,7 +391520,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -392131,7 +391584,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -392395,14 +391848,14 @@
         41,
         "D",
         "AAPL",
-        "1",
+        "BUY",
         100,
         "house-flag",
         "4.4",
         "204",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACDT/5Sd6KzuQ==",
+        "l6aAQgI8FAAftEiltYmbDA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -392429,7 +391882,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -392488,7 +391941,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -392756,14 +392209,14 @@
         40,
         "D",
         "AAPL",
-        "1",
+        "BUY",
         null,
         null,
         "4.4",
         "029",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FAC+jI7FVwQodA==",
+        "l6aAQgI8FABIPt1tQZ1o0A==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -392790,7 +392243,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         }
       ],
       "arrivals": [
@@ -392843,7 +392296,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [
@@ -393335,14 +392788,14 @@
         42,
         "D",
         "AAPL",
-        "1",
+        "BUY",
         100,
         10.5,
         "4.4",
         "999",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FAD3SBinUQhWwA==",
+        "l6aAQgI8FADbDpEBGn9xYw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         null,
@@ -393369,7 +392822,7 @@
           "t": 54,
           "n": "Side",
           "y": "side",
-          "v": "1"
+          "v": "BUY"
         },
         {
           "t": 38,
@@ -393440,7 +392893,7 @@
         ],
         [
           "side",
-          "1",
+          "BUY",
           54
         ],
         [

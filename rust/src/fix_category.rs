@@ -16,11 +16,11 @@ use crate::{Error, Result};
 /// let mut registry = FixRegistry::new();
 /// let component = DataType::from_fields([])?.required_field("Party");
 /// registry.create_definition(FixCategory::Components, component)?;
-/// // Beside the crate's own `pluginconfig` and `instids`, which every
-/// // registry holds from construction as it holds the crate's own fields
-/// //: a definition is filed by the shape it has, and a Struct
-/// // column of this crate's is a component like any other.
-/// assert_eq!(registry.definitions(FixCategory::Components).count(), 3);
+/// // Beside the crate's own `instids`, which every registry holds from
+/// // construction as it holds the crate's own fields: a definition is
+/// // filed by the shape it has, and a Struct column of this crate's is a
+/// // component like any other.
+/// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
 /// assert!(registry.get_field("Party").is_none());
 /// # Ok(())
 /// # }

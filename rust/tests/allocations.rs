@@ -485,22 +485,20 @@ fn a_fix_registry_lookup_allocates_nothing() {
             "MsgType=D Symbol=AAPL",
         )));
     });
-    // A bridge configuration is read the same way a frame is: the namespace,
-    // the ObjectName's type and the answer keys are all found in the caller's
-    // bytes, so classifying a document costs no allocation either. It
-    // classifies as `application/json` now - what makes one a
-    // configuration is a shape the codec probes at the offset this scan
-    // already found, so nothing is looked for twice and the cost is the same.
-    const PLUGIN: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
-    free("infer_bytes_protocol PLUGIN", || {
-        let _ = black_box(MimeType::infer_bytes(black_box(PLUGIN)));
+    // A JSON document is located the same way a frame is - its opener and
+    // its close are found in the caller's bytes - so classifying one costs
+    // no allocation either. It classifies as `application/json` and
+    // declares no message type: what a document says is not read.
+    const DOCUMENT: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
+    free("infer_bytes_protocol DOCUMENT", || {
+        let _ = black_box(MimeType::infer_bytes(black_box(DOCUMENT)));
     });
-    free("infer_bytes_msgtype PLUGIN", || {
-        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(PLUGIN)));
+    free("infer_bytes_msgtype DOCUMENT", || {
+        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(DOCUMENT)));
     });
     let reading = registry.msgdirection();
-    free("read_bytes_direction PLUGIN", || {
-        let _ = black_box(reading.read_bytes(black_box(PLUGIN)));
+    free("read_bytes_direction DOCUMENT", || {
+        let _ = black_box(reading.read_bytes(black_box(DOCUMENT)));
     });
     // The rules are compiled once with the reading; applying them to the
     // prose in front of a payload costs nothing per line, whether one code
@@ -541,51 +539,6 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("iter", || {
         let _ = black_box(registry.iter().count());
     });
-}
-
-#[test]
-fn parsed_plugin_wildcards_iterate_without_allocating_results() {
-    for size in [1, 32, 256] {
-        let values = Scalar::from_record((0..size).map(|index| {
-            let name = format!("Configuration{index:04}");
-            let mbean = format!(
-                "com.ullink.ulbridge.sessioninterfaces.plugins:name={name},type=ConfigurationPlugin"
-            );
-            let attributes = Scalar::from_record([("Name", Scalar::from(name))]).unwrap();
-            (mbean, attributes)
-        }))
-        .unwrap();
-        let document = Scalar::from_record([("value", values)]).unwrap();
-
-        // Reading a document cannot fail: one that names no plugin answers
-        // none, and answering none is what it answers, so there
-        // is no validation pass in front of the walk and nothing to unwrap.
-        let (first_allocations, first) = counted(|| {
-            yggdryl::Plugin::from_json_scalar(black_box(&document))
-                .next()
-                .expect("the wildcard has configurations")
-        });
-        assert_eq!(first.name(), Some("Configuration0000"));
-        // The shared stable hash owns one XXH3 secret buffer; feeding the
-        // selected configuration allocates nothing proportional to its siblings.
-        costs("hashing one selected plugin", 1, || {
-            black_box(first.stable_hash());
-        });
-        assert_eq!(
-            first_allocations, 0,
-            "first result for {size} configurations"
-        );
-
-        let (drain_allocations, read) = counted(|| {
-            yggdryl::Plugin::from_json_scalar(black_box(&document))
-                .inspect(|configuration| {
-                    black_box(configuration.name());
-                })
-                .count()
-        });
-        assert_eq!(read, size);
-        assert_eq!(drain_allocations, 0, "draining {size} configurations");
-    }
 }
 
 #[test]
@@ -2598,29 +2551,25 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
         "the altids Map and the rebuild that lands it"
     );
 
-    // The corpus: every shape a bridge writes - 95 messages of 54 distinct
-    // root shapes, read under the bridge's own registry - enriched three
-    // times through one codec. The first pass pays that registry's compile
-    // and nothing else over the second; the second and the third cost the
-    // same allocation for allocation, because nothing is bound or kept per
-    // shape: each message pays its clone, its working row, its sweeps and
-    // its rebuilds, whatever shape came before it.
+    // The corpus: every shape a bridge writes - 94 messages, every JSON
+    // document among them one entry-less `unknown`, read under a second
+    // handle on the committed dictionary - enriched three times through one
+    // codec. The first pass pays that registry's compile and nothing else
+    // over the second; the second and the third cost the same allocation
+    // for allocation, because nothing is bound or kept per shape: each
+    // message pays its clone, its working row, its sweeps and its rebuilds,
+    // whatever shape came before it.
     let corpus = std::fs::read(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"),
     )
     .expect("the corpus");
-    let plugged = Arc::new(
-        FixRegistry::from_handle(&folder)
-            .expect("loads")
-            .with_plugin_fields()
-            .expect("the bridge's own fields"),
-    );
+    let plugged = Arc::new(FixRegistry::from_handle(&folder).expect("loads"));
     let bridge = FixCodec::new(Arc::clone(&plugged));
     let messages: Vec<FixMsg> = bridge
         .parse_lines(&ulbridge_bodies(corpus))
         .filter_map(Result::ok)
         .collect();
-    assert_eq!(messages.len(), 95, "the corpus");
+    assert_eq!(messages.len(), 94, "the corpus");
     let pass = || {
         counted(|| {
             bridge
@@ -2635,27 +2584,22 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
         second, third,
         "a pass over every shape costs the same every time"
     );
-    // Seven more crate terms to compile than before, each with its sources
-    // bound against the working schema, so the one-off compile is that much
-    // larger; it is still paid exactly once, which is what the equality above
-    // pins.
+    // The committed dictionary's compile, one allocation over what the
+    // bridge's registry - the same dictionary beside the bridge's own
+    // fields - cost to compile; it is still paid exactly once, which is
+    // what the equality above pins.
     assert_eq!(
         first - second,
-        14_928,
-        "the first pass pays the bridge registry's compile and nothing else"
+        14_929,
+        "the first pass pays the registry's compile and nothing else"
     );
-    // 244 per message on average, the 451 allocations of cloning the 95
-    // messages included: the clone, the working row, the sweeps and the
-    // rebuilds of each, and the `Remembered` plugin memory of the stream.
-    // Twenty more per message than before the crate grew `recordedat`,
-    // `expiredat`, the lane currencies and the three identifier columns - a
-    // wider working row and seven more terms swept over it.
-    assert_eq!(
-        second, 23_215,
-        "95 messages of 54 shapes, each its own working row"
-    );
+    // The 441 allocations of cloning the 94 messages included: the clone,
+    // the working row, the sweeps and the rebuilds of each.
+    assert_eq!(second, 119_567, "94 messages, each its own working row");
+    // Ten fewer than the 95 messages of the corpus read per plugin cost: the
+    // wildcards are a row each, and a document's row clones no entries.
     let (clones, _) = counted(|| black_box(messages.clone()));
-    assert_eq!(clones, 451, "what cloning the corpus costs of that");
+    assert_eq!(clones, 441, "what cloning the corpus costs of that");
 }
 
 #[test]

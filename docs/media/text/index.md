@@ -172,9 +172,9 @@ The reader states no message type of its own either: a line's type is what its f
 
 [FIX decoding](../../fix/decode.md) consumes these captured records through a lazy
 `FixMessages` iterator, which answers none, one or many messages a record: a
-line carrying two frames yields both, one bulk configuration answer yields a
-flat message per configuration it names and none where it names none, and a
-line the codec finds no message in yields none. Each retains the originating capture columns, and a
+line carrying two frames yields both, a JSON document yields one message
+stating nothing whatever the document names, and a line the codec finds no
+message in yields none. Each retains the originating capture columns, and a
 [FIX batch](../../fix/arrow.md#one-row-per-message) is therefore one row per
 message. The text reader is what answers one row per line: it emits every
 framed record, whatever the codec would go on to make of it.

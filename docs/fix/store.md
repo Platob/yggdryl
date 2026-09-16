@@ -16,7 +16,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Identifiers | `fix:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
 | Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `fix:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has 34 scalar fields, the `instids` Struct and the `altids(65020)` Map group; `pluginconfig` is a separate builtin component/message. Every registry constructs them, and a write states them too, so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
+| Builtins | The crate listing has 34 scalar fields, the `instids` Struct and the `altids(65020)` Map group. Every registry constructs them, and a write states them too, so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
 | Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/0.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, codes, cycles, and depth are checked before exposing the registry |
 | Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
@@ -61,12 +61,11 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert!(path.join("groups/Parties.json").is_file());
     assert!(path.join("components/Order.json").is_file());
     // The crate's own are written beside them, so a store states the whole
-    // row: its tag block is one shard, and its group, Struct and message are
-    // three documents.
+    // row: its tag block is one shard, and its group and Struct are two
+    // documents.
     assert!(path.join("fields/650.json").is_file());
     assert!(path.join("groups/altids.json").is_file());
     assert!(path.join("components/instids.json").is_file());
-    assert!(path.join("components/pluginconfig.json").is_file());
     // The three category directories are the whole layout.
     assert_eq!(std::fs::read_dir(&path)?.count(), 3);
     let reloaded = FixRegistry::from_handle(&root)?;
@@ -115,12 +114,11 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         assert (root / "groups/Parties.json").is_file()
         assert (root / "components/Order.json").is_file()
         # The crate's own are written beside them, so a store states the
-        # whole row: its tag block is one shard, and its group, Struct and
-        # message are three documents.
+        # whole row: its tag block is one shard, and its group and Struct
+        # are two documents.
         assert (root / "fields/650.json").is_file()
         assert (root / "groups/altids.json").is_file()
         assert (root / "components/instids.json").is_file()
-        assert (root / "components/pluginconfig.json").is_file()
         # The three category directories are the whole layout.
         assert sorted(child.name for child in root.iterdir()) == ["components", "fields", "groups"]
         reloaded = FixRegistry.from_handle(root)
@@ -168,14 +166,9 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         assert.ok(fs.existsSync(path.join(root, file)))
       }
       // The crate's own are written beside them, so a store states the whole
-      // row: its tag block is one shard, and its group, Struct and message
-      // are three documents.
-      for (const file of [
-        'fields/650.json',
-        'groups/altids.json',
-        'components/instids.json',
-        'components/pluginconfig.json',
-      ]) {
+      // row: its tag block is one shard, and its group and Struct are two
+      // documents.
+      for (const file of ['fields/650.json', 'groups/altids.json', 'components/instids.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
       // The three category directories are the whole layout.
@@ -238,7 +231,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 11,279,714 bytes - a fifth more than the 9,294,090 the same facts took while every code set was one escaped line, which is what writing them as the JSON they are costs and what makes the tree readable. It states no crate tag - the generator writes the specification's own fields and nothing else - so loading it adds the 34 crate scalars, the `altids` group, the `instids` component and the separate `pluginconfig` component/message, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,275 scalar fields, 581 groups, 930 components and 182 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 11,279,714 bytes - a fifth more than the 9,294,090 the same facts took while every code set was one escaped line, which is what writing them as the JSON they are costs and what makes the tree readable. It states no crate tag - the generator writes the specification's own fields and nothing else - so loading it adds the 34 crate scalars, the `altids` group and the `instids` component, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,275 scalar fields, 581 groups, 929 components and 181 message types in the live registry.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
 
@@ -275,8 +268,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert_eq!(fix_crate_fields()?.len(), 36);
     assert_eq!(registry.len(), 6_275);
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 930);
-    assert_eq!(registry.msgtypes().count(), 182);
+    assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
+    assert_eq!(registry.msgtypes().count(), 181);
     ```
 
 === "Python"
@@ -308,8 +301,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert len(fix_crate_fields()) == 36
     assert len(registry) == 6_275
     assert len(list(registry.definitions("groups"))) == 581
-    assert len(list(registry.definitions("components"))) == 930
-    assert len(list(registry.msgtypes())) == 182
+    assert len(list(registry.definitions("components"))) == 929
+    assert len(list(registry.msgtypes())) == 181
     ```
 
 === "JavaScript"
@@ -340,8 +333,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.equal(fix.crateFields().length, 36)
     assert.equal(registry.size, 6275)
     assert.equal([...registry.definitions('groups')].length, 581)
-    assert.equal([...registry.definitions('components')].length, 930)
-    assert.equal([...registry.msgtypes()].length, 182)
+    assert.equal([...registry.definitions('components')].length, 929)
+    assert.equal([...registry.msgtypes()].length, 181)
     ```
 
 ### Datatypes in the seed
@@ -373,7 +366,7 @@ python scripts/generate_fix_dictionary.py --check
 - Canonical definition names must form safe single path segments: nonempty ASCII letters, digits, underscore, hyphen, or dot, and never `.` or `..`.
 - A directory inside a category is not a store's layout: what it holds is passed over on read and left alone by publication, so nothing is read as a dialect's own shard.
 - A `README` beside the field shards is ignored on read and left alone by publication; only `<n>.json` with a decimal `n` is read.
-- Builtin scalar, Map group and `pluginconfig` definitions are written like any other, and read past on load in favour of their native owner; an incoming document cannot override a builtin, by restating its name under another tag or by restating the builtin itself.
+- Builtin scalar, Map group and Struct definitions are written like any other, and read past on load in favour of their native owner; an incoming document cannot override a builtin, by restating its name under another tag or by restating the builtin itself.
 - A `fix:branches` value is held to the membership grammar: a name that is empty or carries a comma is refused naming the key.
 - Removing the last definition from a shard or category removes its owned document or directory on the next write.
 - Folder writes publish individual documents; a backend failure can leave already published files visible.

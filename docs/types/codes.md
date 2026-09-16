@@ -222,8 +222,8 @@ A code is an identity over a published registry, not a string with a charset: a 
 
 ## FIX message definitions
 
-FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`
-and the plugin configuration's `UCFG`. The [FIX registry](../fix/registry.md)
+FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
+The [FIX registry](../fix/registry.md)
 owns `MsgType`: the registry's immutable message Struct definition, a component
 carrying `fix:msgtype`, obtained through registry lookup. Its wire code stays
 intact; message definitions have no generic datatype or code field helper.

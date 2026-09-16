@@ -2,8 +2,8 @@
 //!
 //! The corpus is `rust/tests/fix/ulbridge.log` - a second of a ULBridge's
 //! own capture, anonymized, and then every shape a bridge writes that the
-//! second happened not to hold: a Jolokia exchange whose answer is a
-//! configuration document, FIXML behind a verb, frames spelled with `^A` and
+//! second happened not to hold: a Jolokia exchange whose answer is a JSON
+//! document the codec does not read, FIXML behind a verb, frames spelled with `^A` and
 //! `<SOH>`, a `35=UL` frame packing a group inside a group, a bridge row
 //! keyed by name, a statistics line, an empty body, a warning and a
 //! cancel/reject flow - repeated
@@ -21,10 +21,9 @@
 //! fills what it implies, the stamp that joins it to its order's life, and
 //! its digest.
 //!
-//! The registry carries the bridge's own fields beside the standard ones in
-//! the one namespace, which is what a capture holding configuration
-//! documents needs: the framed FIX lands on FIX's own tags while a
-//! document's attributes land on the bridge's, each by its name.
+//! The registry is the shipped dictionary: the framed FIX lands on FIX's own
+//! tags, and a JSON document the bridge wrote is one `unknown` row carrying
+//! only what the row stated.
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -94,18 +93,7 @@ fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
 pub fn benchmarks(criterion: &mut Criterion) {
     let bytes = corpus();
     let source = handle(&bytes);
-    let registry = Arc::new(
-        seed()
-            .with_plugin_fields()
-            .expect("the bridge's own fields"),
-    );
-    assert!(
-        registry
-            .field("SessionInterface")
-            .expect("the bridge's first field")
-            .as_fix()
-            .has_branch(yggdryl::PLUGIN_DIALECT)
-    );
+    let registry = Arc::new(seed());
     let codec = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
 
@@ -150,7 +138,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .try_fold(0_usize, |read, message| message.map(|_| read + 1))
             .expect("an enriched message")
     };
-    assert_eq!(read_composed(), 95 * REPEATS);
+    assert_eq!(read_composed(), 94 * REPEATS);
     group.bench_function("decoded_lines_enrich", |bencher| {
         bencher.iter(|| black_box(read_composed()));
     });
@@ -345,11 +333,7 @@ fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
 /// read is the difference. Per shape rather than over the corpus, so a
 /// change to the codec is attributed to the shape it moved.
 pub fn line_benchmarks(criterion: &mut Criterion) {
-    let registry = Arc::new(
-        seed()
-            .with_plugin_fields()
-            .expect("the bridge's own fields"),
-    );
+    let registry = Arc::new(seed());
     let codec = FixCodec::new(Arc::clone(&registry));
     let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
     let frame_soh: Vec<u8> = frame_pipe

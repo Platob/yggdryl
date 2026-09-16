@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, TextLine, types
-from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, MsgType, Plugin, Plugins, fix_crate_fields, fix_plugin_fields
+from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, MsgType, fix_crate_fields
 
 
 def _field(name: str, tag: int, dtype: str = "utf8") -> Field:
@@ -139,12 +139,10 @@ def test_category_iterators_and_singletons_pin_their_registry() -> None:
     # name order.
     assert next(iterator).name == "NewOrderSingle"
     assert next(iterator).name == "Party"
-    # The crate's own are behind them, in name order: `instids`, the Struct
-    # that joins an instrument's identifiers, then the `pluginconfig` message
-    # every registry carries as it carries the crate's own fields
-    #.
+    # The crate's own is behind them: `instids`, the Struct that joins an
+    # instrument's identifiers, which every registry carries as it carries
+    # the crate's own fields.
     assert next(iterator).name == "instids"
-    assert next(iterator).name == "pluginconfig"
     assert next(iterator, None) is None
     assert next(iterator, None) is None
     with pytest.raises(ValueError, match="shared"):
@@ -177,10 +175,11 @@ def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -
     registry.create_definition("components", _message("D", "X"))
     registry.create_definition("components", _message("NewOrderSingle", "D"))
     registry.create_definition("components", _message("BridgeReport", "P Report Ack"))
-    # In name order, and the crate's own `pluginconfig` iterates among them:
-    # every registry has it before a caller creates anything.
+    # In name order, and nothing among them a caller did not create: a new
+    # registry seeds no message type of its own.
+    assert list(FixRegistry().msgtypes()) == []
     values = list(registry.msgtypes())
-    assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D"), ("pluginconfig", "UCFG")]
+    assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D")]
     assert registry.msgtype("D").name == "NewOrderSingle"
     assert registry.msgtype("bridgereport").value == "P Report Ack"
     assert registry.get_msgtype("p report ack") is None
@@ -201,118 +200,48 @@ def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -
         ("BridgeReport", "P Report Ack"),
         ("D", "X"),
         ("NewOrderSingle", "D"),
-        ("pluginconfig", "UCFG"),
     ]
 
 
-def _wildcard(size: int = 2) -> dict[str, Any]:
-    return {"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"}, "value": {f"com.ullink.ulbridge.sessioninterfaces.plugins:name=Item{index},plugin-type=FIX,type=Plugin": {"Name": f"Item{index}", "CurrentPort": 9000 + index} for index in range(size)}, "status": 200}
+def _answer(size: int = 2) -> dict[str, Any]:
+    """A bulk read a bridge logs: one document, keyed once per thing it names."""
+    return {"request": {"mbean": "com.ullink.ulbridge:type=*", "type": "read"}, "value": {f"com.ullink.ulbridge:name=Item{index},type=Bridge": {"Name": f"Item{index}", "CurrentPort": 9000 + index} for index in range(size)}, "status": 200}
 
 
-def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes() -> None:
-    document = _wildcard()
-    iterator = Plugin.from_json_scalar(document)
-    assert isinstance(iterator, Plugins)
-    assert iter(iterator) is iterator
-    first = next(iterator)
-    document["value"].clear()
-    assert next(iterator).name == "Item1"
-    assert next(iterator, None) is None
-    assert next(iterator, None) is None
-    sibling = _wildcard()
-    list(sibling["value"].values())[1]["CurrentPort"] = 9999
-    same = next(Plugin.from_json_scalar(sibling))
-    assert same == first
-    assert hash(same) == hash(first)
-    assert same.stable_hash() == first.stable_hash()
-    # The envelope is transport: how the asking went was never part of the
-    # configuration, so an answer that came back 503 states the same plugin.
-    sibling["status"] = 503
-    changed = next(Plugin.from_json_scalar(sibling))
-    assert changed == first
-    assert changed.stable_hash() == first.stable_hash()
-    # A plugin is its ObjectName and its attributes, which is all of it, so
-    # the two parts rebuild it and pickle carries nothing else.
-    rebuilt = Plugin(first.attributes, mbean=first.mbean)
-    assert rebuilt == first
-    assert rebuilt.stable_hash() == first.stable_hash()
-    assert Plugin(first.attributes) != first
-    restored = pickle.loads(pickle.dumps(first))
-    assert restored == first
-    assert restored.mbean == first.mbean
-    assert restored.attributes == first.attributes
-    assert not hasattr(first, "envelope")
-    # An array element that is not an answer names no plugin, and naming
-    # none is what it answers: the walk continues past it and refuses nothing.
-    assert [held.name for held in Plugin.from_json_scalar([_wildcard(), None])] == [
-        "Item0",
-        "Item1",
-    ]
-
-
-def test_bulk_messages_drop_answers_naming_no_plugin_keep_source_columns_and_fuse() -> None:
+def test_a_json_row_is_one_unknown_message_keeping_source_columns_and_fusing() -> None:
     registry = FixRegistry()
-    registry.with_plugin_fields()
     codec = FixCodec(registry)
     error = {"request": {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}, "status": 404, "error": "missing"}
     request = {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}
-    raw = json.dumps([_wildcard(), error, request]).encode()
+    raw = json.dumps([_answer(), error, request]).encode()
     messages = codec.parse_line(raw)
     assert isinstance(messages, FixMessages)
     assert iter(messages) is messages
     del codec
     values = list(messages)
-    # The error-only answer and the request-only document each name no
-    # plugin, and a read that answers no plugin answers no message: what is
-    # left is the two the wildcard selected.
-    assert len(values) == 2
-    assert [value.by_name("Name").as_py() for value in values] == ["Item0", "Item1"]
-    assert all(value.get_by_name("Status") is None for value in values)
-    assert all(value.get_by_name("Error") is None for value in values)
-    assert all(value.get_by_name("Operation") is None for value in values)
-    assert all(value.get_by_name("MBean") is None for value in values)
-    assert all(value.get_by_name("SessionInterfaces") is None for value in values)
+    # A document is not read, however many things it names: the row is one
+    # message stating no type and no entries.
+    assert len(values) == 1
+    assert values[0].field.name == "unknown"
+    assert values[0].entries() == []
+    assert values[0].get_by_name("Name") is None
     assert next(messages, None) is None
     assert next(messages, None) is None
     capture = pa.table({"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())})
-    # One byte a batch is a batch a row; a bulk document is still one row per
-    # plugin it names, and none for the answers that name none.
+    # One byte a batch is a batch a row, and a document row keeps the
+    # columns it arrived with.
     output = FixCodec(registry, batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
-    assert output.num_rows == 2
-    assert output.column("url").to_pylist() == ["capture.log"] * 2
-    assert output.column("rownum").to_pylist() == [17] * 2
-    assert output.column("body").to_pylist() == [raw] * 2
-    # A row's own bytes that are not a Jolokia answer say nothing FIX can
-    # read, through every door, and being unable to read a body is not an
-    # error in the codec.
+    assert output.num_rows == 1
+    assert output.column("url").to_pylist() == ["capture.log"]
+    assert output.column("rownum").to_pylist() == [17]
+    assert output.column("body").to_pylist() == [raw]
+    # Any JSON object is the same row through every door.
     stranger = b'{"a":1}'
     reader = FixCodec(registry)
-    assert next(reader.parse_line(stranger), None) is None
-    assert next(reader.parse_plugin_line(stranger), None) is None
-    assert next(reader.parse_text_line(TextLine(17, stranger)), None) is None
+    assert next(reader.parse_line(stranger)).field.name == "unknown"
+    assert next(reader.parse_text_line(TextLine(17, stranger))).field.name == "unknown"
     strangers = pa.table({"body": pa.array([stranger], type=pa.binary())})
-    assert reader.parse_text_arrow_reader(strangers).read_all().num_rows == 0
-    config = Plugin({"CurrentPort": float("nan")})
-    with pytest.raises(ValueError, match="non-finite"):
-        config.into_fixmsg(FixCodec(registry))
-
-
-# Only `plugin` is registered on request: the crate's own fields seed every
-# registry, so there is no `with_crate_fields` left to refuse.
-@pytest.mark.parametrize("method, vocabulary", [("with_plugin_fields", fix_plugin_fields)])
-def test_registering_vocabulary_refusals_preserve_every_category(method: str, vocabulary: Any) -> None:
-    registry = _catalog()
-    # A held identity under another datatype is what refuses: a held tag
-    # under another name is a field of its own beside the holder.
-    declared = vocabulary()[-1]
-    conflict = Field(declared.name, "int32" if declared.dtype != DataType("int32") else "utf8")
-    conflict.fix.tag = declared.fix.tag
-    registry.insert(conflict)
-    before = registry.into_json()
-    with pytest.raises(ValueError):
-        getattr(registry, method)()
-    assert registry.into_json() == before
-    assert registry.definition("groups", "Parties").fix.counter == 453
+    assert reader.parse_text_arrow_reader(strangers).read_all().num_rows == 1
 
 
 def test_message_singleton_ordering_delegates_to_native_fields() -> None:

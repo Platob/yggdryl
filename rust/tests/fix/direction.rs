@@ -236,16 +236,15 @@ fn a_rule_added_through_the_registry_changes_what_a_line_answers() {
 
 #[test]
 fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_nothing() {
-    // A wildcard read that selected one plugin, so the document names one:
-    // an answer keys its `value` by the ObjectName of every plugin it
-    // selected, and that ObjectName is the only thing that names a
-    // configuration.
+    // A wildcard read that selected one plugin: a JSON document, which the
+    // codec reads as one `unknown` message stating nothing of its own.
     const ANSWERED: &str = concat!(
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"#,
         r#""value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,"#,
         r#"plugin-type=FIX,type=Plugin":{"Name":"Router_TradeCapture"}},"status":200}"#,
     );
-    // The same read having selected nothing, which names no plugin.
+    // The same read having selected nothing, and a request not yet answered:
+    // documents too, and each the same one `unknown`.
     const EMPTY: &str = concat!(
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"#,
         r#""value":{},"status":200}"#,
@@ -301,25 +300,26 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
     assert_eq!(prosed.by_tag(385).unwrap().as_str(), Some("R"));
 
     // A direction is the line's, and a message is the document's: the two
-    // are read apart, so a read that selected nothing and a request that
-    // has not been answered yet both state no message at all - there is no
-    // envelope left to make a row out of - while the prose in
-    // front of each still names the half it moved.
+    // are read apart. A read that selected nothing and a request that has
+    // not been answered yet are each one `unknown` message, exactly as the
+    // answered read is - what a document says is not read - and the prose
+    // in front of each still names the half it moved, on that message.
     for (body, half) in [(EMPTY, "R"), (ASKED, "S")] {
-        assert!(
-            codec.parse_line(body.as_bytes()).unwrap().next().is_none(),
-            "{body} names no plugin",
-        );
+        let bare = super::sole_message(codec.parse_line(body.as_bytes()).unwrap())
+            .unwrap_or_else(|error| panic!("{body}: {error}"));
+        assert_eq!(bare.as_field().name(), "unknown", "{body}");
+        assert!(bare.entries().is_empty(), "{body}");
+        assert_eq!(bare.get_by_tag(385), None, "{body} states no direction");
         let verb = if half == "R" { "Response" } else { "Request" };
         let prosed = format!("[Jolokia] (DEBUG) {verb}: {body}");
         assert_eq!(reading.read_text(&prosed), Some(half));
-        assert!(
-            codec
-                .parse_line(prosed.as_bytes())
-                .unwrap()
-                .next()
-                .is_none(),
-            "and the prose in front of it makes it no more a message",
+        let prosed = super::sole_message(codec.parse_line(prosed.as_bytes()).unwrap())
+            .unwrap_or_else(|error| panic!("{body}: {error}"));
+        assert_eq!(prosed.as_field().name(), "unknown", "{body}");
+        assert_eq!(
+            prosed.by_tag(385).unwrap().as_str(),
+            Some(half),
+            "the prose in front of it names the half the document moved",
         );
     }
 }

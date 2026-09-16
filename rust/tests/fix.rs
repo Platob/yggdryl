@@ -166,20 +166,6 @@ fn fixed_codec(registry: std::sync::Arc<yggdryl::FixRegistry>) -> yggdryl::FixCo
         .unwrap()
 }
 
-fn plugin_fields_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
-    static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
-        std::sync::OnceLock::new();
-    std::sync::Arc::clone(REGISTRY.get_or_init(|| {
-        std::sync::Arc::new(
-            committed_registry()
-                .as_ref()
-                .clone()
-                .with_plugin_fields()
-                .expect("the bridge's own fields"),
-        )
-    }))
-}
-
 /// One line read at a version the row itself states.
 ///
 /// A codec pins no version: the two ranks are what the row states and what
@@ -207,7 +193,6 @@ fn dated_line(
 /// first with nobody noticing.
 trait SoleMessage {
     fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
-    fn sole_plugin_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
 fn sole_message(
@@ -241,58 +226,6 @@ impl SoleMessage for yggdryl::FixCodec {
     fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
         sole_message_filled(self, self.parse_line(row)?, enrich)
     }
-
-    fn sole_plugin_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        sole_message_filled(self, self.parse_plugin_line(row), enrich)
-    }
-}
-
-/// The tags the Jolokia envelope used to occupy, which name nothing now.
-///
-/// `MBean`, `Operation`, `Status` and `Error` were what the transport asked
-/// and how the asking went, never a fact about the plugin the answer carried,
-/// so the four of them are gone. They are retired rather than
-/// reused - a capture written last year holds `MBean` on 20001 - so what the
-/// suites below assert about them is absence: no field in the dictionary, no
-/// entry on a message, and no reader handing one back.
-const RETIRED_ENVELOPE_TAGS: std::ops::RangeInclusive<i32> = 20_001..=20_004;
-
-/// The four names those tags were defined under.
-const RETIRED_ENVELOPE_NAMES: [&str; 4] = ["MBean", "Operation", "Status", "Error"];
-
-/// That a message states nothing of the exchange that carried it.
-///
-/// By name and by tag both, because neither half is the whole claim: the
-/// dictionary defines no field on 20001 to 20004 any more, so an entry a
-/// reader still wrote under the key `MBean` would resolve to no tag at all
-/// and slip past a tag-only check. The name is the falsifiable half; the tag
-/// is the one a capture written before they went would collide on.
-fn states_no_envelope(message: &yggdryl::FixMsg) {
-    for name in RETIRED_ENVELOPE_NAMES {
-        assert!(message.get_by_name(name).is_none(), "{name}");
-    }
-    for retired in RETIRED_ENVELOPE_TAGS {
-        assert!(message.get_by_tag(retired).is_none(), "{retired}");
-    }
-}
-
-/// The tag carrying the ObjectName a read answered for.
-///
-/// The one place a configuration message names itself, and where the
-/// ObjectName always belonged: the envelope that used to restate it on 20001
-/// is gone. It is also the smallest tag ULBridge's dictionary now defines,
-/// which is why [`yggdryl::PLUGIN_TAG_MIN`] is a floor rather than an
-/// equal.
-const SESSIONINTERFACE_TAG: i32 = 20_010;
-
-/// How many message types every registry holds before a test registers one.
-///
-/// The crate's own, which `FixRegistry::new` seeds beside its fields exactly
-/// as it seeds `pluginid`: `pluginconfig` is the one of them.
-/// Counted rather than spelled `1`, the way [`crated_fields`] counts the fields, so
-/// every total below stays true of the next one.
-fn crated_messages() -> usize {
-    usize::from(yggdryl::fix_plugin_message().is_ok())
 }
 
 /// The datatype every FIX identity column - `msghash`, `msgphash`,

@@ -973,7 +973,7 @@ impl Hash for Scalar {
             | Self::Duration64(_) => unreachable!("temporal values returned above"),
             // Interval, Sequence, Mapping and Record feed the discriminant their
             // retired width enum wrote before them, so deterministic hashes built
-            // over `Hash` (a message's, a plugin's) keep their exact bytes.
+            // over `Hash` (a message's) keep their exact bytes.
             Self::Interval(value) => {
                 7_isize.hash(state);
                 value.hash(state);

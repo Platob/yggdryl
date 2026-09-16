@@ -1072,11 +1072,13 @@ fn a_registry_of_a_handful_of_fields_enriches_and_its_crate_columns_are_silent()
 
 #[test]
 fn a_stream_of_every_shape_costs_nothing_between_messages() {
-    // No shape is recognized and nothing is kept per shape: the bridge's
-    // own capture, every shape it writes, enriches to the same answers
-    // message by message in either order, through the stream door twice,
-    // and over what the stream already enriched.
-    let reader = super::fixed_codec(super::plugin_fields_registry());
+    // No shape is recognized and nothing is kept per shape or between
+    // messages: the bridge's own capture, every shape it writes, enriches
+    // to the same answers message by message in either order, through the
+    // stream door twice, over what the stream already enriched - and the
+    // stream answers exactly what the one-message door answers, because it
+    // carries nothing from one message to the next.
+    let reader = super::fixed_codec(super::committed_registry());
     let source = Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec()).with_media_type(
         Url::from_str("file:///ulbridge.log")
             .expect("a URL")
@@ -1098,7 +1100,11 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
         .flatten()
         .filter_map(Result::ok)
         .collect();
-    assert_eq!(messages.len(), 95, "the corpus");
+    // 94: every JSON document the capture holds - the seven Jolokia
+    // answers, the two wildcards and the error among them, and the
+    // statistics line - is one `unknown` row, never one per plugin it named
+    // and never none.
+    assert_eq!(messages.len(), 94, "the corpus");
     let forward: Vec<FixMsg> = messages
         .iter()
         .map(|message| reader.enrich_message(message.clone()).expect("enriches"))
@@ -1119,6 +1125,11 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
         .collect::<yggdryl::Result<_>>()
         .expect("the stream enriches again");
     assert_eq!(streamed, again, "a second stream answers the first");
+    assert_eq!(
+        forward, streamed,
+        "the stream carries nothing between messages: a row naming a plugin \
+         some document configured takes nothing from that document"
+    );
     let settled: Vec<FixMsg> = reader
         .enrich_messages(streamed.clone())
         .collect::<yggdryl::Result<_>>()

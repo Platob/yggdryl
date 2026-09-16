@@ -750,7 +750,6 @@ impl Rows {
             fills: &fills,
             direction: direction.as_deref(),
             direction_pin: self.codec.direction(),
-            msgtype: None,
         };
         let messages = self.codec.parse_bytes_with(extras, &payload);
         // By position: the columns kept were decided from the schema, and a

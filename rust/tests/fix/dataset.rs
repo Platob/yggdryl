@@ -37,33 +37,29 @@ const LOG: &[u8] = include_bytes!("ulbridge.log");
 /// How many lines the capture holds.
 const LINES: usize = 144;
 
-/// The lines that read as more than one row: the wildcard Jolokia reads,
-/// each answering for several plugins and so yielding one message per
-/// configuration the answer named.
-/// Each is the line and how many rows it yields beyond its first.
-const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
-
-/// The lines that read as no row at all.
+/// The lines that read as no row at all: the bridge's own prose, which
+/// states no frame, no bridge pair and no document, so it carries no
+/// message.
 ///
-/// Mostly the bridge's own prose, which states no frame, no bridge pair and
-/// no document, so it carries no message. Line 99 is the one
-/// that is not prose: a Jolokia answer that came back with an error and no
-/// `value`, which names no plugin - and a read that answers no plugin answers
-/// no message, rather than an envelope with nothing inside it.
-/// It used to be a row carrying `Error` on tag 20004 and nothing else.
+/// A JSON document is never silent: the Jolokia answers - a wildcard read
+/// naming several plugins, and the one that came back with an error and no
+/// `value` - and the statistics line are each one row, an entry-less
+/// `unknown`, because a document is a body the codec does not read and a
+/// row that carried one still stated its clock and its captures. The two
+/// wildcards used to be one row per plugin they named, and the error answer
+/// and the statistics line used to be silent.
 ///
 /// A line is still a line - the text reader answers every one of them - and
 /// this is what the FIX reader answers for it.
-const SILENT: [usize; 52] = [
+const SILENT: [usize; 50] = [
     0, 2, 12, 16, 17, 18, 19, 22, 28, 29, 31, 40, 41, 42, 46, 48, 49, 50, 54, 61, 65, 66, 67, 68,
-    71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 99, 108, 109, 110, 115, 116, 117, 118, 120,
-    124, 126, 127, 136, 137, 139,
+    71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 109, 110, 115, 116, 117, 118, 120, 124,
+    126, 127, 136, 137, 139,
 ];
 
 /// How many rows the capture reads as: a row for every message, so a row a
-/// line but for the wildcards, which answer for each configuration they
-/// named, and the silent lines, which answer for nothing.
-const ROWS: usize = LINES - SILENT.len() + WILDCARDS[0].1 + WILDCARDS[1].1;
+/// line but for the silent lines, which answer for nothing.
+const ROWS: usize = LINES - SILENT.len();
 
 /// Whether text line `line` carries no message.
 const fn silent(line: usize) -> bool {
@@ -77,26 +73,14 @@ const fn silent(line: usize) -> bool {
     false
 }
 
-/// How many rows beyond its first text line `line` answers.
-const fn beyond(line: usize) -> usize {
-    let mut at = 0;
-    while at < WILDCARDS.len() {
-        if WILDCARDS[at].0 == line {
-            return WILDCARDS[at].1;
-        }
-        at += 1;
-    }
-    0
-}
-
-/// The first row text line `line` was read into; where the line is silent,
-/// the row the line after it opens.
+/// The row text line `line` was read into; where the line is silent, the
+/// row the line after it opens.
 const fn row_of(line: usize) -> usize {
     let mut row = 0;
     let mut at = 0;
     while at < line {
         if !silent(at) {
-            row += 1 + beyond(at);
+            row += 1;
         }
         at += 1;
     }
@@ -109,20 +93,19 @@ const fn line_of(row: usize) -> usize {
     let mut seen = 0;
     while line < LINES {
         if !silent(line) {
-            let held = 1 + beyond(line);
-            if row < seen + held {
+            if row == seen {
                 return line;
             }
-            seen += held;
+            seen += 1;
         }
         line += 1;
     }
     LINES
 }
 
-/// The committed dictionary beside the bridge's own vocabulary.
+/// The committed dictionary, in which every line of the bridge's resolves.
 fn registry() -> Arc<FixRegistry> {
-    super::plugin_fields_registry()
+    super::committed_registry()
 }
 
 /// The log as the `.log` handle a reader opens.
@@ -454,7 +437,7 @@ fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema(
 /// it means recording what a document stated as entries of its own - which
 /// moves the arrival record every `.entry[i]` in the equivalence snapshot
 /// pins, and so is its own decision rather than a corner of this one.
-const LIFTED_OUT_OF_A_DOCUMENT: [(usize, i32); 2] = [(71, 453), (71, 209_321)];
+const LIFTED_OUT_OF_A_DOCUMENT: [(usize, i32); 2] = [(row_of(111), 453), (row_of(111), 209_321)];
 
 #[test]
 fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
@@ -1137,72 +1120,75 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
             .expect("the row reads")
     };
 
-    // A configuration document: the exchange on the bridge's tags.
-    let document = find(
-        r#"Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture"#,
-    );
-    // The line classifies as the JSON it is: what makes a document *this*
-    // reader's is a shape the codec recognizes rather than a name the
-    // classifier gives it.
-    assert_eq!(mimetype(document).as_deref(), Some(MimeType::JSON.as_str()));
-    let message = read(document);
-    // The message is the plugin's attributes and nothing the Jolokia answer
-    // wrapped them in: the four envelope tags hold nothing, and the ObjectName
-    // the read answered for is the `SessionInterface` attribute.
-    super::states_no_envelope(&message);
-    assert_eq!(
-        message
-            .by_tag(super::SESSIONINTERFACE_TAG)
-            .unwrap()
-            .as_str()
-            .unwrap_or_default(),
-        "com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture,\
-         plugin-type=FIX,type=Plugin"
-    );
-    assert_eq!(
-        message.by_path(&path("CurrentPort")).unwrap(),
-        &Scalar::from(9726_i64)
-    );
-    // A wildcard read answers for every plugin, one message each, and every
-    // message carries its own MBean's attributes flat.
-    let wildcard = find(r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#);
-    let messages = codec
-        .enriched_line(&lines[wildcard])
-        .expect("the wildcard reads")
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .expect("the wildcard reads");
-    assert_eq!(messages.len(), 2, "one message per plugin");
-    for (name, port) in [
-        ("ULMSG_BROKER_BDG_DMZ_CLI", 9801_i64),
-        ("OMS_X1_OrderOut", 9702_i64),
+    // A JSON document, whatever it holds, is one `unknown` row: a Jolokia
+    // answer for one plugin, a wildcard answer for several, an answer that
+    // came back with an error and no `value`, and the bridge's statistics
+    // line are each one message stating no type and no entries, carrying
+    // only what the row stated around the document - its clock, its
+    // direction and its captures. The line classifies as the JSON it is,
+    // and what the document says is not read.
+    for (needle, direction) in [
+        (
+            r#"Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture"#,
+            Some("R"),
+        ),
+        (
+            r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#,
+            Some("R"),
+        ),
+        (
+            r#""error_type":"javax.management.InstanceNotFoundException""#,
+            Some("R"),
+        ),
+        (r#"Statistics: {"queued":"#, None),
     ] {
-        let held = messages
-            .iter()
-            .find(|message| {
-                message.get_by_path(&path("Name")).and_then(Scalar::as_str) == Some(name)
-            })
-            .unwrap_or_else(|| panic!("a message for {name}"));
+        let line = find(needle);
         assert_eq!(
-            held.by_path(&path("CurrentPort")).unwrap(),
-            &Scalar::from(port)
+            mimetype(line).as_deref(),
+            Some(MimeType::JSON.as_str()),
+            "{needle}"
+        );
+        let messages = codec
+            .enriched_line(&lines[line])
+            .expect("the document reads")
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the document reads");
+        assert_eq!(
+            messages.len(),
+            1,
+            "{needle}: one message, whatever it holds"
+        );
+        let message = &messages[0];
+        assert_eq!(message.as_field().name(), "unknown", "{needle}");
+        assert!(message.entries().is_empty(), "{needle}");
+        assert!(
+            message.get_by_tag(35).is_none_or(Scalar::is_null),
+            "{needle}"
+        );
+        assert!(message.into_bytes(b'|').is_empty(), "{needle}");
+        assert_eq!(
+            message.get_by_tag(385).and_then(Scalar::as_str),
+            direction,
+            "{needle}: the prose in front of the document names the half it moved"
+        );
+        // The row the batch holds for it agrees: the line's own columns,
+        // filled, around a type and an arrival record that are empty.
+        assert!(!silent(line), "{needle}: a row of the batch");
+        let row = &rows[row_of(line)];
+        assert!(row[column(35)].is_null(), "{needle}");
+        // The batch door pins a direction on a line stating none, the
+        // codec's default `Send`; the line door leaves silence silent.
+        assert_eq!(
+            row[column(385)].as_str(),
+            direction.or(Some("S")),
+            "{needle}: the batch reads the direction the line stated, else the pin"
+        );
+        assert_eq!(
+            &row[column(yggdryl::PLUGINID_TAG_NAME.0)],
+            &text[line][at(&text_names, "pluginid")],
+            "{needle}: the bracket's plugin lands in its column"
         );
     }
-    // An error answer names no plugin, so it states no message: what failed
-    // is how the asking went and never a configuration, and a read that
-    // answers no plugin answers nothing rather than an envelope with nothing
-    // inside it. The line is still a line, still classified as
-    // JSON, and it is the FIX reader that has nothing to say about it.
-    let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
-    assert_eq!(mimetype(error).as_deref(), Some(MimeType::JSON.as_str()));
-    assert!(
-        codec
-            .enriched_line(&lines[error])
-            .expect("the error answer reads")
-            .next()
-            .is_none(),
-        "an error-only answer names no plugin",
-    );
-    assert!(silent(error), "and so it is no row of the batch");
 
     // FIXML behind a verb reads by its attributes.
     let out = find("<FIXML xmlns=");

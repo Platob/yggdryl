@@ -193,11 +193,10 @@ test('native category cursors release holds on exhaustion and early close', () =
   assert.equal(cursor.next().value.name, 'NewOrderSingle')
   assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
   assert.equal(cursor.next().value.name, 'Party')
-  // The crate's own are behind them, in name order: `instids`, the Struct
-  // that joins an instrument's identifiers, then the `pluginconfig` message
-  // every registry carries as it carries the crate's own fields.
+  // The crate's own is behind them: `instids`, the Struct that joins an
+  // instrument's identifiers, which every registry carries as it carries
+  // the crate's own fields.
   assert.equal(cursor.next().value.name, 'instids')
-  assert.equal(cursor.next().value.name, 'pluginconfig')
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
   registry.insert(tagged('Extra', 9000))
@@ -214,10 +213,11 @@ test('message singleton indices distinguish names from another wire code', () =>
   registry.createDefinition('components', message('D', 'X'))
   registry.createDefinition('components', message('NewOrderSingle', 'D'))
   registry.createDefinition('components', message('BridgeReport', 'P Report Ack'))
-  // In name order, and the crate's own `pluginconfig` iterates among them:
-  // every registry has it before a caller creates anything.
+  // In name order, and none of the crate's own among them: a registry
+  // declares no message type before a caller creates one.
+  assert.deepEqual([...new fix.FixRegistry().msgtypes()], [])
   const values = [...registry.msgtypes()]
-  assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D'], ['pluginconfig', 'UCFG']])
+  assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D']])
   assert.equal(registry.msgtype('D').name, 'NewOrderSingle')
   assert.equal(registry.msgtype('bridgereport').asStr(), 'P Report Ack')
   assert.equal(registry.getMsgtype('p report ack'), null)
@@ -243,7 +243,7 @@ test('message singleton indices distinguish names from another wire code', () =>
   assert.equal(second.msgtype('D').name, 'AnotherOrder')
   assert.equal(second.msgtype('newordersingle').asStr(), 'D')
   assert.equal(second.msgtype('anotherorder').asStr(), 'D')
-  assert.equal([...second.msgtypes()].length, 5)
+  assert.equal([...second.msgtypes()].length, 4)
   const held = catalog().msgtype('D')
   assert.equal(held.getGroupByTag(453).name, 'Parties')
   assert.equal(held.getGroupByTag(999), null)
@@ -387,121 +387,28 @@ test('a builtin altids group reference reloads over the persisted builtin defini
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 })
 
-function wildcard(size = 2) {
-  return {
-    request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:*', type: 'read' },
-    value: Object.fromEntries(Array.from({ length: size }, (_, index) => [
-      `com.ullink.ulbridge.sessioninterfaces.plugins:name=Item${index},plugin-type=FIX,type=Plugin`,
-      { Name: `Item${index}`, CurrentPort: 9000 + index },
-    ])),
-    status: 200,
-  }
-}
-
-test('Plugin iterators own selected values, named by ObjectName and attributes', () => {
-  const document = wildcard()
-  const cursor = fix.Plugin.fromJsonScalar(document)[Symbol.iterator]()
-  const first = cursor.next().value
-  document.value = {}
-  assert.equal(cursor.next().value.name, 'Item1')
-  assert.equal(cursor.next().done, true)
-  assert.equal(cursor.next().done, true)
-  const sibling = wildcard()
-  Object.values(sibling.value)[1].CurrentPort = 9999
-  const same = fix.Plugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
-  assert.ok(same.equals(first))
-  assert.equal(same.stableHash(), first.stableHash())
-  // The envelope is transport: how the asking went was never part of the
-  // configuration, so an answer that came back 503 states the same plugin.
-  sibling.status = 503
-  const changed = fix.Plugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
-  assert.ok(changed.equals(first))
-  assert.equal(changed.stableHash(), first.stableHash())
-  // A plugin is its ObjectName and its attributes, which is all of it, so
-  // the two parts rebuild it and `asEnvelope` is gone with the third.
-  const rebuilt = new fix.Plugin(first.mbean, first.asAttributes())
-  assert.ok(rebuilt.equals(first))
-  assert.ok(first.clone().equals(first))
-  assert.equal(rebuilt.stableHash(), first.stableHash())
-  assert.equal(new fix.Plugin(null, first.asAttributes()).equals(first), false)
-  assert.equal(typeof first.asEnvelope, 'undefined')
-  // An array element that is not an answer names no plugin, and naming none
-  // is what it answers: the walk continues past it and refuses nothing.
-  assert.deepEqual(
-    [...fix.Plugin.fromJsonScalar([wildcard(), null])].map(held => held.name),
-    ['Item0', 'Item1'],
-  )
-  assert.equal([...fix.Plugin.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
-  // Bytes that are not a Jolokia answer name none, through every door, and
-  // bytes that are not JSON at all are the same silence rather than a throw.
-  for (const silent of ['[]', '{}', '{"a":1}', 'null', 'true', '1', '"text"', 'not json at all']) {
-    assert.deepEqual([...fix.Plugin.fromJsonBytes(Buffer.from(silent))], [], silent)
-  }
-})
-
-test('bulk message streams drop answers naming no plugin and fuse', () => {
+test('a JSON document is one unknown message through every door', () => {
   const registry = new fix.FixRegistry()
-  registry.withPluginFields()
   const codec = new fix.FixCodec(registry)
-  const error = { request: { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }, status: 404, error: 'missing' }
-  const request = { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }
-  const body = Buffer.from(JSON.stringify([wildcard(), error, request]))
-  const cursor = codec.parseLine(body)
-  assert.ok(cursor instanceof fix.FixMessages)
-  assert.equal(cursor[Symbol.iterator](), cursor)
-  const values = [...cursor]
-  // The error-only answer and the request-only document each name no plugin,
-  // and a read that answers no plugin answers no message: what is left is
-  // the two the wildcard selected.
-  assert.equal(values.length, 2)
-  assert.deepEqual(values.map(value => value.byName('Name').asJs()), ['Item0', 'Item1'])
-  for (const retired of ['MBean', 'Operation', 'Status', 'Error']) {
-    assert.ok(values.every(value => value.getByName(retired) === null), retired)
-  }
-  // The entries are what arrived, and the envelope was never one of them:
-  // the re-emission opens on the ObjectName and states none of the four.
-  const wire = values[0].intoBytes(124).toString()
-  assert.ok(wire.startsWith('SessionInterface=com.ullink.ulbridge'), wire)
-  for (const retired of ['MBean=', 'Operation=', 'Status=', 'Error=']) {
-    assert.equal(wire.includes(retired), false, retired)
-  }
-  assert.ok(values.every(value => value.getByName('SessionInterfaces') === null))
-  assert.equal(cursor.next().done, true)
-  assert.equal(cursor.next().done, true)
-  assert.equal([...codec.parsePluginLine(body)].length, 2)
-  assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 2)
-  // A row's own bytes that are not a Jolokia answer say nothing FIX can
-  // read, through every door, and being unable to read a body is not an
-  // error in the codec.
-  const stranger = Buffer.from('{"a":1}')
-  assert.equal(codec.parseLine(stranger).next().done, true)
-  assert.equal(codec.parsePluginLine(stranger).next().done, true)
-  assert.equal(codec.parseTextLine(new TextLine(17, stranger)).next().done, true)
-  const selected = fix.Plugin.fromFixmsg(values[0])
-  assert.equal(selected.name, 'Item0')
-  assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')
-  const invalid = new fix.Plugin(null, { CurrentPort: NaN })
-  assert.throws(() => invalid.intoFixmsg(codec), /non-finite/)
+  // A body that is JSON says nothing FIX can read, and being unable to read
+  // a body is not an error in the codec: the row is one message named
+  // `unknown` with no entries, from the line door and the text-line door
+  // alike, and the cursor fuses behind it.
+  const body = Buffer.from('{"a":1}')
   const schema = fix.schema(registry)
-  assert.equal(values[0].intoRow(schema).asJs().length, schema.fieldLen)
-  assert.equal(typeof values[0].stableHash(), 'bigint')
+  for (const cursor of [codec.parseLine(body), codec.parseTextLine(new TextLine(17, body))]) {
+    assert.ok(cursor instanceof fix.FixMessages)
+    assert.equal(cursor[Symbol.iterator](), cursor)
+    const message = cursor.next().value
+    assert.equal(message.field.name, 'unknown')
+    assert.deepEqual(message.arrivals(), [])
+    assert.equal(message.intoBytes(124).length, 0)
+    assert.equal(cursor.next().done, true)
+    assert.equal(cursor.next().done, true)
+    assert.equal(message.intoRow(schema).asJs().length, schema.fieldLen)
+    assert.equal(typeof message.stableHash(), 'bigint')
+  }
 })
-
-// Only `plugin` is registered on request: the crate's own fields seed every
-// registry, so there is no `withCrateFields` left to refuse.
-for (const [method, vocabulary] of [['withPluginFields', fix.pluginFields]]) {
-  test(`${method} refuses atomically with a named catalog present`, () => {
-    const registry = catalog()
-    // One namespace: a held name under another tag folds into its holder,
-    // and a datatype the holder disagrees with is what is refused.
-    const conflict = Field.from(`${vocabulary()[0].name}: int32`)
-    conflict.fix.tag = 9001
-    registry.insert(conflict)
-    const before = registry.intoJson()
-    assert.throws(() => registry[method](), /int32/)
-    assert.equal(registry.intoJson(), before)
-  })
-}
 
 for (const [property, key, value] of [['counter', 'counter', 453], ['component', 'component', 'Party'], ['fieldRef', 'field', 'PartyID'], ['group', 'group', 'Parties'], ['msgtype', 'msgtype', 'P Report Ack']]) {
   test(`typed FIX ${property} shares native metadata and rejects invalid writes atomically`, () => {

@@ -46,10 +46,9 @@ const BUNDLE = [
 // The columns the replay bundle holds: `BUNDLE` and the snapshot clock.
 const HELD = [...BUNDLE, [65025, 'snapshotat']]
 
-const BULK_CONFIG =
-  '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},' +
-  '"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},' +
-  '"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}'
+// Two frames on one row: a line is none, one or many messages, and this
+// one is two.
+const TWO_FRAMES = '8=FIX.4.4|35=D|11=A|10=0|8=FIX.4.4|35=D|11=B|10=0|'
 
 // Every shape a real capture holds, the corpus the readers are tested on.
 const CAPTURE = [
@@ -65,7 +64,7 @@ const CAPTURE = [
   "<Order ClOrdID='XML-1'>body</Order>",
   "Receiving XmlApi: <Execution ExecID='E1'></Execution>",
   'Message rejected because : ignoring OMSSales expiry message',
-  'no level printed by this plugin',
+  'no level printed by this logger',
   'heartbeat emitted seq=7',
 ]
 
@@ -78,17 +77,6 @@ const CARRYING = [0, 1, 2, 3, 4, 5, 6, 9, 10].map((at) => CAPTURE[at])
 
 const ORDER = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|'
 const REPORT = '8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|'
-
-function configRegistry() {
-  const registry = new fix.FixRegistry()
-  registry.withPluginFields()
-  // Tag 385 as the dictionary types it: text carrying its code set.
-  const direction = Field.from('MsgDirection: utf8')
-  direction.fix.tag = 385
-  direction.set('fix:codes', '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]')
-  registry.insert(direction)
-  return registry
-}
 
 // The capture as the batches a text reader hands the codec, `rows` lines to a batch.
 function capture(lines, rows) {
@@ -145,10 +133,10 @@ function stated(message) {
 }
 
 test('parseLines pulls one line at a time and continues past a refused one', () => {
-  const codec = new fix.FixCodec(configRegistry())
+  const codec = new fix.FixCodec(seed())
   let pulled = 0
   function* lines() {
-    for (const line of [BULK_CONFIG, '']) {
+    for (const line of [TWO_FRAMES, '']) {
       pulled += 1
       yield line
     }
@@ -158,10 +146,10 @@ test('parseLines pulls one line at a time and continues past a refused one', () 
   assert.equal(messages[Symbol.iterator](), messages)
   // Nothing is pulled until the stream is asked.
   assert.equal(pulled, 0)
-  assert.equal(messages.next().value.byName('Name').asJs(), 'A')
+  assert.equal(messages.next().value.byTag(11).asJs(), 'A')
   assert.equal(pulled, 1)
-  // The second plugin comes out of the same line, without the next pull.
-  assert.equal(messages.next().value.byName('Name').asJs(), 'B')
+  // The second frame comes out of the same line, without the next pull.
+  assert.equal(messages.next().value.byTag(11).asJs(), 'B')
   assert.equal(pulled, 1)
   // An empty line is not a row at all: thrown where it is met, and the
   // stream goes on to say it is done.
@@ -211,11 +199,8 @@ test('parseTextLines pulls one line at a time', () => {
   ])
   assert.notEqual(old.field.indexOf('lastqty'), null)
   assert.notEqual(old.getByName('lastshares'), null)
-  // A bulk document is many messages, and the stream door yields each.
-  assert.equal(
-    [...new fix.FixCodec(configRegistry()).parseTextLines([new TextLine(0, Buffer.from(BULK_CONFIG))])].length,
-    2,
-  )
+  // A row of two frames is two messages, and the stream door yields each.
+  assert.equal([...codec.parseTextLines([new TextLine(0, Buffer.from(TWO_FRAMES))])].length, 2)
 })
 
 test("a row's pluginid fills its own column and selects nothing", () => {

@@ -257,10 +257,7 @@ fn numeric_and_named_aliases_keep_canonical_positive_arrival_tags() {
     let mut registry = super::committed_registry().as_ref().clone();
     let mut symbol = registry.field_by_tag(55).unwrap().clone();
     symbol.as_fix_mut().set_tags(&[9_000_001]).unwrap();
-    symbol
-        .as_fix_mut()
-        .set_names(["SyntheticSymbol"])
-        .unwrap();
+    symbol.as_fix_mut().set_names(["SyntheticSymbol"]).unwrap();
     registry.insert(symbol).unwrap();
     let codec = super::fixed_codec(Arc::new(registry));
     let canonical = codec.sole_line(b"35=D|55=SYNTH|10=0|", false).unwrap();

@@ -78,7 +78,7 @@ def test_counter_refuses_invalid_python_integers_atomically(
 @pytest.mark.parametrize("invalid", ["", "D\x01", "D\n"])
 def test_message_code_refuses_control_text_without_changing_metadata(invalid: str) -> None:
     field = Field("probe", "utf8")
-    field.fix.msgtype = "ConfigurationPlugin"
+    field.fix.msgtype = "BridgeReport"
     before = field.into_json()
     with pytest.raises(ValueError, match="message-code"):
         field.fix.msgtype = invalid

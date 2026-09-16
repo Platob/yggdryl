@@ -3420,34 +3420,6 @@ NativeFixMsg.prototype.set = function set(key, value) {
   return nativeFixMsgSet.call(this, key, asScalar(value))
 }
 
-const NativePlugin = binding.Plugin
-function Plugin(mbean, attributes) {
-  if (new.target === undefined) {
-    throw new TypeError("Class constructor Plugin cannot be invoked without 'new'")
-  }
-  return new NativePlugin(
-    mbean,
-    attributes instanceof Scalar ? attributes : Scalar.from(attributes),
-  )
-}
-Plugin.prototype = NativePlugin.prototype
-Object.defineProperty(Plugin.prototype, 'constructor', {
-  configurable: true,
-  value: Plugin,
-  writable: true,
-})
-Plugin.fromJsonBytes = function fromJsonBytes(body) {
-  return NativePlugin.fromJsonBytes(toBytes(body))
-}
-Plugin.fromJsonScalar = function fromJsonScalar(document) {
-  return NativePlugin.fromJsonScalar(
-    document instanceof Scalar ? document : Scalar.from(document),
-  )
-}
-Plugin.fromFixmsg = function fromFixmsg(message) {
-  return NativePlugin.fromFixmsg(message)
-}
-
 // A line crosses as the `TextLine` a text read answered - there is nothing to
 // widen, because a line is a decoded row and not a value - and a batch source
 // as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
@@ -3595,16 +3567,12 @@ const fix = Object.freeze({
   FixMsg,
   FixCodec: binding.FixCodec,
   MsgType: binding.MsgType,
-  Plugin,
-  Plugins: binding.Plugins,
   FixMessages: binding.FixMessages,
   FixLifecycle: binding.FixLifecycle,
   schema: binding.fixSchema,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
-  pluginFields: binding.fixPluginFields,
-  pluginMessage: binding.fixPluginMessage,
   globalRegistry: binding.fixGlobalRegistryNative,
   installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
 })
@@ -3620,8 +3588,6 @@ for (const name of [
   'FixDefinitionIterator',
   'MsgType',
   'MsgTypeIterator',
-  'Plugin',
-  'Plugins',
   'FixMessages',
   'FixLifecycle',
   'JsFixFieldIterator',
@@ -3632,12 +3598,9 @@ for (const name of [
   'JsFixDefinitionIterator',
   'JsMsgType',
   'JsMsgTypeIterator',
-  'JsPlugin',
-  'JsPlugins',
   'JsFixMessages',
   'JsFixLifecycle',
   'fixCrateFields',
-  'fixPluginFields',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
   'fixSchema',

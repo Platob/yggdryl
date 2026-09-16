@@ -13,8 +13,7 @@ shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed aga
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
 Every registry holds thirty-four crate-owned scalar fields, the ``altids`` Map
-group, the ``instids`` Struct and the separate ``pluginconfig``
-component/message from construction,
+group and the ``instids`` Struct from construction,
 and :class:`FixRegistry` seeds the standard clocks ``SendingTime`` (52) and
 ``TransactTime`` (60) beside them as ordinary definitions a loaded dictionary
 may supply itself, so ``len(FixRegistry())`` is 36; ordinary size and
@@ -30,21 +29,6 @@ declares, in declaration order and keyed, which is what
 adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
-
-:class:`Plugin` carries one bridge configuration: the ObjectName the read
-named it by and the attributes it stated, which is all of it - what the Jolokia
-exchange wrapped them in is the transport's. :class:`Plugins` lazily yields
-the configurations a single or bulk document names, and none where it names
-none, and :meth:`Plugin.into_fixmsg` converts one to a flat typed message. :func:`fix_plugin_fields` is the dictionary
-those attributes type against, which
-:meth:`FixRegistry.with_plugin_fields` registers. :func:`fix_plugin_message`
-is the message they make up - the attributes beside FIX's own ``MsgType``,
-``BeginString``, ``SenderCompID`` and ``TargetCompID`` - and registering that
-one is nobody's choice: ``FixRegistry()`` holds it as it holds the crate's own
-fields, so a configuration reads as ``pluginconfig`` and answers
-``PLUGINCONFIG_CODE_NAME[0]`` on tag 35 whatever dictionary met it. The code
-is a fact the crate adds rather than one the document made, so it is a built
-child and the wire re-emits without a ``35=``.
 
 :class:`FixCodec` parses lines into messages and enriches messages, each
 as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
@@ -91,11 +75,8 @@ message type gets none, and a stated non-null map, including an empty one,
 is preserved. Scalar text conversion is native and an unrepresentable value
 raises its typed error at the identifier's field path; no group is flattened,
 no arrival entry is synthesized, and a second enrichment is equal.
-:meth:`FixCodec.enrich_messages`
-remembers every configuration it passes, by the plugin's ``Name``, and fills
-the ``SenderCompID`` and ``TargetCompID`` of a later message naming that
-plugin where it stated none of its own; :meth:`FixCodec.enrich_message` - one
-message, not a stream - remembers nothing. Both compose through the two
+:meth:`FixCodec.enrich_messages` runs that pass over a stream, one message
+at a time, carrying nothing from one to the next. Both compose through the two
 converters every stage composes over batches:
 :meth:`FixCodec.messages` reads a batch back as the
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
@@ -144,9 +125,8 @@ was read from; and the
 ``msghash``, ``msgphash``, ``createdat`` and ``code`` are non-null, and
 ``snapshotat`` is empty on every row no snapshot was taken of. How a layout is
 cut is the target's: an Iceberg table takes an ``hour`` transform over
-``updatedat`` rather than reading a materialized column. The
-separate ``pluginconfig`` component/message and the seeded clocks are not part
-of this tag listing.
+``updatedat`` rather than reading a materialized column. The seeded clocks
+are not part of this tag listing.
 
 :class:`FixLifecycle` names the chains. It reads a stream once, in order,
 through :meth:`FixLifecycle.fill`: a nonempty ``code`` selects its live chain
@@ -173,11 +153,8 @@ capture through :meth:`FixCodec.messages` and :meth:`FixCodec.arrow_reader`.
 
 A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
 and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
-field the file produces, :meth:`FixRegistry.dialects` lists the names any
-field or definition carries, and ``PLUGIN_DIALECT`` is the one this crate
-stamps itself, on :func:`fix_plugin_fields`. A message type is not one:
-``pluginconfig`` is registered by every registry and carries no membership,
-because the code it answers to is the crate's own rather than a dictionary's.
+field the file produces, and :meth:`FixRegistry.dialects` lists the names any
+field or definition carries.
 
 The registry stores scalar ``fields`` and named ``components`` and ``groups``;
 a message is a component carrying ``fix:msgtype``. Enum codes remain inline in
@@ -204,45 +181,33 @@ a renamed member's tag is used only when unique in both declaration and row.
 from __future__ import annotations
 
 from ._native import (
-    PLUGIN_DIALECT,
-    PLUGINCONFIG_CODE_NAME,
     FixMsg,
     FixCodec,
     FixLifecycle,
     FixRegistry,
     FixMessages,
     MsgType,
-    Plugin,
-    Plugins,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    fix_plugin_fields,
-    fix_plugin_message,
     global_registry,
     install_global_registry,
 )
 
 __all__ = [
-    "PLUGIN_DIALECT",
-    "PLUGINCONFIG_CODE_NAME",
     "FixMsg",
     "FixCodec",
     "FixLifecycle",
     "FixRegistry",
     "FixMessages",
     "MsgType",
-    "Plugin",
-    "Plugins",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",
-    "fix_plugin_fields",
-    "fix_plugin_message",
     "global_registry",
     "install_global_registry",
 ]

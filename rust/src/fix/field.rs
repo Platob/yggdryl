@@ -239,8 +239,8 @@ impl<'field> FixField<'field> {
         let Some(stored) = self.get(NAMES) else {
             return Ok(());
         };
-        let body =
-            word_list(stored).ok_or_else(|| self.invalid(NAMES, "a JSON array of names", stored))?;
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(NAMES, "a JSON array of names", stored))?;
         if repeated_word(Words::over(body)).is_some() {
             return Err(self.invalid(NAMES, "each name once", stored));
         }
@@ -379,23 +379,19 @@ impl<'field> FixField<'field> {
     /// replaced answers.
     ///
     /// ```
-    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
-    /// use yggdryl::{DataType, Version};
+    /// use yggdryl::fix::FixReplacement;
+    /// use yggdryl::{DataType, Plan};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut max_floor = DataType::Float64.nullable_field("maxfloor");
     /// max_floor.as_fix_mut().set_tag(111)?;
     /// // MaxFloor(111) was replaced by DisplayQty(1138), which takes its value.
-    /// max_floor.as_fix_mut().set_replacements(&[
-    ///     FixReplacement::new("5.0".parse::<Version>()?)
-    ///         .with_fills([FixFill::Field { tag: 1138, value: FixFillSource::Source }]),
-    /// ])?;
+    /// let plan: Plan = "select maxfloor as displayqty".parse()?;
+    /// max_floor.as_fix_mut().set_replacements(&[FixReplacement::new(plan.clone())])?;
     ///
     /// let entry = max_floor.as_fix().replacements().next().expect("one rule")?;
-    /// assert_eq!(entry.since(), "5.0".parse::<Version>()?);
-    /// assert_eq!(entry.when(), None, "any stated value");
-    /// let fill = entry.fills().next().expect("one fill")?;
-    /// assert!(matches!(fill, yggdryl::fix::FixFillEntry::Field { tag: 1138, .. }));
+    /// assert_eq!(entry.parse_plan()?, plan);
+    /// assert_eq!(entry.doc(), None, "no wording stated");
     /// # Ok(())
     /// # }
     /// ```
@@ -765,7 +761,10 @@ impl FixFieldMut<'_> {
             self.remove(NAMES);
             return Ok(());
         }
-        self.store(NAMES, Writer::list_of_words(held.iter().map(AsRef::as_ref))?)
+        self.store(
+            NAMES,
+            Writer::list_of_words(held.iter().map(AsRef::as_ref))?,
+        )
     }
 
     /// Declares direct scalar identifiers by member name, alias or decimal tag.
@@ -926,44 +925,36 @@ impl FixFieldMut<'_> {
     /// list removes its own.
     ///
     /// ```
-    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
-    /// use yggdryl::{DataType, Version};
+    /// use yggdryl::fix::FixReplacement;
+    /// use yggdryl::{DataType, Plan};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut broker = DataType::utf8().nullable_field("execbroker");
-    /// broker.as_fix_mut().set_tag(76)?;
-    /// // ExecBroker(76) became one Parties occurrence: PartyID(448) takes the
-    /// // broker, PartyRole(452) says it is an executing firm.
-    /// broker.as_fix_mut().set_replacements(&[
-    ///     FixReplacement::new("4.3".parse::<Version>()?).with_fills([FixFill::Group {
-    ///         name: "parties".into(),
-    ///         members: vec![
-    ///             FixFill::Field { tag: 448, value: FixFillSource::Source },
-    ///             FixFill::Field { tag: 452, value: FixFillSource::Constant("1".into()) },
-    ///         ],
-    ///     }]),
+    /// let mut rule80a = DataType::utf8().nullable_field("rule80a");
+    /// rule80a.as_fix_mut().set_tag(47)?;
+    /// // Rule80A(47) `A` is an agency order: OrderCapacity(528) takes `A`.
+    /// let plan: Plan = "select 'A' as ordercapacity where rule80a = 'A'".parse()?;
+    /// rule80a.as_fix_mut().set_replacements(&[
+    ///     FixReplacement::new(plan).with_doc("Agency single order"),
     /// ])?;
     /// assert_eq!(
-    ///     broker.get_metadata("fix:replacements"),
+    ///     rule80a.get_metadata("fix:replacements"),
     ///     Some(concat!(
-    ///         r#"[{"since":"4.3","fills":[{"group":"parties","members":"#,
-    ///         r#"[{"tag":448},{"tag":452,"value":"1"}]}]}]"#,
+    ///         r#"[{"plan":"select 'A' as ordercapacity where rule80a = 'A'","#,
+    ///         r#""doc":"Agency single order"}]"#,
     ///     ))
     /// );
     ///
-    /// broker.as_fix_mut().set_replacements(&[])?;
-    /// assert_eq!(broker.get_metadata("fix:replacements"), None);
+    /// rule80a.as_fix_mut().set_replacements(&[])?;
+    /// assert_eq!(rule80a.get_metadata("fix:replacements"), None);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when an entry states no fill, a group fill
-    /// states no member, a join names fewer than two tags, a tag is negative,
-    /// or a message type, group name, held value or constant is not a word
-    /// the reader reads back; and the property write's refusal otherwise.
-    /// Either leaves the field unchanged.
+    /// Returns [`Error::Parse`] when an entry's plan is past the expression
+    /// budget or fills no named column; and the property write's refusal
+    /// otherwise. Either leaves the field unchanged.
     pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()> {
         if entries.is_empty() {
             self.remove(REPLACEMENTS);
@@ -976,15 +967,15 @@ impl FixFieldMut<'_> {
     /// Removes the replacement rules, answering what they held.
     ///
     /// ```
-    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
-    /// use yggdryl::{DataType, Version};
+    /// use yggdryl::fix::FixReplacement;
+    /// use yggdryl::{DataType, Plan};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut odd_lot = DataType::Boolean.nullable_field("oddlot");
     /// odd_lot.as_fix_mut().set_tag(575)?;
-    /// let rules = [FixReplacement::new("5.0".parse::<Version>()?)
-    ///     .with_when("Y")
-    ///     .with_fills([FixFill::Field { tag: 1093, value: FixFillSource::Constant("1".into()) }])];
+    /// // OddLot(575) `Y` became LotType(1093) `1`, an odd lot.
+    /// let plan: Plan = "select '1' as lottype where oddlot = true".parse()?;
+    /// let rules = [FixReplacement::new(plan)];
     /// odd_lot.as_fix_mut().set_replacements(&rules)?;
     ///
     /// assert_eq!(odd_lot.as_fix_mut().remove_replacements()?, Some(rules.to_vec()));

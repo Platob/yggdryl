@@ -16,6 +16,5 @@ criterion_group!(
     fix_benches::pipeline::benchmarks,
     fix_benches::pipeline::line_benchmarks,
     fix_benches::store::benchmarks,
-    fix_benches::plugin::benchmarks,
 );
 criterion_main!(fix);

@@ -23,9 +23,8 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType,
-    Plugin as CorePlugin, Plugins as CorePlugins, Scalar, TimeUnit, Timezone,
-    from_json_scalar_with_field, into_json_scalar,
+    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, TimeUnit,
+    Timezone, from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -221,8 +220,7 @@ impl PyFixRegistry {
     /// each a nanosecond UTC `datetime64`, so a new registry holds
     /// thirty-six scalar fields. The seeds are ordinary definitions a loaded dictionary
     /// supplies its own metadata for; the crate's fields are held by every
-    /// dictionary alike. `len` counts only scalar fields. The crate's
-    /// `pluginconfig` component is also registered.
+    /// dictionary alike. `len` counts only scalar fields.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -420,18 +418,6 @@ impl PyFixRegistry {
     fn add_json_file(&mut self, location: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
         let registry = self.inner_mut()?;
         read_located(location, |handle| registry.add_json_file(handle))
-    }
-
-    /// Add the plugin dictionary's own fields, so a plugin report types.
-    ///
-    /// A dictionary that has them reads a document's attributes as the ports,
-    /// sequence numbers and flags they are; one that does not reads them as
-    /// the text they arrived as, because a key no dictionary explains is kept
-    /// rather than dropped.
-    fn with_plugin_fields(&mut self) -> PyResult<()> {
-        let registry = self.inner_mut()?;
-        *registry = registry.clone().with_plugin_fields().map_err(value_error)?;
-        Ok(())
     }
 
     /// Register a message definition and borrow its immutable singleton view.
@@ -1187,29 +1173,6 @@ impl PyFixMessages {
     }
 }
 
-#[pyclass(name = "Plugins", module = "yggdryl._native")]
-pub(crate) struct PyPlugins {
-    inner: CorePlugins,
-}
-
-impl PyPlugins {
-    const fn from_inner(inner: CorePlugins) -> Self {
-        Self { inner }
-    }
-}
-
-#[pymethods]
-impl PyPlugins {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-    fn __next__(&mut self) -> Option<PyPlugin> {
-        self.inner.next().map(PyPlugin::from_inner)
-    }
-}
-
 #[pymethods]
 impl PyFixFieldIterator {
     // Consumption changes iterator state.
@@ -1801,7 +1764,7 @@ impl PyFixMsg {
 ///
 /// The codec is the whole parse surface: a captured line with a verb in front
 /// of it, a bare frame, a numeric frame with a stated separator, a bridge's
-/// name/value text, a configuration document, pairs a caller already split,
+/// name/value text, pairs a caller already split,
 /// a record a text reader answered. Each redirects to the core method of the
 /// same name, so nothing here decides a dialect, a version or a separator -
 /// it only carries what Python said across. A stage is a call: the stream
@@ -1815,11 +1778,6 @@ pub(crate) struct PyFixCodec {
 }
 
 impl PyFixCodec {
-    /// Borrow the codec the core holds.
-    pub(crate) const fn as_inner(&self) -> &CoreFixCodec {
-        &self.inner
-    }
-
     /// A `pyarrow` reader over a core reader an Arrow twin answered.
     fn reader_to_pyarrow(
         py: Python<'_>,
@@ -2013,18 +1971,6 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// One bridge configuration document, as a Jolokia answer states it:
-    /// one message per `ObjectName` it names, and none where it names no
-    /// configuration.
-    ///
-    /// The document is read out of the line it arrived on: a transport writes
-    /// a timestamp in front of one and sometimes a duration behind it, and
-    /// both are prose. A body that is not a Jolokia answer names no
-    /// configuration, and answering none is what it answers.
-    fn parse_plugin_line(&self, body: &[u8]) -> PyFixMessages {
-        PyFixMessages::over(self.inner.parse_plugin_line(body))
-    }
-
     /// Pairs a caller already holds, in the order they arrived.
     ///
     /// Taken by value because the borrowed pairs the core reads point into
@@ -2127,18 +2073,11 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// Fills a stream of messages, lazily, remembering what it passes.
+    /// Fills a stream of messages, lazily.
     ///
     /// `messages` is any iterable of `FixMsg`; an item that is not one raises
-    /// `TypeError` where it is met.
-    ///
-    /// What the stream remembers is every `pluginconfig` it passes, by the
-    /// plugin's `Name`: a later message naming that plugin takes its
-    /// `SenderCompID` and `TargetCompID` where it stated none of its own. A
-    /// bridge says a session's two ends once, in the configuration it printed
-    /// at startup, and every line after it names only the plugin. The memory
-    /// dies with the iterator, and `enrich_message` - one message, not a
-    /// stream - has none.
+    /// `TypeError` where it is met. Each message crosses the pass
+    /// `enrich_message` runs, and nothing is carried from one to the next.
     fn enrich_messages(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -2553,310 +2492,6 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
     yggdryl::fix_crate_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
-        .map_err(value_error)
-}
-
-/// One text-keyed mapping as the record a parsed document holds there.
-fn folded_record(value: &Scalar) -> Option<Scalar> {
-    let entries = value.as_mapping()?;
-    let mut named = Vec::with_capacity(entries.len());
-    for (name, held) in entries {
-        named.push((name.as_str()?.to_owned(), stated_document(held.clone())));
-    }
-    Scalar::from_record(named).ok()
-}
-
-/// The document Python stated, as the records a parsed one is made of.
-///
-/// A Python mapping crosses as a mapping - its keys are values rather than
-/// names - and every reader here resolves an attribute by name, so a `dict`
-/// would answer nothing. Folding a text-keyed mapping into a record at every
-/// depth is what makes a `dict` the same document the equivalent bytes parse
-/// to. Anything else crosses as itself: a value the core already built is
-/// already records, and a mapping keyed by something other than text is not a
-/// document.
-fn stated_document(value: Scalar) -> Scalar {
-    if let Some(folded) = folded_record(&value) {
-        return folded;
-    }
-    if let Some(items) = value.as_sequence() {
-        return Scalar::from_sequence(items.iter().cloned().map(stated_document));
-    }
-    value
-}
-
-/// The attributes a caller stated, as the record a document would have made.
-///
-/// The same fold, refusing what it could not make a record of: a caller
-/// stating attributes states their names, and a mapping keyed by anything
-/// else would build a plugin that answers nothing.
-fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
-    let held = stated_document(value);
-    if let Some(entries) = held.as_mapping() {
-        let unnamed = entries
-            .iter()
-            .find(|(name, _)| name.as_str().is_none())
-            .map_or("value", |(name, _)| name.kind());
-        return Err(PyTypeError::new_err(format!(
-            "expected an attribute name, got {unnamed}"
-        )));
-    }
-    Ok(held)
-}
-
-/// Pickle carries the attributes and the `ObjectName`, which is all of it.
-type PluginPickle = (Py<PyAny>, (String, Option<String>));
-
-/// One plugin a bridge configuration document answers for.
-///
-/// A Jolokia read answers one plugin's attributes or a map of them keyed by
-/// `ObjectName`, and both are the same statement made once or many times. This
-/// is one of those statements - the `ObjectName` the bridge holds the plugin
-/// under, beside the attributes it stated - which is what a monitor walking a
-/// hundred of them holds before it types any of them. What the read asked and
-/// how the asking went is the transport's, and no part of the configuration.
-/// `FixMsg` is the same facts typed against a dictionary, and the two cross
-/// both ways.
-///
-/// A mapping crossing the boundary is folded into the record a parsed document
-/// holds, so a `dict` states one as well as bytes do.
-///
-/// Immutable, so it hashes, copies and pickles like every other value here.
-#[pyclass(
-    name = "Plugin",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
-pub(crate) struct PyPlugin {
-    inner: CorePlugin,
-}
-
-impl PyPlugin {
-    /// Wrap a plugin the core answered.
-    const fn from_inner(inner: CorePlugin) -> Self {
-        Self { inner }
-    }
-}
-
-#[pymethods]
-impl PyPlugin {
-    /// Build one plugin from the parts a document states.
-    ///
-    /// `attributes` is anything the `Scalar` boundary reads - a mapping of
-    /// names, a native `Scalar`, a parsed document - and `mbean` is the
-    /// `ObjectName` the bridge holds the plugin under, where one is known.
-    /// They are the two parts, because what the Jolokia exchange wrapped them
-    /// in is the transport's and no part of the configuration.
-    #[new]
-    #[pyo3(signature = (attributes, mbean=None))]
-    fn new(attributes: &Bound<'_, PyAny>, mbean: Option<&str>) -> PyResult<Self> {
-        Ok(Self::from_inner(CorePlugin::new(
-            mbean,
-            stated_attributes(from_py(attributes)?)?,
-        )))
-    }
-
-    /// Every plugin the document a line carries answers for.
-    ///
-    /// The document is found inside the line the way the classifier finds it:
-    /// a transport writes a timestamp in front of one and sometimes a duration
-    /// behind it, and both are prose.
-    ///
-    /// Bytes that are not a Jolokia answer name no plugin, and naming none is
-    /// what they answer: reading is not refusing, so bytes that are not JSON
-    /// at all iterate empty rather than raising.
-    #[staticmethod]
-    fn from_json_bytes(body: &[u8]) -> PyPlugins {
-        PyPlugins::from_inner(CorePlugin::from_json_bytes(body))
-    }
-
-    /// The same, over a document a caller already parsed.
-    ///
-    /// A Jolokia answer names one plugin per `ObjectName` its `value` keys, or
-    /// the one its request selected. A document that is neither, an answer
-    /// that came back empty and an error-only answer all name none, which is
-    /// what they answer rather than raising - a Jolokia error is a document
-    /// too, and so is `{"a": 1}`.
-    #[staticmethod]
-    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyPlugins> {
-        let document = stated_document(from_py(document)?);
-        Ok(PyPlugins::from_inner(CorePlugin::from_json_scalar(
-            &document,
-        )))
-    }
-
-    /// Every plugin one typed message carries, one per occurrence.
-    #[staticmethod]
-    fn from_fixmsg(message: &PyFixMsg) -> PyResult<Self> {
-        CorePlugin::from_fixmsg(message.as_inner())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// This plugin as a message typed against `codec`'s dictionary.
-    ///
-    /// The same build every other reader funnels into, so a dictionary
-    /// carrying the plugin fields types a port as a number and a flag as a
-    /// boolean, and one that does not keeps every attribute as the text it
-    /// arrived as.
-    #[allow(clippy::wrong_self_convention)]
-    fn into_fixmsg(&self, codec: &PyFixCodec) -> PyResult<PyFixMsg> {
-        self.inner
-            .into_fixmsg(codec.as_inner())
-            .map(PyFixMsg::from_inner)
-            .map_err(value_error)
-    }
-
-    /// The `ObjectName` the bridge holds this plugin under.
-    #[getter]
-    fn mbean(&self) -> Option<&str> {
-        self.inner.mbean()
-    }
-
-    /// What the `ObjectName` says this `MBean` is: `Plugin`, `ConfigurationPlugin`.
-    #[getter]
-    fn mbean_type(&self) -> Option<&str> {
-        self.inner.mbean_type()
-    }
-
-    /// The protocol the `ObjectName` says this plugin speaks.
-    #[getter]
-    fn plugin_type(&self) -> Option<&str> {
-        self.inner.plugin_type()
-    }
-
-    /// The name the bridge knows this plugin by.
-    #[getter]
-    fn name(&self) -> Option<&str> {
-        self.inner.name()
-    }
-
-    /// The plugin version this session interface runs.
-    #[getter]
-    fn version(&self) -> Option<&str> {
-        self.inner.version()
-    }
-
-    /// The category the bridge files this plugin under.
-    #[getter]
-    fn category(&self) -> Option<&str> {
-        self.inner.category()
-    }
-
-    /// What the session is doing now, where the document says.
-    #[getter]
-    fn state(&self) -> Option<&str> {
-        self.inner.state()
-    }
-
-    /// Every attribute this plugin states, by name.
-    #[getter]
-    fn attributes(&self) -> std::collections::BTreeMap<String, PyScalar> {
-        self.inner
-            .attributes()
-            .map(|(name, value)| (name.to_owned(), PyScalar::from_inner(value.clone())))
-            .collect()
-    }
-
-    /// One attribute as the document stated it, or `None`.
-    ///
-    /// The spelling is folded the way every other name in this crate is, so
-    /// `PrimaryHost`, `primaryhost` and `primary_host` are one attribute.
-    fn get(&self, attribute: &str) -> Option<PyScalar> {
-        self.inner.get(attribute).cloned().map(PyScalar::from_inner)
-    }
-
-    /// The stable digest of this plugin, the same in every process.
-    fn stable_hash(&self) -> u64 {
-        self.inner.stable_hash()
-    }
-
-    fn __hash__(&self) -> isize {
-        crate::python_hash(self.stable_hash())
-    }
-
-    /// Two plugins are equal with the same `ObjectName` and attributes.
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return py.NotImplemented();
-        };
-        pyo3::types::PyBool::new(py, self.inner == other.inner)
-            .to_owned()
-            .into_any()
-            .unbind()
-    }
-
-    fn __contains__(&self, attribute: &str) -> bool {
-        self.inner.get(attribute).is_some()
-    }
-
-    fn __len__(&self) -> usize {
-        self.inner.attributes().count()
-    }
-
-    /// Rebuild a plugin from the two parts pickle carried.
-    #[staticmethod]
-    fn _from_pickle(attributes: &str, mbean: Option<&str>) -> PyResult<Self> {
-        let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
-        Ok(Self::from_inner(CorePlugin::new(mbean, attributes)))
-    }
-
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<PluginPickle> {
-        let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
-        let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
-        Ok((
-            callable,
-            (attributes, self.inner.mbean().map(str::to_owned)),
-        ))
-    }
-
-    fn __copy__(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.__copy__()
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "Plugin({:?}, {} attributes)",
-            self.inner.name().unwrap_or_default(),
-            self.inner.attributes().count()
-        )
-    }
-}
-
-/// The fields the plugin dictionary defines, in tag order.
-///
-/// What a bridge configuration document states about a session interface -
-/// the venue it talks to, the host and port, the sequence numbers, the state -
-/// each carrying `PLUGIN_DIALECT` in `fix:branches`, because the
-/// specification publishes none of it. Registering them is a caller's choice,
-/// which is what `FixRegistry.with_plugin_fields` is for.
-#[pyfunction]
-#[pyo3(name = "fix_plugin_fields")]
-pub(crate) fn fix_plugin_fields() -> PyResult<Vec<PyField>> {
-    yggdryl::fix_plugin_fields()
-        .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
-        .map_err(value_error)
-}
-
-/// The message a plugin configuration is: the `pluginconfig` component.
-///
-/// FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
-/// `SenderCompID` and `TargetCompID` a configuration also states, under the
-/// code `PLUGINCONFIG_CODE_NAME` names it by. Registering it is nobody's
-/// choice: `FixRegistry()` holds it as it holds the crate's own fields, so a
-/// configuration reads as `pluginconfig` whatever dictionary met it.
-#[pyfunction]
-#[pyo3(name = "fix_plugin_message")]
-pub(crate) fn fix_plugin_message() -> PyResult<PyField> {
-    yggdryl::fix_plugin_message()
-        .map(|held| PyField::from_inner(held.clone()))
         .map_err(value_error)
 }
 

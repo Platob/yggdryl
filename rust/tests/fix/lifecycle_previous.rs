@@ -521,7 +521,9 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
                 trace.push((stamped, life.alive()));
             }
         }
-        assert_eq!(trace.len(), 95);
+        // 94 messages: a row a line but for the prose, every JSON document
+        // one entry-less `unknown`, as the dataset suite counts them.
+        assert_eq!(trace.len(), 94);
         assert_eq!(life.alive(), expected_alive);
         life.clear();
         for (message, alive) in &trace {
@@ -548,7 +550,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             assert!(slices.iter().all(|batch| batch.num_rows() <= boundary));
             assert_eq!(
                 slices.iter().map(|batch| batch.num_rows()).sum::<usize>(),
-                95
+                94
             );
             let restored = codec
                 .messages(arrow::batch_reader(Arc::clone(&arrow_schema), slices))

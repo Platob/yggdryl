@@ -86,10 +86,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
     // aliases, one of which is the stored alias in another case.
     let mut incoming = tagged("symbol", 9001, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[66]).unwrap();
-    incoming
-        .as_fix_mut()
-        .set_names(["Sym", "TICKER"])
-        .unwrap();
+    incoming.as_fix_mut().set_names(["Sym", "TICKER"]).unwrap();
     incoming.as_fix_mut().set_description("incoming").unwrap();
     assert!(!registry.add_field(incoming.clone()).unwrap());
     assert_eq!(registry.len(), 2 + super::seeded_fields());
@@ -557,7 +554,7 @@ fn add_fields_counts_what_arrived_and_what_folded() {
     // so both count here beside `Instrument` and `Header`.
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        2 + super::crated_messages() + super::crated_components()
+        2 + super::crated_components()
     );
 
     // One mutation: a refusal in the middle writes nothing.
@@ -1033,10 +1030,7 @@ fn assert_fold_table(registry: &FixRegistry) {
     // and by its id, and holds the tag canonically too.
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.name(), "Symbol");
-    assert_eq!(
-        symbol.as_fix().names().collect::<Vec<_>>(),
-        ["VenueSymbol"]
-    );
+    assert_eq!(symbol.as_fix().names().collect::<Vec<_>>(), ["VenueSymbol"]);
     assert!(symbol.as_fix().tags().unwrap().is_empty());
     assert_eq!(
         symbol.as_fix().branches().collect::<Vec<_>>(),
@@ -1309,7 +1303,7 @@ fn message_codes_live_in_one_namespace() {
         names(registry.msgtype("venue_order").unwrap().as_field()),
         ["VenueID"]
     );
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(
         registry
             .definition(FixCategory::Components, "VenueOrder")
@@ -1333,7 +1327,7 @@ fn message_codes_live_in_one_namespace() {
     let order = registry.msgtype("D").unwrap();
     assert_eq!(order.name(), "NewOrderSingle");
     assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(
         FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
         registry
@@ -1348,7 +1342,7 @@ fn message_codes_live_in_one_namespace() {
     assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
-    assert_eq!(target.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(target.msgtypes().count(), 2);
     assert_eq!(
         names(target.msgtype("D").unwrap().as_field()),
         ["NoPartyIDs", "Parties"]
@@ -1373,7 +1367,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
             .unwrap()
     );
     assert_eq!(registry.msgtype("AlgoOrder").unwrap().as_str(), "D");
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(registry.msgtype("D").unwrap().name(), "AlgoOrder");
     assert_eq!(registry.msgtype("NewOrderSingle").unwrap().as_str(), "D");
 

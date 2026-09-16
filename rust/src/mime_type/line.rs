@@ -18,25 +18,6 @@ use crate::MimeType;
 /// FIX's official `XmlData` payload tag.
 const XML_DATA_TAG: i32 = 213;
 
-/// The namespace every ULBridge MBean is named under.
-///
-/// One vendor string is what locates the payload: it is how a brace-heavy
-/// line full of `=` is known to be a document rather than pairs, and where
-/// inside the line that document opens and closes. It does not name a media
-/// type - a Jolokia answer and any other JSON are both `application/json` -
-/// and it has to be naming an MBean rather than merely spelling a class,
-/// which is what [`object_names`] holds it to.
-const ULBRIDGE_NAMESPACE: &[u8] = b"com.ullink.ulbridge";
-
-/// The ObjectName property naming what one MBean is.
-///
-/// Read only where a delimiter opens it, because `plugin-type` ends in the
-/// same four bytes and names something else.
-pub(crate) const OBJECT_NAME_TYPE: &[u8] = b"type";
-
-/// Jolokia's own key for the operation a document asked for.
-const JOLOKIA_TYPE_KEY: &[u8] = b"\"type\"";
-
 #[derive(Clone, Copy)]
 enum LineKey<'line> {
     Tag(i32),
@@ -85,15 +66,12 @@ pub(crate) struct LineInference<'line> {
     has_pairs: bool,
     has_symbolic: bool,
     has_xml: bool,
-    /// The line names the ULBridge namespace inside an object, which is how
-    /// a brace-heavy line full of `=` is known to be a document rather than
-    /// pairs. Every other JSON document reaches its media type through
-    /// [`document_type`] instead; what a document is *for* is not this
-    /// scan's to say either way.
-    names_namespace: bool,
+    /// The line carries a JSON document, whole or behind prose, and opens no
+    /// frame in front of it. What a document is *for* is not this scan's to
+    /// say: the codec reads none and names the row `unknown`.
+    has_json: bool,
     tag_msgtype: Option<&'line [u8]>,
     name_msgtype: Option<&'line [u8]>,
-    plugin_msgtype: Option<&'line [u8]>,
 }
 
 impl<'line> LineInference<'line> {
@@ -102,10 +80,10 @@ impl<'line> LineInference<'line> {
     /// A FIX frame is numeric tags; a bridge row is `#`-marked keys or a
     /// `MSGTYPE=` key; both together are the mixed form. An `XmlData(213)`
     /// payload that opens with a tag makes the frame FIXML. Failing every
-    /// frame rule, a JSON document naming the ULBridge namespace is JSON
-    /// rather than the pairs its ObjectNames look like, a line that is still
-    /// `key=value` throughout is the generic key/value shape rather than
-    /// nothing, and a document that opens as XML or JSON is that document.
+    /// frame rule, a JSON document behind prose is JSON rather than the
+    /// pairs its text looks like, a line that is still `key=value`
+    /// throughout is the generic key/value shape rather than nothing, and a
+    /// document that opens as XML or JSON is that document.
     pub(crate) const fn mime_type(&self) -> MimeType {
         if self.has_xml {
             return MimeType::FIXML;
@@ -115,11 +93,11 @@ impl<'line> LineInference<'line> {
             (true, false) => MimeType::FIX,
             (false, true) => MimeType::ULLINK,
             // A document wins over the bare pair rules, exactly as the XML and
-            // JSON readings do: what a bridge wrote inside its own
-            // configuration is that document's content, never a field. What
-            // the document is *for* is the codec's reading and not a name
-            // this scan gives it, so it answers the JSON it is.
-            (false, false) if self.names_namespace => MimeType::JSON,
+            // JSON readings do: what a bridge wrote inside a document is that
+            // document's content, never a field. What the document is *for*
+            // is the codec's reading and not a name this scan gives it, so it
+            // answers the JSON it is.
+            (false, false) if self.has_json => MimeType::JSON,
             (false, false) if self.has_pairs => MimeType::KEYVALUE,
             (false, false) => MimeType::OCTET_STREAM,
         }
@@ -130,31 +108,23 @@ impl<'line> LineInference<'line> {
     ///
     /// A raw `MSGTYPE=` is checked across the whole line before numeric tag
     /// 35 and therefore wins when both are present: a bridge writes its own
-    /// type in front of a frame it is relaying. A bridge configuration
-    /// document declares its own, and only where neither of those was
-    /// written, because the frame a line carries outranks the document
-    /// carrying it.
+    /// type in front of a frame it is relaying. A document declares none:
+    /// the codec names such a row `unknown`.
     pub(crate) fn msgtype(&self) -> Option<&'line [u8]> {
-        self.name_msgtype
-            .or(self.tag_msgtype)
-            .or(self.plugin_msgtype)
+        self.name_msgtype.or(self.tag_msgtype)
     }
 
-    /// Reads the bridge configuration document the line carries, if it does.
+    /// Reads whether the line carries a JSON document, if it does.
     ///
     /// Run only where every frame rule has already declined, which is the one
     /// place the answer could change a thing: a line holding a frame is that
-    /// frame whatever document quoted it, and the namespace scan a document
-    /// costs is one a frame never pays.
-    fn read_plugin(&mut self, line: &'line [u8]) {
+    /// frame whatever document quoted it, and the scan a document costs is
+    /// one a frame never pays.
+    fn read_json(&mut self, line: &'line [u8]) {
         if self.has_tag || self.has_symbolic || self.has_xml {
             return;
         }
-        let Some(at) = plugin_at(line) else {
-            return;
-        };
-        self.names_namespace = true;
-        self.plugin_msgtype = plugin_msgtype(&line[at..]);
+        self.has_json = json_at(line).is_some();
     }
 }
 
@@ -683,7 +653,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
         // No frame at all: the line is a document, a sentence, or a bare run
         // of pairs. The first two are decided by their opening byte.
         inferred.has_pairs |= has_any_pair(line);
-        inferred.read_plugin(line);
+        inferred.read_json(line);
         return inferred;
     };
     let mut offset = frame.start;
@@ -728,7 +698,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
             break;
         }
     }
-    inferred.read_plugin(line);
+    inferred.read_json(line);
     inferred
 }
 
@@ -758,9 +728,8 @@ pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
 /// so it is not read by the pair rules. The document must open before any
 /// `=` - a pair arriving first makes the `<` a value - and the line must
 /// close on the document's own last byte, so a sentence mentioning `<trade>`
-/// stays a sentence. A JSON document is not read this way: one naming the
-/// bridge's namespace is answered by the namespace scan, and prose closing on
-/// braces is prose.
+/// stays a sentence. A JSON document is located by [`json_span`] instead,
+/// and prose closing on braces is prose.
 pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
     let trimmed = trim_ascii(line);
     let open = memchr::memchr(b'<', trimmed)?;
@@ -1110,7 +1079,7 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
     locate_frame(line)
         .map(|frame| frame.start)
-        .or_else(|| plugin_at(line))
+        .or_else(|| json_at(line))
 }
 
 /// Whether the line named a separator for the run of pairs its payload
@@ -1127,47 +1096,35 @@ pub(crate) fn names_separator(line: &[u8]) -> bool {
     locate_frame(line).is_some_and(|frame| frame.separator.stated())
 }
 
-/// Where the ULBridge configuration document one line carries opens.
-///
-/// Two facts hold together and neither is enough alone: the line has to be a
-/// JSON object - the whole line, or the tail of one a transport put prose in
-/// front of - and that object has to name the ULBridge namespace. The
-/// namespace is what makes the reading unambiguous, so a document not carrying
-/// it is ordinary JSON and stays that way.
-///
-/// The object is the outermost one, found by the `{` a member opens behind, so
-/// a `[jolokia]` in the prose is not mistaken for the document and the bound a
-/// direction is read against is the whole prefix rather than part of it.
-fn plugin_at(line: &[u8]) -> Option<usize> {
-    Some(plugin_span(line)?.start)
+/// Where the JSON document one line carries opens, if it carries one.
+fn json_at(line: &[u8]) -> Option<usize> {
+    Some(json_span(line)?.start)
 }
 
-/// The span of the ULBridge configuration document one line carries.
+/// The span of the JSON document one line carries, whole or behind prose.
 ///
-/// Two facts hold together and neither is enough alone: the line has to name
-/// the ULBridge namespace, and an object has to open in front of that name and
-/// close after it. This is what locates the payload, not what names it: a
-/// document not carrying the namespace is JSON the same way one carrying it
-/// is, and is simply not found here.
+/// A document is an object, or an array of objects, that opens before any
+/// pair the line could be read by - a `=` in front of the opener makes the
+/// braces a value rather than a document - and closes on its own last byte,
+/// with prose allowed behind it: a transport writes a timestamp in front of
+/// one and sometimes a duration behind. What the document says is not read
+/// here or anywhere: a body the codec cannot read is a message that states
+/// no type, and this is what locates it.
 ///
-/// The close is found rather than assumed, so a transport writing prose on
-/// both sides of the document - a timestamp in front, a duration behind - is
-/// read exactly as one writing prose in front alone. A document the line cut
-/// short never closes and is no document.
-pub(crate) fn plugin_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
-    // The cheap half first: the namespace is absent from every line that is
-    // not one of these, and finding it is one prefiltered pass.
-    let named = object_names(line).next()?.start;
-    // A bulk read answers an array of these, so either opener opens one -
-    // an object by its first member, an array by the object it holds. A
-    // `[Jolokia]` in the prose opens neither.
-    let opened = memchr::memchr2_iter(b'{', b'[', &line[..named]).find(|at| {
+/// The object is found by the `{` a member opens behind, so a `[jolokia]` in
+/// the prose or a brace in a sentence opens nothing, and the bound a
+/// direction is read against is the whole prefix rather than part of it.
+pub(crate) fn json_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
+    let opened = memchr::memchr2_iter(b'{', b'[', line).find(|at| {
         if line[*at] == b'[' {
             opens_object(line, at + 1)
         } else {
             opens_member(line, at + 1)
         }
     })?;
+    if memchr::memchr(b'=', &line[..opened]).is_some() {
+        return None;
+    }
     Some(opened..json_end(line, opened)?)
 }
 
@@ -1209,34 +1166,6 @@ fn json_end(line: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// Every ULBridge MBean the line names, rather than every class it spells.
-///
-/// An ObjectName is a domain and then a `:`, so the namespace has to be
-/// followed by the rest of a domain and that colon. A bridge writes its own
-/// class names into these documents - `com.ullink.ulbridge2.plugins.ULMsg` on
-/// every `$type`, `className` and init file - and a log record quoting one is
-/// not a configuration document however clearly it names the product.
-///
-/// Each name is answered with the properties that follow it, bounded by the
-/// quote closing the JSON string it stands in, so what an ObjectName says is
-/// read out of that name rather than out of the document around it.
-pub(crate) fn object_names(line: &[u8]) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
-    memchr::memmem::find_iter(line, ULBRIDGE_NAMESPACE).filter_map(move |start| {
-        let mut at = start + ULBRIDGE_NAMESPACE.len();
-        while line
-            .get(at)
-            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
-        {
-            at += 1;
-        }
-        if line.get(at) != Some(&b':') {
-            return None;
-        }
-        let end = memchr::memchr(b'"', &line[at..]).map_or(line.len(), |offset| at + offset);
-        Some(start..end)
-    })
-}
-
 /// Whether a `[` at this position opens an array of objects.
 ///
 /// The bulk shape and nothing else: a transport's own `[jolokia]` opens no
@@ -1259,74 +1188,6 @@ fn opens_member(line: &[u8], mut at: usize) -> bool {
         at += 1;
     }
     line.get(at) == Some(&b'"')
-}
-
-/// The message type one ULBridge configuration document declares.
-///
-/// A Jolokia document says two things about its type and the specific one
-/// wins. An MBean's ObjectName carries a `type=` segment - `Plugin` or
-/// `ConfigurationPlugin` - which is what that entry *is*; the request carries
-/// the operation - `read`, `write`, `exec` - which is only how the document
-/// was obtained. A wildcard read names no type in its own MBean and every
-/// entry it answers with names one, so the first entry's is the document's.
-fn plugin_msgtype(document: &[u8]) -> Option<&[u8]> {
-    object_name_type(document).or_else(|| jolokia_operation(document))
-}
-
-/// The `type=` property of the first ObjectName that states one.
-///
-/// The property is read inside the name rather than across the document, so a
-/// value elsewhere that happens to spell `,type=` is that value's business.
-/// It counts only where a `,` or a `:` opens it, which is the one shape an
-/// ObjectName property has and is not the shape `plugin-type=` has.
-fn object_name_type(document: &[u8]) -> Option<&[u8]> {
-    object_names(document).find_map(|name| object_name_property(&document[name], OBJECT_NAME_TYPE))
-}
-
-/// One property of one ObjectName, by the name it is keyed under.
-///
-/// An ObjectName is a domain, a `:`, and then `key=value` properties in any
-/// order separated by `,`. A property counts only where one of those two
-/// delimiters opens it, which is what keeps `plugin-type` from answering for
-/// `type`; its value runs to the next `,` or to the end of the name.
-pub(crate) fn object_name_property<'name>(
-    name: &'name [u8],
-    property: &[u8],
-) -> Option<&'name [u8]> {
-    memchr::memmem::find_iter(name, property)
-        .filter(|at| {
-            at.checked_sub(1)
-                .is_some_and(|before| matches!(name[before], b',' | b':'))
-                && name.get(at + property.len()) == Some(&b'=')
-        })
-        .find_map(|at| {
-            let start = at + property.len() + 1;
-            let end = name[start..]
-                .iter()
-                .position(|byte| *byte == b',')
-                .map_or(name.len(), |offset| start + offset);
-            (end > start).then(|| &name[start..end])
-        })
-}
-
-/// The operation the Jolokia request asked for.
-///
-/// The key is matched with its opening quote, so the `$type` discriminator
-/// every nested object carries is never read as this one.
-fn jolokia_operation(document: &[u8]) -> Option<&[u8]> {
-    let at = memchr::memmem::find(document, JOLOKIA_TYPE_KEY)? + JOLOKIA_TYPE_KEY.len();
-    let at = skip_to(document, at, b':')? + 1;
-    let start = skip_to(document, at, b'"')? + 1;
-    let end = start + memchr::memchr(b'"', document.get(start..)?)?;
-    (end > start).then(|| &document[start..end])
-}
-
-/// The position of `wanted`, when it is the next byte that is not whitespace.
-fn skip_to(document: &[u8], mut at: usize, wanted: u8) -> Option<usize> {
-    while document.get(at).is_some_and(u8::is_ascii_whitespace) {
-        at += 1;
-    }
-    (document.get(at) == Some(&wanted)).then_some(at)
 }
 
 #[cfg(test)]

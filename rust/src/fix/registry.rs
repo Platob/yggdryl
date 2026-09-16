@@ -362,18 +362,6 @@ impl FixRegistry {
             }
             Err(error) => log::warn!("registering FIX crate definitions: {error}"),
         }
-        // The crate's own message type, beside the crate's own fields: a
-        // codec meeting a plugin configuration cannot write a shared
-        // registry, so `pluginconfig` has to be here before the first
-        // document arrives. Its members are held by value, so
-        // this states the shape of a `UCFG` message without registering the
-        // plugin attributes as fields of this dictionary.
-        match super::plugin::fix_plugin_message().and_then(|message| {
-            registry.create_definition(crate::FixCategory::Components, message.clone())
-        }) {
-            Ok(_) => {}
-            Err(error) => log::warn!("registering FIX plugin configuration: {error}"),
-        }
         registry
     }
 
@@ -768,11 +756,7 @@ impl FixRegistry {
         // so no alias is kept that the stored name or an earlier alias
         // already answers for.
         let mut aliases: Vec<&str> = stored.as_fix().names().collect();
-        for alias in field
-            .as_fix()
-            .names()
-            .chain(std::iter::once(field.name()))
-        {
+        for alias in field.as_fix().names().chain(std::iter::once(field.name())) {
             if !folds_equal(alias, stored.name())
                 && !aliases.iter().any(|held| folds_equal(held, alias))
             {
@@ -933,9 +917,9 @@ impl FixRegistry {
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
-    /// // `Instrument`, beside the crate's own `pluginconfig`
-    /// // and its `instids`, which is a component for the same reason.
-    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 3);
+    /// // `Instrument`, beside the crate's own `instids`, which is a
+    /// // component for the same reason.
+    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
     /// # Ok(())
     /// # }
     /// ```
@@ -1401,12 +1385,9 @@ impl FixRegistry {
     }
 
     fn alias_matches(&self, position: usize, name: &str) -> bool {
-        self.fields.get(position).is_some_and(|field| {
-            field
-                .as_fix()
-                .names()
-                .any(|alias| folds_equal(alias, name))
-        })
+        self.fields
+            .get(position)
+            .is_some_and(|field| field.as_fix().names().any(|alias| folds_equal(alias, name)))
     }
 
     /// The canonical tag and identity of one of this registry's own fields,

@@ -287,10 +287,11 @@ fn committed_codec() -> FixCodec {
     super::fixed_codec(super::committed_registry())
 }
 
-/// The bridge's dictionary, exactly as the dataset and pipeline suites hold
-/// it: its fields resolve in the one namespace, so nothing is pinned.
+/// The committed dictionary again, exactly as the dataset and pipeline
+/// suites hold it: the bridge's lines resolve in the one namespace, so
+/// nothing is pinned.
 fn bridge_codec() -> FixCodec {
-    super::fixed_codec(super::plugin_fields_registry())
+    super::fixed_codec(super::committed_registry())
 }
 
 fn owned(lines: &[&str]) -> Vec<Vec<u8>> {
@@ -444,9 +445,9 @@ fn frames() -> Vec<Vec<u8>> {
 ///
 /// The last line is appended rather than filed beside the document, because
 /// the indices above are what the records are keyed by: a JSON body that is
-/// not a Jolokia answer, which names no plugin and so answers no message.
-/// It is here so that a body this reader cannot read turning
-/// back into a row - or into a refusal - shows in the golden file.
+/// not a Jolokia answer. Both documents are one entry-less `unknown` each,
+/// and it is here so that a body this reader does not read turning into
+/// more than that - or into a refusal - shows in the golden file.
 fn bridge() -> Vec<Vec<u8>> {
     owned(&[
         "sending >> 8=FIX.4.4|9=176|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|44=10.5|59=0|60=20240102-10:15:30.000|10=203| << queued seq=1092",

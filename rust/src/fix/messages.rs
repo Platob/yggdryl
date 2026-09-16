@@ -3,17 +3,13 @@
 use std::sync::Arc;
 
 use super::build::RowStamp;
-use super::{FixCodec, FixMsg, Plugins};
+use super::{FixCodec, FixMsg};
 use crate::Result;
 use crate::media::text::TextEntries;
 
 enum Source {
     Empty,
     One(Option<Result<FixMsg>>),
-    Configs {
-        codec: FixCodec,
-        values: Plugins,
-    },
     /// The frames one row still holds, read where they open.
     Frames {
         codec: FixCodec,
@@ -32,9 +28,7 @@ enum Source {
 ///
 /// A row yields none, one or many: a line carrying several
 /// frames yields one per frame, re-entering the frame reader where each
-/// opens over the page the row already holds, and a bulk plugin configuration
-/// document yields one item for each configuration, retaining only the
-/// parsed source document and the current conversion. Nothing is collected.
+/// opens over the page the row already holds. Nothing is collected.
 /// An error is yielded once and ends this iterator.
 pub struct FixMessages {
     source: Source,
@@ -76,12 +70,6 @@ impl FixMessages {
             source: Source::One(Some(Err(error))),
         })
     }
-
-    pub(super) fn from_plugins(codec: FixCodec, values: Plugins) -> Self {
-        Self {
-            source: Source::Configs { codec, values },
-        }
-    }
 }
 
 impl Iterator for FixMessages {
@@ -91,9 +79,6 @@ impl Iterator for FixMessages {
         let value = match &mut self.source {
             Source::Empty => None,
             Source::One(value) => value.take(),
-            Source::Configs { codec, values } => {
-                values.next().map(|value| value.into_fixmsg(codec))
-            }
             Source::Frames {
                 codec,
                 entries,

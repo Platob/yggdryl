@@ -29,20 +29,14 @@ from yggdryl.fix import (
     FixMsg,
     FixMessages,
     MsgType,
-    Plugins,
     FixCodec,
     FixLifecycle,
     FixRegistry,
-    PLUGIN_DIALECT,
-    PLUGINCONFIG_CODE_NAME,
-    Plugin,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    fix_plugin_fields,
-    fix_plugin_message,
     global_registry,
     install_global_registry,
 )
@@ -574,13 +568,12 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
         ),
         (b"level=INFO message=random", MimeType.KEYVALUE, None),
         (
-            # A bridge configuration document is JSON, which is what it is:
-            # what makes one *this* reader's is a shape the codec reads
-            # rather than a name the scan gives it.
-            b'{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
-            b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+            # A JSON document is JSON, which is what it is, and it states no
+            # message type: the codec reads none and names such a row
+            # `unknown`.
+            b'{"mbean":"com.ullink.ulbridge:name=ULMSG_BROKER_TO_DMZ,type=Bridge","type":"read"}',
             MimeType.JSON,
-            b"Plugin",
+            None,
         ),
     )
     for line, protocol, msgtype in cases:
@@ -599,44 +592,30 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     assert FixCodec.infer_msgtype_bytes(b"35=AE|") == b"AE"
     assert FixCodec.infer_msgtype_text("MSGTYPE=AE|") == "AE"
 
-    # A bridge configuration document states no half of the exchange on its
-    # own, and the `send` its own payload spells is never read as the marker:
-    # which way it moved is the prose in front of it, read into FIX's own
-    # tag 385 by the rules the dictionary carries on that field.
+    # A JSON document states no half of the exchange on its own, and the
+    # `send` its own text spells is never read as the marker: which way it
+    # moved is the prose in front of it, read into FIX's own tag 385 by the
+    # rules the dictionary carries on that field. The document itself is not
+    # read: whatever it says, the row is one `unknown` message with no
+    # entries, and the prose in front of it makes it no more than one.
     answered = (
-        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
-        '"type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:'
-        'name=Router_TradeCapture,plugin-type=FIX,type=Plugin":'
-        '{"Name":"Router_TradeCapture"}},"status":200}'
-    )
-    assert MimeType.infer_text(answered) == MimeType.JSON
-    # The ObjectName the answer keys its `value` by states the type, and it
-    # is the first one the shallow scan reaches: the wildcard the request
-    # echoes names none.
-    assert FixCodec.infer_msgtype_text(answered) == "Plugin"
-    codec = _fixed(FixRegistry())
-    assert next(codec.parse_line(answered.encode())).get_by_tag(385) is None
-    assert next(codec.parse_line(("Response: " + answered).encode())).by_tag(385).as_py() == "R"
-    selected = (
-        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
-        'name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},'
-        '"value":{"Name":"Router_TradeCapture"},"status":200}'
-    )
-    assert next(codec.parse_line(selected.encode())).get_by_tag(385) is None
-    assert next(codec.parse_line(("Request: " + selected).encode())).by_tag(385).as_py() == "S"
-    # A direction is the line's and a message is the document's, read apart:
-    # a read that selected nothing and a request not yet answered both name
-    # no plugin, so neither states a message - there is no envelope left to
-    # make a row out of - and the prose in front of one makes it no more one.
-    empty = (
-        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
-        '"type":"read"},"value":{},"status":200}'
+        '{"request":{"mbean":"com.ullink.ulbridge:type=*","type":"read"},'
+        '"value":{"com.ullink.ulbridge:name=Router_TradeCapture,type=Bridge":'
+        '{"Name":"Router_TradeCapture","State":"send"}},"status":200}'
     )
     asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-    for body, verb in ((empty, "Response"), (asked, "Request")):
-        assert next(codec.parse_line(body.encode()), None) is None
-        prosed = f"[Jolokia] (DEBUG) {verb}: {body}"
-        assert next(codec.parse_line(prosed.encode()), None) is None
+    codec = _fixed(FixRegistry())
+    for body, verb, code in ((answered, "Response", "R"), (asked, "Request", "S")):
+        assert MimeType.infer_text(body) == MimeType.JSON
+        assert FixCodec.infer_msgtype_text(body) is None
+        (bare,) = list(codec.parse_line(body.encode()))
+        assert bare.field.name == "unknown"
+        assert bare.entries() == []
+        assert bare.get_by_tag(385) is None
+        (prosed,) = list(codec.parse_line(f"[Jolokia] (DEBUG) {verb}: {body}".encode()))
+        assert prosed.field.name == "unknown"
+        assert prosed.entries() == []
+        assert prosed.by_tag(385).as_py() == code
 
 
 def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:
@@ -871,18 +850,17 @@ def test_registry_round_trips_through_the_three_categories(
     assert (root / "fields" / "0.json").is_file()
     # Every category comes back as heavy as the committed catalog plus the
     # crate's own, which a store writes so that a dump is the whole row: one
-    # shard for the crate's tag block, the `altids` group, and `instids` and
-    # `pluginconfig` among the components.
+    # shard for the crate's tag block, the `altids` group, and `instids`
+    # among the components.
     written = {
         "fields": 1,
-        "components": 2,
+        "components": 1,
         "groups": 1,
     }
     for category, crated in written.items():
         assert len(list((root / category).glob("*.json"))) == crated + len(
             list((SEED / category).glob("*.json"))
         )
-    assert (root / "components" / "pluginconfig.json").exists()
     assert (root / "components" / "instids.json").exists()
     assert (root / "groups" / "altids.json").exists()
     assert (root / "fields" / f"{CRATE_TAGS[0] // 100}.json").exists()
@@ -1946,287 +1924,108 @@ def test_the_enriching_pass_restates_before_it_fills(seed: FixRegistry) -> None:
     assert codec.enrich_message(latest) == latest
 
 
-# A Jolokia answer as a log line writes it: a timestamp and a reader in front
-# of the document, the duration the call took behind it. Both are prose.
+# A JSON document as a log line writes it: a timestamp and a reader in front
+# of the document, the duration the call took behind it. Both are prose, and
+# the document is a body the codec does not read.
 LOGGED = (
     '2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":'
-    '"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,'
-    'plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting",'
-    '"Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD",'
-    '"TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90",'
-    '"CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,'
-    '"cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)'
+    '"com.ullink.ulbridge:name=Router_OrderRouting,type=Bridge","type":"read"},'
+    '"value":{"Name":"Router_OrderRouting","Version":"4.7.0","SenderCompID":"CLI.PROD.TRD",'
+    '"TargetCompID":"ST.PROD","BeginString":"FIX.4.4","CurrentPort":9726,"State":"logged"},'
+    '"status":200} (12 ms)'
 ).encode()
 
-# A wildcard read: one answer, a plugin per key, each named by its ObjectName.
-WILDCARD = (
-    '{"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},'
-    ' "value": {"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,'
-    'plugin-type=FIX,type=ConfigurationPlugin": {"Comment": "", "Category": "InterBridge",'
-    ' "Prefix": "", "Name": "ULMSG_BROKER_BDG_DMZ_PCO", "LoadIsolation": 0, "Suffix": "",'
-    ' "PriorityLevel": 5, "Version": "2.0.3"},'
-    ' "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,'
-    'plugin-type=FIX,type=Plugin": {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}},'
-    ' "status": 200}'
+# A bulk answer: one document keyed many times over, and still one row.
+BULK = (
+    '{"request": {"mbean": "com.ullink.ulbridge:type=*", "type": "read"},'
+    ' "value": {"com.ullink.ulbridge:name=ULMSG_BROKER_BDG_DMZ_PCO,type=Bridge":'
+    ' {"Name": "ULMSG_BROKER_BDG_DMZ_PCO", "Version": "2.0.3"},'
+    ' "com.ullink.ulbridge:name=ULMSG_BROKER_TO_DMZ,type=Bridge":'
+    ' {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}}, "status": 200}'
 ).encode()
 
 
-@pytest.fixture
-def bridge(seed: FixRegistry) -> FixRegistry:
-    """The committed dictionary, plus the bridge's own vocabulary."""
-    registry = seed
-    registry.with_plugin_fields()
-    return registry
-
-
-def test_the_plugin_vocabulary_is_a_caller_s_choice(bridge: FixRegistry) -> None:
-    """Registering the plugin fields is the one thing that types a report."""
-    fields = fix_plugin_fields()
-    assert fields, "the plugin dictionary publishes its own vocabulary"
-    assert PLUGIN_DIALECT == "plugin"
-    assert all(field.fix.branches == [PLUGIN_DIALECT] for field in fields)
-    # The membership folds, like every other name in this crate.
-    assert all(field.fix.has_branch("Plugin") for field in fields)
-    # Every one of them is in the dictionary that folded them, carrying the
-    # membership it declared, and a dictionary that never folded them holds
-    # none of them.
-    for field in fields:
-        held = bridge.field_by_name(field.name)
-        assert held.fix.tag == field.fix.tag
-        assert held.fix.branches == [PLUGIN_DIALECT]
-        assert bridge.field_by_id(field.fix.id) == held
-    assert bridge.dialects() == [PLUGIN_DIALECT]
-    assert FixRegistry.from_handle(SEED).get_field_by_name(fields[0].name) is None
-    assert FixRegistry.from_handle(SEED).dialects() == []
-
-
-def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
-    bridge: FixRegistry,
-) -> None:
-    """The reader reads to the document's own close, not to the line's end."""
-    # The document is JSON, which is what it is: what makes one a bridge
-    # configuration is a shape the codec reads, not a name the classifier
-    # gives it.
+def test_a_json_document_is_one_unknown_message_stating_nothing(seed: FixRegistry) -> None:
+    """A row carrying a document is a row; what the document says is not read."""
+    # The document is JSON, which is what it is, and it names no message
+    # type: the scan reads no name off it.
     assert MimeType.infer_bytes(LOGGED) == MimeType.JSON
-    assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
+    assert FixCodec.infer_msgtype_bytes(LOGGED) is None
 
-    reader = _fixed(bridge)
-    message = next(reader.parse_plugin_line(LOGGED))
-    # FIX's own names stay FIX's and the bridge's own are the bridge's, both
-    # inside the occurrence the document answered for. The registry is one
-    # namespace, so the plugin's own `Version` and `State` - not the FIX
-    # version a row was read at, nor the order's state - are held under the
-    # bridge's `PluginVersion` and `PluginState`.
-    assert message.by_path("SenderCompID").as_py() == "CLI.PROD.TRD"
-    assert message.by_path("PluginVersion").as_py() == "4.7.0"
-    assert message.by_path("PluginState").as_py() == "logged"
-    assert message.by_path("Version") == message.by_tag(65001)
-    # The registered vocabulary types a port as a number and a flag as a flag.
-    assert message.by_path("CurrentPort").as_py() == 9726
-    assert message.by_path("NeedCFBReload").as_py() is False
-    # A configuration message is the plugin's attributes and nothing the
-    # Jolokia answer wrapped them in: `MBean`, `Operation`, `Status` and
-    # `Error` - tags 20001 to 20004 - are deleted, and the ObjectName the
-    # read named it by stays where it always belonged, on `SessionInterface`.
-    for retired in (20001, 20002, 20003, 20004):
-        assert message.get_by_tag(retired) is None
-    for retired_name in ("MBean", "Operation", "Status", "Error"):
-        assert message.get_by_name(retired_name) is None
-    assert message.by_name("SessionInterface").as_py().endswith("type=Plugin")
-    assert message.by_name("MBeanType").as_py() == "Plugin"
-    # The entries are what arrived, and the envelope was never one of them:
-    # the re-emission opens on the ObjectName and states none of the four.
-    wire = message.into_bytes(ord("|"))
-    assert wire.startswith(b"SessionInterface=com.ullink.ulbridge")
-    for retired_key in (b"MBean=", b"Operation=", b"Status=", b"Error="):
-        assert retired_key not in wire
-    # `PLUGIN_TAG_MIN` is 20001 still - the floor of the range this
-    # dictionary claims, not the smallest tag it defines, which is 20010.
-    assert min(field.fix.tag for field in fix_plugin_fields()) == 20010
-    # `parse_line` finds the same document behind the same prose.
-    assert next(reader.parse_line(LOGGED)) == message
+    reader = _fixed(seed)
+    for row in (LOGGED, BULK):
+        (message,) = list(reader.parse_line(row))
+        assert message.field.name == "unknown"
+        # Nothing the document stated became an entry or a field: not the
+        # comp ids it spelled, not its name, not a port.
+        assert message.entries() == []
+        assert message.into_bytes(ord("|")) == b""
+        for stated in ("SenderCompID", "TargetCompID", "Name", "CurrentPort"):
+            assert message.get_by_name(stated) is None, stated
+        assert message.get_by_tag(49) is None
+        # What the row stated is carried: its clock, and the version it was
+        # read at.
+        assert message.updatedat() == CLOCK
+        assert message.by_tag(8).as_py().startswith("FIX.")
+    # The prose in front of the document is the row's, read as ever: the
+    # direction is the line's, and the type is nobody's.
+    (prosed,) = list(reader.parse_line(LOGGED))
+    assert prosed.by_tag(385).as_py() == "R"
 
-
-# A bridge line on one plugin, with no comp ids of its own: what ten million
-# lines behind one configuration look like.
-def _plugin_row(plugin: str) -> bytes:
-    return f"MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID={plugin}|".encode()
-
-
-def test_a_configuration_is_a_message_the_crate_registered(bridge: FixRegistry) -> None:
-    """A configuration types as `pluginconfig` and the wire still says no 35."""
-    message = next(_fixed(bridge).parse_line(LOGGED))
-    # The name the crate registered the code under, and the code itself.
-    assert PLUGINCONFIG_CODE_NAME == ("UCFG", "pluginconfig")
-    assert message.field.name == PLUGINCONFIG_CODE_NAME[1]
-    assert message.by_tag(35).as_py() == PLUGINCONFIG_CODE_NAME[0]
-
-    # Registering it is nobody's choice: a registry that never asked for the
-    # plugin fields still holds the message, because a component holds its
-    # members by value and the code is the crate's own.
-    plain = FixRegistry()
-    assert plain.msgtype("UCFG").name == "pluginconfig"
-    held = plain.definition("components", "pluginconfig")
-    assert held.name == fix_plugin_message().name
-    assert held.dtype == fix_plugin_message().dtype
-    assert held.fix.msgtype == PLUGINCONFIG_CODE_NAME[0]
-    assert plain.get_field_by_tag(20010) is None
-    assert plain.dialects() == []
-    # FIX's own `MsgType` opens the component, the plugin attributes follow,
-    # and the three FIX fields a configuration also states close it.
-    members = [fix_plugin_message()[at].name for at in range(len(fix_plugin_message()))]
-    assert members[0] == "MsgType"
-    assert members[1:-3] == [field.name for field in fix_plugin_fields()]
-    assert members[-3:] == ["BeginString", "SenderCompID", "TargetCompID"]
-
-    # A built child, not a pair: the document sent no `35=`, so the arrival
-    # record holds none and the wire re-emits exactly as it did before the
-    # type existed.
-    wire = message.into_bytes(ord("|"))
-    assert b"35=" not in wire
-    assert b"MsgType" not in wire
-    assert wire.startswith(b"SessionInterface=com.ullink.ulbridge")
+    # The row's own columns are carried through the record door: a
+    # `pluginid` capture fills the crate's field on the `unknown` message
+    # exactly as it fills it on a frame.
+    lined = _fixed(seed, capture_names=["pluginid"])
+    (captured,) = list(lined.parse_text_line(TextLine(0, LOGGED, ["Router_OrderRouting"])))
+    assert captured.field.name == "unknown"
+    assert captured.by_name("pluginid").as_py() == "Router_OrderRouting"
+    assert captured.entries() == []
+    # And a batch of such rows is one row per line, its captured columns
+    # kept beside the payload.
+    source = pa.table(
+        {
+            "pluginid": pa.array(["Router_OrderRouting", "ULB"], pa.utf8()),
+            "body": pa.array([LOGGED, BULK], pa.binary()),
+        }
+    )
+    parsed = reader.parse_text_arrow_reader(source).read_all()
+    assert parsed.num_rows == 2
+    assert parsed.column("pluginid").to_pylist() == ["Router_OrderRouting", "ULB"]
+    assert parsed.column("msgtype").to_pylist() == [None, None]
+    assert parsed.column("fixentries").to_pylist() == [[], []]
 
 
-def test_the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_plugin(
-    bridge: FixRegistry,
+# A bridge line on one plugin, with no comp ids of its own.
+def _pluginid_row(pluginid: str) -> bytes:
+    return f"MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID={pluginid}|".encode()
+
+
+def test_the_enriching_stream_carries_nothing_from_one_message_to_the_next(
+    seed: FixRegistry,
 ) -> None:
-    """A bridge states its two ends once; the lines behind it name only the plugin."""
-    codec = _fixed(bridge)
+    """A row gains only what its own pass fills; no earlier row lends it anything."""
+    codec = _fixed(seed)
 
     def one(body: bytes) -> FixMsg:
         return next(codec.parse_line(body))
 
     named = "Router_OrderRouting"
-    config = one(LOGGED)
-
-    # Alone, a row naming a plugin states no comp ids and gains none: there
-    # is nothing yet to fill them from.
-    (bare,) = codec.enrich_messages([one(_plugin_row(named))])
-    assert bare.get_by_tag(49) is None
-    assert bare.get_by_tag(56) is None
-
-    # Behind the configuration that named it, the same row takes the
-    # session's two ends.
-    filled = list(codec.enrich_messages([config, one(_plugin_row(named))]))
-    assert filled[0].field.name == "pluginconfig"
-    assert filled[1].by_tag(49).as_py() == "CLI.PROD.TRD"
-    assert filled[1].by_tag(56).as_py() == "ST.PROD"
-    # Not the begin string: every built message already fills tag 8 from the
-    # version its row was read at, so there is never one absent to fill.
-    assert filled[1].by_tag(8) == bare.by_tag(8)
-
-    # A row that stated its own 49 keeps it, which is what makes the pass
-    # idempotent; the one it did not state is still filled.
-    stated = f"MSGTYPE=8|PLUGINID={named}|SENDERCOMPID=ITS.OWN|".encode()
-    held = list(codec.enrich_messages([config, one(stated)]))[1]
-    assert held.by_tag(49).as_py() == "ITS.OWN"
-    assert held.by_tag(56).as_py() == "ST.PROD"
-
-    # A row naming a plugin no configuration named gains nothing, and so
-    # does one naming no plugin at all.
-    for untouched in (_plugin_row("Someone_Else"), b"MSGTYPE=8|ACCOUNT=ACCT-000117|"):
-        last = list(codec.enrich_messages([config, one(untouched)]))[1]
+    # A row naming a plugin states no comp ids and gains none, alone or
+    # behind a document that spelled two: the document was never read, and
+    # the stream remembers nothing between messages either way.
+    for stream in ([one(_pluginid_row(named))], [one(LOGGED), one(_pluginid_row(named))]):
+        last = list(codec.enrich_messages(stream))[-1]
+        assert last.by_name("pluginid").as_py() == named
         assert last.get_by_tag(49) is None
         assert last.get_by_tag(56) is None
-
-    # The memory is the stream's: one message is not a stream, so the door
-    # that takes one remembers nothing and fills nothing.
-    assert codec.enrich_message(one(_plugin_row(named))).get_by_tag(49) is None
-
-
-def test_every_plugin_a_document_answers_for_crosses_both_ways(
-    bridge: FixRegistry,
-) -> None:
-    """A wildcard read, a single read, and the message each crosses to."""
-    walk = Plugin.from_json_bytes(WILDCARD)
-    assert isinstance(walk, Plugins)
-    assert iter(walk) is walk
-    held = list(walk)
-    assert len(held) == 2
-    assert held[0].name == "ULMSG_BROKER_BDG_DMZ_PCO"
-    assert held[0].mbean_type == "ConfigurationPlugin"
-    assert held[0].plugin_type == "FIX"
-    assert held[0].category == "InterBridge"
-    assert held[0].version == "2.0.3"
-    assert held[1].name == "ULMSG_BROKER_TO_DMZ"
-    assert held[1].mbean_type == "Plugin"
-
-    # The spelling is folded the way every other name in this crate is, and
-    # `in` answers on the same fold as `get`.
-    assert held[0].get("priority_level").as_py() == 5
-    assert "PriorityLevel" in held[0]
-    assert "priority_level" in held[0]
-    assert "nothing_stated" not in held[0]
-    # `attributes` keeps the document's own spelling; the fold is what `get`
-    # and `in` are for.
-    assert len(held[0]) == len(held[0].attributes)
-    assert held[0].attributes["Version"].as_py() == "2.0.3"
-
-    single = list(Plugin.from_json_bytes(LOGGED))
-    assert len(single) == 1
-    assert single[0].name == "Router_OrderRouting"
-    assert single[0].state == "logged"
-    assert single[0].mbean is not None and "Router_OrderRouting" in single[0].mbean
-
-    # A parsed document is the same walk as the bytes it was parsed from, and
-    # anything the Scalar boundary reads is a parsed document.
-    assert list(Plugin.from_json_scalar(json.loads(WILDCARD))) == held
-
-    # And back to a typed message, and out of one again: the crossing keeps
-    # the ObjectName, the attributes and their types.
-    reader = _fixed(bridge)
-    message = held[0].into_fixmsg(reader)
-    assert message.by_path("PriorityLevel").as_py() == 5
-    back = Plugin.from_fixmsg(message)
-    assert back.mbean == held[0].mbean
-    assert back.name == held[0].name
-    assert back.version == held[0].version
-
-
-def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
-    """Equality, hash, copy and pickle, the way every other value here is."""
-    plugin = next(Plugin.from_json_bytes(LOGGED))
-    same = next(Plugin.from_json_bytes(LOGGED))
-    assert plugin == same
-    assert hash(plugin) == hash(same)
-    assert plugin.stable_hash() == same.stable_hash()
-    assert len({plugin, same}) == 1
-    assert plugin != next(Plugin.from_json_bytes(WILDCARD))
-    assert plugin != object()
-
-    assert copy.copy(plugin) == plugin
-    assert copy.deepcopy(plugin) == plugin
-    assert pickle.loads(pickle.dumps(plugin)) == plugin
-    assert "Router_OrderRouting" in repr(plugin)
-
-    # Built from the parts a caller has, rather than from a document.
-    built = Plugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
-    assert built.name == "Local"
-    assert built.mbean == plugin.mbean
-    assert built != plugin
-    # A mapping is folded into the record a document would have made, so a
-    # hand-built plugin answers the way a read one does.
-    assert built.get("name").as_py() == "Local"
-    assert built.attributes.keys() == {"Name", "Version"}
-    with pytest.raises(TypeError):
-        Plugin({1: "not a name"})
-
-    # A body that is not a Jolokia answer names no plugin, and answering
-    # none is what it answers: reading is not refusing, so every one of
-    # these iterates empty rather than raising - bytes that are not JSON at
-    # all included.
-    for silent in (
-        b"[]",
-        b"{}",
-        b'{"a":1}',
-        b"null",
-        b"true",
-        b"1",
-        b'"text"',
-        b"no document here at all",
-    ):
-        assert list(Plugin.from_json_bytes(silent)) == [], silent
+        # The stream door and the one-message door answer the same fill.
+        assert last == codec.enrich_message(one(_pluginid_row(named)))
+    # A row that stated its own 49 keeps it, and 56 stays what it stated:
+    # nothing.
+    stated = f"MSGTYPE=8|PLUGINID={named}|SENDERCOMPID=ITS.OWN|".encode()
+    held = list(codec.enrich_messages([one(LOGGED), one(stated)]))[1]
+    assert held.by_tag(49).as_py() == "ITS.OWN"
+    assert held.get_by_tag(56) is None
 
 
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:

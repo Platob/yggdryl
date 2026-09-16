@@ -2,22 +2,20 @@
 //!
 //! The capture is what a ULBridge writes - each line under the row header
 //! [`yggdryl::ULBRIDGE_ROWHEADER`] names, a Jolokia exchange whose answer is
-//! a configuration document, framed FIX either side of a plugin's prose, a
-//! bridge row keyed by name, and the sentences between them. The text reader
+//! a JSON document, framed FIX either side of a plugin's prose, a bridge row
+//! keyed by name, and the sentences between them. The text reader
 //! frames and classifies every line; the codec reads every framed body into
 //! the one row shape the dictionary decides before a byte is read. This is
 //! the acceptance test for that composition: the schema never depends on the
-//! data, a message in is a row out - a line carrying none is no row and a
-//! line carrying two frames is two - the capture's own columns
+//! data, a message in is a row out - a line carrying none is no row, a line
+//! carrying two frames is two and a line carrying a document is one row
+//! stating no type and no entries - the capture's own columns
 //! lead each row and the captures named after fields fill them instead,
 //! every row keeps its event clock independently of its header, attributes land
 //! typed on the bridge's own tags, and the batched read agrees with the line
 //! read on every tag both can answer.
 
 use super::SoleMessage;
-use super::path as fpath;
-use super::states_no_envelope;
-use super::{RETIRED_ENVELOPE_NAMES, RETIRED_ENVELOPE_TAGS, SESSIONINTERFACE_TAG};
 
 use std::sync::Arc;
 
@@ -27,16 +25,17 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
-    FixCodec, FixEntry, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url, fix_schema,
+    FixCodec, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url, fix_schema,
     fix_schema_carrying,
 };
 
-/// The committed dictionary beside the bridge's own vocabulary.
+/// The committed dictionary, in which every line of the bridge's resolves.
 fn registry() -> Arc<FixRegistry> {
-    super::plugin_fields_registry()
+    super::committed_registry()
 }
 
-/// The Jolokia answer, which is the one line that is a document.
+/// The Jolokia answer, which is the one line that is a document: a body the
+/// codec does not read, and so one `unknown` row with no entries.
 const RESPONSE: &str = concat!(
     r#"2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},"#,
     r#""value":{"SenderCompID":"CLIENTFIS","TargetCompID":"VENUEADC","BeginString":"FIX.4.2","Category":"Fix TradeCapture","PrimaryHost":"10.20.30.40","PrimaryPort":9726,"BackupHost":null,"BackupPort":-1,"#,
@@ -125,8 +124,7 @@ fn text() -> RecordOptions {
     text_options().into()
 }
 
-/// The codec: over the bridge's dictionary, whose fields resolve in the one
-/// namespace without a pin.
+/// The codec: over the committed dictionary, with nothing pinned.
 fn codec() -> FixCodec {
     super::fixed_codec(registry())
 }
@@ -438,10 +436,8 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
 
     // What each line was, read once by the text reader and carried through.
     let mimetype = text_column(&read, "mimetype");
-    // A bridge configuration line is JSON, which is what it is: a classifier
-    // that named it anything else would have read the body far enough to know
-    // it was a Jolokia answer, and that reading is the codec's rather than
-    // the classifier's.
+    // A Jolokia answer is JSON, which is what it is: the classifier locates
+    // the document behind the prose and names nothing about what it is for.
     assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("application/json"));
     assert_eq!(mimetype[HEARTBEAT_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[FILL_ROW].as_deref(), Some("text/fix"));
@@ -487,13 +483,12 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // `unknown` names a frame, a bridge row or a document that states no
     // type - never a line that states no frame. The capture's
     // sentences used to be `unknown` rows and are now no rows at all, which
-    // is what the five-row count says. The Jolokia answer used to be one
-    // too: it states no type of its own, and now the crate states one for
-    // it, because a plugin configuration is a message the crate registered.
+    // is what the five-row count says. The Jolokia answer is one: a
+    // document is a body the codec does not read, so nothing states a type
+    // for it - not the document, and not the crate - and tag 35 is null.
     assert_eq!(
-        msgtype[RESPONSE_ROW].as_deref(),
-        Some("UCFG"),
-        "a configuration is typed by the crate, not by the document"
+        msgtype[RESPONSE_ROW], None,
+        "a document states no type, and nothing states one for it"
     );
     assert_eq!(msgtype.len(), MESSAGES, "no sentence is a row");
 
@@ -613,91 +608,8 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
 }
 
 #[test]
-fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard() {
-    let registry = registry();
-    // The bridge's dictionary is a membership on the fields it contributed,
-    // not a namespace of its own: every field from `PLUGIN_TAG_MIN` says
-    // the bridge speaks it, a standard field it never touched says nothing,
-    // and both are reached by tag or by name from the one registry.
-    assert_eq!(registry.dialects(), [yggdryl::PLUGIN_DIALECT.to_owned()]);
-    // `PLUGIN_TAG_MIN` is the floor of the range this dictionary claims,
-    // not the smallest tag it happens to define: 20001 to 20004 carried the
-    // Jolokia envelope, since deleted, and they are retired
-    // rather than reused - a capture written before it holds `MBean` on
-    // 20001, so nothing else may answer to that tag. The smallest tag defined
-    // is `SessionInterface` on 20010, above the floor and not equal to it.
-    let (tag, name) = (SESSIONINTERFACE_TAG, "SessionInterface");
-    assert!(tag > yggdryl::PLUGIN_TAG_MIN, "{tag}");
-    for retired in RETIRED_ENVELOPE_TAGS {
-        assert!(registry.field_by_tag(retired).is_err(), "{retired}");
-    }
-    for retired in RETIRED_ENVELOPE_NAMES {
-        assert!(registry.field_by_name(retired).is_err(), "{retired}");
-    }
-    let smallest = yggdryl::fix_plugin_fields()
-        .unwrap()
-        .iter()
-        .filter_map(|field| field.as_fix().tag().ok().flatten())
-        .min()
-        .expect("the bridge defines fields");
-    assert_eq!(smallest, tag);
-    assert!(
-        smallest >= yggdryl::PLUGIN_TAG_MIN,
-        "the floor is a floor: {smallest}"
-    );
-    let first = registry
-        .field_by_tag(tag)
-        .expect("the bridge's first field");
-    assert!(first.as_fix().has_branch(yggdryl::PLUGIN_DIALECT));
-    assert_eq!(
-        first.as_fix().branches().collect::<Vec<_>>(),
-        [yggdryl::PLUGIN_DIALECT]
-    );
-    assert_eq!(
-        first.as_fix().id().unwrap(),
-        Some(yggdryl::FixId::of(tag, name).unwrap())
-    );
-    assert_eq!(registry.field_by_name(name).unwrap().name(), first.name());
-    let msgtype = registry
-        .field_by_tag(yggdryl::fix::MSGTYPE_TAG_NAME.0)
-        .expect("MsgType");
-    assert_eq!(msgtype.as_fix().branches().count(), 0);
-    assert_eq!(
-        registry
-            .field_by_name(yggdryl::fix::MSGTYPE_TAG_NAME.1)
-            .unwrap()
-            .name(),
-        msgtype.name()
-    );
-    // Every field the bridge defines is held, and every one of them says so
-    // in its membership; the specification's own fields in the same tag
-    // range say nothing of the bridge.
-    let mut bridged = 0;
-    for defined in yggdryl::fix_plugin_fields().unwrap() {
-        let held = registry
-            .field_by_id(defined.as_fix().id().unwrap().unwrap())
-            .unwrap();
-        bridged += 1;
-        assert!(
-            held.as_fix().has_branch(yggdryl::PLUGIN_DIALECT),
-            "{} says nothing of the bridge",
-            held.name()
-        );
-    }
-    assert!(bridged > 0, "the bridge's block is held");
-    assert!(
-        !registry
-            .field_by_name("NoAdditionalTermBondRefs")
-            .unwrap()
-            .as_fix()
-            .has_branch(yggdryl::PLUGIN_DIALECT)
-    );
-}
-
-#[test]
-fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
-    let registry = registry();
-    let codec = super::fixed_codec(Arc::clone(&registry));
+fn a_json_document_is_one_unknown_row_carrying_only_what_the_row_stated() {
+    let codec = codec();
 
     // The line as the text reader hands it to the codec: the row header
     // gone, the `Response:` prose still in front of the document.
@@ -705,89 +617,59 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     assert!(body.starts_with("Response: {"), "{body}");
     let message = codec
         .sole_line(body.as_bytes(), false)
-        .expect("the document the line carries");
+        .expect("the line carries one document, and so one message");
 
-    // A configuration message is the plugin's attributes and nothing the
-    // Jolokia answer wrapped them in: what the transport asked (`MBean`,
-    // `Operation`) and how the asking went (`Status`, `Error`) state nothing
-    // about the plugin, so their four tags hold nothing here.
-    states_no_envelope(&message);
-    // What the read named this plugin by is the `SessionInterface` attribute,
-    // which is where it always belonged, and it types like every other one.
-    assert_eq!(
-        message
-            .by_tag(SESSIONINTERFACE_TAG)
-            .unwrap()
-            .as_str()
-            .unwrap_or_default(),
-        "com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,\
-         plugin-type=FIX,type=Plugin"
-    );
-    // A session interface is one flat message. Standard and bridge attributes
-    // retain their own tags and datatypes.
-    for (path, expected) in [
-        ("SenderCompID", Scalar::from("CLIENTFIS")),
-        ("TargetCompID", Scalar::from("VENUEADC")),
-        ("BeginString", Scalar::from("FIX.4.2")),
-        ("MBeanType", Scalar::from("Plugin")),
-        ("PluginType", Scalar::from("FIX")),
-        ("Name", Scalar::from("Router_TradeCapture")),
-        ("CurrentPort", Scalar::from(9726_i64)),
-        ("BackupPort", Scalar::from(-1_i64)),
-        ("IncomingMsgSeqNum", Scalar::from(4507_i64)),
-        ("NeedReload", Scalar::from(false)),
-        // The document's `State` is the plugin's, held under the bridge's
-        // own name beside the crate's order `state`.
-        ("PluginState", Scalar::from("logged")),
-    ] {
-        assert_eq!(message.by_path(&fpath(path)).unwrap(), &expected, "{path}");
+    // A JSON document is a body this codec does not read: the row said
+    // something, and what it said is one message named `unknown` with no
+    // entries - nothing the document spelled reaches a field, a tag or the
+    // wire - carrying only what the row stated around it: the half the
+    // `Response:` prose names.
+    assert_eq!(message.as_field().name(), "unknown");
+    assert!(message.entries().is_empty());
+    assert!(message.into_bytes(b'|').is_empty());
+    assert!(message.get_by_tag(35).is_none_or(Scalar::is_null));
+    for spelled in ["SenderCompID", "TargetCompID", "Name", "CurrentPort"] {
+        assert!(
+            message.get_by_name(spelled).is_none_or(Scalar::is_null),
+            "{spelled}: nothing the document spelled reaches the message"
+        );
     }
-    // A stated null is an absence, and an array is kept as the JSON it is.
-    assert!(message.get_by_path(&fpath("BackupHost")).is_none());
-    assert!(
-        message
-            .by_path(&fpath("ExtendedActions"))
-            .unwrap()
-            .as_str()
-            .is_some_and(|held| held.contains("send-test-request"))
-    );
-    // The configuration's scalar fields carry the tags they resolved to, so a
-    // reader filtering the arrival record by tag finds them.
-    let tags: Vec<i32> = message.entries().iter().map(FixEntry::tag).collect();
-    assert!(tags.contains(&49), "{tags:?}");
-    assert!(tags.contains(&SESSIONINTERFACE_TAG), "{tags:?}");
-    assert!(tags.contains(&20_027), "CurrentPort: {tags:?}");
-    for retired in RETIRED_ENVELOPE_TAGS {
-        assert!(!tags.contains(&retired), "{retired}: {tags:?}");
-    }
+    // Tag 8 is filled from the version the row was read at, as on every
+    // built message - the crate's default here, since the row states none
+    // - and never from the `FIX.4.2` the document spelled.
+    assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.4"));
+    assert_eq!(message.by_tag(385).unwrap().as_str(), Some("R"));
 
-    // In the batch the same document is the same row: the attributes in the
-    // arrival record, one entry per field under the key the document spelled
-    // it by, and nothing the answer wrapped them in.
+    // In the batch the same document is the same row: no type, an empty
+    // arrival record, and the capture's own columns filled - the clock the
+    // header stated, the plugin that logged it, the direction the prose
+    // named.
     let read = read(&CAPTURE);
+    let stage = text_stage(&CAPTURE);
+    assert_eq!(tag_text(&read, 35)[RESPONSE_ROW], None);
     let entries = column(&read, "fixentries");
-    let held = entries[RESPONSE_ROW].as_sequence().expect("the entries");
-    let keyed: Vec<(i32, String)> = held
-        .iter()
-        .map(|entry| {
-            let entry = entry.as_sequence().expect("an entry");
-            (
-                entry[0].as_i64().map_or(0, |tag| tag as i32),
-                entry[3].as_str().unwrap_or_default().to_owned(),
-            )
-        })
-        .collect();
-    assert!(
-        keyed.contains(&(49, "SenderCompID".to_owned())),
-        "{keyed:?}"
+    assert_eq!(
+        entries[RESPONSE_ROW]
+            .as_sequence()
+            .map(<[Scalar]>::len)
+            .unwrap_or_default(),
+        0,
+        "{:?}",
+        entries[RESPONSE_ROW]
     );
-    assert!(
-        keyed.contains(&(20_027, "CurrentPort".to_owned())),
-        "{keyed:?}"
+    assert_eq!(
+        column(&read, "timestamp")[RESPONSE_ROW],
+        column(&stage, "timestamp")[CARRYING[RESPONSE_ROW]]
     );
-    // Nothing in the document went unexplained on a dictionary that has the
-    // bridge's own fields.
-    assert!(keyed.iter().all(|(tag, _)| *tag > 0), "{keyed:?}");
+    assert_eq!(
+        tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
+        Some("Jolokia")
+    );
+    assert_eq!(
+        tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
+        Some("R")
+    );
+    assert_eq!(tag_text(&read, 49)[RESPONSE_ROW], None);
 }
 
 /// How many bytes the row header takes off the front of every line here.
@@ -895,6 +777,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         .lines()
         .collect();
     assert_eq!(lines.len(), MESSAGES, "{lines:?}");
+    // The document's row arrived with no entries, so it re-emits nothing:
+    // an empty line, in its place.
+    assert_eq!(lines[RESPONSE_ROW], "");
     for (row, line, opens) in [
         (HEARTBEAT_ROW, HEARTBEAT, "8=FIX"),
         (FILL_ROW, FILL, "8=FIX"),

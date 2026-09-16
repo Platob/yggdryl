@@ -17,10 +17,8 @@
 //! nothing here resolves through it.
 
 mod catalog;
-mod plugin;
 
 pub use catalog::{JsFixDefinitionIterator, JsMsgType, JsMsgTypeIterator};
-pub use plugin::{JsPlugin, JsPlugins};
 
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
@@ -295,23 +293,11 @@ impl JsFixRegistry {
         }
     }
 
-    /// Add the native scalar plugin fields atomically.
-    #[napi]
-    pub fn with_plugin_fields(&mut self) -> Result<()> {
-        let registry = self
-            .inner_mut()?
-            .clone()
-            .with_plugin_fields()
-            .map_err(napi_error)?;
-        self.inner = Arc::new(registry);
-        Ok(())
-    }
-
     /// A registry holding the built-in definitions.
     ///
     /// Every registry holds the thirty-four scalar fields, the sorted
     /// `altids` Map group and the `instids` Struct that `fixCrateFields`
-    /// lists, and the `pluginconfig` component. It also holds the standard
+    /// lists. It also holds the standard
     /// `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
     /// the dictionary defines no field of its own at those tags. A dictionary
     /// loaded from a store, built from fields or left alone holds them alike;
@@ -408,8 +394,8 @@ impl JsFixRegistry {
     /// every definition under `<location>/<category>/<name>.json`, removing
     /// the shards and trees no field populates any more. The crate's own
     /// definitions are written like every other - its tag block from 65000 is
-    /// one shard, and its `altids`, `instids` and `pluginconfig` are three
-    /// documents - so a store states the whole row; a reader takes the
+    /// one shard, and its `altids` and `instids` are two documents - so a
+    /// store states the whole row; a reader takes the
     /// definition it holds from construction over the document it finds.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
@@ -1697,14 +1683,6 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// One bridge configuration document, as a Jolokia answer states it:
-    /// one message per `ObjectName` it names, lazily, and none where it names
-    /// no configuration.
-    #[napi]
-    pub fn parse_plugin_line(&self, body: Buffer) -> JsFixMessages {
-        JsFixMessages::over(self.inner.parse_plugin_line(&body))
-    }
-
     /// Pairs a caller already holds, in the order they arrived.
     #[napi(ts_args_type = "pairs: Array<[string, string]>")]
     pub fn parse_pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
@@ -1797,15 +1775,11 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// Fills a stream of messages, lazily, remembering what it passes.
+    /// Fills a stream of messages, lazily.
     ///
-    /// What the stream remembers is every `pluginconfig` it passes, by the
-    /// plugin's `Name`: a later message naming that plugin takes its
-    /// `SenderCompID` and `TargetCompID` where it stated none of its own. A
-    /// bridge says a session's two ends once, in the configuration it printed
-    /// at startup, and every line after it names only the plugin. The memory
-    /// dies with the iterator, and `enrichMessage` - one message, not a
-    /// stream - has none.
+    /// Each message crosses the pass `enrichMessage` runs, and nothing is
+    /// carried from one to the next: the iterator is the stream, so a
+    /// capture of ten million messages costs one at a time.
     #[napi(js_name = "_enrichMessagesNative", skip_typescript)]
     pub fn enrich_messages_native(
         &self,
@@ -2322,29 +2296,6 @@ pub fn fix_schema_tags() -> Vec<f64> {
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
-        .map_err(napi_error)
-}
-
-/// The scalar fields the plugin dictionary owns.
-#[napi(js_name = "fixPluginFields")]
-pub fn fix_plugin_fields() -> Result<Vec<JsField>> {
-    yggdryl::fix_plugin_fields()
-        .map(|held| held.iter().cloned().map(JsField::from_core).collect())
-        .map_err(napi_error)
-}
-
-/// The message a plugin configuration is: the `pluginconfig` component.
-///
-/// FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
-/// `SenderCompID` and `TargetCompID` a configuration also states. Its name is
-/// the type a configuration reads as and `field.fix.msgtype` the wire code it
-/// answers on tag 35. Registering it is nobody's choice: every registry holds
-/// it as it holds the crate's own fields, so a configuration reads as itself
-/// whatever dictionary met it.
-#[napi(js_name = "fixPluginMessage")]
-pub fn fix_plugin_message() -> Result<JsField> {
-    yggdryl::fix_plugin_message()
-        .map(|held| JsField::from_core(held.clone()))
         .map_err(napi_error)
 }
 

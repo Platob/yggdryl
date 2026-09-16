@@ -157,9 +157,6 @@ if (catalog.clone().addField(foldingField) !== false) throw new Error('party_id 
 if (catalog.clone().addField(arrivingField) !== true) throw new Error('Symbol should arrive')
 const singleton = catalog.msgtype('D')
 const codec = new fix.FixCodec(catalog)
-const ulregistry = new fix.FixRegistry()
-ulregistry.withPluginFields()
-const ulcodec = new fix.FixCodec(ulregistry)
 
 function drain(values) {
   let count = 0
@@ -195,7 +192,7 @@ const TEXT_LINES = LINES.map((body, index) => new TextLine(index, Buffer.from(bo
 // the crate's own column and selects nothing, so this is what a line costs
 // with one more capture to place beside a venue field the one namespace
 // holds.
-const pluginRegistry = (() => {
+const pluginidRegistry = (() => {
   const held = registry.clone()
   const venue = Field.from('VenueTag: utf8')
   venue.fix.tag = 5001
@@ -203,26 +200,15 @@ const pluginRegistry = (() => {
   held.insert(venue)
   return held
 })()
-const pluginCodec = new fix.FixCodec(pluginRegistry, { captureNames: ['pluginid'] })
-const PLUGIN_LINES = LINES.map((body, index) =>
+const pluginidCodec = new fix.FixCodec(pluginidRegistry, { captureNames: ['pluginid'] })
+const PLUGINID_LINES = LINES.map((body, index) =>
   new TextLine(index, Buffer.from(body), [index % 2 === 0 ? VENDOR_DIALECT : 'OMS_X1_TradeCapture']),
 )
-if (drain(pluginCodec.parseTextLines(PLUGIN_LINES)) !== LINES.length) {
+if (drain(pluginidCodec.parseTextLines(PLUGINID_LINES)) !== LINES.length) {
   throw new Error('pluginid line cardinality mismatch')
 }
 if (drain(seedCodec.parseLines(LINES)) !== LINES.length) throw new Error('line cardinality mismatch')
 const sink = { write() {} }
-
-function wildcard(size) {
-  return Buffer.from(JSON.stringify({
-    request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:*', type: 'read' },
-    value: Object.fromEntries(Array.from({ length: size }, (_, index) => [
-      `com.ullink.ulbridge.sessioninterfaces.plugins:name=Item${index},plugin-type=FIX,type=Plugin`,
-      { Name: `Item${index}`, CurrentPort: 9000 + index },
-    ])),
-    status: 200,
-  }))
-}
 
 try {
   benchmark('fix/tag_hit', () => registry.getFieldByTag(55))
@@ -329,7 +315,7 @@ try {
     drain(seedCodec.parseTextLines(TEXT_LINES)),
   )
   benchmarkStreams(`fix/parse_text_lines_pluginid_drain/${LINES.length}`, streams, () =>
-    drain(pluginCodec.parseTextLines(PLUGIN_LINES)),
+    drain(pluginidCodec.parseTextLines(PLUGINID_LINES)),
   )
   benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.parseTextArrowReader(capture).intoTable().numRows,
@@ -346,18 +332,6 @@ try {
   benchmarkStreams(`fix/write_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.writeArrowReader(BatchReader.fromIpc(parsedIpc), sink),
   )
-  for (const size of [1, 32, 64]) {
-    const body = wildcard(size)
-    if (drain(ulcodec.parseLine(body)) !== size) throw new Error('bulk cardinality mismatch')
-    const selected = fix.Plugin.fromJsonBytes(body)[Symbol.iterator]().next().value
-    benchmark(`fix/plugins_first/${size}`, () => fix.Plugin.fromJsonBytes(body)[Symbol.iterator]().next().value)
-    benchmark(`fix/plugins_drain/${size}`, () => drain(fix.Plugin.fromJsonBytes(body)))
-    benchmark(`fix/messages_first/${size}`, () => ulcodec.parseLine(body).next().value)
-    benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.parseLine(body)))
-    benchmark(`fix/text_line_drain/${size}`, () => drain(ulcodec.parseTextLine(new TextLine(0, body))))
-    benchmark(`fix/plugin_hash/${size}`, () => selected.stableHash())
-  }
-  benchmark('fix/register_plugin_fields', () => new fix.FixRegistry().withPluginFields())
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>
     fix.FixRegistry.fromHandle(generated),

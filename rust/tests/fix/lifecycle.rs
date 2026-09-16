@@ -604,7 +604,11 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
             messages += 1;
         }
     }
-    assert_eq!(messages, 95);
+    // 94: every JSON document the capture holds is one entry-less `unknown`
+    // - a wildcard answer no more than an error answer or the statistics
+    // line - so the two wildcards are a row each and the two documents that
+    // were silent are rows.
+    assert_eq!(messages, 94);
     // Four of the first 129 lines' chains, and the MEDIATEK order the
     // cancel/reject flow the capture ends on is about: the cancel request at
     // line 130 opens it under the instrument its `22=4|48=` names, and the
@@ -621,7 +625,7 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
     // Each door replays its own projection: enrichment may end a chain at a
     // different message.
     for (trace, expected) in [(direct_trace, 8), (enriched_trace, 7)] {
-        assert_eq!(trace.len(), 95);
+        assert_eq!(trace.len(), 94);
         let mut replay = FixLifecycle::new(Arc::clone(codec.registry()));
         for (message, alive) in trace {
             let stamped = replay

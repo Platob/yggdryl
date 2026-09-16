@@ -171,11 +171,6 @@ fn hash_derived_stable_hashes_keep_their_pre_flattening_values() {
     ] {
         assert_eq!(crate::hashing::stable_hash_of(&value), expected, "{name}");
     }
-    let plugin = crate::fix::Plugin::new(
-        Some("x"),
-        Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
-    );
-    assert_eq!(plugin.stable_hash(), 9_888_304_055_463_926_390);
 }
 
 /// The leaf's own spelling is reachable without a per-width table.

@@ -20,10 +20,10 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | --- | ---: | ---: |
 | Scalar fields | 6,241 | 6,275 |
 | Groups | 580 | 581 |
-| Components, including messages | 928 | 930 |
-| Messages, a subset of components | 181 | 182 |
+| Components, including messages | 928 | 929 |
+| Messages, a subset of components | 181 | 181 |
 
-The live additions are the crate's 34 scalar fields, the `altids` group, the `instids` component and the `pluginconfig` message component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 120 columns.
+The live additions are the crate's 34 scalar fields, the `altids` group and the `instids` component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 120 columns.
 
 === "Rust"
 

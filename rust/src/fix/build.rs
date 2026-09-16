@@ -392,18 +392,13 @@ pub(super) struct RowExtras<'row> {
     /// The code a line stating no direction takes - the codec's pin on the
     /// batch door - and nothing on the line door, where silence is silence.
     pub(super) direction_pin: Option<&'row str>,
-    /// The message type the reader supplies where the payload states none of
-    /// its own: a plugin configuration is `UCFG` because the crate says so,
-    /// never because the document did. A `35=` or `MSGTYPE=`
-    /// on the wire outranks it, as a stated value always does.
-    pub(super) msgtype: Option<&'row (&'static str, &'static str)>,
 }
 
 /// What a row stated, owned, for the messages it answers for.
 ///
 /// [`RowExtras`] borrows the row it was read from, and one row answers for
-/// as many messages as it carries - every frame of a line, every plugin of a
-/// configuration document - so what the row stated is retained once here and
+/// as many messages as it carries - every frame of a line - so what the row
+/// stated is retained once here and
 /// applied to each of them rather than borrowed across an expansion the
 /// caller drives. One copy per row that expands, never per line: a row of
 /// one message borrows and retains nothing.
@@ -453,7 +448,6 @@ impl RowStamp {
             fills,
             direction: self.direction.as_deref(),
             direction_pin: None,
-            msgtype: None,
         }
     }
 
@@ -489,7 +483,6 @@ impl RowExtras<'static> {
         fills: &[],
         direction: None,
         direction_pin: None,
-        msgtype: None,
     };
 }
 

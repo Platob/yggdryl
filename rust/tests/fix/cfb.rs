@@ -2474,7 +2474,7 @@ fn two_grammars_bound_under_one_wire_type_are_one_message_carrying_both() {
 
     // One message, holding the union of what the two bindings declared, the
     // first binding's members first and in its order.
-    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 1);
     let message = registry.msgtype("6").expect("one message under tag 35 `6`");
     assert_eq!(message.as_str(), "6");
     let members: Vec<&str> = message

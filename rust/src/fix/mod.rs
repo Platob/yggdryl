@@ -163,7 +163,6 @@ mod memo;
 mod messages;
 mod msg;
 mod msgtype;
-mod plugin;
 mod registry;
 mod replacements;
 mod schema;
@@ -201,10 +200,6 @@ pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
-pub use plugin::{
-    PLUGIN_DIALECT, PLUGIN_TAG_MIN, PLUGINCONFIG_CODE_NAME, Plugin, Plugins, fix_plugin_fields,
-    fix_plugin_message,
-};
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{FixReplacement, FixReplacementEntry, FixReplacements};
 pub use ulbridge::ULBRIDGE_ROWHEADER;

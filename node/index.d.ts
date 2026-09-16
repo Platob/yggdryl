@@ -1348,12 +1348,6 @@ export declare class FixCodec {
   parseUllinkLine(body: Buffer): FixMsg
   /** One FIXML row, whose fields are XML attributes. */
   parseFixmlLine(body: Buffer): FixMsg
-  /**
-   * One bridge configuration document, as a Jolokia answer states it:
-   * one message per `ObjectName` it names, lazily, and none where it names
-   * no configuration.
-   */
-  parsePluginLine(body: Buffer): FixMessages
   /** Pairs a caller already holds, in the order they arrived. */
   parsePairs(pairs: Array<[string, string]>): FixMsg
   /**
@@ -1906,14 +1900,12 @@ export declare class FixRegistry {
   msgtype(spelling: string): MsgType
   /** Iterate native message singletons in canonical order. */
   msgtypes(): MsgTypeIterator
-  /** Add the native scalar plugin fields atomically. */
-  withPluginFields(): void
   /**
    * A registry holding the built-in definitions.
    *
    * Every registry holds the thirty-four scalar fields, the sorted
    * `altids` Map group and the `instids` Struct that `fixCrateFields`
-   * lists, and the `pluginconfig` component. It also holds the standard
+   * lists. It also holds the standard
    * `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
    * the dictionary defines no field of its own at those tags. A dictionary
    * loaded from a store, built from fields or left alone holds them alike;
@@ -1975,8 +1967,8 @@ export declare class FixRegistry {
    * every definition under `<location>/<category>/<name>.json`, removing
    * the shards and trees no field populates any more. The crate's own
    * definitions are written like every other - its tag block from 65000 is
-   * one shard, and its `altids`, `instids` and `pluginconfig` are three
-   * documents - so a store states the whole row; a reader takes the
+   * one shard, and its `altids` and `instids` are two documents - so a
+   * store states the whole row; a reader takes the
    * definition it holds from construction over the document it finds.
    */
   writeInto(location: LocationInput): void
@@ -3311,84 +3303,6 @@ export declare class Plan {
   clone(): Plan
 }
 export type JsPlan = Plan
-
-/** One configuration: the `ObjectName` naming it and the attributes it states. */
-export declare class Plugin {
-  /**
-   * Construct from the parts a document states: the selected `ObjectName`
-   * and the attributes.
-   *
-   * What the Jolokia exchange wrapped them in is the transport's and no
-   * part of the configuration.
-   */
-  constructor(mbean: string | null, attributes: Scalar)
-  /**
-   * Every configuration a body names, lazily.
-   *
-   * Bytes that are not a Jolokia answer name none, and naming none is what
-   * they answer: reading is not refusing, so bytes that are not JSON at all
-   * iterate empty rather than throwing.
-   */
-  static fromJsonBytes(body: Buffer): JsPlugins
-  /**
-   * The same, over a document a caller already parsed.
-   *
-   * A document that is not a Jolokia answer, an answer that came back
-   * empty and an error-only answer all name no configuration, which is
-   * what they answer.
-   */
-  static fromJsonScalar(document: JsScalar): JsPlugins
-  /** Recover one configuration from a flat native message. */
-  static fromFixmsg(message: JsFixMsg): Plugin
-  /**
-   * This plugin as a message typed against `codec`'s dictionary.
-   *
-   * The same build every other reader funnels into, so a dictionary
-   * carrying the plugin fields types a port as a number and a flag as a
-   * boolean, and one that does not keeps every attribute as the text it
-   * arrived as.
-   */
-  intoFixmsg(codec: JsFixCodec): JsFixMsg
-  /** The selected actual `ObjectName`, when present. */
-  get mbean(): string | null
-  /** The type property of the selected `ObjectName`. */
-  get mbeanType(): string | null
-  /** The declared plugin type. */
-  get pluginType(): string | null
-  /** The native canonical name. */
-  get name(): string | null
-  /** The declared configuration version. */
-  get version(): string | null
-  /** The declared configuration category. */
-  get category(): string | null
-  /** The declared configuration state. */
-  get state(): string | null
-  /** Look up one native configuration attribute. */
-  get(name: string): JsScalar | null
-  /** Share the selected native attribute value. */
-  asAttributes(): JsScalar
-  /** Two configurations are equal with the same `ObjectName` and attributes. */
-  equals(other: Plugin): boolean
-  /** Deterministic hash bits from the native value. */
-  stableHash(): bigint
-  /** Clone the native value, retaining shared backing. */
-  clone(): Plugin
-}
-export type JsPlugin = Plugin
-
-/**
- * A lazy iterator over the configurations a document names.
- *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class Plugins {
-
-}
-export type JsPlugins = Plugins
 
 /**
  * One protocol's properties on a field, read and written by bare name.
@@ -5924,21 +5838,6 @@ export interface FixLifecycleOptions {
    */
   intervalNs?: bigint | number
 }
-
-/** The scalar fields the plugin dictionary owns. */
-export declare function fixPluginFields(): Array<JsField>
-
-/**
- * The message a plugin configuration is: the `pluginconfig` component.
- *
- * FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
- * `SenderCompID` and `TargetCompID` a configuration also states. Its name is
- * the type a configuration reads as and `field.fix.msgtype` the wire code it
- * answers on tag 35. Registering it is nobody's choice: every registry holds
- * it as it holds the crate's own fields, so a configuration reads as itself
- * whatever dictionary met it.
- */
-export declare function fixPluginMessage(): JsField
 
 /**
  * The fixed root every message answers as, built from one dictionary.

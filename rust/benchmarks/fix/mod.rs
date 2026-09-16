@@ -5,7 +5,6 @@ pub mod lifecycle;
 pub mod lift;
 pub mod mutate;
 pub mod pipeline;
-pub mod plugin;
 pub mod resolve;
 pub mod store;
 

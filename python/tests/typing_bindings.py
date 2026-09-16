@@ -65,7 +65,6 @@ from yggdryl._native import (
     StringEnum,
     StringParameters,
     BytesParameters,
-    Plugins,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
@@ -178,7 +177,6 @@ iceberg_names_hash: None = IcebergNames.__hash__
 fix_definitions_hash: None = FixDefinitionIterator.__hash__
 fix_messages_hash: None = FixMessages.__hash__
 fix_msgtypes_hash: None = MsgTypeIterator.__hash__
-plugins_hash: None = Plugins.__hash__
 bound_hash: None = Bound.__hash__
 bound_selector_hash: None = BoundSelector.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
@@ -1309,8 +1307,6 @@ fix_field.fix.add_branch("ice")
 fix_branches: list[str] = fix_field.fix.branches
 fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
 fix_id: int | None = fix_field.fix.id
-fix_plugin_dialect: str = fix.PLUGIN_DIALECT
-fix_configuration_code_name: tuple[str, str] = fix.PLUGINCONFIG_CODE_NAME
 
 python_field: Field = Field("Quote", "int64", nullable=False)
 python_field.python.class_metadata = PythonMetadata(
@@ -1382,7 +1378,7 @@ fix_removed: Field | None = fix_registry.remove(38)
 fix_removed_by_id: Field | None = fix_registry.remove_by_id(fix_field_id)
 fix_size: int = len(fix_registry_from_fields)
 fix_has: bool = 38 in fix_registry_from_fields
-fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
+fix_field_names: list[str] = [entry.name for entry in fix_registry_from_fields]
 fix_registry_from_fields.write_into(Path("build") / "fix")
 
 
@@ -1469,7 +1465,6 @@ text_entry_value: str = text_line_text.entry_by_path("58").value
 text_entry_value_bytes: bytes = text_line_text.entry_by_path("58").value_bytes
 text_entry_key: str = text_line_text.entry_by_path("58").key
 text_entry_key_bytes: bytes = text_line_text.entry_by_path("58").key_bytes
-fix_read_config: fix.FixMessages = fix_reader.parse_plugin_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
 fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>")
@@ -1562,34 +1557,10 @@ fix_identifier_value: Scalar = fix_identifier_values[0][1]
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
 fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
 fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
-fix_configuration: fix.Plugin = fix.Plugin({"Name": "Router"}, mbean="ulbridge:name=Router")
-_JOLOKIA_TEXT = (
-    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
-    'name=Router,type=Plugin","type":"read"},"value":{"Name":"Router"},"status":200}'
-)
-_JOLOKIA: dict[str, Any] = {
-    "request": {
-        "mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:name=Router,type=Plugin",
-        "type": "read",
-    },
-    "value": {"Name": "Router"},
-    "status": 200,
-}
-fix_configurations: fix.Plugins = fix.Plugin.from_json_scalar(_JOLOKIA)
-fix_configurations_bytes: fix.Plugins = fix.Plugin.from_json_bytes(_JOLOKIA_TEXT.encode())
-fix_configuration_item: fix.Plugin = next(fix_configurations)
-fix_configuration_message: fix.FixMsg = fix_configuration.into_fixmsg(fix_reader)
-fix_configuration_again: fix.Plugin = fix.Plugin.from_fixmsg(fix_configuration_message)
-fix_configuration_attributes: dict[str, Scalar] = fix_configuration.attributes
-fix_configuration_hash: int = fix_configuration.stable_hash()
-fix_configuration_pickle: tuple[Any, tuple[str, str | None]] = fix_configuration.__reduce__()
-
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_formatted_rows: list[Scalar] = fix_reader.format_messages([fix_message], fix_fixed_schema)
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
-fix_plugin_vocabulary: list[Field] = fix.fix_plugin_fields()
-fix_plugin_component: Field = fix.fix_plugin_message()
 fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
 fix_cblock_named: list[Field] = fix.fix_cfb_fields(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
@@ -1618,7 +1589,7 @@ fix.install_global_registry(fix_registry_from_fields)
 
 assert fix_tag == 38 and fix_tags and fix_names and fix_description
 assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
-assert fix_plugin_dialect == "plugin" and fix_dialects
+assert fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
 assert fix_direction_code == "S"
 assert fix_direction_patterns == ["(?i)^TX\\b"] and len(fix_directions) == 2
@@ -1665,7 +1636,7 @@ assert fix_fixed_row is not None
 assert fix_removed is None or fix_removed
 assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has
-assert fix_names == [] or fix_names
+assert fix_field_names == [] or fix_field_names
 assert fix_message_registry and fix_message_field and fix_message_value
 assert fix_message_by_id and fix_message_maybe_id
 assert fix_message_by_tag and fix_message_maybe_tag

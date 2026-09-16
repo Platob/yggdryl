@@ -177,5 +177,5 @@ test('generic MsgType datatype and field helpers are retired', () => {
   ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))
-  assert.equal(Scalar.from('UConfigurationPlugin').asJs(), 'UConfigurationPlugin')
+  assert.equal(Scalar.from('UConfiguration').asJs(), 'UConfiguration')
 })

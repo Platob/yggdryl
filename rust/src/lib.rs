@@ -72,16 +72,14 @@ pub use fix::{
     FixMsg, FixParty, FixPatterns, FixRegistry, FixSpellings, INSTIDS_TAG_NAME, ISINCODE_TAG_NAME,
     MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGHASH_TAG_NAME,
     MSGPHASH_TAG_NAME, NOFIXENTRIES_TAG_NAME, OFFERCURRENCY_TAG_NAME, PARENTCLORDID_TAG_NAME,
-    PARENTORDERID_TAG_NAME, PLUGIN_DIALECT, PLUGIN_TAG_MIN, PLUGINCONFIG_CODE_NAME,
-    PLUGINID_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVPLUGINID_TAG_NAME, PREVUPDATEDAT_TAG_NAME, Plugin,
-    Plugins, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SENDERSESSIONID_TAG_NAME,
+    PARENTORDERID_TAG_NAME, PLUGINID_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVPLUGINID_TAG_NAME,
+    PREVUPDATEDAT_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SENDERSESSIONID_TAG_NAME,
     SENDERSESSIONNAME_TAG_NAME, SESSIONMSGID_TAG_NAME, SESSIONMSGSEQID_TAG_NAME,
     SNAPSHOTAT_TAG_NAME, SOH, SOURCEURL_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
     STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME, TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME,
     ULBRIDGE_ROWHEADER, UPDATEDAT_TAG_NAME, VERSION_TAG_NAME, Words, fix_column_of,
-    fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_plugin_fields, fix_plugin_message,
-    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag,
+    fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_schema, fix_schema_carrying,
+    fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
 #[cfg(feature = "arrow")]

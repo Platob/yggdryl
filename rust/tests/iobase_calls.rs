@@ -61,14 +61,14 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Five documents and the three category roots: the store's own field
+    // Four documents and the three category roots: the store's own field
     // shard, the crate's block on its own shard, its `altids` group and its
-    // `instids` and `pluginconfig` components - a store states the whole
-    // row, so the crate's four documents are written beside the store's one.
+    // `instids` component - a store states the whole row, so the crate's
+    // three documents are written beside the store's one.
     costs(
-        "five documents, three categories",
+        "four documents, three categories",
         &calls,
-        "child_by_path=8",
+        "child_by_path=7",
         || {
             registry.write_into(&mut folder).unwrap();
         },
@@ -101,15 +101,13 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// reader answers.
     const LINES: usize = 144;
     /// How many FIX rows they read as: a row for every message the capture
-    /// carries - one a line, but for the wildcard Jolokia lines, which answer
-    /// for each configuration they named, and the bridge's own prose, which
-    /// carries no message at all. Eighty-three of the capture's
-    /// first 129 lines - one less than the eighty-four they were: the answer
-    /// that came back with an error and no `value` names no plugin, so it too
-    /// is a line carrying no message, where it used to be a row
-    /// holding the envelope alone - and twelve of the fifteen lines of the
+    /// carries - one a line, the JSON documents included, each of which is
+    /// one entry-less `unknown` whatever it holds, a wildcard answer no
+    /// more than an error answer or the statistics line - and none for the
+    /// bridge's own prose, which carries no message at all. Eighty-two of
+    /// the capture's first 129 lines, and twelve of the fifteen lines of the
     /// cancel/reject flow the capture ends on, whose other three are prose.
-    const ROWS: usize = 95;
+    const ROWS: usize = 94;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it.
     const DECODE: &str =
@@ -127,11 +125,7 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
         .with_timezone(Timezone::UTC);
     options.parse_mimetype = true;
     let options: RecordOptions = options.into();
-    let codec = FixCodec::new(Arc::new(
-        FixRegistry::new()
-            .with_plugin_fields()
-            .expect("the bridge's own fields"),
-    ));
+    let codec = FixCodec::new(Arc::new(FixRegistry::new()));
 
     costs("the capture read as text alone", &calls, DECODE, || {
         let read: usize = handle

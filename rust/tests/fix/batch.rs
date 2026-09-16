@@ -18,8 +18,10 @@ fn codec() -> FixCodec {
 
 const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}"#;
 
-fn config_registry() -> Arc<FixRegistry> {
-    let mut registry = FixRegistry::new().with_plugin_fields().unwrap();
+/// The crate's own fields beside a typed tag 385: the smallest dictionary a
+/// stated direction lands in.
+fn direction_registry() -> Arc<FixRegistry> {
+    let mut registry = FixRegistry::new();
     // Tag 385 as the dictionary types it: text carrying its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
@@ -129,7 +131,7 @@ fn first_at(batch: &RecordBatch, index: usize) -> Scalar {
 }
 
 #[test]
-fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
+fn a_bulk_document_line_is_one_unknown_message_read_before_the_next_line_is_pulled() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let pulled = Arc::new(AtomicUsize::new(0));
     let observed = Arc::clone(&pulled);
@@ -138,12 +140,15 @@ fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
         .inspect(move |_| {
             observed.fetch_add(1, Ordering::SeqCst);
         });
-    let codec = super::fixed_codec(config_registry());
+    let codec = super::fixed_codec(direction_registry());
     let mut messages = codec.parse_lines(lines);
     assert_eq!(pulled.load(Ordering::SeqCst), 0);
-    assert!(messages.next().unwrap().is_ok());
-    assert_eq!(pulled.load(Ordering::SeqCst), 1);
-    assert!(messages.next().unwrap().is_ok(), "the second MBean");
+    // A wildcard answer naming two MBeans is one message, not two: a JSON
+    // document is a body the codec does not read, so the row is one
+    // `unknown` with no entries whatever the document holds.
+    let document = messages.next().unwrap().unwrap();
+    assert_eq!(document.as_field().name(), "unknown");
+    assert!(document.entries().is_empty());
     assert_eq!(pulled.load(Ordering::SeqCst), 1);
     // An empty line is not a row at all: an `Err` item, and the stream goes on.
     assert!(messages.next().unwrap().is_err());
@@ -152,7 +157,7 @@ fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
 }
 
 #[test]
-fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
+fn a_document_row_is_one_row_carrying_its_source_columns_and_stated_direction() {
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("msgdirection"),
@@ -166,20 +171,21 @@ fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
         Scalar::from(BULK_CONFIG.to_vec()),
     ])]);
     let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
-    // One byte a batch: a batch a message, so each expanded row is seen alone.
-    let reader = super::fixed_codec(config_registry())
+    // One byte a batch: a batch a message, so a row that expanded would be
+    // seen as the several batches it made. A bulk document expands into
+    // nothing: one `unknown` row, carrying the source row's own columns.
+    let reader = super::fixed_codec(direction_registry())
         .with_batch_byte_size(1)
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
         .unwrap();
     let batches = batches(reader);
-    assert_eq!(batches.len(), 2);
-    for batch in batches {
-        assert_eq!(batch.num_rows(), 1);
-        assert_eq!(first_value(&batch, "rownum"), Scalar::from(42_i64));
-        // A stated column is a spelling of a code of the set, stored as
-        // the code.
-        assert_eq!(first_tag_value(&batch, 385).as_str(), Some("R"));
-    }
+    assert_eq!(batches.len(), 1, "one row for the one document");
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 1);
+    assert_eq!(first_value(batch, "rownum"), Scalar::from(42_i64));
+    // A stated column is a spelling of a code of the set, stored as
+    // the code.
+    assert_eq!(first_tag_value(batch, 385).as_str(), Some("R"));
 }
 
 #[test]
@@ -813,31 +819,58 @@ fn every_stream_door_fuses_its_own_source() {
 }
 
 #[test]
-fn stream_enrichment_keeps_successful_configuration_across_source_errors() {
-    let codec = super::fixed_codec(Arc::new(FixRegistry::new().with_plugin_fields().unwrap()))
-        .with_capture_names(["pluginid"]);
+fn stream_enrichment_carries_nothing_from_a_document_to_the_rows_after_it() {
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new())).with_capture_names(["pluginid"]);
     let line = |body: &[u8]| {
         TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
             .unwrap()
             .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
             .unwrap()
     };
-    let configuration = line(br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=STREAM,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"STREAM","SenderCompID":"SOURCE","TargetCompID":"SINK"},"status":200}"#);
+    // A Jolokia answer naming the plugin every line here names, and the two
+    // ends of its session: a document, which the codec does not read.
+    let document = line(br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=STREAM,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"STREAM","SenderCompID":"SOURCE","TargetCompID":"SINK"},"status":200}"#);
     let message = line(b"8=FIX.4.4|35=0|10=0|");
     let marker = Arc::new(());
     let mut stream = codec.enrich_messages(codec.parse_text_lines([
-        Ok(configuration),
+        Ok(document),
         Err(source_failure(&marker)),
         Ok(message),
     ]));
+    // The document is one `unknown` row carrying what its row stated - the
+    // plugin capture - and nothing the document did.
+    let unknown = stream.next().unwrap().unwrap();
+    assert_eq!(unknown.as_field().name(), "unknown");
+    assert!(unknown.entries().is_empty());
     assert_eq!(
-        stream.next().unwrap().unwrap().as_field().name(),
-        "pluginconfig"
+        unknown
+            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("STREAM")
     );
+    assert!(unknown.get_by_tag(49).is_none_or(Scalar::is_null));
+    // The source error moves through, and the stream goes on past it.
     same_source_failure(stream.next().unwrap().unwrap_err(), &marker);
+    // The heartbeat after it names the same plugin and gains nothing from
+    // the document: the stream remembers no configuration, so the two ends
+    // it stated fill no `SenderCompID` and no `TargetCompID` here.
     let filled = stream.next().unwrap().unwrap();
-    assert_eq!(filled.by_tag(49).unwrap().as_str(), Some("SOURCE"));
-    assert_eq!(filled.by_tag(56).unwrap().as_str(), Some("SINK"));
+    assert_eq!(
+        filled
+            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("STREAM")
+    );
+    assert!(
+        filled.get_by_tag(49).is_none_or(Scalar::is_null),
+        "{filled:?}"
+    );
+    assert!(
+        filled.get_by_tag(56).is_none_or(Scalar::is_null),
+        "{filled:?}"
+    );
     assert!(stream.next().is_none());
 }
 
@@ -1080,12 +1113,15 @@ fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does(
         "a plugin names no dialect: a message is not a dictionary member"
     );
 
-    // A bulk document is many messages, and the stream door yields each.
-    let read: Vec<_> = super::fixed_codec(config_registry())
+    // A bulk document is one `unknown` message, whatever it holds, and the
+    // stream door yields that one.
+    let read: Vec<_> = super::fixed_codec(direction_registry())
         .parse_text_lines([TextLine::from_bytes(0, page(BULK_CONFIG)).unwrap()])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
-    assert_eq!(read.len(), 2);
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].as_field().name(), "unknown");
+    assert!(read[0].entries().is_empty());
 }
 
 /// The committed dictionary beside a venue's one field of its own on tag

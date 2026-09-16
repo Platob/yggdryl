@@ -53,11 +53,15 @@ def seed(_seed_catalog: FixRegistry) -> FixRegistry:
     return copy.copy(_seed_catalog)
 
 
-BULK_CONFIG = (
-    b'{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},'
-    b'"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},'
-    b'"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}'
+# A JSON document a bridge logs, which the codec does not read: one row, one
+# `unknown` message.
+DOCUMENT = (
+    b'{"request":{"mbean":"com.ullink.ulbridge:type=*","type":"read"},'
+    b'"value":{"com.ullink.ulbridge:name=A,type=Bridge":{"Name":"A"},'
+    b'"com.ullink.ulbridge:name=B,type=Bridge":{"Name":"B"}},"status":200}'
 )
+# A line carrying two frames, which the line door reads as two messages.
+TWO_FRAMES = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O|10=002|"
 
 # Every shape a real capture holds, the corpus the readers are tested on.
 CAPTURE = [
@@ -88,9 +92,8 @@ ORDER = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|"
 REPORT = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
 
 
-def _config_registry() -> FixRegistry:
+def _direction_registry() -> FixRegistry:
     registry = FixRegistry()
-    registry.with_plugin_fields()
     # Tag 385 as the dictionary types it: text carrying its code set.
     direction = Field("MsgDirection", "utf8")
     direction.fix.tag = 385
@@ -136,12 +139,12 @@ def _stated(message: FixMsg) -> dict[int, Scalar]:
 
 
 def test_parse_lines_pulls_one_line_at_a_time_and_continues_past_a_refused_one() -> None:
-    codec = _fixed(_config_registry())
+    codec = _fixed(_direction_registry())
     pulled = 0
 
     def lines() -> Iterator[bytes]:
         nonlocal pulled
-        for line in [BULK_CONFIG, b""]:
+        for line in [TWO_FRAMES, DOCUMENT, b""]:
             pulled += 1
             yield line
 
@@ -150,16 +153,19 @@ def test_parse_lines_pulls_one_line_at_a_time_and_continues_past_a_refused_one()
     assert iter(messages) is messages
     # Nothing is pulled until the stream is asked.
     assert pulled == 0
-    assert next(messages).by_name("Name").as_py() == "A"
+    assert next(messages).by_tag(11).as_py() == "A"
     assert pulled == 1
-    # The second plugin comes out of the same line, without the next pull.
-    assert next(messages).by_name("Name").as_py() == "B"
+    # The second frame comes out of the same line, without the next pull.
+    assert next(messages).by_tag(37).as_py() == "O"
     assert pulled == 1
+    # A document is one row and one message, stating no type.
+    assert next(messages).field.name == "unknown"
+    assert pulled == 2
     # An empty line is not a row at all: raised where it is met, and the
     # stream goes on to say it is done.
     with pytest.raises(ValueError):
         next(messages)
-    assert pulled == 2
+    assert pulled == 3
     assert next(messages, None) is None
     assert next(messages, None) is None
 
@@ -209,8 +215,12 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
     )
     assert old.field.index_of("lastqty") is not None
     assert old.get_by_name("lastshares") is not None
-    # A bulk document is many messages, and the stream door yields each.
-    assert len(list(_fixed(_config_registry()).parse_text_lines([TextLine(0, BULK_CONFIG)]))) == 2
+    # A line carrying two frames is two messages, and the stream door yields
+    # each; a document is one, stating no type.
+    plain = _fixed(_direction_registry())
+    two, one = (list(plain.parse_text_lines([TextLine(0, line)])) for line in (TWO_FRAMES, DOCUMENT))
+    assert [message.by_tag(35).as_py() for message in two] == ["D", "8"]
+    assert [message.field.name for message in one] == ["unknown"]
 
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:

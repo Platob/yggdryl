@@ -13,8 +13,6 @@ import {
   type FixRegistry,
   type FixMessages,
   type MsgType,
-  type Plugin,
-  type Plugins,
   type FixValueInput,
   type LocationInput,
   type TextLine,
@@ -393,8 +391,6 @@ const at: number | null = fixedSchema.indexOf('msgtype')
 const fixedRow: Scalar = fromText.intoRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()
-const pluginVocabulary: Field[] = fix.pluginFields()
-const pluginComponent: Field = fix.pluginMessage()
 
 // Everything the core derives about a message.
 const digest: Buffer = fromText.digest()
@@ -429,8 +425,6 @@ void fixedRow
 void fixedSchema
 void fixedSchemaTags
 void crateFields
-void pluginVocabulary
-void pluginComponent
 void digest
 void ticker
 void clock
@@ -463,12 +457,11 @@ const groupByTag: Field | null = loaded.getGroupByTag(453)
 const requiredGroup: Field = loaded.groupByTag(453)
 const snapshot: string = loaded.intoJson()
 const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
-loaded.withPluginFields()
 
 const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
 const messageTypes: IterableIterator<MsgType> = loaded.msgtypes()
-const registered: MsgType = loaded.registerMsgtype('ConfigurationPlugin', 'configurationplugin')
+const registered: MsgType = loaded.registerMsgtype('BridgeReport', 'bridgereport')
 const wireCode: string = order.asStr()
 const messageDefinition: Field = order.asField()
 const identifierValues: Array<[Field, Scalar]> = order.identifierValues(fromText)
@@ -488,29 +481,16 @@ const counterTag: number | null = field.fix.counter
 field.fix.component = 'party'
 field.fix.group = 'parties'
 field.fix.fieldRef = 'partyid'
-field.fix.msgtype = 'ConfigurationPlugin'
+field.fix.msgtype = 'BridgeReport'
 const componentRef: string | null = field.fix.component
 const groupRef: string | null = field.fix.group
 const fieldRef: string | null = field.fix.fieldRef
 const messageCode: string | null = field.fix.msgtype
 
-const selected: Plugin = new fix.Plugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' })
-const configurations: Plugins = fix.Plugin.fromJsonScalar({
-  request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin', type: 'read' },
-  value: { Name: 'A' },
-  status: 200,
-})
-const parsedConfigurations: Plugins = fix.Plugin.fromJsonBytes(new Uint8Array())
-const nativeConfigurations: Plugin[] = [...configurations]
-const configAttributes: Scalar = selected.asAttributes()
-const configMessage: FixMsg = selected.intoFixmsg(reader)
-const recovered: Plugin = fix.Plugin.fromFixmsg(configMessage)
-const configHash: bigint = selected.stableHash()
-const bulk: FixMessages = reader.parsePluginLine(Buffer.from('{}'))
 const decoded: TextLine = handle.readTextLines().next().value
 const records: FixMessages = reader.parseTextLine(decoded)
 const lineStream: FixMessages = reader.parseTextLines([decoded])
-const nextMessage: IteratorResult<FixMsg> = bulk.next()
+const nextMessage: IteratorResult<FixMsg> = records.next()
 const allMessages: FixMsg[] = [...records, ...lineStream]
 
 // @ts-expect-error the generic parse returns a cursor
@@ -535,5 +515,4 @@ field.fix.counter = '453'
 void [group, counter, component, definitions, previous, replaced, deleted, groupByTag,
   requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
   messageDefinition, identifierValues, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
-  componentRef, groupRef, fieldRef, messageCode, parsedConfigurations, nativeConfigurations,
-  configAttributes, recovered, configHash, nextMessage, allMessages, single]
+  componentRef, groupRef, fieldRef, messageCode, nextMessage, allMessages, single]

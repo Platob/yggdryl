@@ -770,9 +770,8 @@ assert.equal(value.intoUuid().asJs(), '97979cfe-362a-8000-80af-5f94892f3950')
 ## FIX is a namespace
 
 `fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
-`fix.FixMessages`, `fix.FixLifecycle`, `fix.Plugin`, `fix.Plugins`,
-`fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
-`fix.pluginFields()`, `fix.pluginMessage()`, `fix.globalRegistry()` and
+`fix.FixMessages`, `fix.FixLifecycle`, `fix.schema()`, `fix.schemaCarrying()`,
+`fix.schemaTags()`, `fix.crateFields()`, `fix.globalRegistry()` and
 `fix.installGlobalRegistry()` are the whole surface: the registry, message
 definitions, codec, messages and lazy iterators. The namespace holds no
 constant: a dictionary is one namespace of tags and names, an identity is the
@@ -807,12 +806,11 @@ enumeration, which is written as the raw `fix:codes` metadata.
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until enrichment needs UTF-8 |
-| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine` and `parseTextLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` | `new FixMsg(field, value, registry)` appends each settled field the root lacks - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `msghash()` and `msgphash()` answer those settled `Scalar` values |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field throws and changes nothing; `FixMsg.fromRow(schema, row, registry)` reads a fixed row carrying the settled fields back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`, the latter reading an array or object document; each selection converts to one flat message with `intoFixmsg`; `parsePluginLine` answers one message per configuration a response named, and none for an error-only answer or a body that is not a Jolokia answer |
 
 `altids` uses ordinary `Map` input and answers a `Map` through `Scalar.asJs()`, with no FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
@@ -1005,16 +1003,6 @@ assert.equal(direction.has('fix:directions'), false)
 `FixMsg`'s constructor is the one widening gate: the core alone types, orders,
 and validates a plain object. Resolution and merging are the core's, on the
 [fix](../fix/index.md) pages.
-
-Bulk configuration responses stream one flat message per configuration a
-response named, each retaining the ObjectName it was read by on
-`SessionInterface` (20010) and nothing of the Jolokia exchange around it.
-`withPluginFields()` puts the bridge's fields in the one namespace as members
-of the `plugin` dictionary, holding the document's `State` and `Version` as
-`PluginState` (20019) and `PluginVersion` (20021), because every registry
-already holds the crate's own `state` and `version`, while the arrival record
-keeps the document's spelling; 20001 to 20004 are retired, not reused.
-[Capture](../fix/capture.md) owns that round trip in all three languages.
 
 ## Edges
 

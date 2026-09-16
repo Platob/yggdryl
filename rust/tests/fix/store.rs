@@ -617,9 +617,9 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(loaded.len(), 6241 + super::crated_fields());
     assert_eq!(
         loaded.definitions(FixCategory::Components).count(),
-        928 + super::crated_messages() + super::crated_components()
+        928 + super::crated_components()
     );
-    assert_eq!(loaded.msgtypes().count(), 181 + super::crated_messages());
+    assert_eq!(loaded.msgtypes().count(), 181);
     assert_eq!(loaded.definitions(FixCategory::Groups).count(), 581);
 }
 
@@ -1128,21 +1128,18 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     // The census the one namespace rests on: 747 components and 181 messages fold
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
-        (
-            FixCategory::Components,
-            928 + super::crated_messages() + super::crated_components(),
-        ),
+        (FixCategory::Components, 928 + super::crated_components()),
         (FixCategory::Groups, 581),
     ] {
         assert_eq!(registry.definitions(category).count(), count, "{category}");
     }
-    assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 181);
     assert_eq!(
         registry
             .definitions(FixCategory::Components)
             .filter(|field| field.as_fix().msgtype().is_some())
             .count(),
-        181 + super::crated_messages()
+        181
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     let group = registry.definition(FixCategory::Groups, "Parties").unwrap();
@@ -1196,11 +1193,8 @@ fn named_definition_equality_does_not_depend_on_insertion_order() {
     // The two this test added, and behind them the one every registry starts
     // with.
     assert!(
-        left.definition_at(
-            FixCategory::Components,
-            2 + super::crated_messages() + super::crated_components()
-        )
-        .is_none()
+        left.definition_at(FixCategory::Components, 2 + super::crated_components())
+            .is_none()
     );
     assert!(
         left.definition_at(FixCategory::Components, usize::MAX)
@@ -1255,9 +1249,6 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
             .map(|field| (FixCategory::Groups, field));
         let messages = original
             .msgtypes()
-            // The crate's own is already in the source, which starts from a
-            // registry of its own: respelling it would restate it.
-            .filter(|held| held.name() != yggdryl::PLUGINCONFIG_CODE_NAME.1)
             .map(|held| (FixCategory::Components, held.as_field()));
         for (category, field) in plain.chain(groups).chain(messages) {
             let mut field = field.clone();
@@ -1662,10 +1653,10 @@ fn message_types_borrow_the_catalog_schema_and_keep_wire_codes_case_sensitive() 
     assert_eq!(by_code.name(), "NewOrderSingle");
     assert_eq!(by_code.as_str(), "D");
     assert!(registry.get_msgtype("d").is_none());
-    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 1);
     assert!(registry.msgtype("unknown").is_err());
     assert!(std::ptr::eq(by_code, registry.msgtype_at(0).unwrap()));
-    assert!(registry.msgtype_at(1 + super::crated_messages()).is_none());
+    assert!(registry.msgtype_at(1).is_none());
     assert!(registry.msgtype_at(usize::MAX).is_none());
 }
 
@@ -1681,7 +1672,7 @@ fn message_position_keeps_identity_when_a_name_is_another_messages_wire_code() {
     assert_eq!(registry.msgtype_at(0).unwrap().name(), "D");
     assert_eq!(registry.msgtype_at(0).unwrap().as_str(), "X");
     assert_eq!(registry.msgtype_at(1).unwrap().name(), "NewOrderSingle");
-    assert!(registry.msgtype_at(2 + super::crated_messages()).is_none());
+    assert!(registry.msgtype_at(2).is_none());
 }
 
 #[test]
@@ -1699,7 +1690,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(registry.msgtype("OtherOrder").unwrap().as_str(), "D");
     assert_eq!(registry.msgtype("other_order").unwrap().as_str(), "D");
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     // Once the first holder goes, the code answers the one left.
     registry
         .remove_definition(FixCategory::Components, "NewOrderSingle")
@@ -1726,7 +1717,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
             .add_definition(FixCategory::Components, restated)
             .unwrap()
     );
-    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 1);
     let folded = registry.msgtype("D").unwrap();
     assert_eq!(folded.name(), "NewOrderSingle");
     assert!(folded.as_field().as_fix().has_branch("venue"));
@@ -1739,7 +1730,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     registry
         .insert_definition(FixCategory::Components, message)
         .unwrap();
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     let venue = registry.msgtype("VenueOrder").unwrap();
     assert_eq!(venue.as_str(), "D");
@@ -1957,7 +1948,7 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
         .insert_definition(FixCategory::Components, missing)
         .unwrap();
     assert!(registry.get_msgtype("Missing").is_none());
-    assert_eq!(registry.msgtypes().count(), super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 0);
     let mut nullable = DataType::from_fields([])
         .unwrap()
         .nullable_field("Nullable");
@@ -1992,7 +1983,7 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
 #[test]
 fn the_msgtype_marker_makes_a_component_a_message_and_its_removal_unmakes_it() {
     let mut registry = catalog();
-    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 1);
     // A plain component given the marker is a message afterwards.
     let mut party = registry
         .definition(FixCategory::Components, "Party")
@@ -2006,18 +1997,16 @@ fn the_msgtype_marker_makes_a_component_a_message_and_its_removal_unmakes_it() {
         .unwrap();
     assert_eq!(registry.msgtype("UPTY").unwrap().name(), "Party");
     assert_eq!(registry.msgtype("party").unwrap().as_str(), "UPTY");
-    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(
         registry
             .msgtypes()
             .map(|held| held.name())
-            // The two this test named, without the one every registry has.
-            .filter(|name| *name != yggdryl::PLUGINCONFIG_CODE_NAME.1)
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "Party"]
     );
     assert_eq!(registry.msgtype_at(1).unwrap().name(), "Party");
-    assert!(registry.msgtype_at(2 + super::crated_messages()).is_none());
+    assert!(registry.msgtype_at(2).is_none());
     // A message whose marker is removed is a component and answers no code.
     let mut order = registry
         .definition(FixCategory::Components, "NewOrderSingle")
@@ -2034,7 +2023,7 @@ fn the_msgtype_marker_makes_a_component_a_message_and_its_removal_unmakes_it() {
             .get_definition(FixCategory::Components, "NewOrderSingle")
             .is_some()
     );
-    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    assert_eq!(registry.msgtypes().count(), 1);
     assert_eq!(registry.msgtype_at(0).unwrap().name(), "Party");
     // The category refuses the fourth name everywhere it is spelled.
     assert!(FixCategory::from_str("messages").is_err());
@@ -2047,7 +2036,7 @@ fn the_msgtype_marker_makes_a_component_a_message_and_its_removal_unmakes_it() {
 fn msgtype_at_indexes_the_marked_components_of_the_committed_dictionary() {
     let registry = super::committed_registry();
     let iterated: Vec<&str> = registry.msgtypes().map(|held| held.name()).collect();
-    assert_eq!(iterated.len(), 181 + super::crated_messages());
+    assert_eq!(iterated.len(), 181);
     let indexed: Vec<&str> = (0..)
         .map_while(|index| registry.msgtype_at(index))
         .map(|held| held.name())
@@ -2224,8 +2213,7 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
                 "metadata":{{"fix:tag":"38","{key}":{spelled}}}}}"#
         ))
         .unwrap();
-        let error =
-            yggdryl::from_fix_document(document).expect_err(&format!("{key}: {spelled}"));
+        let error = yggdryl::from_fix_document(document).expect_err(&format!("{key}: {spelled}"));
         assert!(error.to_string().contains(key), "{key}: {spelled}: {error}");
     }
 

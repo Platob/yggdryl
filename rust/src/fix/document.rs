@@ -819,7 +819,9 @@ impl Kind {
                     .map(|element| self.word(element))
                     .collect::<Result<Vec<_>>>()?;
                 if let Some(twice) = repeated_word(words.iter().filter_map(Scalar::as_str)) {
-                    return Err(self.refused(format_args!("expected each name once, got {twice:?} twice")));
+                    return Err(
+                        self.refused(format_args!("expected each name once, got {twice:?} twice"))
+                    );
                 }
                 words
             }
@@ -828,8 +830,12 @@ impl Kind {
                     .iter()
                     .map(|element| self.tag(element))
                     .collect::<Result<Vec<_>>>()?;
-                if let Some(twice) = repeated_number(tags.iter().filter_map(|tag| tag.as_i64()?.try_into().ok())) {
-                    return Err(self.refused(format_args!("expected each tag once, got {twice} twice")));
+                if let Some(twice) =
+                    repeated_number(tags.iter().filter_map(|tag| tag.as_i64()?.try_into().ok()))
+                {
+                    return Err(
+                        self.refused(format_args!("expected each tag once, got {twice} twice"))
+                    );
                 }
                 tags
             }
@@ -853,7 +859,9 @@ impl Kind {
             .as_i64()
             .and_then(|held| i32::try_from(held).ok())
             .filter(|held| *held > 0)
-            .ok_or_else(|| self.refused(format_args!("expected a positive tag, got {element:?}")))?;
+            .ok_or_else(|| {
+                self.refused(format_args!("expected a positive tag, got {element:?}"))
+            })?;
         Ok(Scalar::from(tag))
     }
 

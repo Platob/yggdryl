@@ -895,7 +895,6 @@ impl FixCodec {
             fills: &fills,
             direction: None,
             direction_pin: None,
-            msgtype: None,
         };
         let page = line.body_bytes();
         if page.is_empty() {
@@ -1002,11 +1001,10 @@ impl FixCodec {
         // reading gets nothing and the document readers below answer.
         let (entries, frame_at) = self.entries(page);
         let entries = entries.unwrap_or_default();
-        // A row that located no frame may carry a document instead, and the
-        // namespace scan that finds one is run here and nowhere else: the
-        // span is kept whole, so where the payload opens and where the
-        // document closes are the one answer.
-        let document = frame_at.is_none().then(|| line::plugin_span(row)).flatten();
+        // A row that located no frame may carry a JSON document instead, and
+        // the scan that finds one is run here and nowhere else: the span is
+        // kept whole, so where the payload opens is the one answer.
+        let document = frame_at.is_none().then(|| line::json_span(row)).flatten();
         let opens = frame_at
             .or_else(|| document.as_ref().map(|span| span.start))
             .unwrap_or(row.len());
@@ -1053,11 +1051,14 @@ impl FixCodec {
                 self.fixml_with(&pairs, extras).map(FixMessages::one),
             ));
         }
-        // The document the scan above already bounded, handed over as the
-        // document: the namespace, the opener and the close are found once
-        // for the whole reading.
-        if let Some(span) = document {
-            return Ok(self.plugin_with(&row[span], extras));
+        // A JSON document is a body this codec does not read: the row said
+        // something, and what it said is one message stating no type and
+        // no entries - `unknown` names it - carrying what the row stated
+        // beside it, its clock and its own columns.
+        if document.is_some() {
+            return Ok(FixMessages::from_result(
+                self.build_pairs_with(&[], extras).map(FixMessages::one),
+            ));
         }
         let body = &row[opens..];
         // A FIXML row states no `key=value` frame, so the locator finds none
@@ -1634,8 +1635,6 @@ impl FixCodec {
     /// trade settles on, and a rule answers only where every input is stated
     /// and typed. The component's identifier declaration fills the sorted
     /// `altids` Map at the message's own level, without flattening groups.
-    /// Then, on the stream doors, the plugin configuration this
-    /// stream has already passed.
     ///
     /// Only the row is filled. The entries are what arrived and are carried
     /// through untouched, so [`FixMsg::into_bytes`] re-emits the received line
@@ -1653,33 +1652,24 @@ impl FixCodec {
         super::enrich::enrich(&self.registry, message)
     }
 
-    /// Fills a stream of messages, lazily, remembering what it passes.
+    /// Fills a stream of messages, lazily.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
     /// million messages costs one at a time. [`Self::enrich_messages_arrow_reader`]
-    /// is the same pass over batches of rows.
-    ///
-    /// What the stream remembers is every `pluginconfig` it passes, by the
-    /// plugin's `Name`: a later message naming that plugin takes its
-    /// `SenderCompID` and `TargetCompID` where it stated none of its own.
-    /// Not its `BeginString` - every built message already
-    /// fills tag 8 from the version its row was read at, so there is never
-    /// one absent to fill. A bridge says a session's two ends once, in
-    /// the configuration it printed at startup, and every line after it names
-    /// only the plugin. The memory dies with the iterator, and
-    /// [`Self::enrich_message`] - one message, not a stream - has none.
-    /// Owned messages and their fallible counterparts compose directly.
-    /// Errors move through without touching that memory; exhaustion is fused.
+    /// is the same pass over batches of rows. Each message crosses the pass
+    /// [`Self::enrich_message`] runs, and nothing is carried from one to the
+    /// next. Owned messages and their fallible counterparts compose directly.
+    /// Errors move through; exhaustion is fused.
     pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
         let registry = Arc::clone(&self.registry);
-        let mut plugins = super::enrich::Remembered::default();
-        messages.into_iter().fuse().map(move |message| {
-            Ok(plugins.fill(super::enrich::enrich(&registry, message.into()?)?))
-        })
+        messages
+            .into_iter()
+            .fuse()
+            .map(move |message| super::enrich::enrich(&registry, message.into()?))
     }
 
     /// Stamps a stream of messages with the identities it implies, in order.
@@ -1765,17 +1755,12 @@ impl FixCodec {
         // is what a bridge log carries in its `beginstring` capture.
         let stated_version = extras.version;
         let version = stated_version.or_else(|| self.infer_version(pairs));
-        // What the payload spelled, else the code the reader supplies for a
-        // payload that states none of its own. A stated one
-        // wins, as a stated value always does.
+        // What the payload spelled: the code decides the message and names
+        // the root, and a payload spelling none is named `unknown`.
         let stated = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
-        let supplied = stated.is_none().then_some(extras.msgtype).flatten();
-        // Borrowed either way: the code decides the message and names the
-        // root, and neither reading owns a string a build would pay for.
-        let code = stated
+        let message = stated
             .as_deref()
-            .or_else(|| supplied.map(|(code, _)| *code));
-        let message = code.and_then(|code| self.declared_message(code));
+            .and_then(|code| self.declared_message(code));
         let mut builder = Builder::new(
             &self.registry,
             message,
@@ -1805,30 +1790,6 @@ impl FixCodec {
                 tag: super::MSGDIRECTION_TAG_NAME.0,
                 value: &value,
             });
-        }
-        // A code the crate supplied is a built child rather than a pair: the
-        // arrival record is what the payload stated, and the payload sent no
-        // `35=`. The root then takes the name the crate registered the code
-        // under, where a spelling the wire wrote is kept as the wire's own
-        // word.
-        if let Some((code, name)) = supplied {
-            let value = Scalar::from(*code);
-            // The dictionary's own `MsgType` where it publishes one, else
-            // the crate's: a registry holding only the crate's fields names
-            // no tag 35, and the code is the crate's to state either way.
-            let field = self
-                .registry
-                .field(super::MSGTYPE_TAG_NAME.0)
-                .ok()
-                .or_else(|| super::plugin::msgtype_field());
-            if let Some(field) = field {
-                builder.fill(&Fill {
-                    field,
-                    tag: super::MSGTYPE_TAG_NAME.0,
-                    value: &value,
-                });
-            }
-            return self.finish(builder.finish(name)?, extras);
         }
         self.finish(
             builder.finish(root_name(stated.as_deref()).as_str())?,
@@ -2359,9 +2320,9 @@ fn own_pairs<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Resul
 /// [`own_pairs`], where a pair may also name the dictionary field it fills.
 ///
 /// A pair naming one is recorded under the key it arrived with and built
-/// under the name, so a document spelling `State` for the bridge's
-/// `PluginState` keeps `State` in its arrival record and `PluginState` in its
-/// row; a pair naming none is its own record.
+/// under the name, so a row spelling an alternate name of a field keeps that
+/// spelling in its arrival record and the field's own name in its row; a pair
+/// naming none is its own record.
 fn spelled_pairs<'a>(pairs: impl IntoIterator<Item = SpelledPair<'a>>) -> Result<Vec<FixPair>> {
     let mut page = Vec::new();
     let mut spans = Vec::new();

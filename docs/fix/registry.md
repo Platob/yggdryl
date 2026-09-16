@@ -28,7 +28,6 @@
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
 | Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 36 definitions from tag 65001: 34 scalar fields, the sorted Map group `altids(65020)` and the `instids` Struct at 65036. `new()` registers each in its own category; ordinary size and iteration count the scalars only. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
 | Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated-and-versioned) are typed by, so an empty registry holds 36 scalars; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
-| Crate message | `new()` holds the one message type the crate defines beside them, [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) under the code `UCFG`, because a codec meeting a plugin configuration cannot write the registry it shares; its members are held by value, so the component states the shape of a `UCFG` message without registering the plugin attributes as fields of this dictionary |
 
 ## Use
 
@@ -1118,11 +1117,11 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     assert.equal(message.compare(message.clone()), 0)
     ```
 
-Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. One code answers before a caller registers anything: `UCFG`, the [plugin configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) the crate defines, which `new()` seeds beside the crate's own fields. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
+Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. `new()` seeds no message type: every code a registry answers is one a dictionary or a caller registered. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the 34 crate scalars, the seeded `SendingTime` and `TransactTime`, the `altids` group, the `instids` component and the `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the 34 crate scalars, the seeded `SendingTime` and `TransactTime`, the `altids` group and the `instids` component. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 
@@ -1145,10 +1144,10 @@ Environment and default-folder resolution happen once, on the first global looku
 | XML or JSON | The corresponding generic MIME type |
 | Unrecognized bytes | `application/octet-stream` |
 
-A bridge configuration document is `application/json`, which is what it is.
-What makes one *this* reader's is a shape the codec recognizes rather than a
-name the classifier gives it, and the codec reads that shape at the offset the
-namespace scan already found, so nothing is looked for twice.
+A JSON document on a line - an object, or an array of objects, opening before
+any `=` and balanced to its close, prose allowed in front and behind - is
+`application/json`, which is what it is, and names no message type: the codec
+reads such a row as [one message stating nothing](capture.md#a-json-document-is-one-message-stating-nothing).
 
 === "Rust"
 
@@ -1178,10 +1177,6 @@ namespace scan already found, so nothing is looked for twice.
     assert.equal(fix.FixCodec.inferMsgtypeText('MSGTYPE=P Report Ack|'), 'P Report Ack')
     ```
 
-### A bridge configuration is a shape the codec recognizes
-
-An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `Plugins` and `FixMessages`; each configuration a response named becomes one flat [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) message, and a response that named none - an error-only answer, a request with no value, a wildcard that selected nothing - becomes no message at all, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_plugin_fields` registers them, every one a member of `PLUGIN_DIALECT` (`plugin`) with tags inside the range `PLUGIN_TAG_MIN` (20001) floors, the four the Jolokia envelope held retired rather than reused so the smallest one defined is `SessionInterface` (20010) - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
-
 ### A direction is what the rules on tag 385 read in front of the payload
 
 Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one. The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too: tag 385's field carries them as `fix:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
@@ -1197,7 +1192,7 @@ Where the field carries no property the defaults answer, keyed by the set's `Sen
 | Receive | `(?i)(?:^\|[\[(])in(?:[\]):]\|$)` | the bare word, only bracketed: `(in)`, `[IN]` |
 | Receive | `(?i)(?:^\|\s)response:` | an answer came back |
 
-`Request:` and `Response:` prose names the half of a Jolokia exchange - a request went out, an answer came back - and a bare configuration document states nothing of itself: the half is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door. A direction is the line's and a message is the document's, read apart, so prose in front of a document that names no configuration still names a half and still yields no message.
+`Request:` and `Response:` prose names the half of an exchange a bridge logged - a request went out, an answer came back - and a bare JSON document states nothing of itself: the half is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door. The direction is the line's and the document is [one message stating nothing](capture.md#a-json-document-is-one-message-stating-nothing), so the half the prose names is the one thing that message states beyond its clock, its version and its row's captures.
 
 `set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `fix:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
 

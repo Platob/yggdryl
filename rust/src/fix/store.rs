@@ -193,7 +193,7 @@ impl Resolver<'_> {
                     let builtin = self
                         .fields
                         .get_definition(category, name)
-                        .filter(|held| is_crate_field(held) || is_crate_message(held))
+                        .filter(|held| is_crate_field(held))
                         .ok_or_else(|| Error::absent(category.as_str(), name))?
                         .clone();
                     self.children(builtin, depth)?
@@ -325,22 +325,12 @@ fn is_crate_field(field: &Field) -> bool {
         .is_some_and(super::is_crate_tag)
 }
 
-/// Whether one definition is the crate's own message.
-///
-/// `pluginconfig` is to the components what the crate's own fields are to
-/// the fields: a store writes it so a dump is the whole dictionary, and a
-/// reader holding it from construction reads that copy past.
-fn is_crate_message(field: &Field) -> bool {
-    field.name() == super::PLUGINCONFIG_CODE_NAME.1
-}
-
 impl FixRegistry {
     fn is_crate_definition(&self, category: FixCategory, field: &Field) -> bool {
         is_crate_field(field)
-            || is_crate_message(field)
             || self
                 .get_definition(category, field.name())
-                .is_some_and(|held| is_crate_field(held) || is_crate_message(held))
+                .is_some_and(is_crate_field)
     }
 
     /// Reads a complete registry snapshot from JSON.
@@ -389,10 +379,9 @@ impl FixRegistry {
     /// format and every field and definition in it already carries the
     /// `fix:branches` its writer meant. Naming one here would overwrite that.
     ///
-    /// A snapshot restating one of this crate's own fields, or the
-    /// `pluginconfig` message, is read past rather than refused: every
-    /// registry holds those from construction, so the held definition stays
-    /// and the counts do not move.
+    /// A snapshot restating one of this crate's own fields is read past
+    /// rather than refused: every registry holds those from construction, so
+    /// the held definition stays and the counts do not move.
     ///
     /// Answers the count added and the count merged, over the fields; the
     /// two seeded clocks every parsed snapshot carries always merge, so a

@@ -641,7 +641,7 @@ pub struct FixCodec
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
-  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per configuration a bulk answer named, and none at all where the row opens no frame, states no bridge pair and carries no document a Jolokia answer names a configuration in)
+  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one `unknown` message with no entries for a JSON document the row carries and no frame, and none at all where the row opens no frame, states no bridge pair and carries no document)
   pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item; fuses source exhaustion)
   pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`)
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
@@ -682,7 +682,7 @@ impl FixMsg
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
-  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per configuration a bulk answer named; nothing collected either way; fused after exhaustion or the first error)
+  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one `unknown` for a document; nothing collected either way; fused after exhaustion or the first error)
   impl FusedIterator for FixMessages
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
@@ -802,17 +802,6 @@ pub enum FixAnomaly<'msg>
 pub struct FixAnomalies<'msg>
   impl<'msg> Iterator for FixAnomalies<'msg>  (Item = FixAnomaly<'msg>)
   impl FusedIterator for FixAnomalies<'_>
-
-### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
-pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
-pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
-pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read)
-pub fn fix_plugin_fields() -> Result<&'static [Field]>
-pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for)
-impl FixRegistry
-  pub fn with_plugin_fields(mut self) -> Result<Self>
-impl FixCodec
-  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
 pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype)

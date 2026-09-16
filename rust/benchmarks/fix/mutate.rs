@@ -18,10 +18,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // output rather than letting it fall at the end of the timed closure.
     let mut incoming = DataType::utf8().nullable_field("Incoming");
     incoming.as_fix_mut().set_tag(9_000).unwrap();
-    incoming
-        .as_fix_mut()
-        .set_names(["IncomingAlias"])
-        .unwrap();
+    incoming.as_fix_mut().set_names(["IncomingAlias"]).unwrap();
     group.bench_function("insert_into_seed", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), incoming.clone()),
