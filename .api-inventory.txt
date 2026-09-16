@@ -960,7 +960,7 @@ pub trait TimeElement: Element  (an element that happened at one instant, stands
   fn set_snapshot_unix(&mut self, unix: Option<i128>)
   fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: records the predecessor's identity and instant, the place after the predecessor's (saturating), takes the names the predecessor went by that this element lacks, and folds the lifecycle; nothing for its own predecessor or one that happened after it)
   fn merging(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge, then the later statement's instant and codes, the further place in the chain, the folded lifecycle, and this element's predecessor and snapshot instant else the other's; nothing for another element)
-  fn fold_lifecycle(&mut self, other: &Self) where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state)
+  fn fold_lifecycle(&mut self, other: &Self) where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states)
   fn txhash(&self) -> Result<TxHash>  (provided: `unix` at nanosecond resolution coupled with `hashcode` as an XXH3-64 digest; ArithmeticOverflow past signed 64-bit nanoseconds)
   fn time_uuid(&self) -> Result<Uuid>  (provided: the UUIDv7 `TxHash::into_uuid` answers for `txhash`, the instant in front so identities sort by instant first, to the microsecond; what an implementor's `Element::get_current_uuid` answers where its identity is its instant and content)
   fn time_xuuid(&self) -> Result<Option<Uuid>>  (provided: the same coupling of `creation_unix` with `xhashcode`; None where the creation is unknown)
@@ -987,6 +987,7 @@ pub trait MarketElement: TimeElement  (an element that happened in a market: a p
   fn set_cficode(&mut self, cficode: Option<Cfi>)
   fn get_miccode(&self) -> Option<&Mic>  (the market it traded on, ISO 10383, where known)
   fn set_miccode(&mut self, miccode: Option<Mic>)
+  fn merging_market(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the timed merge, then the later statement's price, quantity and unit, and the currency, the side and each instrument code the better of the two as `CodeValue::merge_with` reads them - the later statement leading, the earlier filling what it leaves unknown, a code only one names that one's; nothing for another element)
 
 ### yggdryl::graph::iterator  [rust\src\graph\iterator.rs]
 pub struct ElementIterator<E, I>  (a walk over timed elements that chains each one to the live element it follows and yields it enriched: the live elements are kept under the identity every incarnation of one thing shares - the cross element, else the element's own - and an element arriving under a live identity is stated as the one after it by its own `with_previous`; the yielded element stands as the live one where still alive (live state, not past its expiration) and retires the identity where not; one before the live element is yielded as it came and changes nothing, one its reading refuses is yielded as it came and stands; Debug)
@@ -3704,6 +3705,7 @@ pub trait CodeValue: ScalarValue
   const WIDTH: usize;
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
+  fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: Cfi fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Currency `XXX` and Mic `XXXX` take the other, every identifier stands as it is)
 pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; Isin, Cusip and Sedol fold lower case and refuse a check digit that does not close them, while Bloomberg has no shape to check and only holds ASCII to its width in upper case
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
@@ -3742,6 +3744,7 @@ pub struct CfiGroup  (a group letter and its name, under one category)
   pub const fn name(&self) -> &'static str
 pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
   pub fn as_str(&self) -> &str
+  pub fn merge_with(self, other: &Self) -> Self  (CodeValue::merge_with where the two are one kind of code; this one beside another kind)
   pub const fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> usize
   pub const fn identifier(&self) -> DataTypeId

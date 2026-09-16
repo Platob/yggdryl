@@ -651,7 +651,7 @@ impl Element for Trade {
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
-        self.merging(other)
+        self.merging_market(other)
     }
 }
 
@@ -923,4 +923,63 @@ fn a_market_element_answers_its_five_facts_and_is_still_a_timed_element() {
         82.5,
         "what the trade itself says moves nowhere"
     );
+}
+
+#[test]
+fn merging_a_market_element_takes_the_later_statement_and_the_better_codes() {
+    let mut first = trade(1, 10);
+    first.set_currency(Currency::new("XXX").expect("no currency"));
+    first.set_side(Side::read("UNKNOWN").expect("a side"));
+    first.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
+    first.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
+    let mut later = trade(1, 20);
+    later.set_px(83.0);
+    later.set_qty(5.0);
+    later.set_unit("MWh".to_owned());
+    later.set_currency(Currency::new("EUR").expect("a currency"));
+    later.set_side(Side::read("2").expect("a side"));
+    later.set_cficode(Some(Cfi::new("ESVUFX").expect("a CFI")));
+    later.set_miccode(Some(Mic::new("XPAR").expect("a MIC")));
+
+    // The later statement has the last word on the market's facts, and each
+    // code is the better of the two: the earlier fills what the later left
+    // unknown, and a code only one statement names is that one's.
+    let merged = first.clone().merge_with(&later).expect("the same trade");
+    assert_eq!(merged.get_unix(), 20);
+    assert_eq!(
+        (merged.get_px(), merged.get_qty(), merged.get_unit()),
+        (83.0, 5.0, "MWh")
+    );
+    assert_eq!(merged.get_currency().as_str(), "EUR");
+    assert_eq!(merged.get_side().as_str(), "SELL");
+    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(
+        merged.get_isincode().map(Isin::as_str),
+        Some("US0378331005")
+    );
+    assert_eq!(merged.get_miccode().map(Mic::as_str), Some("XPAR"));
+
+    // Merged the other way round the later statement still leads, so the
+    // reading does not depend on which statement a caller held.
+    let merged = later.clone().merge_with(&first).expect("the same trade");
+    assert_eq!(
+        (merged.get_px(), merged.get_currency().as_str()),
+        (83.0, "EUR")
+    );
+    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(
+        merged.get_isincode().map(Isin::as_str),
+        Some("US0378331005")
+    );
+
+    // A statement that knows a code the later one states as none keeps
+    // its own: the later statement leads, and unknown takes the other.
+    let mut bare = trade(1, 30);
+    bare.set_currency(Currency::new("XXX").expect("no currency"));
+    let merged = later.clone().merge_with(&bare).expect("the same trade");
+    assert_eq!(merged.get_currency().as_str(), "EUR");
+    assert_eq!(merged.get_unix(), 30);
+
+    // Another trade does not merge at all.
+    assert!(first.merge_with(&trade(2, 30)).is_none());
 }

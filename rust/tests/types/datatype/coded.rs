@@ -855,3 +855,94 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
         value
     );
 }
+
+#[test]
+fn a_code_merges_to_the_better_statement() {
+    use yggdryl::types::{Cfi, Code, CodeValue, Currency, Isin, Mic, Side, State};
+
+    // A classification fills what it left unknown from the other, and stands
+    // as it is beside another instrument's.
+    let partial = Cfi::new("ESXXXR").unwrap();
+    assert_eq!(
+        partial
+            .clone()
+            .merge_with(&Cfi::new("ESVUFX").unwrap())
+            .as_str(),
+        "ESVUFR"
+    );
+    assert_eq!(
+        partial.merge_with(&Cfi::new("DBFNFB").unwrap()).as_str(),
+        "ESXXXR"
+    );
+
+    // A state that reached none takes the other, and otherwise the further
+    // along stands whichever side it is on.
+    let unknown = State::new("00UNKNOWN").unwrap();
+    let new = State::read("New").unwrap();
+    let filled = State::read("Filled").unwrap();
+    assert_eq!(unknown.merge_with(&new), new);
+    assert_eq!(new.clone().merge_with(&filled), filled);
+    assert_eq!(filled.clone().merge_with(&new), filled);
+
+    // A side, a currency and a market stated as none take the other, and
+    // anything stated stands.
+    assert_eq!(
+        Side::read("UNKNOWN")
+            .unwrap()
+            .merge_with(&Side::read("1").unwrap())
+            .as_str(),
+        "BUY"
+    );
+    assert_eq!(
+        Side::read("BUY")
+            .unwrap()
+            .merge_with(&Side::read("SELL").unwrap())
+            .as_str(),
+        "BUY"
+    );
+    assert_eq!(
+        Currency::new("XXX")
+            .unwrap()
+            .merge_with(&Currency::new("USD").unwrap())
+            .as_str(),
+        "USD"
+    );
+    assert_eq!(
+        Currency::new("USD")
+            .unwrap()
+            .merge_with(&Currency::new("EUR").unwrap())
+            .as_str(),
+        "USD"
+    );
+    assert_eq!(
+        Mic::new("XXXX")
+            .unwrap()
+            .merge_with(&Mic::new("XPAR").unwrap())
+            .as_str(),
+        "XPAR"
+    );
+
+    // An identifier has nothing partial about it: this one stands.
+    let apple = Isin::new("US0378331005").unwrap();
+    assert_eq!(
+        apple
+            .clone()
+            .merge_with(&Isin::new("US5949181045").unwrap()),
+        apple
+    );
+
+    // The family enum merges one kind of code, and keeps this one beside
+    // another kind.
+    let held = Code::Currency(Currency::new("XXX").unwrap());
+    assert_eq!(
+        held.clone()
+            .merge_with(&Code::Currency(Currency::new("USD").unwrap()))
+            .as_str(),
+        "USD"
+    );
+    assert_eq!(
+        held.clone()
+            .merge_with(&Code::Mic(Mic::new("XPAR").unwrap())),
+        held
+    );
+}

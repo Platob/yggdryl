@@ -604,6 +604,28 @@ impl Cfi {
     /// applicable or unknown". Never valid as a category or a group.
     pub const UNKNOWN: char = 'X';
 
+    /// The better of two classifications, as
+    /// [`CodeValue::merge_with`](crate::types::CodeValue::merge_with)
+    /// answers it: [`Self::merged`] where the two describe one instrument -
+    /// every `X` filled from the other, a disagreement `X` - and this code
+    /// as it is where they do not.
+    ///
+    /// ```
+    /// use yggdryl::types::{Cfi, CodeValue};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
+    /// // Two different instruments are not one: this code stands.
+    /// assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub(super) fn filled(self, other: &Self) -> Self {
+        Self::merged(self.as_str(), other.as_str())
+            .and_then(|text| Self::new(text).ok())
+            .unwrap_or(self)
+    }
+
     /// The category a letter names, or `None` where no category has it.
     #[must_use]
     pub fn category_of(letter: char) -> Option<&'static CfiCategory> {

@@ -12,7 +12,9 @@
 use std::collections::BTreeMap;
 
 use crate::hashing::txhash::TxHash;
-use crate::types::{Bloomberg, Cfi, Currency, Cusip, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::types::{
+    Bloomberg, Cfi, CodeValue, Currency, Cusip, Isin, Mic, Sedol, Side, State, Uuid,
+};
 use crate::{Digest, DigestAlgorithm, Error, Result, TimeUnit};
 
 /// One element of a graph: a node that knows its own identity, the identity
@@ -645,7 +647,8 @@ pub trait TimeElement: Element {
     }
 
     /// Folds another element's lifecycle into this one: the earliest
-    /// creation, the latest expiration, the furthest state.
+    /// creation, the latest expiration, the furthest state - the better of
+    /// the two as [`CodeValue::merge_with`] reads a state.
     ///
     /// Provided, and what [`Self::following`] and [`Self::merging`] share.
     fn fold_lifecycle(&mut self, other: &Self)
@@ -660,9 +663,8 @@ pub trait TimeElement: Element {
             self.get_expiration_unix(),
             other.get_expiration_unix(),
         ));
-        if other.get_state() > self.get_state() {
-            self.set_state(other.get_state().clone());
-        }
+        let state = self.get_state().clone().merge_with(other.get_state());
+        self.set_state(state);
     }
 
     /// The instant and the code coupled: a [`TxHash`] of [`Self::get_unix`] at
@@ -725,9 +727,13 @@ pub trait TimeElement: Element {
 /// does: the [`Isin`], the [`Cusip`], the [`Sedol`], the [`Bloomberg`]
 /// identifier, the [`Cfi`] classification and the [`Mic`] of the market it
 /// traded on, the crate's own validated codes. The traits state signatures
-/// and nothing else: what a price of nothing or a quantity of zero means is
-/// the market's to say, and following and merging are the timed readings
-/// unchanged.
+/// and one more provided reading: [`Self::merging_market`] is what merging
+/// means for a market element - the timed merge, then the later statement's
+/// price, quantity and unit, and each code the better of the two as
+/// [`CodeValue::merge_with`] reads it, the later statement leading - which
+/// an implementor's [`Element::merge_with`] delegates to. What a price of
+/// nothing or a quantity of zero means is the market's to say, and following
+/// is the timed reading unchanged.
 ///
 /// ```
 /// use std::collections::BTreeMap;
@@ -735,6 +741,7 @@ pub trait TimeElement: Element {
 /// use yggdryl::graph::{Element, MarketElement, TimeElement};
 /// use yggdryl::types::{Bloomberg, Cfi, Currency, Cusip, Isin, Mic, Sedol, Side, State, Uuid};
 ///
+/// # #[derive(Clone)]
 /// struct Trade {
 ///     uuid: Uuid,
 ///     unix: i128,
@@ -773,7 +780,7 @@ pub trait TimeElement: Element {
 /// #     fn set_parentuuids(&mut self, parents: Vec<Uuid>) { self.parents = parents; }
 /// #     fn is_after(&self, other: &Self) -> bool { self.unix > other.unix }
 /// #     fn with_previous(self, previous: &Self) -> Option<Self> { self.following(previous) }
-/// #     fn merge_with(self, other: &Self) -> Option<Self> { self.merging(other) }
+/// #     fn merge_with(self, other: &Self) -> Option<Self> { self.merging_market(other) }
 /// # }
 /// # impl TimeElement for Trade {
 /// #     fn get_unix(&self) -> i128 { self.unix }
@@ -876,6 +883,13 @@ pub trait TimeElement: Element {
 /// assert!(held.get_cusipcode().is_none(), "an instrument is named the way the market names it");
 /// assert_eq!(held.get_unix(), 10);
 /// assert_eq!(held.get_current_uuid(), Uuid::from_v8(1));
+/// // A later statement of the trade merges in: its price has the last word,
+/// // and the CFI it states fills what this one left unknown.
+/// let later = Trade { px: 83.0, unix: 20, cficode: Some(Cfi::new("ESVUFR")?), ..trade.clone() };
+/// trade.set_cficode(Some(Cfi::new("ESXXXR")?));
+/// let merged = trade.merge_with(&later).expect("the same trade");
+/// assert_eq!(merged.get_px(), 83.0);
+/// assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
 /// # Ok(())
 /// # }
 /// ```
@@ -948,4 +962,72 @@ pub trait MarketElement: TimeElement {
     /// Records the market the element traded on; `None` states it is not
     /// known.
     fn set_miccode(&mut self, miccode: Option<Mic>);
+
+    /// This element with another statement of itself folded in, by the
+    /// market reading, or nothing where `other` is another element.
+    ///
+    /// The timed merge first - [`TimeElement::merging`] - and then the
+    /// market's facts: the later statement's price, quantity and unit have
+    /// the last word, as its instant and codes do; the currency, the side
+    /// and each instrument code are the better of the two statements as
+    /// [`CodeValue::merge_with`] reads them, the later statement leading and
+    /// the earlier filling what it leaves unknown - a `XXX` currency, an
+    /// `UNKNOWN` side, an `X` in a CFI - and a code only one statement
+    /// names is that one's. An equal instant keeps this element leading.
+    ///
+    /// Provided, so an implementor's [`Element::merge_with`] has a default
+    /// to delegate to.
+    fn merging_market(self, other: &Self) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let later = other.get_unix() > self.get_unix();
+        let currency = self.get_currency().clone();
+        let side = self.get_side().clone();
+        let isincode = self.get_isincode().cloned();
+        let cusipcode = self.get_cusipcode().cloned();
+        let sedolcode = self.get_sedolcode().cloned();
+        let bloombergcode = self.get_bloombergcode().cloned();
+        let cficode = self.get_cficode().cloned();
+        let miccode = self.get_miccode().cloned();
+        let mut this = self.merging(other)?;
+        if later {
+            this.set_px(other.get_px());
+            this.set_qty(other.get_qty());
+            this.set_unit(other.get_unit().to_owned());
+        }
+        this.set_currency(better(currency, other.get_currency(), later));
+        this.set_side(better(side, other.get_side(), later));
+        this.set_isincode(better_stated(isincode, other.get_isincode(), later));
+        this.set_cusipcode(better_stated(cusipcode, other.get_cusipcode(), later));
+        this.set_sedolcode(better_stated(sedolcode, other.get_sedolcode(), later));
+        this.set_bloombergcode(better_stated(
+            bloombergcode,
+            other.get_bloombergcode(),
+            later,
+        ));
+        this.set_cficode(better_stated(cficode, other.get_cficode(), later));
+        this.set_miccode(better_stated(miccode, other.get_miccode(), later));
+        Some(this)
+    }
+}
+
+/// The better of two statements of one code: the later statement leading,
+/// the earlier filling what it leaves unknown.
+fn better<C: CodeValue>(this: C, other: &C, later: bool) -> C {
+    if later {
+        other.clone().merge_with(&this)
+    } else {
+        this.merge_with(other)
+    }
+}
+
+/// [`better`] where each statement may name no code at all: the one that
+/// names one, or nothing where neither does.
+fn better_stated<C: CodeValue>(this: Option<C>, other: Option<&C>, later: bool) -> Option<C> {
+    match (this, other) {
+        (Some(this), Some(other)) => Some(better(this, other, later)),
+        (Some(this), None) => Some(this),
+        (None, other) => other.cloned(),
+    }
 }

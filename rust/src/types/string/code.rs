@@ -29,6 +29,24 @@ pub trait CodeValue: crate::ScalarValue {
     /// The stored text is already trimmed and checked, so a rewrite that
     /// keeps it clones this handle rather than re-validating and copying.
     fn storage(&self) -> &SmolStr;
+
+    /// The better statement of this code and another of the same kind: this
+    /// one, unless it states less than `other` does.
+    ///
+    /// What "less" means is each code's own, and the codes that can state
+    /// nothing say so: a [`Cfi`] fills every `X` position from the other
+    /// where the two describe one instrument; a
+    /// [`State`] that reached none, `00UNKNOWN`, takes the other, and
+    /// otherwise the further along stands; a [`Side`] `UNKNOWN`, a
+    /// [`Currency`] `XXX` and a [`Mic`] `XXXX` take the other. Every other
+    /// code is an identifier with nothing partial about it, so this one
+    /// stands as it is. This is what a graph element folds two statements
+    /// of one fact with.
+    #[must_use]
+    fn merge_with(self, other: &Self) -> Self {
+        let _ = other;
+        self
+    }
 }
 
 macro_rules! code_leaf {
@@ -79,6 +97,34 @@ code_leaf!(Currency, CURRENCY_WIDTH);
 code_leaf!(Mic, MIC_WIDTH);
 code_leaf!(Cfi, CFI_WIDTH);
 code_leaf!(Bloomberg, BLOOMBERG_WIDTH);
+
+impl Currency {
+    /// ISO 4217's code for no currency.
+    const NONE: &str = "XXX";
+
+    /// The better of two currencies: this one, unless it is `XXX`.
+    fn merged(self, other: &Self) -> Self {
+        if self.as_str() == Self::NONE {
+            other.clone()
+        } else {
+            self
+        }
+    }
+}
+
+impl Mic {
+    /// ISO 10383's code for no market.
+    const NONE: &str = "XXXX";
+
+    /// The better of two markets: this one, unless it is `XXXX`.
+    fn merged(self, other: &Self) -> Self {
+        if self.as_str() == Self::NONE {
+            other.clone()
+        } else {
+            self
+        }
+    }
+}
 
 impl Bloomberg {
     /// Whether `text` is already the canonical spelling of an identifier.
@@ -582,6 +628,18 @@ code_leaf!(State, STATE_WIDTH);
 code_leaf!(TimeInForce, TIMEINFORCE_WIDTH);
 
 impl Side {
+    /// The spelling of a side stated as none.
+    const UNKNOWN: &str = "UNKNOWN";
+
+    /// The better of two sides: this one, unless it is `UNKNOWN`.
+    fn merged(self, other: &Self) -> Self {
+        if self.as_str() == Self::UNKNOWN {
+            other.clone()
+        } else {
+            self
+        }
+    }
+
     /// The side one spelling names, refused where none does.
     ///
     /// [`Self::from_spelling`] as the value contract reads it: a column typed
@@ -697,6 +755,16 @@ static SIDE_NAMES: &[(&str, &str)] = &[
 ];
 
 impl State {
+    /// The better of two states: this one, unless it reached none - rank
+    /// `00` - or the other reached further.
+    fn merged(self, other: &Self) -> Self {
+        match (self.rank(), other.rank()) {
+            (None | Some(0), _) => other.clone(),
+            (Some(this), Some(that)) if that > this => other.clone(),
+            _ => self,
+        }
+    }
+
     /// The rank a stored state opens with, first to terminal.
     ///
     /// The two leading digits read as the number they spell, `0` to `99`, or
@@ -952,6 +1020,30 @@ impl Code {
         self.storage().as_str()
     }
 
+    /// The better statement of this code and another: [`CodeValue::merge_with`]
+    /// where the two are one kind of code, and this one where they are not.
+    #[must_use]
+    pub fn merge_with(self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Country(this), Self::Country(that)) => Self::Country(this.merge_with(that)),
+            (Self::Currency(this), Self::Currency(that)) => Self::Currency(this.merge_with(that)),
+            (Self::Mic(this), Self::Mic(that)) => Self::Mic(this.merge_with(that)),
+            (Self::Cfi(this), Self::Cfi(that)) => Self::Cfi(this.merge_with(that)),
+            (Self::Isin(this), Self::Isin(that)) => Self::Isin(this.merge_with(that)),
+            (Self::Cusip(this), Self::Cusip(that)) => Self::Cusip(this.merge_with(that)),
+            (Self::Sedol(this), Self::Sedol(that)) => Self::Sedol(this.merge_with(that)),
+            (Self::Bloomberg(this), Self::Bloomberg(that)) => {
+                Self::Bloomberg(this.merge_with(that))
+            }
+            (Self::Side(this), Self::Side(that)) => Self::Side(this.merge_with(that)),
+            (Self::State(this), Self::State(that)) => Self::State(this.merge_with(that)),
+            (Self::TimeInForce(this), Self::TimeInForce(that)) => {
+                Self::TimeInForce(this.merge_with(that))
+            }
+            (this, _) => this,
+        }
+    }
+
     /// Borrow the shared storage independently of the code's identity.
     ///
     /// Every member holds the same trimmed, validated text, so a string
@@ -1035,7 +1127,7 @@ impl fmt::Display for Code {
 }
 
 macro_rules! code_value {
-    ($leaf:ident, $id:ident, $width:expr) => {
+    ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)?) => {
         impl ScalarValue for $leaf {
             type Family = Code;
 
@@ -1079,6 +1171,12 @@ macro_rules! code_value {
             fn storage(&self) -> &SmolStr {
                 <$leaf>::storage(self)
             }
+
+            $(
+                fn merge_with(self, other: &Self) -> Self {
+                    $merge(self, other)
+                }
+            )?
         }
 
         impl From<$leaf> for Scalar {
@@ -1090,15 +1188,15 @@ macro_rules! code_value {
 }
 
 code_value!(Country, Country, COUNTRY_WIDTH);
-code_value!(Currency, Currency, CURRENCY_WIDTH);
-code_value!(Mic, Mic, MIC_WIDTH);
-code_value!(Cfi, Cfi, CFI_WIDTH);
+code_value!(Currency, Currency, CURRENCY_WIDTH, merge = Currency::merged);
+code_value!(Mic, Mic, MIC_WIDTH, merge = Mic::merged);
+code_value!(Cfi, Cfi, CFI_WIDTH, merge = Cfi::filled);
 code_value!(Bloomberg, Bloomberg, BLOOMBERG_WIDTH);
 code_value!(Isin, Isin, ISIN_WIDTH);
 code_value!(Cusip, Cusip, CUSIP_WIDTH);
 code_value!(Sedol, Sedol, SEDOL_WIDTH);
-code_value!(Side, Side, SIDE_WIDTH);
-code_value!(State, State, STATE_WIDTH);
+code_value!(Side, Side, SIDE_WIDTH, merge = Side::merged);
+code_value!(State, State, STATE_WIDTH, merge = State::merged);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
 
 impl ScalarFamily for Code {
