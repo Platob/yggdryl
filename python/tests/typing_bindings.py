@@ -18,6 +18,7 @@ from yggdryl.holder import Path as Path_
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 from yggdryl import (
+    ULBRIDGE_ROWHEADER,
     Bound,
     BoundSelector,
     DataType,
@@ -1311,6 +1312,7 @@ fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
 fix_id: int | None = fix_field.fix.id
 fix_plugin_dialect: str = fix.PLUGIN_DIALECT
 fix_configuration_code_name: tuple[str, str] = fix.PLUGINCONFIG_CODE_NAME
+ulbridge_rowheader: str = ULBRIDGE_ROWHEADER
 
 python_field: Field = Field("Quote", "int64", nullable=False)
 python_field.python.class_metadata = PythonMetadata(

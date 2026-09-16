@@ -379,6 +379,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The one message type this crate defines itself: the wire code FIX
     // leaves to a user, beside the name the crate registered it under.
     module.add("PLUGINCONFIG_CODE_NAME", yggdryl::PLUGINCONFIG_CODE_NAME)?;
+    // The row header a ULBridge writes in front of every line of its log,
+    // whose captures are named for the fields they fill. A capture pipeline
+    // spells it nowhere: it reads it here and hands it to `TextOptions`.
+    module.add("ULBRIDGE_ROWHEADER", yggdryl::ULBRIDGE_ROWHEADER)?;
     // The reserved Arrow schema metadata key that carries per-field dictionary
     // IDs across the C Data Interface, which has no slot for them.
     module.add(

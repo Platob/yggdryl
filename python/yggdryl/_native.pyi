@@ -5376,6 +5376,7 @@ def install_global_registry(registry: FixRegistry) -> None: ...
 
 PLUGIN_DIALECT: str
 PLUGINCONFIG_CODE_NAME: tuple[str, str]
+ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str
 DEFAULT_STREAM_BATCH_SIZE: int
 DEFAULT_FETCH_BYTE_SIZE: int

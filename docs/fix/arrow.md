@@ -283,7 +283,7 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 
 ### A bridge log names what it fills
 
-`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text/index.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
+`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text/index.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust and Python both name the constant, so a capture pipeline reads it rather than spelling it again; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
 ^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<bridgesessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) 
@@ -317,6 +317,22 @@ The plugin is a fill and nothing more: it lands in the crate's own `pluginid` co
     assert!(names.ends_with(&["timestamp", "threadId", "bridgesessionid", "msgctxid", "msgseqnum", "pluginid", "level"]));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("msgseqnum")?.dtype(), &DataType::Int64);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import TextOptions, ULBRIDGE_ROWHEADER
+
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    # `capture_names` is the compiled order, which is what a codec is pinned
+    # against so every line of the run is read without one name lookup.
+    assert options.capture_names == (
+        "timestamp", "threadId", "bridgesessionid", "msgctxid", "msgseqnum", "pluginid", "level",
+    )
+    # Typed from the pattern before a byte is read.
+    assert str(options.source_field().field("msgseqnum").dtype) == "int64"
     ```
 
 ## One row per message
