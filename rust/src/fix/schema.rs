@@ -1271,10 +1271,13 @@ impl super::FixMsg {
                 // A column no tag and no counter names is the capture's own -
                 // the line it was read from, its place in the object, the
                 // bridge's row header. It is kept, so the row a reader walks
-                // returns to its schema whole, and it is never content: the
-                // entries skip it, so it reaches no digest and no wire.
+                // returns to its schema whole, and it says so on the field,
+                // so the entries skip it and it reaches no digest and no
+                // wire.
                 None => {
-                    members.push(column.clone());
+                    let mut held = column.clone();
+                    held.as_fix_mut().set_captured(true)?;
+                    members.push(held);
                     values.push(value.clone());
                 }
             }

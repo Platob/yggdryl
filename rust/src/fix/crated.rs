@@ -780,9 +780,11 @@ fn build() -> Result<Vec<Field>> {
              else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
              first stated.",
         )?,
+        metadata,
         // The step before this message in its chain: what a price moved
-        // from. Declared last because the list is in tag order and these are
-        // the crate's newest columns.
+        // from, and what the market said about the instrument. Declared
+        // last because the list is in tag order and these are the crate's
+        // newest columns.
         derived(
             PREVPX_TAG_NAME,
             "PrevPx",
@@ -815,7 +817,6 @@ fn build() -> Result<Vec<Field>> {
              null where the message names none.",
             SYMBOLTICKER_DERIVATION,
         )?,
-        metadata,
     ])
 }
 

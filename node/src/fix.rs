@@ -1243,6 +1243,72 @@ impl JsFixMsg {
         self.inner.get_currency().as_str().to_owned()
     }
 
+    /// The price the message last traded at, as decimal text, or `null`.
+    /// FIX's own `LastPx(31)`.
+    #[napi(getter)]
+    pub fn lastpx(&self) -> Option<String> {
+        self.inner.get_lastpx().map(|held| held.to_string())
+    }
+
+    /// The quantity it last traded, `LastQty(32)`, or `null`.
+    #[napi(getter)]
+    pub fn lastqty(&self) -> Option<String> {
+        self.inner.get_lastqty().map(|held| held.to_string())
+    }
+
+    /// The price it averaged, `AvgPx(6)`, or `null`.
+    #[napi(getter)]
+    pub fn avgpx(&self) -> Option<String> {
+        self.inner.get_avgpx().map(|held| held.to_string())
+    }
+
+    /// How much of its quantity is done, `CumQty(14)`, or `null`.
+    #[napi(getter)]
+    pub fn cumqty(&self) -> Option<String> {
+        self.inner.get_cumqty().map(|held| held.to_string())
+    }
+
+    /// How much of it is still open, `LeavesQty(151)`, or `null`.
+    #[napi(getter)]
+    pub fn leavesqty(&self) -> Option<String> {
+        self.inner.get_leavesqty().map(|held| held.to_string())
+    }
+
+    /// The price stated before this message - its own closing price, else
+    /// what the statement it follows settled on, which a walk fills.
+    #[napi(getter)]
+    pub fn prevpx(&self) -> Option<String> {
+        self.inner.get_prevpx().map(|held| held.to_string())
+    }
+
+    /// The quantity that statement settled on, or `null`.
+    #[napi(getter)]
+    pub fn prevqty(&self) -> Option<String> {
+        self.inner.get_prevqty().map(|held| held.to_string())
+    }
+
+    /// How long the message stands, `TimeInForce(59)`, as it states it, or
+    /// `null`. What the code `1` names is the dictionary's to say.
+    #[napi(getter)]
+    pub fn tif(&self) -> Option<String> {
+        self.inner.get_tif().map(ToOwned::to_owned)
+    }
+
+    /// Whether the instrument could be traded when the message was sent, or
+    /// `null` where the market said nothing either way - which is not the
+    /// same as `false`.
+    #[napi(getter)]
+    pub fn tradable(&self) -> Option<bool> {
+        self.inner.get_tradable()
+    }
+
+    /// The ticker the instrument is known by, or `null` where it has none
+    /// and the codes beside it are what name it.
+    #[napi(getter)]
+    pub fn symbolticker(&self) -> Option<String> {
+        self.inner.get_symbolticker().map(ToOwned::to_owned)
+    }
+
     /// The value the root child an identifier names, or `null`.
     ///
     /// An identifier is exact and does not fold: `id` is the number

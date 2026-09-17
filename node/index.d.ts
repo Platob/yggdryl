@@ -1617,6 +1617,42 @@ export declare class FixMsg {
   /** The currency; `XXX` where none is stated. */
   get currency(): string
   /**
+   * The price the message last traded at, as decimal text, or `null`.
+   * FIX's own `LastPx(31)`.
+   */
+  get lastpx(): string | null
+  /** The quantity it last traded, `LastQty(32)`, or `null`. */
+  get lastqty(): string | null
+  /** The price it averaged, `AvgPx(6)`, or `null`. */
+  get avgpx(): string | null
+  /** How much of its quantity is done, `CumQty(14)`, or `null`. */
+  get cumqty(): string | null
+  /** How much of it is still open, `LeavesQty(151)`, or `null`. */
+  get leavesqty(): string | null
+  /**
+   * The price stated before this message - its own closing price, else
+   * what the statement it follows settled on, which a walk fills.
+   */
+  get prevpx(): string | null
+  /** The quantity that statement settled on, or `null`. */
+  get prevqty(): string | null
+  /**
+   * How long the message stands, `TimeInForce(59)`, as it states it, or
+   * `null`. What the code `1` names is the dictionary's to say.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument could be traded when the message was sent, or
+   * `null` where the market said nothing either way - which is not the
+   * same as `false`.
+   */
+  get tradable(): boolean | null
+  /**
+   * The ticker the instrument is known by, or `null` where it has none
+   * and the codes beside it are what name it.
+   */
+  get symbolticker(): string | null
+  /**
    * The value the root child an identifier names, or `null`.
    *
    * An identifier is exact and does not fold: `id` is the number

@@ -34,7 +34,14 @@ CLOCK = Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC")
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
-    """A codec whose undated messages all take ``CLOCK`` as their SendingTime."""
+    """A codec whose undated messages all take ``CLOCK`` as their SendingTime.
+
+    It reads every message type: the corpus below is a capture, and a capture
+    holds the session traffic and the bridge rows stating no type that the
+    :data:`DEFAULT_REFUSED_MSGTYPES` drop. A case about the refusals says so
+    for itself.
+    """
+    pins.setdefault("exclude_msgtypes", [])
     return FixCodec(registry, default_sending_time=CLOCK, **pins)
 
 

@@ -97,6 +97,11 @@ where
     PyScalar::from_inner(Scalar::from(code.clone()))
 }
 
+/// One of the market's numbers, exact, as the decimal `Scalar` it is.
+fn decimal_scalar(held: yggdryl::Decimal) -> PyScalar {
+    PyScalar::from_inner(Scalar::from(held))
+}
+
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
 ///
 /// `bool` is an `int` in Python and never a tag, so it is refused by name
@@ -1765,6 +1770,73 @@ impl PyFixMsg {
     #[getter]
     fn currency(&self) -> PyScalar {
         code_scalar(self.inner.get_currency())
+    }
+
+    /// The price the message last traded at, as a decimal; `None` where it
+    /// states none. `FIX`'s own `LastPx(31)`.
+    #[getter]
+    fn lastpx(&self) -> Option<PyScalar> {
+        self.inner.get_lastpx().map(decimal_scalar)
+    }
+
+    /// The quantity it last traded, `LastQty(32)`; `None` where none.
+    #[getter]
+    fn lastqty(&self) -> Option<PyScalar> {
+        self.inner.get_lastqty().map(decimal_scalar)
+    }
+
+    /// The price it averaged, `AvgPx(6)`; `None` where none.
+    #[getter]
+    fn avgpx(&self) -> Option<PyScalar> {
+        self.inner.get_avgpx().map(decimal_scalar)
+    }
+
+    /// How much of its quantity is done, `CumQty(14)`; `None` where none.
+    #[getter]
+    fn cumqty(&self) -> Option<PyScalar> {
+        self.inner.get_cumqty().map(decimal_scalar)
+    }
+
+    /// How much of it is still open, `LeavesQty(151)`; `None` where none.
+    #[getter]
+    fn leavesqty(&self) -> Option<PyScalar> {
+        self.inner.get_leavesqty().map(decimal_scalar)
+    }
+
+    /// The price stated before this message - its own closing price, else
+    /// what the statement it follows settled on, which a walk fills.
+    #[getter]
+    fn prevpx(&self) -> Option<PyScalar> {
+        self.inner.get_prevpx().map(decimal_scalar)
+    }
+
+    /// The quantity that statement settled on; `None` where none.
+    #[getter]
+    fn prevqty(&self) -> Option<PyScalar> {
+        self.inner.get_prevqty().map(decimal_scalar)
+    }
+
+    /// How long the message stands, `TimeInForce(59)`, as it states it;
+    /// `None` where it says nothing. What the code `1` names is the
+    /// dictionary's to say.
+    #[getter]
+    fn tif(&self) -> Option<&str> {
+        self.inner.get_tif()
+    }
+
+    /// Whether the instrument could be traded when the message was sent, or
+    /// `None` where the market said nothing either way - which is not the
+    /// same as `False`.
+    #[getter]
+    fn tradable(&self) -> Option<bool> {
+        self.inner.get_tradable()
+    }
+
+    /// The ticker the instrument is known by; `None` where it has none and
+    /// the codes beside it are what name it.
+    #[getter]
+    fn symbolticker(&self) -> Option<&str> {
+        self.inner.get_symbolticker()
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.

@@ -668,32 +668,27 @@ impl FixMsg {
 
     /// The row read as a tree, the capture's own columns left out.
     ///
-    /// A column no tag and no counter names is the capture's - the body a
-    /// line was read from, its place in the object, a bridge's row header -
-    /// and a capture is not what the message said. It stays a column, so a
-    /// row walked through [`Self::from_row`] and back returns to its schema
-    /// whole; it is not an entry, so it reaches neither the code the message
-    /// answers to nor the wire. Only a scalar column can be one: a nested
-    /// column is a component or a group, which is content whether or not a
-    /// dictionary declares it. A key no dictionary explains is content too -
-    /// the plan resolves its spelling to a tag even where no field does.
+    /// A column [`FixField::is_captured`](crate::FixField::is_captured)
+    /// answers for is the capture's - the body a line was read from, its
+    /// place in the object, a bridge's row header - and a capture is not
+    /// what the message said. It stays a column, so a row walked through
+    /// [`Self::from_row`] and back returns to its schema whole; it is not an
+    /// entry, so it reaches neither the code the message answers to nor the
+    /// wire. Everything else is content, a key no dictionary explains
+    /// included.
     fn derive_entries(&self) -> Vec<FixEntry> {
         let Some(values) = self.value.as_sequence() else {
             return Vec::new();
         };
         let children = self.field.fields();
-        let stated = |at: usize| {
-            children[at].dtype().is_nested()
-                || self.tags.iter().any(|(_, held)| *held == at)
-                || self.groups.iter().any(|(_, held)| *held == at)
-        };
-        if (0..children.len()).all(stated) {
+        let captured = |child: &Field| child.as_fix().is_captured().unwrap_or(false);
+        if !children.iter().any(captured) {
             return entries_of(children, values);
         }
         let mut fields: Vec<Field> = Vec::with_capacity(children.len());
         let mut held: Vec<Scalar> = Vec::with_capacity(children.len());
-        for (at, (child, value)) in children.iter().zip(values).enumerate() {
-            if stated(at) {
+        for (child, value) in children.iter().zip(values) {
+            if !captured(child) {
                 fields.push(child.clone());
                 held.push(value.clone());
             }

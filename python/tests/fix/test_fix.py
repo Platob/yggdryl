@@ -46,14 +46,13 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # What the crate itself adds beside the specification: its own columns in tag
-# order from 65003 and the two Map groups. ``parentuuids`` (65041) is listed
-# but a store cannot register it, so a loaded dictionary holds one fewer.
-CRATED = 34
+# order from 65003 and the two Map groups.
+CRATED = 38
 # What ``FixRegistry()`` holds: the crate's own scalar fields, the two seeded
 # standard clocks SendingTime (52) and TransactTime (60), and the two Map
 # groups. ``len`` counts the groups; iteration walks the scalars alone.
-SEEDED = 35
-SEEDED_SCALARS = 33
+SEEDED = 40
+SEEDED_SCALARS = 38
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -77,6 +76,10 @@ SEQNUM_TAG = 65042
 PX_TAG = 65043
 CROSSCODE_TAG = 65048
 METADATA_TAG = 65049
+PREVPX_TAG = 65051
+PREVQTY_TAG = 65052
+TRADABLE_TAG = 65053
+SYMBOLTICKER_TAG = 65054
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -452,10 +455,14 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "askunit",
         "crosscode",
         "metadata",
+        "prevpx",
+        "prevqty",
+        "tradable",
+        "symbolticker",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == METADATA_TAG
+    assert tags[0] == UNIX_TAG and tags[-1] == SYMBOLTICKER_TAG
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -750,13 +757,12 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     # the row, so the root keeps only what the message states of its own.
     assert [child.name for child in message.field] == [
         "symbol",
-        "orderqty",
         "nopartyids",
         "parties",
         "9999",
     ]
     assert message.registry == seed
-    assert len(message) == 5
+    assert len(message) == 4
     symbol_id = seed.field_by_tag(55).fix.id
     assert symbol_id is not None
     assert message.by_tag(55).as_py() == "AAPL"
@@ -905,11 +911,8 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert [child.name for child in message.field] == [
         "clordid",
         "symbol",
-        "orderqty",
-        "price",
         "transacttime",
         "checksum",
-        "timeinforce",
         "settlcurrency",
         "currencycodesource",
     ]
@@ -970,12 +973,17 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
     message.set(55, "MSFT")
     assert message.field.index_of("symbol") == at
     assert message.by_tag(55).as_py() == "MSFT"
-    message.set(38, 100.0)
-    assert message.by_tag(38).as_py() == 100.0
-    assert [child.name for child in message.field][-1] == "orderqty"
+    message.set(1, "ACC-1")
+    assert message.by_tag(1).as_py() == "ACC-1"
+    assert [child.name for child in message.field][-1] == "account"
 
-    # A typed key writes its holder and never the row.
+    # A typed key writes its holder and never the row. `OrderQty` is one:
+    # the quantity the message is about, which the crate's `qty` owns.
     before = len(message)
+    message.set(38, 100.0)
+    assert message.qty.as_py() == 100
+    assert message.by_tag(38).as_py() == 100.0
+    assert len(message) == before
     message.set(54, "2")
     assert message.side.as_py() == "SELL"
     assert message.by_tag(54).as_py() == "SELL"
@@ -1056,7 +1064,6 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
         ),
         (0, "9999", "x", []),
         (10, "checksum", "0", []),
-        (59, "timeinforce", "0", []),
     ]
     # The group's counter is the group entry's own value, so the counter
     # child beside it states nothing the entries do not already.
@@ -1067,7 +1074,7 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
     # The wire puts the header and the event's own tags in front of them, and
     # a derived value the dictionary licensed rides with the row.
     assert message.into_bytes(124) == (
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|59=0|"
+        b"8=FIX.4.4|35=D|59=0|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|"
     )
     assert message.into_text("|") == message.into_bytes(124).decode()
     assert len(message.digest()) == 16
@@ -1075,7 +1082,9 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
 
     # A key no dictionary explains keeps tag 0 and its own spelling, and the
     # wire re-emits it as it arrived.
-    unresolved = codec.parse_pairs([("999999", "one"), ("OwnThing", "two")])
+    unresolved = _fixed(seed, exclude_msgtypes=[]).parse_pairs(
+        [("999999", "one"), ("OwnThing", "two")]
+    )
     assert unresolved.entries() == [(0, "999999", "one", []), (0, "ownthing", "two", [])]
     assert unresolved.by_tag(999_999).as_py() == "one"
     assert unresolved.get_by_name("OwnThing") is not None
@@ -1105,7 +1114,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored.event() == message.event()
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
-    assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
+    assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
 
 
 def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
@@ -1171,7 +1180,9 @@ def test_message_links_the_process_default_when_none_is_named() -> None:
 
 def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
     """One reader, five entry points, and each is the core's own."""
-    reader = _fixed(seed)
+    # A bridge row and a FIXML order state no message type, so this reader is
+    # told to read the untyped row the default refusals drop.
+    reader = _fixed(seed, exclude_msgtypes=[])
 
     framed = next(reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
@@ -1218,7 +1229,9 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     registry = FixRegistry()
     assert FixCodec(registry).default_sending_time is None
     assert FixCodec(registry, default_sending_time=None).default_sending_time is None
-    codec = FixCodec(registry, default_sending_time=CLOCK)
+    # A `Heartbeat` is what the default refuses, and this case is about the
+    # clock an undated message takes, so this codec reads every type.
+    codec = FixCodec(registry, default_sending_time=CLOCK, exclude_msgtypes=[])
     assert codec.default_sending_time == CLOCK
     # An aware UTC `datetime` is read once into the same nanosecond clock.
     assert FixCodec(registry, default_sending_time=CLOCK_INSTANT).default_sending_time == CLOCK
@@ -1251,7 +1264,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     # `OrigSendingTime(122)` is when a resent message came into being, and a
     # TransactTime stating only a day names no instant, so the sending clock
     # stands in. Both are read off the dictionary's own fields.
-    dictionary = _fixed(seed)
+    dictionary = _fixed(seed, exclude_msgtypes=[])
     resent = next(dictionary.parse_line(b"8=FIX.4.4|35=0|122=19700101-00:00:01|10=0|"))
     assert resent.event().creatunix == 1_000_000_000
     day = next(dictionary.parse_line(b"8=FIX.4.4|35=D|11=A|60=20260814|10=0|"))
@@ -1279,7 +1292,9 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     assert filled.by_tag(59).as_py() == "0"
     # The wire is the message as it now stands: what the line carried, then
     # the pairs the dictionary derived from it.
-    assert filled.into_bytes(ord("|")) == line + b"22=4|59=0|470=US|"
+    assert filled.into_bytes(ord("|")) == (
+        b"8=FIX.4.4|35=D|59=0|11=A|48=US0378331005|10=0|22=4|470=US|"
+    )
 
     # A value no standard closes answers nothing rather than a guess.
     opaque = next(reader.parse_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|"))
@@ -1316,7 +1331,10 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
     # The fill under its newest spelling, reachable by the old one too.
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares").as_py() == 100.0
-    assert [name for name, _ in latest].count("lastqty") == 1
+    # `LastQty` is the quantity the event last traded, so it is a typed fact
+    # and no longer a child of the content row.
+    assert [name for name, _ in latest].count("lastqty") == 0
+    assert latest.lastqty is not None and latest.lastqty.as_py() == 100
     # The state the event reached, as the crate's ranked spelling.
     assert latest.state.as_py() == "40PARTFILL"
     # And the rules the dictionary licenses: one fill's average is its price.
@@ -1361,11 +1379,12 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     # The state moves with the messages.
     assert [held.state.as_py() for held in walked] == ["00UNKNOWN", "20NEW", "40PARTFILL"]
 
-    # The walk states what a message follows and touches nothing it says:
-    # the content, the entries and the wire are the parse's own.
+    # The walk states what a message follows and touches the content of
+    # none of them: the row and the entries are the parse's own. The wire is
+    # not, and deliberately - a message that named no side is about the side
+    # the order it follows named, and re-emits it.
     for before, after in zip(parsed, walked):
         assert after.entries() == before.entries()
-        assert after.into_bytes(ord("|")) == before.into_bytes(ord("|"))
         assert after.value == before.value
 
     # A second walk over a walked stream changes nothing.
@@ -1377,15 +1396,18 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     assert [held.unix for held in reordered] == sorted(held.unix for held in reordered)
     assert [held.seqnum for held in reordered] == [0, 1, 2]
 
-    # A message naming no chain has an identity and no predecessor.
-    heartbeat = next(codec.parse_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
-    (held,) = list(codec.lifecycle(item for item in [heartbeat]))
+    # A message naming no chain has an identity and no predecessor. A
+    # `Heartbeat` is what the default refuses, so this reader is told to
+    # read it.
+    session = _fixed(seed, exclude_msgtypes=[])
+    heartbeat = next(session.parse_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
+    (held,) = list(session.lifecycle(item for item in [heartbeat]))
     assert held.crosscode == ""
     assert held.crossuuid == held.curruuid
     assert held.prevuuid is None
 
     # An item that is not a message is refused where it is met.
-    mixed = codec.lifecycle([heartbeat, b"8=FIX.4.4|35=0|10=0|"])
+    mixed = session.lifecycle([heartbeat, b"8=FIX.4.4|35=0|10=0|"])
     assert next(mixed) == held
     with pytest.raises(TypeError):
         next(mixed)
@@ -1469,7 +1491,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # A row cell is the ordered sequence its Struct declares: the tag, the
     # canonical name, the value, and the entries nested under it.
     arrived = row[schema.index_of("fixentries")]
-    assert [entry[0] for entry in arrived] == [11, 0, 0, 10, 59]
+    assert [entry[0] for entry in arrived] == [11, 0, 0, 10]
     assert [entry[1] for entry in arrived if entry[0] == 0] == ["9999", "venueownthing"]
     assert arrived == [list(entry) for entry in message.entries()]
 
@@ -1545,7 +1567,9 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
             ),
         }
     )
-    parsed = _fixed(seed).parse_text_arrow_reader(source).read_all()
+    # The second line is a `Heartbeat`, which the default refuses, and this
+    # case is about what a capture's own columns fill: read every type.
+    parsed = _fixed(seed, exclude_msgtypes=[]).parse_text_arrow_reader(source).read_all()
     names = parsed.schema.names
 
     # A capture column whose folded name a fixed column takes fills that
@@ -1570,7 +1594,7 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert parsed.column("msgseqnum").to_pylist() == [4507, 696]
     # Row-only: what the row filled is never an entry.
     assert [[entry["tag"] for entry in row] for row in parsed.column("fixentries").to_pylist()] == [
-        [55, 10, 59],
+        [55, 10],
         [10],
     ]
 
@@ -1594,7 +1618,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) 
     # The plugin selects nothing: the venue's key maps to its field on every
     # row, so no arrival is left unresolved.
     for row in parsed.column("fixentries").to_pylist():
-        assert [entry["tag"] for entry in row] == [11, 5001, 59]
+        assert [entry["tag"] for entry in row] == [11, 5001]
 
     # One line read alone answers exactly what the batch did, and the plugin
     # is a fact about the capture rather than an entry.
@@ -1607,13 +1631,19 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) 
 
     # A stated `msgdirection` column is the row's direction, read once and
     # carried by the header.
-    spoken = codec.parse_text_arrow_reader(
-        pa.table(
-            {
-                "msgdirection": pa.array(["Send", "R"], pa.utf8()),
-                "body": pa.array([b"MSGTYPE=D|CLORDID=A", b"|#SYMBOL=TTF|"], pa.binary()),
-            }
+    # The second row is a bridge frame stating no type, which the default
+    # refuses, and this case is about the direction column.
+    spoken = (
+        _fixed(seed, capture_names=["pluginid"], exclude_msgtypes=[])
+        .parse_text_arrow_reader(
+            pa.table(
+                {
+                    "msgdirection": pa.array(["Send", "R"], pa.utf8()),
+                    "body": pa.array([b"MSGTYPE=D|CLORDID=A", b"|#SYMBOL=TTF|"], pa.binary()),
+                }
+            )
         )
-    ).read_all()
+        .read_all()
+    )
     assert spoken.schema.names.count("msgdirection") == 1
     assert spoken.column("msgdirection").to_pylist() == ["S", "R"]

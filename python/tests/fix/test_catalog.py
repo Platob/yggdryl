@@ -317,7 +317,9 @@ def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
 
 def test_a_json_row_is_one_unknown_message_keeping_its_source_columns() -> None:
     registry = FixRegistry()
-    codec = FixCodec(registry)
+    # A document states no message type, so this codec reads the untyped row
+    # the default refusals drop.
+    codec = FixCodec(registry, exclude_msgtypes=[])
     raw = json.dumps({"request": {"type": "read"}, "status": 200}).encode()
 
     messages = codec.parse_line(raw)
@@ -335,7 +337,11 @@ def test_a_json_row_is_one_unknown_message_keeping_its_source_columns() -> None:
     capture = pa.table(
         {"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())}
     )
-    output = FixCodec(registry, batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
+    output = (
+        FixCodec(registry, batch_byte_size=1, exclude_msgtypes=[])
+        .parse_text_arrow_reader(capture)
+        .read_all()
+    )
     assert output.num_rows == 1
     assert output.column("url").to_pylist() == ["capture.log"]
     assert output.column("rownum").to_pylist() == [17]

@@ -488,7 +488,7 @@
     "metadata": {
       "description": "The ticker the instrument is known by: what Symbol settles on, null where the message names none.",
       "display": "SymbolTicker",
-      "fix:derivation": "case when symbol <> '[N/A]' then symbol end",
+      "fix:derivation": "case when symbol <> '[N/A]' and symbol <> '[N/A' then symbol end",
       "fix:tag": "65054"
     }
   }
