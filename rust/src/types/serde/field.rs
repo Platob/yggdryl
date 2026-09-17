@@ -129,7 +129,7 @@ impl<'de> Deserialize<'de> for Field {
     {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
-        struct FieldValue {
+        struct FieldWire {
             name: SmolStr,
             dtype: DataType,
             nullable: bool,
@@ -141,7 +141,7 @@ impl<'de> Deserialize<'de> for Field {
             metadata: Metadata,
         }
 
-        let value = FieldValue::deserialize(deserializer)?;
+        let value = FieldWire::deserialize(deserializer)?;
         let field = Self {
             name: value.name,
             dtype: value.dtype,

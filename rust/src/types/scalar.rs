@@ -572,7 +572,7 @@ impl<'de> Deserialize<'de> for Scalar {
         // tag that is written rather than the Rust variant.
         #[derive(Deserialize)]
         #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-        enum StructuralValue {
+        enum StructuralWire {
             Null,
             Bool(bool),
             I8(i8),
@@ -631,110 +631,110 @@ impl<'de> Deserialize<'de> for Scalar {
             Record(RecordEntries),
         }
 
-        match StructuralValue::deserialize(deserializer)? {
-            StructuralValue::Null => Ok(Self::Null),
-            StructuralValue::Bool(value) => Ok(Self::from(value)),
-            StructuralValue::I8(value) => Ok(Self::from(value)),
-            StructuralValue::I16(value) => Ok(Self::from(value)),
-            StructuralValue::I32(value) => Ok(Self::from(value)),
-            StructuralValue::I64(value) => Ok(Self::from(value)),
-            StructuralValue::U8(value) => Ok(Self::from(value)),
-            StructuralValue::U16(value) => Ok(Self::from(value)),
-            StructuralValue::U32(value) => Ok(Self::from(value)),
-            StructuralValue::U64(value) => Ok(Self::from(value)),
-            StructuralValue::I128(value) => Ok(Self::from(value)),
-            StructuralValue::U128(value) => Ok(Self::from(value)),
-            StructuralValue::F16(value) => Ok(Self::Float16(value)),
-            StructuralValue::F32(value) => Ok(Self::Float32(value)),
-            StructuralValue::F64(value) => Ok(Self::Float64(value)),
-            StructuralValue::D32(unscaled, scale) => Ok(Self::Decimal32(
+        match StructuralWire::deserialize(deserializer)? {
+            StructuralWire::Null => Ok(Self::Null),
+            StructuralWire::Bool(value) => Ok(Self::from(value)),
+            StructuralWire::I8(value) => Ok(Self::from(value)),
+            StructuralWire::I16(value) => Ok(Self::from(value)),
+            StructuralWire::I32(value) => Ok(Self::from(value)),
+            StructuralWire::I64(value) => Ok(Self::from(value)),
+            StructuralWire::U8(value) => Ok(Self::from(value)),
+            StructuralWire::U16(value) => Ok(Self::from(value)),
+            StructuralWire::U32(value) => Ok(Self::from(value)),
+            StructuralWire::U64(value) => Ok(Self::from(value)),
+            StructuralWire::I128(value) => Ok(Self::from(value)),
+            StructuralWire::U128(value) => Ok(Self::from(value)),
+            StructuralWire::F16(value) => Ok(Self::Float16(value)),
+            StructuralWire::F32(value) => Ok(Self::Float32(value)),
+            StructuralWire::F64(value) => Ok(Self::Float64(value)),
+            StructuralWire::D32(unscaled, scale) => Ok(Self::Decimal32(
                 super::decimal::Decimal32::new(unscaled, scale),
             )),
-            StructuralValue::D64(unscaled, scale) => Ok(Self::Decimal64(
+            StructuralWire::D64(unscaled, scale) => Ok(Self::Decimal64(
                 super::decimal::Decimal64::new(unscaled, scale),
             )),
-            StructuralValue::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
-            StructuralValue::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
-            StructuralValue::String(value) => Ok(Self::String(value)),
-            StructuralValue::Country(value) => super::string::Country::new(value)
+            StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
+            StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
+            StructuralWire::String(value) => Ok(Self::String(value)),
+            StructuralWire::Country(value) => super::string::Country::new(value)
                 .map(|value| Self::Code(Code::Country(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Currency(value) => super::string::Currency::new(value)
+            StructuralWire::Currency(value) => super::string::Currency::new(value)
                 .map(|value| Self::Code(Code::Currency(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Mic(value) => super::string::Mic::new(value)
+            StructuralWire::Mic(value) => super::string::Mic::new(value)
                 .map(|value| Self::Code(Code::Mic(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Cfi(value) => super::string::Cfi::new(value)
+            StructuralWire::Cfi(value) => super::string::Cfi::new(value)
                 .map(|value| Self::Code(Code::Cfi(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Isin(value) => super::string::Isin::new(value)
+            StructuralWire::Isin(value) => super::string::Isin::new(value)
                 .map(|value| Self::Code(Code::Isin(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Cusip(value) => super::string::Cusip::new(value)
+            StructuralWire::Cusip(value) => super::string::Cusip::new(value)
                 .map(|value| Self::Code(Code::Cusip(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Bloomberg(value) => super::string::Bloomberg::new(value)
+            StructuralWire::Bloomberg(value) => super::string::Bloomberg::new(value)
                 .map(|value| Self::Code(Code::Bloomberg(value)))
                 .map_err(serde::de::Error::custom),
-            StructuralValue::Sedol(value) => super::string::Sedol::new(value)
+            StructuralWire::Sedol(value) => super::string::Sedol::new(value)
                 .map(|value| Self::Code(Code::Sedol(value)))
                 .map_err(D::Error::custom),
             // A side and a state are read by their spelling, exactly as a
             // column reads them.
-            StructuralValue::Side(value) => super::string::Side::read(&value)
+            StructuralWire::Side(value) => super::string::Side::read(&value)
                 .map(|value| Self::Code(Code::Side(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::State(value) => super::string::State::read(&value)
+            StructuralWire::State(value) => super::string::State::read(&value)
                 .map(|value| Self::Code(Code::State(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::TimeInForce(value) => super::string::TimeInForce::new(value)
+            StructuralWire::TimeInForce(value) => super::string::TimeInForce::new(value)
                 .map(|value| Self::Code(Code::TimeInForce(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Uuid(value) => Uuid::from_bytes(value.as_bytes())
+            StructuralWire::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
                 .map_err(D::Error::custom),
-            StructuralValue::Version(value) => Ok(Self::Version(value)),
-            StructuralValue::Timezone(value) => Timezone::from_str(value.as_str())
+            StructuralWire::Version(value) => Ok(Self::Version(value)),
+            StructuralWire::Timezone(value) => Timezone::from_str(value.as_str())
                 .map(Self::Timezone)
                 .map_err(D::Error::custom),
-            StructuralValue::MimeType(value) => MimeType::from_str(value.as_str())
+            StructuralWire::MimeType(value) => MimeType::from_str(value.as_str())
                 .map(Self::MimeType)
                 .map_err(D::Error::custom),
-            StructuralValue::MediaType(value) => MediaType::from_str(value.as_str())
+            StructuralWire::MediaType(value) => MediaType::from_str(value.as_str())
                 .map(|value| Self::MediaType(Arc::new(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Url(value) => crate::Url::from_str(value.as_str())
+            StructuralWire::Url(value) => crate::Url::from_str(value.as_str())
                 .map(|value| Self::Url(Arc::new(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Enum(value) => Ok(Self::Enum(value)),
-            StructuralValue::Bytes(value) => Ok(Self::Bytes(value)),
-            StructuralValue::Geometry(value) => super::geospatial::Geometry::new(value)
+            StructuralWire::Enum(value) => Ok(Self::Enum(value)),
+            StructuralWire::Bytes(value) => Ok(Self::Bytes(value)),
+            StructuralWire::Geometry(value) => super::geospatial::Geometry::new(value)
                 .map(Self::Geometry)
                 .map_err(D::Error::custom),
-            StructuralValue::Geography(value) => super::geospatial::Geography::new(value)
+            StructuralWire::Geography(value) => super::geospatial::Geography::new(value)
                 .map(Self::Geography)
                 .map_err(D::Error::custom),
-            StructuralValue::Date32(Temporal32::Triple(count, unit, zone)) => {
+            StructuralWire::Date32(Temporal32::Triple(count, unit, zone)) => {
                 Self::date32_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Date32(Temporal32::Iso(spelled)) => {
+            StructuralWire::Date32(Temporal32::Iso(spelled)) => {
                 super::temporal::iso::parse_date(&spelled)
                     .map(Self::date32)
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Date64(Temporal64::Triple(count, unit, zone)) => {
+            StructuralWire::Date64(Temporal64::Triple(count, unit, zone)) => {
                 Self::date64_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Date64(Temporal64::Iso(spelled)) => {
+            StructuralWire::Date64(Temporal64::Iso(spelled)) => {
                 super::temporal::iso::parse_date(&spelled)
                     .map(|days| Self::date64(i64::from(days) * 86_400_000))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Time32(Temporal32::Triple(count, unit, zone)) => {
+            StructuralWire::Time32(Temporal32::Triple(count, unit, zone)) => {
                 Self::time32(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Time32(Temporal32::Iso(spelled)) => {
+            StructuralWire::Time32(Temporal32::Iso(spelled)) => {
                 super::temporal::iso::parse_time(&spelled)
                     .and_then(|(count, unit)| {
                         i32::try_from(count)
@@ -749,18 +749,18 @@ impl<'de> Deserialize<'de> for Scalar {
                     .and_then(|(count, unit)| Self::time32(count, unit, Timezone::NAIVE))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Time64(Temporal64::Triple(count, unit, zone)) => {
+            StructuralWire::Time64(Temporal64::Triple(count, unit, zone)) => {
                 Self::time64(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Time64(Temporal64::Iso(spelled)) => {
+            StructuralWire::Time64(Temporal64::Iso(spelled)) => {
                 super::temporal::iso::parse_time(&spelled)
                     .and_then(|(count, unit)| Self::time64(count, unit, Timezone::NAIVE))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::DateTime64(Temporal64::Triple(count, unit, zone)) => {
+            StructuralWire::DateTime64(Temporal64::Triple(count, unit, zone)) => {
                 Self::datetime64(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::DateTime64(Temporal64::Iso(spelled)) => {
+            StructuralWire::DateTime64(Temporal64::Iso(spelled)) => {
                 super::temporal::iso::parse_timestamp(&spelled)
                     .and_then(|(count, unit, zone)| Self::datetime64(count, unit, zone))
                     .or_else(|_| {
@@ -770,13 +770,13 @@ impl<'de> Deserialize<'de> for Scalar {
                     })
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Duration32(Temporal32::Triple(count, unit, zone)) => {
+            StructuralWire::Duration32(Temporal32::Triple(count, unit, zone)) => {
                 if !zone.is_naive() {
                     return Err(D::Error::custom("duration32 timezone must be NAIVE"));
                 }
                 Self::duration32(count, unit).map_err(D::Error::custom)
             }
-            StructuralValue::Duration32(Temporal32::Iso(spelled)) => {
+            StructuralWire::Duration32(Temporal32::Iso(spelled)) => {
                 super::temporal::iso::parse_duration(&spelled)
                     .and_then(|(count, unit)| {
                         i32::try_from(count)
@@ -791,23 +791,23 @@ impl<'de> Deserialize<'de> for Scalar {
                     .and_then(|(count, unit)| Self::duration32(count, unit))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Duration64(Temporal64::Triple(count, unit, zone)) => {
+            StructuralWire::Duration64(Temporal64::Triple(count, unit, zone)) => {
                 if !zone.is_naive() {
                     return Err(D::Error::custom("duration64 timezone must be NAIVE"));
                 }
                 Self::duration64(count, unit).map_err(D::Error::custom)
             }
-            StructuralValue::Duration64(Temporal64::Iso(spelled)) => {
+            StructuralWire::Duration64(Temporal64::Iso(spelled)) => {
                 super::temporal::iso::parse_duration(&spelled)
                     .and_then(|(count, unit)| Self::duration64(count, unit))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Interval(value) => Ok(Self::Interval(value)),
-            StructuralValue::Sequence(values) => Ok(Self::from_sequence(values)),
-            StructuralValue::Mapping(entries) => {
+            StructuralWire::Interval(value) => Ok(Self::Interval(value)),
+            StructuralWire::Sequence(values) => Ok(Self::from_sequence(values)),
+            StructuralWire::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
-            StructuralValue::Record(entries) => {
+            StructuralWire::Record(entries) => {
                 Self::from_record(entries.0).map_err(D::Error::custom)
             }
         }

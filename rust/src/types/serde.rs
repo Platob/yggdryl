@@ -351,7 +351,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-enum DataTypeValue {
+enum DataTypeWire {
     Null {},
     Boolean {},
     Int8 {},
@@ -497,86 +497,86 @@ struct UnionMemberValue {
     field: Field,
 }
 
-impl TryFrom<DataTypeValue> for DataType {
+impl TryFrom<DataTypeWire> for DataType {
     type Error = Error;
 
     #[allow(clippy::too_many_lines)]
-    fn try_from(value: DataTypeValue) -> Result<Self> {
+    fn try_from(value: DataTypeWire) -> Result<Self> {
         Ok(match value {
-            DataTypeValue::Null {} => Self::Null,
-            DataTypeValue::Boolean {} => Self::Boolean,
-            DataTypeValue::Int8 {} => Self::Int8,
-            DataTypeValue::Int16 {} => Self::Int16,
-            DataTypeValue::Int32 {} => Self::Int32,
-            DataTypeValue::Int64 {} => Self::Int64,
-            DataTypeValue::UInt8 {} => Self::UInt8,
-            DataTypeValue::UInt16 {} => Self::UInt16,
-            DataTypeValue::UInt32 {} => Self::UInt32,
-            DataTypeValue::UInt64 {} => Self::UInt64,
-            DataTypeValue::Float16 {} => Self::Float16,
-            DataTypeValue::Float32 {} => Self::Float32,
-            DataTypeValue::Float64 {} => Self::Float64,
-            DataTypeValue::DateTime64 { unit, timezone } => Self::datetime64(unit, timezone)?,
-            DataTypeValue::Date32 {} => Self::Date32,
-            DataTypeValue::Date64 {} => Self::Date64,
-            DataTypeValue::Time32 { unit } => Self::time32(unit)?,
-            DataTypeValue::Time64 { unit } => Self::time64(unit)?,
-            DataTypeValue::Duration32 { unit } => Self::duration32(unit)?,
-            DataTypeValue::Duration64 { unit } => Self::duration64(unit)?,
-            DataTypeValue::Interval { unit } => Self::Interval(unit),
-            DataTypeValue::Binary { layout, max, fixed } => {
+            DataTypeWire::Null {} => Self::Null,
+            DataTypeWire::Boolean {} => Self::Boolean,
+            DataTypeWire::Int8 {} => Self::Int8,
+            DataTypeWire::Int16 {} => Self::Int16,
+            DataTypeWire::Int32 {} => Self::Int32,
+            DataTypeWire::Int64 {} => Self::Int64,
+            DataTypeWire::UInt8 {} => Self::UInt8,
+            DataTypeWire::UInt16 {} => Self::UInt16,
+            DataTypeWire::UInt32 {} => Self::UInt32,
+            DataTypeWire::UInt64 {} => Self::UInt64,
+            DataTypeWire::Float16 {} => Self::Float16,
+            DataTypeWire::Float32 {} => Self::Float32,
+            DataTypeWire::Float64 {} => Self::Float64,
+            DataTypeWire::DateTime64 { unit, timezone } => Self::datetime64(unit, timezone)?,
+            DataTypeWire::Date32 {} => Self::Date32,
+            DataTypeWire::Date64 {} => Self::Date64,
+            DataTypeWire::Time32 { unit } => Self::time32(unit)?,
+            DataTypeWire::Time64 { unit } => Self::time64(unit)?,
+            DataTypeWire::Duration32 { unit } => Self::duration32(unit)?,
+            DataTypeWire::Duration64 { unit } => Self::duration64(unit)?,
+            DataTypeWire::Interval { unit } => Self::Interval(unit),
+            DataTypeWire::Binary { layout, max, fixed } => {
                 Self::bytes(bytes_parameters(layout, max, fixed)?)?
             }
-            DataTypeValue::String {
+            DataTypeWire::String {
                 layout,
                 charset,
                 max,
                 fixed,
             } => Self::string(string_parameters(layout, charset, max, fixed)?)?,
-            DataTypeValue::Country {} => Self::Country,
-            DataTypeValue::Currency {} => Self::Currency,
-            DataTypeValue::Mic {} => Self::Mic,
-            DataTypeValue::Cfi {} => Self::Cfi,
-            DataTypeValue::Isin {} => Self::Isin,
-            DataTypeValue::Cusip {} => Self::Cusip,
-            DataTypeValue::Sedol {} => Self::Sedol,
-            DataTypeValue::Bloomberg {} => Self::Bloomberg,
-            DataTypeValue::Side {} => Self::Side,
-            DataTypeValue::State {} => Self::State,
-            DataTypeValue::TimeInForce {} => Self::TimeInForce,
-            DataTypeValue::Uuid {} => Self::Uuid,
-            DataTypeValue::Version {} => Self::Version,
-            DataTypeValue::Url {} => Self::Url,
-            DataTypeValue::Timezone {} => Self::Timezone,
-            DataTypeValue::MimeType {} => Self::MimeType,
-            DataTypeValue::MediaType {} => Self::MediaType,
-            DataTypeValue::List { field } => Self::list(field),
-            DataTypeValue::ListView { field } => Self::list_view(field),
-            DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
-            DataTypeValue::LargeList { field } => Self::large_list(field),
-            DataTypeValue::LargeListView { field } => Self::large_list_view(field),
-            DataTypeValue::Struct { fields } => Self::from_fields(fields)?,
-            DataTypeValue::Union { mode, fields } => Self::union(
+            DataTypeWire::Country {} => Self::Country,
+            DataTypeWire::Currency {} => Self::Currency,
+            DataTypeWire::Mic {} => Self::Mic,
+            DataTypeWire::Cfi {} => Self::Cfi,
+            DataTypeWire::Isin {} => Self::Isin,
+            DataTypeWire::Cusip {} => Self::Cusip,
+            DataTypeWire::Sedol {} => Self::Sedol,
+            DataTypeWire::Bloomberg {} => Self::Bloomberg,
+            DataTypeWire::Side {} => Self::Side,
+            DataTypeWire::State {} => Self::State,
+            DataTypeWire::TimeInForce {} => Self::TimeInForce,
+            DataTypeWire::Uuid {} => Self::Uuid,
+            DataTypeWire::Version {} => Self::Version,
+            DataTypeWire::Url {} => Self::Url,
+            DataTypeWire::Timezone {} => Self::Timezone,
+            DataTypeWire::MimeType {} => Self::MimeType,
+            DataTypeWire::MediaType {} => Self::MediaType,
+            DataTypeWire::List { field } => Self::list(field),
+            DataTypeWire::ListView { field } => Self::list_view(field),
+            DataTypeWire::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
+            DataTypeWire::LargeList { field } => Self::large_list(field),
+            DataTypeWire::LargeListView { field } => Self::large_list_view(field),
+            DataTypeWire::Struct { fields } => Self::from_fields(fields)?,
+            DataTypeWire::Union { mode, fields } => Self::union(
                 fields
                     .into_iter()
                     .map(|member| (member.type_id, member.field)),
                 mode,
             )?,
-            DataTypeValue::Dictionary { key, value } => Self::dictionary(*key, *value)?,
-            DataTypeValue::Decimal32 { precision, scale } => Self::decimal32(precision, scale)?,
-            DataTypeValue::Decimal64 { precision, scale } => Self::decimal64(precision, scale)?,
-            DataTypeValue::Decimal128 { precision, scale } => Self::decimal128(precision, scale)?,
-            DataTypeValue::Decimal256 { precision, scale } => Self::decimal256(precision, scale)?,
-            DataTypeValue::Map {
+            DataTypeWire::Dictionary { key, value } => Self::dictionary(*key, *value)?,
+            DataTypeWire::Decimal32 { precision, scale } => Self::decimal32(precision, scale)?,
+            DataTypeWire::Decimal64 { precision, scale } => Self::decimal64(precision, scale)?,
+            DataTypeWire::Decimal128 { precision, scale } => Self::decimal128(precision, scale)?,
+            DataTypeWire::Decimal256 { precision, scale } => Self::decimal256(precision, scale)?,
+            DataTypeWire::Map {
                 entries,
                 keys_sorted,
             } => Self::map(entries, keys_sorted)?,
-            DataTypeValue::RunEndEncoded { run_ends, values } => {
+            DataTypeWire::RunEndEncoded { run_ends, values } => {
                 Self::run_end_encoded(run_ends, values)?
             }
-            DataTypeValue::Variant {} => Self::Variant,
-            DataTypeValue::Geometry { crs } => Self::geometry(Some(&crs))?,
-            DataTypeValue::Geography { crs, algorithm } => Self::geography(Some(&crs), algorithm)?,
+            DataTypeWire::Variant {} => Self::Variant,
+            DataTypeWire::Geometry { crs } => Self::geometry(Some(&crs))?,
+            DataTypeWire::Geography { crs, algorithm } => Self::geography(Some(&crs), algorithm)?,
         })
     }
 }
@@ -596,7 +596,7 @@ impl<'de> Deserialize<'de> for DataType {
     where
         D: Deserializer<'de>,
     {
-        let value = Self::try_from(DataTypeValue::deserialize(deserializer)?)
+        let value = Self::try_from(DataTypeWire::deserialize(deserializer)?)
             .map_err(::serde::de::Error::custom)?;
         value.validate().map_err(::serde::de::Error::custom)?;
         Ok(value)

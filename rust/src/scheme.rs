@@ -10,7 +10,7 @@ use smol_str::{SmolStr, SmolStrBuilder};
 use crate::{Error, Result, hashing::stable_hash_display};
 
 #[derive(Clone, Debug)]
-enum SchemeValue {
+enum SchemeWire {
     Http,
     Https,
     File,
@@ -50,71 +50,71 @@ enum SchemeValue {
 /// Common protocol flavors use allocation-free internal values. Any valid
 /// RFC scheme remains supported through [`Self::from_str`].
 #[derive(Clone, Debug)]
-pub struct Scheme(SchemeValue);
+pub struct Scheme(SchemeWire);
 
 impl Scheme {
     /// The HTTP protocol scheme.
-    pub const HTTP: Self = Self(SchemeValue::Http);
+    pub const HTTP: Self = Self(SchemeWire::Http);
     /// The secure HTTP protocol scheme.
-    pub const HTTPS: Self = Self(SchemeValue::Https);
+    pub const HTTPS: Self = Self(SchemeWire::Https);
     /// The local or network file protocol scheme.
-    pub const FILE: Self = Self(SchemeValue::File);
+    pub const FILE: Self = Self(SchemeWire::File);
     /// The uniform resource name scheme.
-    pub const URN: Self = Self(SchemeValue::Urn);
+    pub const URN: Self = Self(SchemeWire::Urn);
     /// The short PostgreSQL protocol spelling.
-    pub const POSTGRES: Self = Self(SchemeValue::Postgres);
+    pub const POSTGRES: Self = Self(SchemeWire::Postgres);
     /// The long PostgreSQL protocol spelling.
-    pub const POSTGRESQL: Self = Self(SchemeValue::Postgresql);
+    pub const POSTGRESQL: Self = Self(SchemeWire::Postgresql);
     /// The MySQL protocol scheme.
-    pub const MYSQL: Self = Self(SchemeValue::Mysql);
+    pub const MYSQL: Self = Self(SchemeWire::Mysql);
     /// The Arrow protocol and metadata namespace.
-    pub const ARROW: Self = Self(SchemeValue::Arrow);
+    pub const ARROW: Self = Self(SchemeWire::Arrow);
     /// The generic SQL metadata namespace.
-    pub const SQL: Self = Self(SchemeValue::Sql);
+    pub const SQL: Self = Self(SchemeWire::Sql);
     /// The AWS Glue metadata namespace.
-    pub const GLUE: Self = Self(SchemeValue::Glue);
+    pub const GLUE: Self = Self(SchemeWire::Glue);
     /// The Apache Iceberg metadata namespace and table-format interchange.
-    pub const ICEBERG: Self = Self(SchemeValue::Iceberg);
+    pub const ICEBERG: Self = Self(SchemeWire::Iceberg);
     /// The Financial Information eXchange metadata namespace.
-    pub const FIX: Self = Self(SchemeValue::Fix);
+    pub const FIX: Self = Self(SchemeWire::Fix);
     /// The Yggdryl field metadata namespace.
-    pub const FIELD: Self = Self(SchemeValue::Field);
+    pub const FIELD: Self = Self(SchemeWire::Field);
     /// The generic row-digest metadata namespace.
-    pub const DIGEST: Self = Self(SchemeValue::Digest);
+    pub const DIGEST: Self = Self(SchemeWire::Digest);
     /// The generic field identity metadata namespace.
-    pub const IDENTITY: Self = Self(SchemeValue::Identity);
+    pub const IDENTITY: Self = Self(SchemeWire::Identity);
     /// The generic field partition metadata namespace.
-    pub const PARTITION: Self = Self(SchemeValue::Partition);
+    pub const PARTITION: Self = Self(SchemeWire::Partition);
     /// The `transform:` field namespace: how a column is computed.
-    pub const TRANSFORM: Self = Self(SchemeValue::Transform);
+    pub const TRANSFORM: Self = Self(SchemeWire::Transform);
     /// The Amazon S3 object protocol scheme.
-    pub const S3: Self = Self(SchemeValue::S3);
+    pub const S3: Self = Self(SchemeWire::S3);
     /// The Hadoop `s3a` spelling of the same Amazon S3 protocol.
-    pub const S3A: Self = Self(SchemeValue::S3a);
+    pub const S3A: Self = Self(SchemeWire::S3a);
     /// The Hadoop `s3n` spelling of the same Amazon S3 protocol.
-    pub const S3N: Self = Self(SchemeValue::S3n);
+    pub const S3N: Self = Self(SchemeWire::S3n);
     /// The Google Cloud Storage protocol scheme.
-    pub const GS: Self = Self(SchemeValue::Gs);
+    pub const GS: Self = Self(SchemeWire::Gs);
     /// The `gcs` spelling of the same Google Cloud Storage protocol.
-    pub const GCS: Self = Self(SchemeValue::Gcs);
+    pub const GCS: Self = Self(SchemeWire::Gcs);
     /// The Azure Blob Storage protocol scheme.
-    pub const AZ: Self = Self(SchemeValue::Az);
+    pub const AZ: Self = Self(SchemeWire::Az);
     /// The Hadoop `abfs` spelling of the same Azure Blob Storage protocol.
-    pub const ABFS: Self = Self(SchemeValue::Abfs);
+    pub const ABFS: Self = Self(SchemeWire::Abfs);
     /// The Hadoop `abfss` spelling, which addresses the store over TLS.
-    pub const ABFSS: Self = Self(SchemeValue::Abfss);
+    pub const ABFSS: Self = Self(SchemeWire::Abfss);
     /// The Hadoop `wasb` spelling of the same Azure Blob Storage protocol.
-    pub const WASB: Self = Self(SchemeValue::Wasb);
+    pub const WASB: Self = Self(SchemeWire::Wasb);
     /// The Hadoop `wasbs` spelling, which addresses the store over TLS.
-    pub const WASBS: Self = Self(SchemeValue::Wasbs);
+    pub const WASBS: Self = Self(SchemeWire::Wasbs);
     /// The Apache Spark SQL interchange namespace.
-    pub const SPARK: Self = Self(SchemeValue::Spark);
+    pub const SPARK: Self = Self(SchemeWire::Spark);
     /// The Polars interchange namespace.
-    pub const POLARS: Self = Self(SchemeValue::Polars);
+    pub const POLARS: Self = Self(SchemeWire::Polars);
     /// The pandas interchange namespace.
-    pub const PANDAS: Self = Self(SchemeValue::Pandas);
+    pub const PANDAS: Self = Self(SchemeWire::Pandas);
     /// The Python runtime metadata namespace.
-    pub const PYTHON: Self = Self(SchemeValue::Python);
+    pub const PYTHON: Self = Self(SchemeWire::Python);
 
     /// Every schema-compatibility target, in normalization-cost order.
     ///
@@ -138,44 +138,44 @@ impl Scheme {
     /// Return the canonical lowercase spelling without allocating.
     pub fn as_str(&self) -> &str {
         match &self.0 {
-            SchemeValue::Http => "http",
-            SchemeValue::Https => "https",
-            SchemeValue::File => "file",
-            SchemeValue::Urn => "urn",
-            SchemeValue::Postgres => "postgres",
-            SchemeValue::Postgresql => "postgresql",
-            SchemeValue::Mysql => "mysql",
-            SchemeValue::Arrow => "arrow",
-            SchemeValue::Sql => "sql",
-            SchemeValue::Glue => "glue",
-            SchemeValue::Iceberg => "iceberg",
-            SchemeValue::Fix => "fix",
-            SchemeValue::Field => "field",
-            SchemeValue::Digest => "digest",
-            SchemeValue::Identity => "identity",
-            SchemeValue::Partition => "partition",
-            SchemeValue::Transform => "transform",
-            SchemeValue::S3 => "s3",
-            SchemeValue::S3a => "s3a",
-            SchemeValue::S3n => "s3n",
-            SchemeValue::Gs => "gs",
-            SchemeValue::Gcs => "gcs",
-            SchemeValue::Az => "az",
-            SchemeValue::Abfs => "abfs",
-            SchemeValue::Abfss => "abfss",
-            SchemeValue::Wasb => "wasb",
-            SchemeValue::Wasbs => "wasbs",
-            SchemeValue::Spark => "spark",
-            SchemeValue::Polars => "polars",
-            SchemeValue::Pandas => "pandas",
-            SchemeValue::Python => "python",
-            SchemeValue::Custom(value) => value.as_str(),
+            SchemeWire::Http => "http",
+            SchemeWire::Https => "https",
+            SchemeWire::File => "file",
+            SchemeWire::Urn => "urn",
+            SchemeWire::Postgres => "postgres",
+            SchemeWire::Postgresql => "postgresql",
+            SchemeWire::Mysql => "mysql",
+            SchemeWire::Arrow => "arrow",
+            SchemeWire::Sql => "sql",
+            SchemeWire::Glue => "glue",
+            SchemeWire::Iceberg => "iceberg",
+            SchemeWire::Fix => "fix",
+            SchemeWire::Field => "field",
+            SchemeWire::Digest => "digest",
+            SchemeWire::Identity => "identity",
+            SchemeWire::Partition => "partition",
+            SchemeWire::Transform => "transform",
+            SchemeWire::S3 => "s3",
+            SchemeWire::S3a => "s3a",
+            SchemeWire::S3n => "s3n",
+            SchemeWire::Gs => "gs",
+            SchemeWire::Gcs => "gcs",
+            SchemeWire::Az => "az",
+            SchemeWire::Abfs => "abfs",
+            SchemeWire::Abfss => "abfss",
+            SchemeWire::Wasb => "wasb",
+            SchemeWire::Wasbs => "wasbs",
+            SchemeWire::Spark => "spark",
+            SchemeWire::Polars => "polars",
+            SchemeWire::Pandas => "pandas",
+            SchemeWire::Python => "python",
+            SchemeWire::Custom(value) => value.as_str(),
         }
     }
 
     /// Return whether this scheme uses a static, allocation-free protocol value.
     pub const fn is_known(&self) -> bool {
-        !matches!(self.0, SchemeValue::Custom(_))
+        !matches!(self.0, SchemeWire::Custom(_))
     }
 
     /// Return the IANA-registered default port for the scheme, when it has one.
@@ -185,10 +185,10 @@ impl Scheme {
     /// is understood to address this port.
     pub const fn default_port(&self) -> Option<u16> {
         match self.0 {
-            SchemeValue::Http => Some(80),
-            SchemeValue::Https => Some(443),
-            SchemeValue::Postgres | SchemeValue::Postgresql => Some(5432),
-            SchemeValue::Mysql => Some(3306),
+            SchemeWire::Http => Some(80),
+            SchemeWire::Https => Some(443),
+            SchemeWire::Postgres | SchemeWire::Postgresql => Some(5432),
+            SchemeWire::Mysql => Some(3306),
             _ => None,
         }
     }
@@ -203,7 +203,7 @@ impl Scheme {
     pub const fn is_s3(&self) -> bool {
         matches!(
             self.0,
-            SchemeValue::S3 | SchemeValue::S3a | SchemeValue::S3n
+            SchemeWire::S3 | SchemeWire::S3a | SchemeWire::S3n
         )
     }
 
@@ -213,7 +213,7 @@ impl Scheme {
     /// the second spelling is what some tools write, and every bucket and
     /// object either addresses is the same.
     pub const fn is_gs(&self) -> bool {
-        matches!(self.0, SchemeValue::Gs | SchemeValue::Gcs)
+        matches!(self.0, SchemeWire::Gs | SchemeWire::Gcs)
     }
 
     /// Return whether the scheme addresses Azure Blob Storage.
@@ -225,11 +225,11 @@ impl Scheme {
     pub const fn is_az(&self) -> bool {
         matches!(
             self.0,
-            SchemeValue::Az
-                | SchemeValue::Abfs
-                | SchemeValue::Abfss
-                | SchemeValue::Wasb
-                | SchemeValue::Wasbs
+            SchemeWire::Az
+                | SchemeWire::Abfs
+                | SchemeWire::Abfss
+                | SchemeWire::Wasb
+                | SchemeWire::Wasbs
         )
     }
 
@@ -249,19 +249,19 @@ impl Scheme {
     pub const fn is_storage(&self) -> bool {
         matches!(
             self.0,
-            SchemeValue::File
-                | SchemeValue::Http
-                | SchemeValue::Https
-                | SchemeValue::S3
-                | SchemeValue::S3a
-                | SchemeValue::S3n
-                | SchemeValue::Gs
-                | SchemeValue::Gcs
-                | SchemeValue::Az
-                | SchemeValue::Abfs
-                | SchemeValue::Abfss
-                | SchemeValue::Wasb
-                | SchemeValue::Wasbs
+            SchemeWire::File
+                | SchemeWire::Http
+                | SchemeWire::Https
+                | SchemeWire::S3
+                | SchemeWire::S3a
+                | SchemeWire::S3n
+                | SchemeWire::Gs
+                | SchemeWire::Gcs
+                | SchemeWire::Az
+                | SchemeWire::Abfs
+                | SchemeWire::Abfss
+                | SchemeWire::Wasb
+                | SchemeWire::Wasbs
         )
     }
 
@@ -271,11 +271,11 @@ impl Scheme {
     pub const fn is_compatibility_target(&self) -> bool {
         matches!(
             self.0,
-            SchemeValue::Arrow
-                | SchemeValue::Spark
-                | SchemeValue::Polars
-                | SchemeValue::Pandas
-                | SchemeValue::Iceberg
+            SchemeWire::Arrow
+                | SchemeWire::Spark
+                | SchemeWire::Polars
+                | SchemeWire::Pandas
+                | SchemeWire::Iceberg
         )
     }
 
@@ -348,13 +348,13 @@ impl FromStr for Scheme {
         }
 
         if value.bytes().all(|byte| !byte.is_ascii_uppercase()) {
-            return Ok(Self(SchemeValue::Custom(SmolStr::new(value))));
+            return Ok(Self(SchemeWire::Custom(SmolStr::new(value))));
         }
         let mut normalized = SmolStrBuilder::new();
         for byte in value.bytes() {
             normalized.push(char::from(byte.to_ascii_lowercase()));
         }
-        Ok(Self(SchemeValue::Custom(normalized.into())))
+        Ok(Self(SchemeWire::Custom(normalized.into())))
     }
 }
 

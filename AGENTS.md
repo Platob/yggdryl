@@ -457,6 +457,8 @@ change that adds or retires one.
 | `set_*` | validated in-place update; failure leaves self unchanged |
 | `with_*` | consuming update; `try_` only when the paired setter can fail |
 | `clear_*` / `remove_*` | clear a category / remove one item |
+| `*Value` | a trait over values; never a type name |
+| `*Wire` | the private serde shadow of a type, where one is needed |
 
 No project-defined plain `to_*`; foreign protocols (`ToString`, JS `toString`)
 keep their spelling. Implement `From`, `TryFrom`, `FromStr`, `AsRef` where
