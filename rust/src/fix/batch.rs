@@ -340,8 +340,8 @@ impl FixCodec {
     /// A stream of batches of stable FIX rows as batches under one message field.
     ///
     /// The Arrow twin of [`Self::format_messages`], and the last stage of the
-    /// pipeline a capture runs: text lines in Arrow batches, parsed, enriched,
-    /// then formatted here into the columns a consumer reads. The schema is
+    /// pipeline a capture runs: text lines in Arrow batches, parsed, then
+    /// formatted here into the columns a consumer reads. The schema is
     /// decided before the first row, from the source's carried columns and
     /// `field`, so a reader is written against it without a batch in hand.
     ///

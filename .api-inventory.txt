@@ -879,6 +879,13 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code; a name reaches the message of that name)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
+  pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field>  (one category's folded name; Fields answers the scalar of that name)
+  pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field>  (absence reported with its category)
+  pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>  (one category in the registry's own order, nothing collected; the field doors above reach a definition whatever category it is filed under, and these are the same definitions scoped to one)
+  pub fn insert_definition(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>>  (inserts or replaces, references validated before mutation, answering what it replaced; a Fields category is `insert`; a folded input name keeps the stored canonical spelling)
+  pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()>  (refuses an existing name or wire identity atomically; creation reserves canonical identities only, so another field's alias may hold the spelling and a tag another field holds under another name is free - the identity is the pair)
+  pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>  (replaces an existing definition and answers its previous value; refuses absence, and refuses a Fields replacement that changes the FIX identity)
+  pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>  (None when absent; refused while another definition still references it)
 
 ### yggdryl::fix::aliases  [rust\src\fix\aliases.rs]
 impl FixRegistry
