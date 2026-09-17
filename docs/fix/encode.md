@@ -42,7 +42,7 @@ dictionary derived for it behind the ones that arrived; the frame states its
     // content, and the day order the dictionary derived for it.
     assert_eq!(
         emitted,
-        "8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|",
+        "8=FIX.4.4|35=D|52=20260102-10:15:30|38=100|54=1|59=0|134=100|55=AAPL|10=000|",
     );
     // Emission is idempotent: reading those bytes back emits them again.
     let again = codec.parse_fix_line(emitted.as_bytes())?;
@@ -63,7 +63,7 @@ dictionary derived for it behind the ones that arrived; the frame states its
     # The header from its holder, then the event's own tags - the side as its
     # wire code, the bid size the order's quantity filled - then the content,
     # and the day order the dictionary derived for it.
-    assert emitted == "8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|"
+    assert emitted == "8=FIX.4.4|35=D|52=20260102-10:15:30|38=100|54=1|59=0|134=100|55=AAPL|10=000|"
     # Emission is idempotent: reading those bytes back emits them again.
     again = codec.parse_fix_line(emitted.encode())
     assert again.into_text("|") == emitted
@@ -84,7 +84,7 @@ dictionary derived for it behind the ones that arrived; the frame states its
     // The header from its holder, then the event's own tags - the side as its
     // wire code, the bid size the order's quantity filled - then the content,
     // and the day order the dictionary derived for it.
-    assert.equal(emitted, '8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|')
+    assert.equal(emitted, '8=FIX.4.4|35=D|52=20260102-10:15:30|38=100|54=1|59=0|134=100|55=AAPL|10=000|')
     // Emission is idempotent: reading those bytes back emits them again.
     const again = codec.parseFixLine(Buffer.from(emitted))
     assert.equal(again.intoText('|'), emitted)

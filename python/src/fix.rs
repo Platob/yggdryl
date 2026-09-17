@@ -1918,8 +1918,15 @@ impl PyFixCodec {
     /// sent; `direction` is the code of tag 385's set an unmarked line
     /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
     /// `"R"` - the core's `Send` code when unstated and no pin at all when
-    /// empty; `batch_byte_size` is the raw bytes one Arrow batch targets,
-    /// the core's 128 MiB when unstated.
+    /// empty; `batch_byte_size` and `batch_row_size` are the raw bytes and
+    /// the row count one Arrow batch targets, the core's 128 MiB and 32,768
+    /// rows when unstated, whichever the batch reaches first;
+    /// `include_msgtypes` and `exclude_msgtypes` are the message types a
+    /// parse keeps and refuses, each read before a frame is built, spelled
+    /// as codes or as names - `"0"`, `"Heartbeat"` - with `"unknown"`
+    /// standing for a line stating no type at all. Unstated, the core
+    /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
+    /// empty `exclude_msgtypes` keeps every type.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -1931,6 +1938,9 @@ impl PyFixCodec {
         null_values=None,
         direction=None,
         batch_byte_size=None,
+        batch_row_size=None,
+        include_msgtypes=None,
+        exclude_msgtypes=None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -1942,6 +1952,9 @@ impl PyFixCodec {
         null_values: Option<Vec<String>>,
         direction: Option<&str>,
         batch_byte_size: Option<u64>,
+        batch_row_size: Option<usize>,
+        include_msgtypes: Option<Vec<String>>,
+        exclude_msgtypes: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -1965,6 +1978,15 @@ impl PyFixCodec {
         }
         if let Some(held) = batch_byte_size {
             inner = inner.with_batch_byte_size(held);
+        }
+        if let Some(held) = batch_row_size {
+            inner = inner.with_batch_row_size(held);
+        }
+        if let Some(held) = include_msgtypes {
+            inner = inner.with_include_msgtypes(held);
+        }
+        if let Some(held) = exclude_msgtypes {
+            inner = inner.with_exclude_msgtypes(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2014,6 +2036,33 @@ impl PyFixCodec {
     #[getter]
     fn batch_byte_size(&self) -> u64 {
         self.inner.batch_byte_size()
+    }
+
+    /// The rows one Arrow batch targets.
+    #[getter]
+    fn batch_row_size(&self) -> usize {
+        self.inner.batch_row_size()
+    }
+
+    /// The message types a parse keeps, empty where it keeps every type
+    /// the refusals leave.
+    #[getter]
+    fn include_msgtypes(&self) -> Vec<String> {
+        self.inner
+            .include_msgtypes()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// The message types a parse refuses before it builds a frame.
+    #[getter]
+    fn exclude_msgtypes(&self) -> Vec<String> {
+        self.inner
+            .exclude_msgtypes()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     }
 
     /// One captured line, whatever it is wrapped in: its messages.

@@ -69,15 +69,19 @@
     let msg = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 
     // The typed facts left the row for their holders: the type is the
-    // header's, the side the event's, and the row holds the five others.
+    // header's, the side and the quantity the event's, and the row holds
+    // the four others.
     assert_eq!(msg.header().msgtype(), "D");
     assert_eq!(msg.get_side().as_str(), "BUY");
     let children: Vec<&str> = msg.as_field().fields().iter().map(yggdryl::Field::name).collect();
-    assert_eq!(children, ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]);
+    assert_eq!(children, ["Symbol", "NoPartyIDs", "Parties", "9999"]);
     // A lookup answers the holder for a typed tag and the row for the rest.
+    // `OrderQty` is the quantity the event is about, so it answers exact.
+    let hundred = Scalar::from(yggdryl::types::Decimal::from_int(100));
     assert_eq!(msg.by_tag(35)?, Scalar::from("D"));
     assert_eq!(msg.by_tag(54)?, Scalar::from("BUY"));
-    assert_eq!(msg.by_tag(38)?, Scalar::from(100_i64));
+    assert_eq!(msg.by_tag(38)?, hundred);
+    assert_eq!(msg.get_qty(), yggdryl::types::Decimal::from_int(100));
     assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is retained");
@@ -94,7 +98,7 @@
     // An identifier is the tag and the name together, under the one fold, and exact.
     let id = registry.field_by_tag(38)?.as_fix().id()?.expect("a tagged field");
     assert_eq!(id, yggdryl::FixId::of(38, "order_qty")?);
-    assert_eq!(msg.by_id(id)?, Scalar::from(100_i64));
+    assert_eq!(msg.by_id(id)?, hundred);
     assert!(msg.get_by_id(yggdryl::FixId::of(38, "Quantity")?).is_none(), "another name is another field");
 
     // The row serializes through the paths every field and value share, and
@@ -114,6 +118,8 @@
 === "Python"
 
     ```python
+    from decimal import Decimal
+
     import pytest
 
     from yggdryl import DataType, Field, types
@@ -161,16 +167,17 @@
     )
 
     # The typed facts left the row for their holders: the type is the header's,
-    # the side the event's, and the row holds the five others.
+    # the side and the quantity the event's, and the row holds the four others.
     assert message.header().msgtype == "D"
     assert message.side.as_py() == "BUY"
-    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]
-    assert len(message) == 5
+    assert [name for name, _ in message] == ["Symbol", "NoPartyIDs", "Parties", "9999"]
+    assert len(message) == 4
 
     # A lookup answers the holder for a typed tag and the row for the rest.
+    # `OrderQty` is the quantity the event is about, so it answers exact.
     assert message.by_tag(35).as_py() == "D"
     assert message.by_tag(54).as_py() == "BUY"
-    assert message.by_tag(38).as_py() == 100
+    assert message.by_tag(38).as_py() == Decimal(100)
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
     assert message.by_tag(9999).as_py() == "custom", "an unknown tag is retained"
@@ -259,15 +266,16 @@
     )
 
     // The typed facts left the row for their holders: the type is the header's,
-    // the side the event's, and the row holds the five others.
+    // the side and the quantity the event's, and the row holds the four others.
     assert.equal(message.header().msgtype, 'D')
     assert.equal(message.side, 'BUY')
-    assert.equal(message.size, 5)
+    assert.equal(message.size, 4)
 
     // A lookup answers the holder for a typed tag and the row for the rest.
+    // `OrderQty` is the quantity the event is about, so it answers exact.
     assert.equal(message.byTag(35).asJs(), 'D')
     assert.equal(message.byTag(54).asJs(), 'BUY')
-    assert.equal(message.byTag(38).asJs(), 100)
+    assert.equal(String(message.byTag(38).asJs()), '100')
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
@@ -416,7 +424,7 @@ A written child keeps its position, so every reader already holding the row addr
     // then the row, the written pairs where they landed.
     assert_eq!(
         message.into_text('|')?,
-        "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|10=0|59=0|7777=custom|",
+        "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|",
     );
 
     // The written message is a fixed row, and the row a message again:
@@ -483,7 +491,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     # The wire is the message as it now stands: the header from its holder, then
     # the row, the written pairs where they landed.
-    assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|10=0|59=0|7777=custom|"
+    assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|"
 
     # The written message is a fixed row, and the row a message again: the same
     # entries, the same code, re-emitting the same wire.
@@ -549,7 +557,7 @@ A written child keeps its position, so every reader already holding the row addr
     // the row, the written pairs where they landed.
     assert.equal(
       message.intoText('|'),
-      '8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|10=0|59=0|7777=custom|',
+      '8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|',
     )
 
     // The written message is a fixed row, and the row a message again: the same
@@ -628,11 +636,12 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert_eq!(latest.by_tag(32)?, Scalar::from(100.0_f64));
     assert_eq!(latest.by_name("LastShares")?, latest.by_tag(32)?);
 
-    // What the message said of itself is its header's; the wire re-emits
-    // the restated row behind what arrived.
+    // What the message said of itself is its header's; the wire opens with
+    // the facts the event holds - the price and quantity ladders, the side,
+    // how long it stands - and the restated row follows them.
     assert_eq!(latest.header().beginstring(), "FIX.4.2");
     let wire = latest.into_text('|')?;
-    assert!(wire.starts_with("8=FIX.4.2|35=8|54=1|37=O1|17=E1|20=1|150=F|"), "{wire}");
+    assert!(wire.starts_with("8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|"), "{wire}");
     assert!(wire.contains("|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|"), "{wire}");
     ```
 
@@ -671,11 +680,12 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares") == latest.by_tag(32)
 
-    # What the message said of itself is its header's; the wire re-emits the
-    # restated row behind what arrived.
+    # What the message said of itself is its header's; the wire opens with
+    # the facts the event holds - the price and quantity ladders, the side,
+    # how long it stands - and the restated row follows them.
     assert latest.header().beginstring == "FIX.4.2"
     wire = latest.into_text("|")
-    assert wire.startswith("8=FIX.4.2|35=8|54=1|37=O1|17=E1|20=1|150=F|")
+    assert wire.startswith("8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|")
     assert "|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|" in wire
     ```
 
@@ -714,11 +724,12 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert.equal(latest.byTag(32).asJs(), 100)
     assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
 
-    // What the message said of itself is its header's; the wire re-emits the
-    // restated row behind what arrived.
+    // What the message said of itself is its header's; the wire opens with
+    // the facts the event holds - the price and quantity ladders, the side,
+    // how long it stands - and the restated row follows them.
     assert.equal(latest.header().beginstring, 'FIX.4.2')
     const wire = latest.intoText('|')
-    assert.ok(wire.startsWith('8=FIX.4.2|35=8|54=1|37=O1|17=E1|20=1|150=F|'), wire)
+    assert.ok(wire.startsWith('8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|'), wire)
     assert.ok(wire.includes('|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|'), wire)
     ```
 

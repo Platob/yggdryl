@@ -28,7 +28,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event};
+    use yggdryl::graph::{Element, Event, MarketElement};
     use yggdryl::holder::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
 
@@ -73,11 +73,17 @@ One order's life: the order under its client identifier, the acknowledgement und
     // starts one afresh.
     assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
     assert_eq!(again.get_crosscode(), "A1");
-    // The stamps are columns, reached like any typed fact, and the wire is
-    // what the message stated.
+    // The stamps are columns, reached like any typed fact. They never reach
+    // the wire; what does is what the message states once the walk has told
+    // it which chain it is in - this acknowledgement named no side, and the
+    // order it follows is a buy.
     assert_eq!(ack.by_tag(SEQNUM_TAG_NAME.0)?.as_u64(), Some(1));
     assert_eq!(ack.by_tag(PREVUUID_TAG_NAME.0)?, yggdryl::Scalar::Uuid(order.get_curruuid()));
-    assert_eq!(ack.into_bytes(b'|'), parsed[1].into_bytes(b'|'));
+    assert_eq!(parsed[1].get_side().as_str(), "UNKNOWN");
+    assert_eq!(ack.get_side().as_str(), "BUY");
+    let wire = ack.into_text('|')?;
+    assert!(wire.starts_with("8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|"), "{wire}");
+    assert!(!wire.contains("65042="), "no stamp is a field");
 
     // A chained stream replayed answers the same messages.
     let replayed: Vec<FixMsg> = reader.lifecycle(chained.clone()).collect::<yggdryl::Result<_>>()?;
@@ -132,11 +138,17 @@ One order's life: the order under its client identifier, the acknowledgement und
     # one afresh.
     assert (again.seqnum, again.prevuuid) == (0, None)
     assert again.crosscode == "A1"
-    # The stamps are columns, reached like any typed fact, and the wire is what
-    # the message stated.
+    # The stamps are columns, reached like any typed fact. They never reach
+    # the wire; what does is what the message states once the walk has told
+    # it which chain it is in - this acknowledgement named no side, and the
+    # order it follows is a buy.
     assert ack.by_tag(SEQNUM).as_py() == 1
     assert ack.by_tag(PREVUUID) == order.curruuid
-    assert ack.into_bytes(ord("|")) == parsed[1].into_bytes(ord("|"))
+    assert parsed[1].side.as_py() == "UNKNOWN"
+    assert ack.side.as_py() == "BUY"
+    wire = ack.into_text("|")
+    assert wire.startswith("8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|")
+    assert "65042=" not in wire  # no stamp is a field
 
     # A chained stream replayed answers the same messages.
     assert list(reader.lifecycle([order, ack, twin, fill, again])) == [order, ack, twin, fill, again]
@@ -190,11 +202,17 @@ One order's life: the order under its client identifier, the acknowledgement und
     // one afresh.
     assert.deepEqual([again.seqnum, again.prevuuid], [0, null])
     assert.equal(again.crosscode, 'A1')
-    // The stamps are columns, reached like any typed fact, and the wire is what
-    // the message stated.
+    // The stamps are columns, reached like any typed fact. They never reach
+    // the wire; what does is what the message states once the walk has told
+    // it which chain it is in - this acknowledgement named no side, and the
+    // order it follows is a buy.
     assert.equal(ack.byTag(SEQNUM).asJs(), 1)
     assert.equal(ack.byTag(PREVUUID).asJs(), order.curruuid)
-    assert.deepEqual(Buffer.from(ack.intoBytes(124)), Buffer.from(parsed[1].intoBytes(124)))
+    assert.equal(parsed[1].side, 'UNKNOWN')
+    assert.equal(ack.side, 'BUY')
+    const wire = ack.intoText('|')
+    assert.ok(wire.startsWith('8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|'), wire)
+    assert.ok(!wire.includes('65042='), 'no stamp is a field')
 
     // A chained stream replayed answers the same messages.
     const replayed = [...reader.lifecycle([order, ack, twin, fill, again])]

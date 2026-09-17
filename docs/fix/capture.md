@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | the crate's own clocks, then its identities, then its other columns with the `identifiers` and `metadata` Map groups; the standard header, the fields a consumer reads, three List groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 116 tags from `fix_schema_tags`, 120 columns with the shipped registry, each List group adding its column beside its counter |
+| Shape | the crate's own clocks, then its identities, then its other columns with the `identifiers` and `metadata` Map groups; the standard header, the fields a consumer reads, three List groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 119 tags from `fix_schema_tags`, 123 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | a parse fills the nullable, sorted `identifiers` Map from the message component's direct [`fix:identifiers`](registry.md#component-identifiers), each under its canonical field name; a stated map is preserved |
 | Non-null | `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - the instants the identity is settled against and the identity it settles to; every other column is nullable, `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -43,13 +43,13 @@ One line in, one row per message out, with the columns named as the dictionary n
     assert_eq!(held[at].as_str(), Some("D"));
 
     // The last column is the content the message states, as entries; the
-    // typed facts - the version, the type, the side - are columns of their
-    // own, and a key no dictionary explains is an entry of tag 0 under its
-    // own spelling.
+    // typed facts - the version, the type, the side, the price it is about,
+    // how long it stands - are columns of their own, and a key no dictionary
+    // explains is an entry of tag 0 under its own spelling.
     let entries = held.last().and_then(Scalar::as_sequence).expect("the arrival record");
-    assert_eq!(entries.len(), 5);
+    assert_eq!(entries.len(), 3);
     let names: Vec<&str> = order.entries().iter().map(yggdryl::FixEntry::name).collect();
-    assert_eq!(names, ["symbol", "price", "9999", "checksum", "timeinforce"]);
+    assert_eq!(names, ["symbol", "9999", "checksum"]);
     let unresolved: Vec<_> = order.entries().iter().filter(|entry| entry.tag() == 0).collect();
     assert_eq!(unresolved.len(), 1);
     assert_eq!(unresolved[0].name(), "9999");
@@ -75,12 +75,11 @@ One line in, one row per message out, with the columns named as the dictionary n
     assert row[schema.index_of("side")] == "BUY"
 
     # The last column is the content the message states, as entries; the typed
-    # facts - the version, the type, the side - are columns of their own, and a
-    # key no dictionary explains is an entry of tag 0 under its own spelling.
-    assert len(row[schema.index_of("fixentries")]) == 5
-    assert [name for _, name, _, _ in order.entries()] == [
-        "symbol", "price", "9999", "checksum", "timeinforce",
-    ]
+    # facts - the version, the type, the side, the price it is about, how long
+    # it stands - are columns of their own, and a key no dictionary explains is
+    # an entry of tag 0 under its own spelling.
+    assert len(row[schema.index_of("fixentries")]) == 3
+    assert [name for _, name, _, _ in order.entries()] == ["symbol", "9999", "checksum"]
     assert [entry for entry in order.entries() if entry[0] == 0] == [(0, "9999", "x", [])]
     ```
 
@@ -103,11 +102,12 @@ One line in, one row per message out, with the columns named as the dictionary n
     assert.equal(row[schema.indexOf('side')], 'BUY')
 
     // The last column is the content the message states, as entries; the typed
-    // facts - the version, the type, the side - are columns of their own, and a
-    // key no dictionary explains is an entry of tag 0 under its own spelling.
-    assert.equal(row[schema.indexOf('fixentries')].length, 5)
+    // facts - the version, the type, the side, the price it is about, how long
+    // it stands - are columns of their own, and a key no dictionary explains is
+    // an entry of tag 0 under its own spelling.
+    assert.equal(row[schema.indexOf('fixentries')].length, 3)
     assert.deepEqual(order.entries().map((entry) => entry.name), [
-      'symbol', 'price', '9999', 'checksum', 'timeinforce',
+      'symbol', '9999', 'checksum',
     ])
     const unresolved = order.entries().filter((entry) => entry.tag === 0)
     assert.deepEqual(unresolved.map((entry) => [entry.name, entry.value]), [['9999', 'x']])
@@ -402,8 +402,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     let header = schema.index_of("beginstring").expect("the band opens");
     assert_eq!(&columns[header..header + 3], ["beginstring", "msgtype", "msgseqnum"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 114);
-    assert_eq!(columns.len(), 118);
+    assert_eq!(fix_schema_tags().len(), 119);
+    assert_eq!(columns.len(), 123);
     assert_eq!(&fix_schema_tags()[header..header + 3], [8, 35, 34]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -434,8 +434,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     header = columns.index("beginstring")
     assert columns[header:header + 3] == ["beginstring", "msgtype", "msgseqnum"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 114
-    assert len(columns) == 118
+    assert len(fix_schema_tags()) == 119
+    assert len(columns) == 123
     assert fix_schema_tags()[header:header + 3] == [8, 35, 34]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -463,8 +463,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     const header = schema.indexOf('beginstring')
     assert.deepEqual(columns.slice(header, header + 3), ['beginstring', 'msgtype', 'msgseqnum'])
     assert.equal(columns[columns.length - 1], 'fixentries')
-    assert.equal(fix.schemaTags().length, 114)
-    assert.equal(columns.length, 118)
+    assert.equal(fix.schemaTags().length, 119)
+    assert.equal(columns.length, 123)
     assert.deepEqual(fix.schemaTags().slice(header, header + 3), [8, 35, 34])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -493,7 +493,7 @@ An entry says what the message states and only that. A bridge packing a whole oc
 
 ## The crate's own columns
 
-Thirty-two scalar fields and two Map groups carry the facts no dictionary publishes: what the [event](../graph.md) a message is states, and what the capture stated about its line. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 34 in tag order. Their tags run from 65003 - `CRATE_TAG_MIN` (65000) starts the reserved block, and its retired slots are never reused - `UNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `identifiers` and `metadata` are groups reached by `field_by_counter(65020)` and `field_by_counter(65049)` or by name, never by the scalar-field doors; `parentuuids` is a column of the row that no registry lists, because a List of identities is neither a scalar the registry indexes nor a group it defines. On a message every one of them is a [typed fact](message.md#typed-tags): held by the event or the capture, reached by its tag, and never in the content row.
+Thirty-six scalar fields and two Map groups carry the facts no dictionary publishes: what the [event](../graph.md) a message is states, and what the capture stated about its line. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 38 in tag order. Their tags run from 65003 - `CRATE_TAG_MIN` (65000) starts the reserved block, and its retired slots are never reused - `UNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `identifiers` and `metadata` are groups reached by `field_by_counter(65020)` and `field_by_counter(65049)` or by name, never by the scalar-field doors; `parentuuids` is a column of the row that no registry lists, because a List of identities is neither a scalar the registry indexes nor a group it defines. On a message every one of them is a [typed fact](message.md#typed-tags): held by the event or the capture, reached by its tag, and never in the content row.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
@@ -557,7 +557,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     use yggdryl::{CREATUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, UNIX_TAG_NAME, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 34);
+    assert_eq!(fields.len(), 38);
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
     // The two identities are the crate's own uuid, the codes plain integers.
@@ -585,7 +585,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     assert_eq!(bare.get_curruuid(), bare.time_uuid()?);
     // None of them became a pair on the wire: the header re-emits the
     // version, and the content what the frame stated, a day order derived.
-    assert_eq!(bare.into_text('|')?, "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|");
+    assert_eq!(bare.into_text('|')?, "8=FIX.4.4|35=D|59=0|55=AAPL|10=0|");
 
     // A frame stating its clocks keeps them: TransactTime is the event, and
     // a stated SendingTime goes back on the wire.
@@ -613,7 +613,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
 
     UNIX, CREATUNIX = 65003, 65023
     fields = list(fix_crate_fields())
-    assert len(fields) == 34
+    assert len(fields) == 38
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
     # The two identities are the crate's own uuid, the codes plain integers.
@@ -639,7 +639,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     assert bare.unix == 1_704_190_530_000_000_000
     # None of them became a pair on the wire: the header re-emits the version, and
     # the content what the frame stated, a day order derived.
-    assert bare.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|"
+    assert bare.into_text("|") == "8=FIX.4.4|35=D|59=0|55=AAPL|10=0|"
 
     # A frame stating its clocks keeps them: TransactTime is the event, and a
     # stated SendingTime goes back on the wire.
@@ -662,7 +662,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
 
     const [UNIX, CREATUNIX] = [65003, 65023]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 34)
+    assert.equal(fields.length, 38)
     // No partition column: how a layout is cut is the target's to decide.
     assert.ok(fields.every((field) => !field.isPartition))
     // The two identities are the crate's own uuid, the codes plain integers.
@@ -689,7 +689,7 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     // None of them became a pair on the wire - only a stated sending clock is a
     // fact of the message - so the header re-emits the version and the content
     // what the frame stated, a day order derived.
-    assert.equal(bare.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|10=0|59=0|')
+    assert.equal(bare.intoText('|'), '8=FIX.4.4|35=D|59=0|55=AAPL|10=0|')
 
     // A frame stating its clocks keeps them: TransactTime is the event, and a
     // stated SendingTime goes back on the wire.
@@ -904,7 +904,7 @@ A known message with no selected value states none; an unknown message selects n
     let row = filled.into_row(&schema)?;
     let at = schema.index_of("identifiers").expect("the identifiers column");
     assert!(row.get(at).is_some_and(|held| !held.is_null()));
-    assert_eq!(filled.into_text('|')?, "8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|59=0|");
+    assert_eq!(filled.into_text('|')?, "8=FIX.4.4|35=8|59=0|37=O-1|11=C-1|17=E-1|10=0|");
     ```
 
 ### A composed key fills the field its last segment names

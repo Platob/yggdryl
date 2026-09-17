@@ -632,12 +632,8 @@ impl Event for MarketEventData {
     /// event's place in its chain, which is the step before it as well as
     /// the predecessor and the position, and what that chain is about where
     /// this reading of the message said nothing of it.
-    fn restating(mut self, live: &Self) -> Self {
-        super::element::restate_event(&mut self, live);
-        self.fold_lifecycle(live);
-        super::element::restate_market(&mut self, live);
-        self.finalize();
-        self
+    fn restating(self, live: &Self) -> Self {
+        super::element::restating_market(self, live)
     }
 
     fn get_unix(&self) -> i64 {

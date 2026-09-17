@@ -8,7 +8,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | --- | --- |
 | Owns | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`, `FixCodec::DEFAULT_BATCH_BYTE_SIZE`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader`, JavaScript a `BatchReader` |
-| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `cargo run --example fix_schema --features arrow` prints the fixed row's 120 columns as that Arrow schema, one a line |
+| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `cargo run --example fix_schema --features arrow` prints the fixed row's 123 columns as that Arrow schema, one a line |
 | Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
@@ -447,7 +447,7 @@ A source row is read for every message it carries, so a capture answers one row 
     assert_eq!(codec.write_arrow_reader(codec.arrow_reader(schema, again)?, &mut written)?, 2);
     assert_eq!(
         String::from_utf8(written)?,
-        "8=FIX.4.4|35=D|54=1|11=ORDER-1|55=AAPL|9999=x|10=0|59=0|\n8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|59=0|381=637.5|\n",
+        "8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|\n8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|\n",
     );
     ```
 
@@ -481,8 +481,8 @@ A source row is read for every message it carries, so a capture answers one row 
     sink = io.BytesIO()
     assert codec.write_arrow_reader(codec.arrow_reader(schema, again), sink) == 2
     assert sink.getvalue().decode().splitlines() == [
-        "8=FIX.4.4|35=D|54=1|11=ORDER-1|55=AAPL|9999=x|10=0|59=0|",
-        "8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|59=0|381=637.5|",
+        "8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|",
+        "8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|",
     ]
     ```
 
@@ -516,8 +516,8 @@ A source row is read for every message it carries, so a capture answers one row 
     const chunks = []
     assert.equal(codec.writeArrowReader(codec.arrowReader(schema, again), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
     assert.deepEqual(Buffer.concat(chunks).toString().split('\n').slice(0, 2), [
-      '8=FIX.4.4|35=D|54=1|11=ORDER-1|55=AAPL|9999=x|10=0|59=0|',
-      '8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|59=0|381=637.5|',
+      '8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|',
+      '8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|',
     ])
     ```
 

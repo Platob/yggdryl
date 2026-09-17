@@ -804,7 +804,7 @@ enumeration, which is written as the raw `fix:codes` metadata.
 | `FixCodec.lifecycle` | the one walk, over `FixMsg`: any iterable in and a lazy `FixMessages` out, each message stated as the one after the live message of its chain, a twin restating the live one rather than chaining behind it; `lifecycleArrowReader` is the same walk over batches, each row read back through `FixMsg.fromRow` and written back under the same schema |
 | iteration | a registry walks every field, component and group it holds, tag-major with the tag's holder first, then by identifier, and `size` counts the same three categories; a message walks its entries |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix.crateFields()` answers 34 definitions: 32 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035 and 65039-65048, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 36 |
+| crate inventory | `fix.crateFields()` answers 38 definitions: 36 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035, 65039-65048 and 65051-65054, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 40 |
 | CRUD | one door per verb, filing by shape: `insert(field)`, `update(field)`, `remove(key)` and `removeById(id)` take a scalar, a Struct component or a List/Map group alike, and `addField` is the lenient twin, answering `true` when the field arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until a fill needs UTF-8 |
@@ -944,7 +944,7 @@ const codec = new fix.FixCodec(registry, { defaultSendingTime: new Date('2026-09
 const messages = codec.parseLine(wire)
 const parsed = messages.next().value
 assert.equal(messages.next().done, true)
-assert.equal(parsed.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|10=0|59=0|')
+assert.equal(parsed.intoText('|'), '8=FIX.4.4|35=D|59=0|55=AAPL|10=0|')
 assert.ok(parsed.byTag(52).equals(codec.defaultSendingTime))
 assert.equal(parsed.unix, parsed.event().creatunix)
 // A message root the codec builds is not a dictionary member.

@@ -1720,12 +1720,27 @@ pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &
     changed | chain_market(this, previous)
 }
 
+/// What restating means for a market event: the timed restatement, then the
+/// market's.
+///
+/// Free rather than provided, because it *is* what [`Event::restating`]
+/// means for a market event, and an implementor's override of that method is
+/// how the reading reaches a walk. Every implementor that is also a
+/// [`MarketElement`] delegates here rather than restating the body.
+pub(crate) fn restating_market<E: MarketEvent>(mut this: E, live: &E) -> E {
+    restate_event(&mut this, live);
+    this.fold_lifecycle(live);
+    restate_market(&mut this, live);
+    this.finalize();
+    this
+}
+
 /// The market facts a restatement takes from the live element it is another
 /// reading of: the step before it, which is the place in the chain and not
 /// something a second reading of one message sees for itself, and what the
 /// chain is about. A twin that says nothing of either is about what the
 /// live statement was about.
-pub(super) fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
+fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
     let mut changed = moved(
         this.get_prevpx(),
         stated(this.get_prevpx(), live.get_prevpx(), false),

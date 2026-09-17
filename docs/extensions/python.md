@@ -1270,7 +1270,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | direction rules | `field.fix.directions` is the `list[FixDirection]` a tag-385 field carries as `fix:directions`, each a TypedDict `{"code": str, "patterns": list[str]}` - one record per code of the set, the patterns decoded, `[]` when the property is absent - assignable from any iterable of such mappings, an empty one removing the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling is a `ValueError` that leaves the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix_crate_fields()` answers 34 definitions: 32 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035 and 65039-65048, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so it holds 34 fields and the two groups and its `len()` is 36; `len(registry)` counts all three categories, while iterating a registry walks its fields alone |
+| crate inventory | `fix_crate_fields()` answers 38 definitions: 36 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035, 65039-65048 and 65051-65054, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so it holds 38 fields and the two groups and its `len()` is 40; `len(registry)` counts all three categories, while iterating a registry walks its fields alone |
 | CRUD | one door per verb, filing by shape: `insert(field)`, `update(field)`, `remove(key)` and `remove_by_id(id)` take a scalar, a Struct component or a List/Map group alike, and `add_field` / `add_fields` are the lenient twins that fold a field into a stored one rather than replacing it |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a store is `fields/<shard>.json` beside `components/` and `groups/`, one file per name, with membership inside each field's metadata |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
@@ -1397,7 +1397,7 @@ codec = FixCodec(registry, default_sending_time=dt.datetime(2026, 9, 14, tzinfo=
 messages = codec.parse_line(wire)
 parsed = next(messages)
 assert next(messages, None) is None
-assert parsed.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|"
+assert parsed.into_text("|") == "8=FIX.4.4|35=D|59=0|55=AAPL|10=0|"
 assert parsed.by_tag(52) == codec.default_sending_time
 assert parsed.unix == parsed.event().creatunix
 table_field = fix_schema(registry)

@@ -1178,9 +1178,12 @@ impl super::FixMsg {
     /// the deepest level folded into decoded through the crate's own JSON
     /// reader, each entry typed through the dictionary exactly as the builder
     /// types a pair, so every lookup reaches the rebuilt message as it
-    /// reaches a parsed one. A body column is the same content read once
-    /// more, so it is read past rather than read twice; a column no tag
-    /// names is a capture's own and stays. Nothing is parsed again: this is
+    /// reaches a parsed one. A column no tag and no counter names is the
+    /// capture's own - the body the line was read from, its place in the
+    /// object, the bridge's row header - and it is read past rather than
+    /// adopted: content is what goes back on the wire, and a message that
+    /// carried `body=` to a counterparty would be a message this crate
+    /// invented. Nothing is parsed again: this is
     /// what makes a batch of rows a stream of messages at the cost of the
     /// values it already holds. A row without the entries column rebuilds a
     /// message with the typed facts and no content.
@@ -1265,10 +1268,15 @@ impl super::FixMsg {
                 }
                 Some(_) => {}
                 None if planned.counter.is_some() => {}
-                None => {
-                    members.push(column.clone());
-                    values.push(value.clone());
-                }
+                // A column no tag and no counter names is the capture's own -
+                // the line it was read from, its place in the object, the
+                // bridge's row header - and a capture is not what the message
+                // said. Adopting it would make it a child of the content, and
+                // a child of the content is an entry, and an entry goes back
+                // on the wire: a message rebuilt from a capture row would
+                // re-emit `body=` at a counterparty. The reader that put the
+                // prefix in front of the row is the one that states it.
+                None => {}
             }
         }
         if let Some((fields, held)) = content {
@@ -1299,10 +1307,11 @@ impl super::FixMsg {
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all. A column no
     /// tag or group counter names is a capture's own: it takes the child of
-    /// the same name where the message has one - which is how a row read
-    /// back through [`Self::from_row`] returns to its schema whole - and is
-    /// left null otherwise, which a required column refuses. The capture reader
-    /// supplies its prefix before validation, not after projection.
+    /// the same name where the message has one and is left null otherwise,
+    /// which a required column refuses. The capture reader supplies its
+    /// prefix before validation, not after projection - and supplies it
+    /// again for a row it reads back, because [`Self::from_row`] leaves a
+    /// capture's columns to the capture rather than making them content.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary

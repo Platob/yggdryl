@@ -1303,8 +1303,15 @@ export declare class FixCodec {
    * sent; `direction` is the code of tag 385's set an unmarked line
    * takes on the batch door, any spelling of one - `"S"`, `"Send"`,
    * `"R"` - the core's `Send` code when unstated and no pin at all when
-   * empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
-   * core's 128 MiB when unstated; `defaultSendingTime` is the
+   * empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
+   * rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
+   * unstated, whichever the batch reaches first; `includeMsgtypes` and
+   * `excludeMsgtypes` are the message types a parse keeps and refuses,
+   * each read before a frame is built and spelled as a code or a name -
+   * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
+   * core refusing `Heartbeat`, `TestRequest` and the untyped line when
+   * unstated and an empty `excludeMsgtypes` keeping every type;
+   * `defaultSendingTime` is the
    * `SendingTime` an undated message takes when neither it nor its carrier
    * states one - a `Scalar` crosses as it is and must already be
    * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
@@ -1331,6 +1338,15 @@ export declare class FixCodec {
    * at this boundary is.
    */
   get batchByteSize(): number
+  /** The rows one Arrow batch targets. */
+  get batchRowSize(): number
+  /**
+   * The message types a parse keeps, empty where it keeps every type the
+   * refusals leave.
+   */
+  get includeMsgtypes(): Array<string>
+  /** The message types a parse refuses before it builds a frame. */
+  get excludeMsgtypes(): Array<string>
   /**
    * The `SendingTime` an undated message takes, `DateTime64(ns, UTC)`, or
    * `null` where each new undated message reads UTC now.
@@ -5706,6 +5722,23 @@ export interface FixCodecOptions {
   direction?: string
   /** The raw bytes one Arrow batch targets; the core's 128 MiB when unstated. */
   batchByteSize?: number
+  /**
+   * The rows one Arrow batch targets; the core's 32,768 when unstated.
+   * A batch closes on whichever bound it reaches first.
+   */
+  batchRowSize?: number
+  /**
+   * The message types a parse keeps, spelled as codes or as names -
+   * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
+   * or unstated keeps every type the refusals leave.
+   */
+  includeMsgtypes?: Array<string>
+  /**
+   * The message types a parse refuses before it builds a frame; the
+   * core's `Heartbeat`, `TestRequest` and untyped line when unstated, and
+   * an empty list keeps every type.
+   */
+  excludeMsgtypes?: Array<string>
   /**
    * The `SendingTime` an undated message takes when neither it nor its
    * carrier states one: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`

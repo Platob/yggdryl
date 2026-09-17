@@ -1774,8 +1774,15 @@ impl JsFixCodec {
     /// sent; `direction` is the code of tag 385's set an unmarked line
     /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
     /// `"R"` - the core's `Send` code when unstated and no pin at all when
-    /// empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
-    /// core's 128 MiB when unstated; `defaultSendingTime` is the
+    /// empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
+    /// rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
+    /// unstated, whichever the batch reaches first; `includeMsgtypes` and
+    /// `excludeMsgtypes` are the message types a parse keeps and refuses,
+    /// each read before a frame is built and spelled as a code or a name -
+    /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
+    /// core refusing `Heartbeat`, `TestRequest` and the untyped line when
+    /// unstated and an empty `excludeMsgtypes` keeping every type;
+    /// `defaultSendingTime` is the
     /// `SendingTime` an undated message takes when neither it nor its carrier
     /// states one - a `Scalar` crosses as it is and must already be
     /// `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
@@ -1808,6 +1815,18 @@ impl JsFixCodec {
             let bytes = u64::try_from(bytes)
                 .map_err(|_| napi_error("batchByteSize must not be negative"))?;
             inner = inner.with_batch_byte_size(bytes);
+        }
+        if let Some(held) = options.batch_row_size {
+            let rows = exact_i64(held, "batchRowSize")?;
+            let rows = usize::try_from(rows)
+                .map_err(|_| napi_error("batchRowSize must not be negative"))?;
+            inner = inner.with_batch_row_size(rows);
+        }
+        if let Some(held) = options.include_msgtypes {
+            inner = inner.with_include_msgtypes(held);
+        }
+        if let Some(held) = options.exclude_msgtypes {
+            inner = inner.with_exclude_msgtypes(held);
         }
         // `null` states "no default" as leaving the option out does.
         let sending_time = match options.default_sending_time {
@@ -1862,6 +1881,34 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn batch_byte_size(&self) -> f64 {
         self.inner.batch_byte_size() as f64
+    }
+
+    /// The rows one Arrow batch targets.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn batch_row_size(&self) -> f64 {
+        self.inner.batch_row_size() as f64
+    }
+
+    /// The message types a parse keeps, empty where it keeps every type the
+    /// refusals leave.
+    #[napi(getter)]
+    pub fn include_msgtypes(&self) -> Vec<String> {
+        self.inner
+            .include_msgtypes()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// The message types a parse refuses before it builds a frame.
+    #[napi(getter)]
+    pub fn exclude_msgtypes(&self) -> Vec<String> {
+        self.inner
+            .exclude_msgtypes()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     }
 
     /// The `SendingTime` an undated message takes, `DateTime64(ns, UTC)`, or
@@ -2209,6 +2256,17 @@ pub struct FixCodecOptions<'env> {
     pub direction: Option<String>,
     /// The raw bytes one Arrow batch targets; the core's 128 MiB when unstated.
     pub batch_byte_size: Option<f64>,
+    /// The rows one Arrow batch targets; the core's 32,768 when unstated.
+    /// A batch closes on whichever bound it reaches first.
+    pub batch_row_size: Option<f64>,
+    /// The message types a parse keeps, spelled as codes or as names -
+    /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
+    /// or unstated keeps every type the refusals leave.
+    pub include_msgtypes: Option<Vec<String>>,
+    /// The message types a parse refuses before it builds a frame; the
+    /// core's `Heartbeat`, `TestRequest` and untyped line when unstated, and
+    /// an empty list keeps every type.
+    pub exclude_msgtypes: Option<Vec<String>>,
     /// The `SendingTime` an undated message takes when neither it nor its
     /// carrier states one: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`
     /// restated in nanoseconds. UTC now per new message when unstated or

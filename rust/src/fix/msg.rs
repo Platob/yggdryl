@@ -1806,6 +1806,14 @@ impl Element for FixMsg {
 }
 
 impl Event for FixMsg {
+    /// The timed restatement, and then the market's: a message logged at a
+    /// second hop takes the live message's place in its chain - the
+    /// predecessor, the position, the snapshot and the step before it - and
+    /// what that chain is about where this reading stated none of it.
+    fn restating(self, live: &Self) -> Self {
+        crate::graph::element::restating_market(self, live)
+    }
+
     fn get_unix(&self) -> i64 {
         self.event.get_unix()
     }
