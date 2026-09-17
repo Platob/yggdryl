@@ -304,8 +304,12 @@ impl TryFrom<&str> for Filter {
 
 /// Anything a call site may hand over where a filter is wanted.
 ///
-/// Text *parses* here, for the reason [`IntoTerm`](super::IntoTerm) gives: a filter that
-/// silently matches everything is the worst failure this module could have.
+/// Text *parses* here. That is the whole point of the trait: an
+/// `impl Into<Filter>` for `&str` would quietly make `"ccy = 'EUR'"` a string
+/// literal, a perfectly valid term that filters nothing and reports no error,
+/// and a filter that silently matches everything is the worst failure this
+/// module could have. Parsing is fallible, so the conversion is fallible, and
+/// a typo arrives as a byte-positioned parse error at the call.
 pub trait IntoFilter {
     /// Produce the filter this value stands for.
     ///

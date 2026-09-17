@@ -386,7 +386,6 @@ pub const RECURSION_LIMIT: usize = 32
   pub fn check_budget(&self) -> Result<()>
   pub fn apply_field(&self, root: &Field) -> Result<Field>
   pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
-  pub trait IntoExpression
   fn into_expression(self) -> Result<Expression>
 
 ### yggdryl::expression::parser  [rust\src\expression\parser.rs]
@@ -4365,7 +4364,6 @@ pub enum Term
   pub fn has_attributes(&self) -> bool
   pub fn conjuncts(&self) -> Vec<Self>
   pub fn simplify(&self) -> Self
-  pub trait IntoTerm
   fn into_term(self) -> Result<Term>
   pub fn col(name: impl Into<SmolStr>) -> Term
   pub fn lit(value: impl Into<Scalar>) -> Term

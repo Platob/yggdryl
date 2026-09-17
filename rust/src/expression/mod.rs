@@ -85,7 +85,7 @@ pub use plan::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
-pub use term::{IntoTerm, Term, col, lit};
+pub use term::{Term, col, lit};
 pub(crate) use transform::{
     TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS, TRANSFORM_SOURCES_KEY,
     canonicalize_transform_expression, canonicalize_transform_function,
@@ -890,79 +890,13 @@ impl TryFrom<&str> for Expression {
     }
 }
 
-/// Anything a call site may hand over where an expression is wanted.
-///
-/// Text parses, with its clause keyword in front; a selector, a filter, a
-/// plan, and a term - read as a filter - are the expressions they already
-/// are; a field is the plan that declares it.
-pub trait IntoExpression {
-    /// Produce the expression this value stands for.
-    ///
-    /// # Errors
-    ///
-    /// Returns a parse error when the value is text that is not an expression.
-    fn into_expression(self) -> Result<Expression>;
-}
-
-impl IntoExpression for Expression {
-    fn into_expression(self) -> Result<Self> {
-        Ok(self)
+/// A term is a filter over one predicate.
+impl From<Term> for Expression {
+    fn from(value: Term) -> Self {
+        Self::Filter(Filter::new(value))
     }
 }
 
-impl IntoExpression for &Expression {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(self.clone())
-    }
-}
-
-impl IntoExpression for Selector {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(Expression::Selector(self))
-    }
-}
-
-impl IntoExpression for Filter {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(Expression::Filter(self))
-    }
-}
-
-impl IntoExpression for Plan {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(Plan::into_expression(self))
-    }
-}
-
-impl IntoExpression for Term {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(Expression::Filter(Filter::new(self)))
-    }
-}
-
-impl IntoExpression for &Field {
-    fn into_expression(self) -> Result<Expression> {
-        Ok(Expression::Plan(Box::new(Plan::from_field(self))))
-    }
-}
-
-impl IntoExpression for &str {
-    fn into_expression(self) -> Result<Expression> {
-        self.parse()
-    }
-}
-
-impl IntoExpression for &String {
-    fn into_expression(self) -> Result<Expression> {
-        self.parse()
-    }
-}
-
-impl IntoExpression for String {
-    fn into_expression(self) -> Result<Expression> {
-        self.parse()
-    }
-}
 
 /// The one scalar conversion, for the datatypes that expose it.
 pub(crate) fn convert_scalar(

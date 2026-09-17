@@ -1482,58 +1482,13 @@ impl TryFrom<&str> for Term {
     }
 }
 
-/// Anything a call site may hand over where a term is wanted.
-///
-/// Text *parses* here. That is the whole point of the trait: an `impl
-/// Into<Term>` for `&str` would quietly make `"ccy = 'EUR'"` a string literal,
-/// a perfectly valid term that filters nothing and reports no error, and a
-/// filter that silently matches everything is the worst failure this module
-/// could have. Parsing is fallible, so the conversion is fallible, and a typo
-/// arrives as a byte-positioned parse error at the call.
-pub trait IntoTerm {
-    /// Produce the term this value stands for.
-    ///
-    /// # Errors
-    ///
-    /// Returns a parse error when the value is text that is not a term.
-    fn into_term(self) -> Result<Term>;
-}
-
-impl IntoTerm for Term {
-    fn into_term(self) -> Result<Self> {
-        Ok(self)
+/// A field path is the column it names.
+impl From<super::FieldPath> for Term {
+    fn from(value: super::FieldPath) -> Self {
+        Self::Path(value.shared_segments())
     }
 }
 
-impl IntoTerm for &Term {
-    fn into_term(self) -> Result<Term> {
-        Ok(self.clone())
-    }
-}
-
-impl IntoTerm for &str {
-    fn into_term(self) -> Result<Term> {
-        self.parse()
-    }
-}
-
-impl IntoTerm for &String {
-    fn into_term(self) -> Result<Term> {
-        self.parse()
-    }
-}
-
-impl IntoTerm for String {
-    fn into_term(self) -> Result<Term> {
-        self.parse()
-    }
-}
-
-impl IntoTerm for super::FieldPath {
-    fn into_term(self) -> Result<Term> {
-        Ok(Term::Path(self.shared_segments()))
-    }
-}
 
 /// Build a column reference. The free spelling of [`Term::column`].
 #[must_use]
