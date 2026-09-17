@@ -211,9 +211,23 @@ function storeDocument(field) {
   return held
 }
 
+/**
+ * The category a definition is filed under, by the shape it has: a Struct is
+ * a component, a List or a Map a group, anything else a scalar field.
+ */
+function categoryOf(field) {
+  if (field.dtype.id === 'struct') return 'components'
+  if (field.dtype.kind === 'nested') return 'groups'
+  return 'fields'
+}
+
 /** Live definitions, retaining persisted references and native-only builtins. */
 function liveCatalog(registry) {
   const catalog = {}
+  // The registry walks its scalars first, then its components and groups,
+  // so one walk buckets every definition in the native order.
+  const native = { fields: [], components: [], groups: [] }
+  for (const field of registry) native[categoryOf(field)].push(field)
   for (const [category, documents] of Object.entries(registry.toJSON())) {
     const compact = new Map(documents.map((field) => [field.name, field]))
     if (compact.size !== documents.length) {
@@ -221,7 +235,7 @@ function liveCatalog(registry) {
     }
     const names = new Set()
     const live = []
-    for (const field of registry.definitions(category)) {
+    for (const field of native[category]) {
       const name = field.name
       if (names.has(name)) throw new Error(`native ${category} repeat ${name}`)
       names.add(name)
@@ -233,14 +247,15 @@ function liveCatalog(registry) {
     }
     catalog[category] = live
   }
-  if (catalog.fields.length !== registry.size) {
-    throw new Error('live scalar catalog count differs from the native registry')
+  if (catalog.fields.length + catalog.components.length + catalog.groups.length !== registry.size) {
+    throw new Error('live catalog count differs from the native registry')
   }
-  const messages = new Set([...registry.msgtypes()].map((message) => message.asStr()))
+  // A message is a component carrying `fix:msgtype`, and every code a
+  // component declares is one the registry answers.
   const declared = catalog.components
     .map((field) => field.metadata?.['fix:msgtype'])
     .filter((code) => code !== undefined)
-  if (declared.length !== messages.size || declared.some((code) => !messages.delete(code))) {
+  if (declared.some((code) => registry.getMsgtype(code) === null)) {
     throw new Error('live message catalog differs from the native message inventory')
   }
   return catalog
@@ -256,6 +271,7 @@ function document(field, key) {
 function fieldRecords(registry) {
   const records = []
   for (const field of registry) {
+    if (categoryOf(field) !== 'fields') continue
     const view = field.fix
     const tag = view.tag
     if (tag === null) continue
@@ -376,12 +392,9 @@ function frameCase(registry, reader, schema, key, label, line) {
     }
   }).filter((column) => column !== null)
 
-  const ticker = held.symbolTicker()
-  // The settled grid clock every message carries.
-  const clock = held.updatedat()
-  // The instant a snapshot of this chain was taken at, which an ordinary read
-  // never is, so it is empty here and says so.
-  const snapshot = held.byTag(65025)
+  // A `bigint` - a hash, an instant - is written as its decimal text, which
+  // is what a JSON document can carry.
+  const plain = (value) => JSON.parse(JSON.stringify(value, (_, held) => (typeof held === 'bigint' ? String(held) : held)))
   const text = escapedText([...bytes])
   return {
     key,
@@ -399,14 +412,19 @@ function frameCase(registry, reader, schema, key, label, line) {
     direction: held.getByTag(385)?.asJs() ?? null,
     size: held.size,
     columns,
-    arrivals: held.arrivals().map(([tag, key_, value]) => [String(tag), key_, value]),
-    // A lift source is the tag the facet was read from, or null.
-    lift: held.lift().map(([facet, value]) => [facet, String(value.toJSON()), held.liftSource(facet)]),
-    anomalies: held.anomalies(),
+    // The typed facts the message holds beside its row: the event the
+    // graph traits answer, the standard header, what the capture said, the
+    // free text and the bridge's own metadata.
+    event: plain(held.event()),
+    header: plain(held.header()),
+    capture: plain(held.capture()),
+    text: held.text,
+    metadata: held.metadata,
+    // The content row read as a tree: `{tag, name, value, entries}`, tag 0
+    // for a key no dictionary resolved, a group's occurrences and a
+    // component's members nested under the entry that heads them.
+    entries: held.entries(),
     digest: Buffer.from(held.digest()).toString('hex'),
-    ticker: ticker === null ? null : String(ticker.toJSON()),
-    clock: String(clock.toJSON()),
-    snapshot: snapshot.kind === 'null' ? null : String(snapshot.toJSON()),
     // What the package re-emits from the entries, which is the encoder's
     // proof: a composed frame that does not match this is a composed frame
     // that is wrong.

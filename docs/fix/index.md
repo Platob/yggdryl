@@ -14,10 +14,10 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
-| [Message](message.md) | `FixMsg`: root Struct plus row and registry, accessors, `set`/`remove` writing the row, `from_row` reading a fixed row back, JSON, and what restating a message under the dictionary decides |
-| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `enrich_messages_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
-| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, `enrich_message` and the one enriching pass behind it: a day of session log as one table |
-| [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: chains named by `code`, their creation and history, and grid snapshots across a stream |
+| [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
+| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
+| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |
+| [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph.md)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
 ## Contract
@@ -37,7 +37,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | List properties | `fix:names` and `fix:tags` are compact JSON arrays, `["Qty","Quantity"]` and `[1088]`, crossed by a store as the arrays they are; `names()` walks the array lazily and `tags()` parses it to a `Vec`. `fix:branches`, `fix:identifiers` and `fix:nulls` stay comma-separated text, `branches()`, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `fix:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` List/LargeList occurrences and Map entries |
+| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` List/LargeList occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors) |
 | Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); the id crosses as an integer, membership as a list of strings |
 
 ## Use
@@ -371,12 +371,14 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 and groups are the three registry categories, a message being a component that
 carries `fix:msgtype`.
 
-The crate's `altids(65020)` is also a group: a nullable, sorted-key
-`map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
-separate scalar counter and no invented numeric tags for its key or value.
-Its [enrichment](capture.md#what-a-message-implied-is-filled-in) uses the
-message's [declared identifiers](registry.md#component-identifiers), while
-ordinary List/LargeList groups keep their existing counter rules.
+The crate's `identifiers(65020)` and `metadata(65049)` are also groups: a
+nullable, sorted-key `map<utf8, utf8>` each, whose occurrence is its non-null
+entries Struct, with no separate scalar counter and no invented numeric tags
+for its key or value. A parse fills the first from the message's
+[declared identifiers](registry.md#component-identifiers) and the second from
+the [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
+a bridge wrote, while ordinary List/LargeList groups keep their existing
+counter rules.
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
@@ -389,19 +391,23 @@ names are folded; `display` keeps the specification's spelling.
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixCategory, FixRegistry, FieldPath};
+    use yggdryl::{DataType, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
-    let parties = registry.definition(FixCategory::Groups, "Parties")?;
+    // The counter names the group it opens, and one door answers all three
+    // categories: a scalar, a component, a group.
+    let parties = registry.field_by_counter(453)?;
+    assert_eq!(parties.name(), "parties");
     assert_eq!(parties.as_fix().counter()?, Some(453));
-    assert!(!registry.definition(FixCategory::Components, "Party")?.fields().is_empty());
+    assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let altids = registry.definition(FixCategory::Groups, "altids")?;
-    assert_eq!(altids.as_fix().counter()?, Some(65020));
-    assert!(registry.get_field_by_tag(65020).is_none());
+    let identifiers = registry.field_by_counter(65_020)?;
+    assert_eq!(identifiers.name(), "identifiers");
+    assert_eq!(identifiers.as_fix().counter()?, Some(65_020));
+    assert!(registry.get_field_by_tag(65_020).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"

@@ -7,7 +7,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Aspect | Rule |
 | --- | --- |
 | Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
-| Fields | `fields/<tag / 100>.json`; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
+| Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
 | Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `fix:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
 | Enums | Inline `fix:codes` metadata on each scalar field |
 | Documents | The five `fix:` properties that hold a canonical document - the entry documents `fix:codes`, `fix:replacements` and `fix:directions`, and the lists `fix:names` and `fix:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders a code set as a code set and a person can edit one. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl::into_fix_document`/`from_fix_document` are that pair on one field, which is what `ygg fix read --json` prints and `ygg fix ... --input` takes |
@@ -16,8 +16,9 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Identifiers | `fix:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
 | Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `fix:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has 34 scalar fields, the `instids` Struct and the `altids(65020)` Map group. Every registry constructs them, and a write states them too, so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
-| Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/0.json` |
+| Builtins | The crate listing has 34 definitions: 32 scalar fields and the `identifiers(65020)` and `metadata(65049)` Map groups. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
+| The fixed row | `write_into` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `fix:field` or `fix:group` reference carrying its own `fix:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
+| Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/000000000.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, codes, cycles, and depth are checked before exposing the registry |
 | Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
 | Passed over | A directory inside a category, and a file that is not `<n>.json` under `fields/` or `<name>.json` under a named category; a reader ignores them and a writer leaves the directories alone |
@@ -32,7 +33,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixCategory, FixRegistry, IOBase, FieldPath};
+    use yggdryl::{DataType, FixRegistry, IOBase, FieldPath};
 
     let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = Folder::new(&path)?;
@@ -46,26 +47,27 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     member.as_fix_mut().set_field_ref("PartyID")?;
     let mut party = DataType::from_fields([member])?.required_field("Party");
     party.as_fix_mut().set_identifiers(["448"])?;
-    registry.create_definition(FixCategory::Components, party.clone())?;
+    registry.insert(party.clone())?;
     let mut group = DataType::list(party).nullable_field("Parties");
     group.as_fix_mut().set_counter(453)?;
     group.as_fix_mut().set_component("Party")?;
-    registry.create_definition(FixCategory::Groups, group)?;
+    registry.insert(group)?;
     let mut order = DataType::from_fields([])?.required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
-    registry.create_definition(FixCategory::Components, order)?;
+    registry.insert(order)?;
 
     registry.write_into(&mut root)?;
-    assert!(path.join("fields/4.json").is_file());
+    assert!(path.join("fields/000000004.json").is_file());
     assert!(path.join("components/Party.json").is_file());
     assert!(path.join("groups/Parties.json").is_file());
     assert!(path.join("components/Order.json").is_file());
     // The crate's own are written beside them, so a store states the whole
-    // row: its tag block is one shard, and its group and Struct are two
-    // documents.
-    assert!(path.join("fields/650.json").is_file());
-    assert!(path.join("groups/altids.json").is_file());
-    assert!(path.join("components/instids.json").is_file());
+    // row: its tag block is one shard, its two Map groups two documents,
+    // and the fixed row itself one more.
+    assert!(path.join("fields/000000650.json").is_file());
+    assert!(path.join("groups/identifiers.json").is_file());
+    assert!(path.join("groups/metadata.json").is_file());
+    assert!(path.join("components/fixmsg.json").is_file());
     // The three category directories are the whole layout.
     assert_eq!(std::fs::read_dir(&path)?.count(), 3);
     let reloaded = FixRegistry::from_handle(&root)?;
@@ -74,8 +76,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     // Membership travels inside the field's own document.
     assert!(reloaded.field(448)?.as_fix().has_branch("venue"));
     assert_eq!(reloaded.dialects(), ["venue"]);
-    assert_eq!(reloaded.definition(FixCategory::Components, "Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
-    assert_eq!(reloaded.definition(FixCategory::Groups, "altids")?.as_fix().counter()?, Some(65020));
+    assert_eq!(reloaded.field_by_name("Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
+    assert_eq!(reloaded.field_by_counter(65020)?.name(), "identifiers");
     root.remove(true)?;
     ```
 
@@ -191,14 +193,14 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 Only scalar fields use numeric shards; alternate tags do not create additional copies. Named files use the stored canonical definition name, so case-only updates retain the existing filename.
 
 ```text
-<root>/fields/0.json
-<root>/fields/50.json
+<root>/fields/000000000.json
+<root>/fields/000000050.json
 <root>/components/Order.json
 <root>/components/Party.json
 <root>/groups/Parties.json
 ```
 
-Tag 55 belongs in `fields/0.json`; tag 5001 belongs in `fields/50.json`, whichever dictionary defined it. Every field's canonical tag must agree with its document's shard. Two fields on one tag - a dialect's own name over a tag the specification holds - share the shard, the field the bare tag answers written first; a reader loads a shard in file order, so the holder survives a round trip. A field the specification alone defines states no `fix:branches`.
+Tag 55 belongs in `fields/000000000.json`; tag 5001 belongs in `fields/000000050.json`, whichever dictionary defined it. The nine digits are what makes a listing of the shards read in tag order. Every field's canonical tag must agree with its document's shard. Two fields on one tag - a dialect's own name over a tag the specification holds - share the shard, the field the bare tag answers written first; a reader loads a shard in file order, so the holder survives a round trip. A field the specification alone defines states no `fix:branches`.
 
 ## Compact references
 
@@ -215,7 +217,7 @@ A persisted child refers to one canonical definition using `fix:field`, `fix:com
 
 A List/LargeList group stores a non-null item referencing its occurrence component; its root records the separate scalar counter and component relationship beside the group's own derived `fix:tag`. A Map instead keeps its required entries Struct, non-null key and sortedness; a referenced entries component carries only reference metadata, and reload uses the same occurrence resolver.
 
-The writer compacts resolved references again, keeping each canonical definition in one document; references to `altids` resolve against the registry-owned builtin rather than against the `groups/altids.json` a write leaves beside them. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors; independent occurrence metadata overrides are refused, and canonical updates refresh references atomically.
+The writer compacts resolved references again, keeping each canonical definition in one document; a reference carries its target's `fix:tag` beside the name, so a reader resolves it by the identity the pair makes, and references to `identifiers` resolve against the registry-owned builtin rather than against the `groups/identifiers.json` a write leaves beside them. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors; independent occurrence metadata overrides are refused, and canonical updates refresh references atomically.
 
 Identifier declarations normalize through the [component setter](registry.md#component-identifiers) after these references resolve, so stored aliases or decimal tags become canonical direct member names in final component order. A malformed or ambiguous declaration fails the complete load rather than losing a selection silently.
 
@@ -231,11 +233,13 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 11,279,714 bytes - a fifth more than the 9,294,090 the same facts took while every code set was one escaped line, which is what writing them as the JSON they are costs and what makes the tree readable. It states no crate tag - the generator writes the specification's own fields and nothing else - so loading it adds the 34 crate scalars, the `altids` group and the `instids` component, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,275 scalar fields, 581 groups, 929 components and 181 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 31 registered scalars and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,272 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
 
-It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
+Beside those 1,573 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
-Thirty-eight fields are ones FIX has since removed, [kept under their own tags](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all; 29 carry [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived), one term each, and the crate's three derived columns declare theirs in Rust. No document states a `fix:branches` and no document stores the derived `FixId`.
+It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and 109 components declare their matching direct [identifiers](registry.md#component-identifiers), the property omitted where none match.
+
+Fifty-six fields are ones FIX Latest has since removed, [kept under their own tags](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version) and marked `fix:deprecated` with the version that removed them; 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all; 29 carry [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived), one term each, and the crate's six derived columns declare theirs in Rust. No document states a `fix:branches` and no document stores the derived `FixId`.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
@@ -243,7 +247,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{fix_crate_fields, FixCategory, FixId, FixRegistry, FieldPath};
+    use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
@@ -264,12 +268,15 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // field names a dialect that contributed it.
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
-    // The crate's own definitions are in the store and in the registry alike.
-    assert_eq!(fix_crate_fields()?.len(), 36);
-    assert_eq!(registry.len(), 6_275);
-    assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
-    assert_eq!(registry.msgtypes().count(), 181);
+    // The crate's own definitions are in the store and in the registry alike:
+    // 32 scalar fields and two Map groups, `parentuuids` being a column of
+    // the fixed row that no registry indexes.
+    assert_eq!(fix_crate_fields()?.len(), 34);
+    let scalars = registry.iter().filter(|field| !field.dtype().is_nested()).count();
+    assert_eq!(scalars, 6_272);
+    assert_eq!(registry.len(), 7_782, "the scalars, the components and the groups");
+    assert_eq!(registry.field_by_counter(65_020)?.name(), "identifiers");
+    assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     ```
 
 === "Python"
@@ -360,13 +367,14 @@ python scripts/generate_fix_dictionary.py --check
 
 - A missing category contributes no persisted definitions; a missing root still answers the builtins and the seeded standard clocks, and creates nothing.
 - A stored `SendingTime(52)` or `TransactTime(60)` is never replaced by the seed, and two stored documents declaring one of them fail the load like any duplicate identity.
+- A stored `components/fixmsg.json`, and any document on a crate tag, is read past: the crate's own definition is the one that types a row, so a dump an older version wrote can never change what a reader builds.
 - Two documents declaring one identity - the same tag under the same folded name - or one named declaration twice fail instead of replacing an earlier source record; the same tag under another name is a second field beside the holder, as in memory.
 - Scalar arrays and individual named documents have distinct shapes; loading the wrong shape names the document.
 - Wrong shard, category datatype, counter type, or reference target is refused before a registry is returned.
 - Canonical definition names must form safe single path segments: nonempty ASCII letters, digits, underscore, hyphen, or dot, and never `.` or `..`.
 - A directory inside a category is not a store's layout: what it holds is passed over on read and left alone by publication, so nothing is read as a dialect's own shard.
-- A `README` beside the field shards is ignored on read and left alone by publication; only `<n>.json` with a decimal `n` is read.
-- Builtin scalar, Map group and Struct definitions are written like any other, and read past on load in favour of their native owner; an incoming document cannot override a builtin, by restating its name under another tag or by restating the builtin itself.
+- A `README` beside the field shards is ignored on read and left alone by publication; only a decimal `<n>.json` is read, whatever width it was written at.
+- Builtin scalar and Map group definitions are written like any other, and read past on load in favour of their native owner; an incoming document cannot override a builtin, by restating its name under another tag or by restating the builtin itself.
 - A `fix:branches` value is held to the membership grammar: a name that is empty or carries a comma is refused naming the key.
 - Removing the last definition from a shard or category removes its owned document or directory on the next write.
 - Folder writes publish individual documents; a backend failure can leave already published files visible.
@@ -422,7 +430,7 @@ Different processes and sample counts make these observed boundary costs, not a 
 | Content hash | 3.02 us | 365,490 ops/s |
 | Independent copy | 2.00 us | 177,936 ops/s |
 
-The small boundary fixture adds two fields plus one component, group and message beside the builtins. It is intentionally distinct from the full-seed Rust snapshot fixture; the displayed measurements predate identifier declarations and the `altids` group and were not rerun for this change.
+The small boundary fixture adds two fields plus one component, group and message beside the builtins. It is intentionally distinct from the full-seed Rust snapshot fixture; the displayed measurements predate the crate's own definitions becoming what they are now and were not rerun for this change.
 
 Root navigation is asserted with `Counted`: loading resolves the three category roots (`child_by_path=3`); writing a one-shard catalog resolves those three paths plus its shard (`child_by_path=4`). These counts cover the root handle only; document reads/writes occur on child handles and are outside that tally.
 

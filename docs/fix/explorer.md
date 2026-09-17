@@ -14,44 +14,46 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A List group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `altids` Map group instead owns tag and counter 65020 together, with no scalar counter column.
+A List group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `identifiers` and `metadata` Map groups instead own tag and counter together - 65020 and 65049 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,275 |
-| Groups | 580 | 581 |
-| Components, including messages | 928 | 929 |
+| Scalar fields | 6,241 | 6,272 |
+| Groups | 580 | 582 |
+| Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 
-The live additions are the crate's 34 scalar fields, the `altids` group and the `instids` component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 120 columns.
+The live additions are the crate's 31 registered scalar fields and its two Map groups; `parentuuids` is a column of the fixed row that no registry indexes, and the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 118 columns.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, UPDATEDAT_TAG_NAME};
+    use yggdryl::{DataType, FixId, FixRegistry, UNIX_TAG_NAME};
     use yggdryl::holder::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_275);
+    // Every category is in the one length: the scalars, the components and
+    // the groups.
+    assert_eq!(registry.len(), 7_782);
+    assert_eq!(registry.iter().filter(|field| !field.dtype().is_nested()).count(), 6_272);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
-    let parties = registry.definition(FixCategory::Groups, "parties")?;
+    let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let altids = registry.group_by_tag(65_020)?;
-    assert_eq!(altids.name(), "altids");
-    assert_eq!(altids.as_fix().tag()?, Some(65_020));
-    assert_eq!(altids.as_fix().counter()?, Some(65_020));
-    assert!(matches!(altids.dtype(), DataType::Map(map) if map.keys_sorted()));
+    let identifiers = registry.field_by_counter(65_020)?;
+    assert_eq!(identifiers.name(), "identifiers");
+    assert_eq!(identifiers.as_fix().tag()?, Some(65_020));
+    assert!(matches!(identifiers.dtype(), DataType::Map(map) if map.keys_sorted()));
     assert!(registry.get_field_by_tag(65_020).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
-    // The crate's own columns are fields from tag 65001, held by every registry;
+    // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together.
-    let (tag, name) = UPDATEDAT_TAG_NAME;
-    let updatedat = registry.field_by_id(FixId::of(tag, name)?)?;
-    assert_eq!(updatedat.name(), "updatedat");
-    assert_eq!(updatedat.display(), Some("UpdatedAt"));
-    assert_eq!(updatedat.as_fix().id()?, Some(FixId::of(65_003, "UpdatedAt")?));
+    let (tag, name) = UNIX_TAG_NAME;
+    let unix = registry.field_by_id(FixId::of(tag, name)?)?;
+    assert_eq!(unix.name(), "unix");
+    assert_eq!(unix.display(), Some("Unix"));
+    assert_eq!(unix.as_fix().id()?, Some(FixId::of(65_003, "Unix")?));
     ```
 
 === "Python"
@@ -122,11 +124,11 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes and `fix:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `fix:tag` beside their scalar `fix:counter`; the built-in `altids` Map uses its own reserved tag as its counter, and its entries Field is displayed directly from the native document. Search `altids` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
+Codes and `fix:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `fix:tag` beside their scalar `fix:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 112 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
+The [Capture](capture.md#find-a-column) page searches the 118 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
 
 ## Where it came from
 
@@ -140,7 +142,7 @@ This section displays the pinned source documents and needs JavaScript.
 - Search is case-insensitive text filtering. Exact registry resolution - a tag's canonical holder before an alternate, a canonical name before an alias, an id exact - remains native API behavior.
 - Stored references are displayed without expanding them in the browser. Native sample schemas show the codec's resolved result.
 - Input and emitted sample bytes are displayed with visible escapes. **Copy displayed text** copies that representation.
-- Every typed value, digest, facet and anomaly shown for a sample comes from the generated native result.
+- Every typed value and digest shown for a sample comes from the generated native result.
 
 ## Commands
 

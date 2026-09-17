@@ -8,9 +8,9 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | the crate's own clocks and identities, standard header, the fields a consumer reads, three List groups, the trailer, the crate's other scalar fields with the `altids` Map group and the `instids` Struct, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 116 tags from `fix_schema_tags`, 120 columns with the shipped registry, each List group adding its column beside its counter |
-| Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
-| Non-null | `beginstring`, `sendingtime`, `updatedat`, `msghash`, `msgphash`, `createdat`, `code`; `snapshotat` is held by the replay bundle but nullable, because only a snapshot stamps it, and `version` is populated at construction while its column remains nullable |
+| Shape | the crate's own clocks, then its identities, then its other columns with the `identifiers` and `metadata` Map groups; the standard header, the fields a consumer reads, three List groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 114 tags from `fix_schema_tags`, 118 columns with the shipped registry, each List group adding its column beside its counter |
+| Identifiers | a parse fills the nullable, sorted `identifiers` Map from the message component's direct [`fix:identifiers`](registry.md#component-identifiers), each under its canonical field name; a stated map is preserved |
+| Non-null | `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - the instants the identity is settled against and the identity it settles to; every other column is nullable, `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `fixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a [JSON document](#a-json-document-is-one-message-stating-nothing) yields exactly one, named `unknown`, whatever the document names |
@@ -42,13 +42,18 @@ One line in, one row per message out, with the columns named as the dictionary n
     let at = schema.index_of("msgtype").expect("the msgtype column");
     assert_eq!(held[at].as_str(), Some("D"));
 
-    // The last column is every pair that arrived; a key no dictionary
-    // explains is an entry of tag 0 under its raw key.
+    // The last column is the content the message states, as entries; the
+    // typed facts - the version, the type, the side - are columns of their
+    // own, and a key no dictionary explains is an entry of tag 0 under its
+    // own spelling.
     let entries = held.last().and_then(Scalar::as_sequence).expect("the arrival record");
-    assert_eq!(entries.len(), 7);
+    assert_eq!(entries.len(), 5);
+    let names: Vec<&str> = order.entries().iter().map(yggdryl::FixEntry::name).collect();
+    assert_eq!(names, ["symbol", "price", "9999", "checksum", "timeinforce"]);
     let unresolved: Vec<_> = order.entries().iter().filter(|entry| entry.tag() == 0).collect();
     assert_eq!(unresolved.len(), 1);
-    assert_eq!(unresolved[0].key().as_str(), Some("9999"));
+    assert_eq!(unresolved[0].name(), "9999");
+    assert_eq!(held[schema.index_of("side").expect("the side column")].as_str(), Some("BUY"));
     ```
 
 === "Python"
@@ -109,7 +114,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## A reader is the whole parse surface
 
-The verb is `parse`, and no reader takes a flag: what happens to a message once it is built - [filling](#what-a-message-implied-is-filled-in), [restating](message.md#restated-under-the-dictionary), [stamping](lifecycle.md) - is a call over the stream, never an argument to the parse.
+The verb is `parse`, and no reader takes a flag. A parse builds the whole message - the [typed facts](message.md#typed-tags) lifted out of the pairs that state them, a nested `XmlData` row exploded into it, the row [restated under the dictionary](message.md#restated-under-the-dictionary), [what it implies filled in](#what-a-message-implied-is-filled-in), the identifiers and the order's lanes, the identity settled - and what happens to a message once it is built, [chaining](lifecycle.md) it to the others of its order, is a call over the stream, never an argument to the parse.
 
 | Reader | Takes | Answers |
 | --- | --- | --- |
@@ -144,8 +149,9 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?.as_f64(), Some(41.25));
     // The packed members became three real fields under one nesting.
-    let party = held.party("1").expect("the buy-side party");
-    assert_eq!(party.id().and_then(yggdryl::Scalar::as_str), Some("BUYSIDE"));
+    let party = yggdryl::FieldPath::from_str("Parties[0].PartyID")?;
+    assert_eq!(held.by_path(&party)?.as_str(), Some("BUYSIDE"));
+    assert_eq!(held.by_tag(453)?.as_i128(), Some(1));
 
     let lines: [&[u8]; 4] = [
         b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
@@ -272,7 +278,8 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     // Named `unknown`, with nothing the document said in it.
     assert_eq!(message.as_field().name(), "unknown");
     assert!(message.entries().is_empty());
-    assert!(message.into_bytes(b'|').is_empty());
+    // Nothing but the version it was read at: no type, nobody sending it.
+    assert_eq!(message.into_text('|')?, "8=FIX.4.4|");
     assert_eq!(message.get_by_tag(35), None);
     assert_eq!(message.get_by_tag(49), None);
     // The prose in front of it is the row's, read as ever.
@@ -330,7 +337,6 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 - A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state - each stays whole under its own name, the count beside them, and none lands in the dictionary's group. A marked group goes only whole: a marked count restating the bare one beside occurrences the bare group never numbered stays with them, and only a marked group restating the bare group pair for pair goes. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
 - A row's message type resolves the way every key does, in the one namespace: a name reaches the message of that name, and a bare code the message tag 35's code set names, else the first in name order. A bridge row calling itself `tradecapturereport` reads against the message of that name, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
-- The `version` a row was read at decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable as an alias beside that name.
 
 ## The columns are the folded names
 
@@ -338,7 +344,23 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 
 The tag is still the identity. Each column carries its field's `fix:tag`, its `display` and its code set, and the row is [filled by that tag](#a-column-is-filled-by-the-tag-its-field-carries) rather than by the spelling, so a venue that renames a field between versions changes nothing about where its value lands. `fix_schema_tags` is the same row as tags, in the same order.
 
-A List group column carries `fix:counter` beside the `fix:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences. The built-in `altids` Map instead carries tag and counter 65020 on one group column, with no scalar count field; the Map's entries already determine its cardinality.
+The order is nine bands, and each answers one question a reader has, so a row reads left to right the way a person asks about a message rather than in the order a dictionary happens to file its fields:
+
+| Band | Columns |
+| --- | --- |
+| when it happened | `unix`, `creatunix`, `prevunix`, `expirunix`, `snapunix`, `recordedat`, then `SendingTime`, `OrigSendingTime`, `TransactTime`, `SettlDate`, `TradeDate`, `ExpireTime` |
+| which event it is | `curruuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `prevuuid`, `seqnum`, `parentuuids`, `identifiers` |
+| which message and session carried it | `BeginString`, `MsgType`, `MsgSeqNum`, `SenderCompID`, `TargetCompID`, `PossDupFlag`, `MsgDirection`, `sourceurl`, `pluginid`, `msgctxid`, `msgsessionid` |
+| which instrument | `Symbol`, `SecurityID`, `SecurityIDSource`, `SecurityType`, `SecuritySubType`, `SecurityExchange`, `CFICode`, `MaturityDate`, `Product`, `isincode`, `cusipcode`, `sedolcode`, `bloombergcode`, `miccode` |
+| which order | `Account`, `ClOrdID`, `OrigClOrdID`, `SecondaryClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `TradeID`, `QuoteReqID`, `QuoteID`, `QuoteRespID` |
+| what values it states | `Side`, `px`, `qty`, `unit`, `Currency`, `Price`, `OrderQty`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `OrdType`, `Quantity`, `QtyType`, `SettlCurrency`, then the bid lane, then the ask lane |
+| how it went | `state`, `OrdStatus`, `ExecType`, `QuoteStatus`, `QuoteResponseLevel`, `QuoteEntryRejectReason`, `OrdRejReason`, `CxlRejReason`, `Text` |
+| what it carried whole | the three repeating groups, each beside its counter: `Parties`, `SecAltIDGrp`, `TrdRegTimestamps` |
+| everything else | the standard header, body and trailer fields no band above claims, then `metadata`, then the arrival record under the `nofixentries` that counts it |
+
+`cargo run --example fix_schema --features arrow` prints that row as the Arrow batch schema a consumer reads, one column a line: its tag, its name, its Arrow type, and whether it is required.
+
+A List group column carries `fix:counter` beside the `fix:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences. The crate's `identifiers` and `metadata` Maps instead carry tag and counter on one group column each, 65020 and 65049, with no scalar count field; a Map's entries already determine its cardinality.
 
 === "Rust"
 
@@ -353,12 +375,14 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
     // The crate's own lead the row - a table is read by time and joined by
     // identity - and the protocol's own follow them.
-    assert_eq!(&columns[..3], ["updatedat", "prevupdatedat", "createdat"]);
-    let header = schema.index_of("beginstring").expect("the header opens");
-    assert_eq!(&columns[header..header + 3], ["beginstring", "bodylength", "msgtype"]);
+    assert_eq!(&columns[..3], ["unix", "creatunix", "prevunix"]);
+    // The band that says which message and session carried it, in its order.
+    let header = schema.index_of("beginstring").expect("the band opens");
+    assert_eq!(&columns[header..header + 3], ["beginstring", "msgtype", "msgseqnum"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 116);
-    assert_eq!(&fix_schema_tags()[header..header + 3], [8, 9, 35]);
+    assert_eq!(fix_schema_tags().len(), 114);
+    assert_eq!(columns.len(), 118);
+    assert_eq!(&fix_schema_tags()[header..header + 3], [8, 35, 34]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     let held = schema.get_field_by_path("msgtype").expect("the msgtype column");
@@ -366,6 +390,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     assert_eq!(held.as_fix().tag()?, Some(35));
     // The tag rides on the column, so a tag still finds it. Rust only.
     assert_eq!(fix_column_of(&schema, 35), schema.index_of("msgtype"));
+    // A field no band claims is still a column, further along.
+    assert!(schema.index_of("bodylength").is_some_and(|at| at > header));
     ```
 
 === "Python"
@@ -421,138 +447,128 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 
 One record closes every row.
 
-`fixentries` is the whole arrival record: every pair the reader read as sent - a stated absence and a bridge's marked restatement of a bare pair are read as never sent, as the [edges](#edges) above state - in arrival order and a group's members riding under the counter pair that heads them. It is a list of `fixentry` structs, each carrying five members: `tagnum` the tag its key resolved to, `tagname` the dictionary's name for that tag, `tagvalue` and `tagkey` the value and the key exactly as they arrived, and `fixentries` what arrived under it. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
+`fixentries` is the message's content as [entries](message.md): every field the message states beyond its [typed facts](message.md#typed-tags), in the row's order, a group's occurrences and a component's members riding under the entry that heads them. It is a list of `fixentry` structs, each carrying four members: `tag` the tag its key resolved to, `name` the dictionary's name for that tag, `value` the value as the wire spells it, and `fixentries` what is nested under it. It is what makes a row lossless whatever the fixed columns made of it: the fixed columns are a *reading* of the message and the entries are the message's content, so [`from_row`](message.md#a-row-is-a-message-again) rebuilds the content from them and never from the columns, and the wire is re-emitted from the typed facts and the entries together.
 
 | Member | Type | Holds |
 | --- | --- | --- |
-| `tagnum` | `int32` | the canonical tag the key resolved to, `0` where none did |
-| `tagname` | `utf8` **not null** | the dictionary's name for that tag; the arrival key itself where no dictionary explains it; `UNNAMED_ENTRY` (`yggdryl:unnamed`) where the arrival carried no key at all |
-| `tagvalue` | `utf8` | the value exactly as it arrived |
-| `tagkey` | `utf8` | the key exactly as it arrived |
-| `fixentries` | `list<fixentry>`, `utf8` at the leaf | what arrived under it; the folded JSON at the third level, null where nothing folded |
+| `tag` | `int32` **not null** | the canonical tag the key resolved to, `0` where none did |
+| `name` | `utf8` **not null** | the dictionary's canonical name for that tag; the key exactly as it arrived where no dictionary explains it |
+| `value` | `utf8` | the value as the wire spells it; null for an entry that only heads others - a group's occurrence, a component |
+| `fixentries` | `list<fixentry>`, `utf8` at the leaf | what is nested under it; the folded JSON at the third level, null where nothing folded |
 
-`tagkey` and `tagvalue` are the arrival and `tagnum` and `tagname` are what a dictionary made of it, resolved once at parse. Keeping the arrival key is what keeps re-emission byte for byte: a venue that wrote `Side=1` wrote `Side`, and a row spelling only the canonical `side` would rebuild a line nobody sent. `tagname` is the one member that cannot be null, because its job is to be the column a consumer groups and filters a wire name by without resolving every tag against a dictionary of its own - so it falls back to a name rather than to nothing.
+`name` is the one member a consumer groups and filters a wire name by without resolving every tag against a dictionary of its own - so it falls back to the key rather than to nothing. A key no dictionary explains is in the same record, with tag 0 beside its exact spelling and value: an unresolved name and an unresolved numeric wire key alike, while a resolved key keeps its positive canonical tag. Tag 0 is provenance and never a registry identity: `fix:tag`, `fix:tags`, `fix:counter` and `FixId::of` take positive tags only. So a venue onboarding a new field finds it by filtering one column for tag 0. The column materializes three `fixentry` levels and folds anything deeper into a canonical JSON leaf, which `from_row` validates and reads back; a level that folded nothing holds null there, which is what tells it from one that folded an empty subtree.
 
-An entry says what arrived and only that. A key and a value are ranges of the line the message was read from, so an entry never carries a key that appears nowhere in that line: a bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is recorded as the pair the bridge wrote, and the members read out of it fill `parties[0].partyid` and its siblings in the row. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `fix:branches` in the registry.
-
-A key no dictionary explains is in the same record, with tag 0 beside its exact raw key, value, order and children - and `tagname` spelling that raw key rather than nothing: an unresolved name, an unresolved numeric wire key and an occurrence key - indexed or packed, which names no field - alike, while a resolved scalar or group key keeps its positive canonical tag. Tag 0 is arrival provenance and never a registry identity: `fix:tag`, `fix:tags`, `fix:counter` and `FixId::of` take positive tags only. So a venue onboarding a new field finds it by filtering one column for tag 0. The column materializes three `fixentry` levels and folds anything deeper into a canonical JSON leaf, which [`from_row`](message.md#a-row-is-a-message-again) validates and reads back; a level that folded nothing holds null there, which is what tells it from one that folded an empty subtree.
+An entry says what the message states and only that. A bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is read into the members of the occurrence it names, so the record holds the occurrence under its counter's entry as it holds one a numeric frame spelled member by member. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `fix:branches` in the registry.
 
 ## The crate's own columns
 
-Thirty-four scalar fields, one Map group and one Struct carry capture facts that no dictionary publishes. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 36 in tag order, while scalar registry iteration counts the 34 scalars. Their tags run from 65001 - `CRATE_TAG_MIN` (65000) starts the reserved block, whose retired slots 65000, 65004 and 65016 are not reused - `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `altids` is a group reached by `group_by_tag(65020)` or group definition name, and `instids` a component reached by definition name, not by the registry's scalar-field doors.
+Thirty-two scalar fields and two Map groups carry the facts no dictionary publishes: what the [event](../graph.md) a message is states, and what the capture stated about its line. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 34 in tag order. Their tags run from 65003 - `CRATE_TAG_MIN` (65000) starts the reserved block, and its retired slots are never reused - `UNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `identifiers` and `metadata` are groups reached by `field_by_counter(65020)` and `field_by_counter(65049)` or by name, never by the scalar-field doors; `parentuuids` is a column of the row that no registry lists, because a List of identities is neither a scalar the registry indexes nor a group it defines. On a message every one of them is a [typed fact](message.md#typed-tags): held by the event or the capture, reached by its tag, and never in the content row.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
-| `version` | `Version` | 65001 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
-| `symbolticker` | `SymbolTicker` | 65002 | one instrument symbol that is the same across venues |
-| `updatedat` | `UpdatedAt` | 65003 | the settled message instant: `snapshotat` at intake, truncated to the snapshot grid by the [lifecycle](lifecycle.md); non-null |
-| `parentclordid` | `ParentClOrdID` | 65005 | the client order identifier this order descends from |
-| `parentorderid` | `ParentOrderID` | 65006 | the venue order identifier this order descends from |
-| `sendersessionid` | `SenderSessionId` | 65007 | the session the message came from, as the message states it: a bridge row's `SESSIONID` reaches it by alias, and the instance a bracket names is `bridgesessionid` instead |
-| `msgctxid` | `MsgCtxId` | 65008 | the message context a bridge handled the message in, from its log's bracket |
-| `pluginid` | `PluginId` | 65009 | the plugin that logged the line, as a bridge names it: a row's own `pluginid` capture or column fills it, and it selects nothing - no dictionary, no version |
-| `prevpluginid` | `PrevPluginId` | 65010 | the plugin a message came through before the one that logged it, as a bridge names it; only ever a capture of that name, never derived |
-| `sendersessionname` | `SenderSessionName` | 65011 | the name of the session the message came from: a bridge row's `ULFROMSESSIONNAME`, else the session that logged a line it sent |
-| `targetsessionname` | `TargetSessionName` | 65012 | the name of the session the message went to: a bridge row's `ULTOSESSIONNAME`, else the session that logged a line it received |
-| `isincode` | `ISINCode` | 65013 | the instrument's ISIN, as an [`isin`](../types/codes.md): `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
+| `unix` | `Unix` | 65003 | when the message happened, a nanosecond UTC clock: a stated `unix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`; non-null |
+| `msgctxid` | `MsgCtxId` | 65008 | the message context a bridge handled the message in, from its log's bracket; a capture fact |
+| `pluginid` | `PluginId` | 65009 | the plugin that logged the line, as a bridge names it: a row's own `pluginid` capture or column fills it, and it selects nothing - no dictionary, no version; a capture fact |
+| `isincode` | `ISINCode` | 65013 | the instrument's ISIN, as an [`isin`](../types/codes.md): `SecurityID(48)` where `SecurityIDSource(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDSource(456)` does |
 | `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
-| `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
-| `msghash` | `MsgHash` | 65017 | the message's identity, `fixedbinary(16)`: signed `updatedat` nanoseconds with the sign bit flipped in bytes 0..8, then all 64 bits of the XXH64 of its named content in bytes 8..16; non-null |
-| `msgphash` | `MsgPHash` | 65018 | the chain's identity, `fixedbinary(16)`: the big-endian XXH3-128 of `code` alone; non-null |
-| `targetsessionid` | `TargetSessionId` | 65019 | the session the message went to, as the message itself states it |
-| `altids` | `AltIds` | 65020 | a nullable sorted Map of this message's direct declared identifiers, keyed by canonical member name; group members are not flattened |
-| `prevupdatedat` | `PrevUpdatedAt` | 65021 | the previous message's `updatedat` in the selected chain; nullable |
-| `prevmsghash` | `PrevMsgHash` | 65022 | the previous message's `msghash` in the selected chain, `fixedbinary(16)`; nullable |
-| `createdat` | `CreatedAt` | 65023 | the creation instant: `snapshotat` at intake, the first accepted message's in a live chain; non-null |
-| `code` | `Code` | 65024 | the exact chain name, empty when unknown; non-null |
-| `snapshotat` | `SnapshotAt` | 65025 | the instant a reading of this chain was taken at, ungridded: `FixLifecycle::snapshot` stamps it and nothing else does, so it is empty on every row that is not a snapshot |
-| `sourceurl` | `SourceUrl` | 65026 | the object the line was read from, typed as a `url`: filled from the text read's own `sourceurl` column, and left out of the content `msghash` hashes, because the same message read from a second copy of one day's log is the same message |
-| `nofixentries` | `NoFixEntries` | 65027 | the counter of the `fixentries` arrival record, read off the record rather than derived; left out of the content `msghash` hashes, as the record it counts is |
-| `recordedat` | `RecordedAt` | 65028 | when the capture wrote the line down, which is a fact about the capture and so is outside the content `msghash` hashes |
-| `expiredat` | `ExpiredAt` | 65029 | when the order stops being live, from what the message said about its own expiry |
-| `bidcurrency` | `BidCurrency` | 65030 | the currency the bid lane is denominated in: the message's own `Currency(15)`, else `SettlCurrency(120)` |
-| `offercurrency` | `OfferCurrency` | 65031 | the same for the offer lane |
-| `bridgesessionid` | `BridgeSessionId` | 65032 | the session *instance* a bridge handled the line on, as its own row header brackets it - never what the message states about itself, because the joined names below must be the same string on every leg of one message |
+| `state` | `State` | 65015 | where the order stands, as a `state`: `OrdStatus(39)`, else `ExecType(150)`; `00UNKNOWN` where neither is stated, which the column holds as null |
+| `hashcode` | `HashCode` | 65017 | the code the message's content digests to, `uint64`: the XXH3-64 of what the message states - the event's facts, the text, the metadata, the header fields it stated, then the [entry tree](#nothing-is-lost-at-the-end), never the row's columns; non-null |
+| `crosshashcode` | `CrossHashCode` | 65018 | the XXH3-64 of `crosscode`, zero where the message names none; non-null |
+| `identifiers` | `Identifiers` | 65020 | a nullable sorted Map of the names the message goes by, each under the canonical name of the [declared identifier](registry.md#component-identifiers) that stated it; group members are not flattened |
+| `prevunix` | `PrevUnix` | 65021 | when the message this one follows happened; stamped by the [lifecycle](lifecycle.md), nullable |
+| `prevuuid` | `PrevUuid` | 65022 | the identity of the message this one follows; stamped by the lifecycle, nullable |
+| `creatunix` | `CreatUnix` | 65023 | when the message was created: a stated one, else `OrigSendingTime(122)`, else `unix`; the earliest its chain knows once walked; non-null |
+| `snapunix` | `SnapUnix` | 65025 | the opening instant of the grid step a [walk](lifecycle.md#snapshots-are-a-grid) read the message as the snapshot of; nullable, and empty on every row no grid read |
+| `sourceurl` | `SourceUrl` | 65026 | the object the line was read from, typed as a `url`: filled from the text read's own `sourceurl` column; a capture fact, outside the `hashcode`, because the same message read from a second copy of one day's log is the same message |
+| `nofixentries` | `NoFixEntries` | 65027 | the counter of the `fixentries` record, read off the record rather than derived; outside the `hashcode`, as the record it counts is |
+| `recordedat` | `RecordedAt` | 65028 | when the capture wrote the line down; a capture fact, outside the `hashcode` |
+| `expirunix` | `ExpirUnix` | 65029 | when the message stops being good, from what it said about its own expiry; nullable |
+| `bidcurrency` | `BidCurrency` | 65030 | the currency the bid lane is quoted in, where the lane states one |
+| `askcurrency` | `AskCurrency` | 65031 | the same for the ask lane |
+| `msgsessionid` | `MsgSessionId` | 65032 | the session *instance* a bridge handled the line on, as its own row header brackets it - never what the message states about itself; a capture fact |
 | `bloombergcode` | `BloombergCode` | 65033 | the instrument's Bloomberg identifier, as a `bloomberg`: the message's own, else a `SecurityID(48)` or `SecurityAltID(455)` whose source is Bloomberg (`A`) or FIGI (`S`) |
 | `cusipcode` | `CUSIPCode` | 65034 | the instrument's CUSIP, as a `cusip`, read the same way from source `1` |
 | `sedolcode` | `SEDOLCode` | 65035 | the instrument's SEDOL, as a `sedol`, read the same way from source `2` |
-| `instids` | `InstIds` | 65036 | every identifier the instrument is known by as one Struct - `cficode`, `isincode`, `bloombergcode`, `cusipcode`, `sedolcode` - filled from the columns beside it; null where the message names the instrument in no way at all |
-| `sessionmsgid` | `SessionMsgId` | 65037 | `bridgesessionid` and `msgctxid` joined by a colon, which is what the legs of one routed message share; null where either part is missing |
-| `sessionmsgseqid` | `SessionMsgSeqId` | 65038 | the same with `MsgSeqNum(34)` appended, which names one occurrence and matches exactly |
+| `curruuid` | `CurrUuid` | 65039 | the message's identity, a `uuid`: the UUIDv7 its `unix` and `hashcode` derive; non-null |
+| `crossuuid` | `CrossUuid` | 65040 | the identity every message of one lifecycle shares, a `uuid`: the UUIDv8 of `crosshashcode`, or the message's own `curruuid` where it names no cross code; non-null |
+| `parentuuids` | `ParentUuids` | 65041 | the identities of the messages this one descends from, a `list<uuid>` in the order it states them; the lifecycle adopts each predecessor; nullable |
+| `seqnum` | `SeqNum` | 65042 | the message's place in its chain, `uint64`: how many came before it; null where none did |
+| `px` | `Px` | 65043 | the price the message states, `decimal128(38, 18)`: `Price(44)`, else `LastPx(31)`, else `AvgPx(6)`, else `StopPx(99)` |
+| `qty` | `Qty` | 65044 | the quantity the message states, `decimal128(38, 18)`: `OrderQty(38)`, else `LastQty(32)`, else `CumQty(14)`, else `LeavesQty(151)` |
+| `unit` | `Unit` | 65045 | the unit the quantity is counted in: `UnitOfMeasure(996)` |
+| `bidunit` | `BidUnit` | 65046 | the unit the bid lane's size is counted in, where the lane states one |
+| `askunit` | `AskUnit` | 65047 | the same for the ask lane |
+| `crosscode` | `CrossCode` | 65048 | the identifier every message of one lifecycle shares, as the message spells it: the first stated of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`; empty where none |
+| `metadata` | `Metadata` | 65049 | a nullable sorted Map of what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym`, `ullink.instrumentid` - each under the key as the bridge spelled it, folded |
 
-The three identity columns - `msghash`, `msgphash`, `prevmsghash` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice.
+The instrument is FIX's own: the currency is `Currency(15)`, the side `Side(54)`, the classification `CFICode(461)`, and the lanes' prices and sizes `BidPx(132)`, `OfferPx(133)`, `BidSize(134)` and `OfferSize(135)`, each a column of the fixed row under its own tag and a [typed fact](message.md#typed-tags) of the event; the crate names only what FIX does not.
 
-The instrument is not among them, and is not a column at all. The [lifecycle](lifecycle.md) digests what the message says the instrument is - its market, its classification, its ISIN else its symbol, and its currency - to scope the identifiers a chain hangs under, and spells those sixteen bytes as the thirty-two hex digits opening a generated `code`. Nothing stamps the digest into the row, and no message states one to scope itself by: 65016 carried it and is retired unreused.
+`hashcode` is the one stored content identity and `crossuuid` the chain's; what each digests, and why a projection that adds or renames columns leaves them alone, is the [message's identity](../hashing.md). `FixMsg::digest` is a separate contract: the XXH3-128 of what the wire emits, so two identical orders read with two separators digest equal, and [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops the second.
 
-`msghash` is the one stored message identity and `msgphash` the chain's; what each hashes, and why a projection that adds or renames columns may move `msghash` while unchanged named content keeps it, is the [message's identity](message.md#clocks-and-identity). `FixMsg::digest` is a separate contract: the XXH3-128 of the arrival record with the standard header, the standard trailer and the crate's own tags left out, `MsgType` excepted, so two identical orders sent a second apart, or relayed through two sessions, digest equal.
+The capture facts come from [row-header captures](arrow.md#a-bridge-log-names-what-it-fills) or columns of the read, without overwriting a value the message stated. The four identifier columns, `miccode`, `state`, `px`, `qty` and `unit` are derived as a message is built; `prevuuid`, `prevunix`, `seqnum`, `parentuuids` and the folded `creatunix` are stamped by the [lifecycle](lifecycle.md), and `snapunix` only where a grid read a snapshot. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
-Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. The four identifier columns, `miccode` and `state` are derived when a message becomes a row; `code`, `prevupdatedat`, `prevmsghash` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md), and `snapshotat` only where it takes a snapshot. `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
+There is no partition column. How a layout is cut is the target's to decide: an Iceberg table takes an `hour` transform over `unix` and reads the instant the row already carries, so a materialized copy of it was a second owner of one fact. A reader that wants the hour asks the target for it.
 
-There is no partition column. How a layout is cut is the target's to decide: an Iceberg table takes an `hour` transform over `updatedat` and reads the instant the row already carries, so a materialized copy of it was a second owner of one fact. A reader that wants the hour asks the target for it.
+### Every message is dated
 
-### Every message is dated and versioned
+These facts are settled when a message is built, whatever its line carried, and none of them becomes a pair on the wire unless the wire sent it.
 
-These columns are filled when a message is built, whatever its line carried, and none of them becomes an entry unless the wire sent it - so `into_bytes` still re-emits the wire byte for byte.
+`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.4.4`, the crate's own, filled by the builder so that every row states one: a bridge row, and the row a JSON document is, say which FIX they were read as exactly as a frame does. A codec pins none - a version is what a line said, never a caller's statement about a whole run - and the dictionary states none to lend: it holds every tag ever defined and filters by none.
 
-`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the crate's own 4.4. The dictionary states no version to lend: it holds every tag ever defined and filters by none. A codec pins none - a version is what a line or the transport around it said, never a caller's statement about a whole run. A bridge row, and the row a JSON document is, therefore say which FIX they were read as exactly as a frame does.
-
-`version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
-
-Six values close every message and are never null: `SendingTime(52)`, `updatedat`, `createdat`, `code`, `msghash` and `msgphash`. Initial intake settles them once. `SendingTime` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message; the event instant is a stated `snapshotat`, else `TransactTime(60)`, else that `SendingTime`; `updatedat` defaults to it, `createdat` to a stated one, else `OrigSendingTime(122)`, else it, and `code` to empty. `snapshotat` itself is the seventh column of the bundle and the one that is nullable: only `FixLifecycle::snapshot` stamps it, so a row that no snapshot was taken of leaves it empty and "is this row a snapshot" is answerable from the row. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - enrichment, writes, row exchange and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `updatedat()`, `createdat()`, `msghash()` and `msgphash()` borrow theirs without a lookup.
-
-The root's children are the standard header in its declared order, the body as it arrived, the standard trailer, then whichever of the bundle the message did not state. The fixed schema declares those six and `beginstring` non-null, and every other column - `snapshotat` among them - nullable. The crate's own definitions come first in the example, then two messages the codec dates.
+Six values close every message and are never null: `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and `crossuuid`. Initial intake settles the clocks once. `SendingTime(52)` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message - and only a stated one is a fact of the message, so only a stated one goes back on the wire and into the row's tag-52 column, which `FixHeader::stated_sendingtime` answers; `unix` is a stated `unix`, else `TransactTime(60)` stating a clock - a `TransactTime` stating only a day, as a bridge writes `20260814`, names no instant - else that `SendingTime`; `creatunix` is a stated one, else `OrigSendingTime(122)`, else `unix`, because a resend carries the instant the original was sent and that is when the message came into being. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - writes, row exchange, the lifecycle and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `header().sendingtime()` and the event's `get_unix()` and `get_creatunix()` answer them without a lookup, in nanoseconds since the epoch, and `by_tag(52)`, `by_tag(UNIX_TAG_NAME.0)` and `by_tag(CREATUNIX_TAG_NAME.0)` as the clocks their columns are.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
+    use yggdryl::graph::{Element, Event};
     use yggdryl::holder::local::Folder;
-    use yggdryl::{CODE_TAG_NAME, FixCodec, FixRegistry, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, fix_crate_fields};
+    use yggdryl::{CREATUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, UNIX_TAG_NAME, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 36);
+    assert_eq!(fields.len(), 34);
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
-    let ids = fields.iter().find(|field| field.name() == "instids").expect("the joined identifiers");
-    let members: Vec<&str> = ids.fields().iter().map(yggdryl::Field::name).collect();
-    assert_eq!(members, ["cficode", "isincode", "bloombergcode", "cusipcode", "sedolcode"]);
-
-    // The three identity columns are sixteen plain bytes, not a UUID.
-    let identity = yggdryl::DataType::fixed_size_binary(16)?;
-    for name in ["msghash", "msgphash", "prevmsghash"] {
-        let column = fields.iter().find(|field| field.name() == name).expect("a crate column");
-        assert_eq!(column.dtype(), &identity);
-        assert_eq!(column.dtype().to_string(), "fixed_size_binary(16)");
-    }
+    // The two identities are the crate's own uuid, the codes plain integers.
+    let by_name = |name: &str| fields.iter().find(|field| field.name() == name).expect("a crate column");
+    assert_eq!(by_name("curruuid").dtype(), &yggdryl::DataType::Uuid);
+    assert_eq!(by_name("crossuuid").dtype(), &yggdryl::DataType::Uuid);
+    assert_eq!(by_name("hashcode").dtype(), &yggdryl::DataType::UInt64);
+    assert_eq!(by_name("px").dtype().to_string(), "decimal128(38,18)");
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let default = Scalar::datetime64(1_704_190_530_000_000_000, TimeUnit::Nanosecond, Timezone::UTC)?;
     let reader = FixCodec::new(Arc::clone(&registry))
         .try_with_default_sending_time(Some(default.clone()))?;
-    // A frame stating neither its version nor a clock is still versioned - at
-    // the crate's own 4.4 - and dated by the codec's default sending time.
+    // A frame stating neither its version nor a clock still states a version
+    // - the crate's own 4.4 - and is dated by the codec's default sending time.
     let bare = reader.parse_line(b"35=D|55=AAPL|10=0|")?.next().expect("one frame")?;
+    assert_eq!(bare.header().beginstring(), "FIX.4.4");
     assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
-    assert_eq!(bare.version().map(|version| version.to_string()), Some("4.4".to_owned()));
-    assert_eq!(bare.by_tag(52)?, &default);
-    assert_eq!(bare.updatedat(), &default);
-    assert_eq!(bare.createdat(), &default);
-    assert_eq!(bare.by_tag(CODE_TAG_NAME.0)?.as_str(), Some(""));
-    // None of them became an entry, so the wire comes back byte for byte.
-    assert_eq!(bare.into_bytes(b'|'), b"35=D|55=AAPL|10=0|");
+    assert_eq!(bare.by_tag(52)?, default);
+    assert!(!bare.header().stated_sendingtime());
+    assert_eq!(bare.by_tag(UNIX_TAG_NAME.0)?, default);
+    assert_eq!(bare.by_tag(CREATUNIX_TAG_NAME.0)?, default);
+    assert_eq!(bare.get_unix(), 1_704_190_530_000_000_000);
+    assert_eq!(bare.get_curruuid(), bare.time_uuid()?);
+    // None of them became a pair on the wire: the header re-emits the
+    // version, and the content what the frame stated, a day order derived.
+    assert_eq!(bare.into_text('|')?, "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|");
 
-    // A frame stating its clocks keeps them: TransactTime is the event, and a
-    // read is not a snapshot, so that column stays empty.
+    // A frame stating its clocks keeps them: TransactTime is the event, and
+    // a stated SendingTime goes back on the wire.
     let sent = reader
         .parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|")?
         .next()
         .expect("one frame")?;
-    assert_eq!(sent.by_tag(8)?.as_str(), Some("FIX.4.2"));
+    assert_eq!(sent.header().beginstring(), "FIX.4.2");
+    assert!(sent.header().stated_sendingtime());
     assert_eq!(sent.by_tag(52)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
-    assert_eq!(sent.updatedat().temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_199_900));
-    assert_eq!(sent.createdat(), sent.updatedat());
-    assert!(sent.by_tag(SNAPSHOTAT_TAG_NAME.0)?.is_null());
+    assert_eq!(sent.get_unix(), 1_787_308_199_900_000_000);
+    assert_eq!(sent.get_creatunix(), Some(sent.get_unix()));
+    assert!(sent.get_snapunix().is_none(), "a read is not a snapshot");
+    assert!(sent.into_text('|')?.starts_with("8=FIX.4.2|35=D|52=20260821-10:30:00.415|"));
     ```
 
 === "Python"
@@ -662,11 +678,11 @@ The root's children are the standard header in its declared order, the body as i
 
 ## What a message implied is filled in
 
-A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, each from itself alone - the pass carries nothing from one message to the next; and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again. Those three are the whole of it: there is one enriching pass, and they are its doors.
+A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. A parse fills them: there is no `enrich` door, because a message a reader answers is a message already filled, and a second pass over it would be a second reading of one line.
 
-The pass is four steps on one message, and their order is the pass's own rather than something a caller composes. What the row's projection dropped comes back off the arrival record first. It then **restates** - the row [re-expressed under the dictionary](message.md#restated-under-the-dictionary) - because every derivation below reads by canonical name, and a child a session spelled under an alias is invisible until it has been canonicalized. It then **derives** what the message implies and did not state, from what its fields declare: every field carrying a [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived) is a column the pass fills, by evaluating that field's own term over the message, and the derivations are swept to a fixpoint. Then the component's identifier declaration fills the `altids` Map - in that order, because each may feed the next.
+The fill is part of building the message, and its steps are the parse's own rather than something a caller composes. The message is **restated** - the row [re-expressed under the dictionary](message.md#restated-under-the-dictionary) - because every derivation below reads by canonical name, and a child a session spelled under an alias is invisible until it has been canonicalized. It then **derives** what the message implies and did not state, from what its fields declare: every field carrying a [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived) is a column the parse fills, by evaluating that field's own term over the message, and the derivations are swept to a fixpoint. Then the message component's identifier declaration fills the [`identifiers`](#a-messages-direct-identifiers-fill-one-map) Map and the order's own facts fill its quote lanes - in that order, because each may feed the next.
 
-Completion writes nothing because a spelling is a way of asking rather than a thing to store. A consumer addressing `lastshares` finds the `lastqty` the message states: `get_by_name` resolves the spelling through the registry, which answers a field for any alias it holds. No alias twin is added as a second child, and the reason is not economy. Two of the forty-two shipped aliases are another field's canonical name - `quoteackstatus` is an alias of `QuoteStatus(297)` and the name of tag 1865, `tradetype` an alias of `BidTradeType(418)` and the name of tag 3006 - so a message stating both would hold two children of one name, and the root the pass builds would be refused whole. A twin could not cross the batch door either: [`fix_schema`](#the-columns-are-the-folded-names) names a column for a canonical field and for no alias, so `enrich_messages_arrow_reader` would discard on the way out what `enrich_messages` had just added, and the two doors would stop being one pass. And `get_by_tag` answers the earliest child on a tag, so where the twin was placed would silently decide what every column, every derivation, every lift and the lifecycle read.
+No alias twin is added as a second child, because a spelling is a way of asking rather than a thing to store: a consumer addressing `lastshares` finds the `lastqty` the message states, since `get_by_name` resolves the spelling through the registry, which answers a field for any alias it holds. Two of the forty-two shipped aliases are another field's canonical name - `quoteackstatus` is an alias of `QuoteStatus(297)` and the name of tag 1865, `tradetype` an alias of `BidTradeType(418)` and the name of tag 3006 - so a message stating both would hold two children of one name, and the root would be refused whole. A twin could not cross the batch door either: [`fix_schema`](#the-columns-are-the-folded-names) names a column for a canonical field and for no alias. And `get_by_tag` answers the earliest child on a tag, so where the twin was placed would silently decide what every column, every derivation and the lifecycle read.
 
 Three things hold whatever the derivation. Only the row is filled, never the entries, so `into_bytes` re-emits the wire byte for byte either way. A derivation answers only where the answer is certain: an absent input is a null the term answers null over, so an identifier no check digit closes, a CFI whose category several security types share and a security type outside every group the specification files answer nothing rather than a guess. And a stated value is never overwritten, which is what makes a second pass change nothing - a value derived once is a stated value the second time.
 
@@ -675,7 +691,7 @@ The rules are the registry's, not the crate's. Each is one term of the [expressi
 | Contract | Rule |
 | --- | --- |
 | Rule | `fix:derivation` on the target field: one term over the message's fields by their canonical folded names (`orderqty`, `cumqty`, `secaltidgrp`), a group reached by its name and a member of it through a path (`secaltidgrp[securityaltidsource = '4'][0].securityaltid`), the crate's own columns by theirs |
-| Compiled | once per registry, on the first enrichment or row fill, and kept until a field or a definition changes: every term parsed, every name it reads proven a field or a group of the registry, every term bound against the working schema; a name the dictionary lacks or a term that does not bind refuses at that first call, naming the field, never per message - and the refusal is kept as a compiled list is, so every door answers it, `enrich_message`, `enrich_messages`, `into_row` and the batch reader alike, and the registry compiles once until a field changes |
+| Compiled | once per registry, on the first parse or row fill, and kept until a field or a definition changes: every term parsed, every name it reads proven a field or a group of the registry, every term bound against the working schema; a name the dictionary lacks or a term that does not bind refuses at that first call, naming the field, never per message - and the refusal is kept as a compiled list is, so every door answers it, every `parse_*` reader, `into_row` and the batch reader alike, and the registry compiles once until a field changes |
 | Bound | once per registry, at compile, against the working schema: the ordered union of every column any derivation reads or fills, each typed by the registry's field for it, a group by its group definition; no term is bound against a message, so no shape is recognized and nothing is kept per shape - a stream of a million messages of a thousand shapes binds nothing |
 | Swept | in tag order over a working row gathered off the message by tag - a stated field as its value, a stated group laid out as the registry declares its occurrence, an absent column as null: a target the row holds non-null is skipped; else the term is evaluated, a null answer is silence, a non-null one is typed by the target's field exactly as `set` types a value - a value the field refuses is silence - and written where the next derivation reads it |
 | Fixpoint | sweeps repeat until one writes nothing, bounded by the number of derivations, so a chain settles in whatever order its fields fall: `securityid` from `isincode` and `isincode` from `securityid`, `product` after `securitytype` after `cficode`, `leavesqty` after `ordstatus` after `exectype` |
@@ -724,6 +740,7 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
     ```rust
     use std::sync::Arc;
+    use yggdryl::graph::Event;
     use yggdryl::holder::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Scalar};
 
@@ -732,21 +749,23 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
-    let held = reader.enrich_message(reader.parse_line(line)?.next().expect("one frame")?)?;
+    let held = reader.parse_line(line)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(22)?.as_str(), Some("4"));
     assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG_NAME.0)?.as_str(), Some("US0378331005"));
     assert_eq!(held.by_tag(470)?.as_str(), Some("US"));
     assert_eq!(held.by_tag(167)?.as_str(), Some("CS"));
-    assert_eq!(held.by_tag(460)?, &Scalar::from(5_i32));
+    assert_eq!(held.by_tag(460)?, Scalar::from(5_i32));
     assert_eq!(held.by_tag(yggdryl::MICCODE_TAG_NAME.0)?.as_str(), Some("XNAS"));
-    // A trade leaving nothing is filled, as the `state` column spells it.
-    assert_eq!(held.by_tag(39)?.as_str(), Some("80FILLED"));
+    // A trade leaving nothing is filled: FIX's own code in `OrdStatus`, and
+    // the crate's ranked state beside it.
+    assert_eq!(held.by_tag(39)?.as_str(), Some("2"));
+    assert_eq!(held.get_state().as_str(), "80FILLED");
     assert_eq!(held.by_tag(59)?.as_str(), Some("0"), "a day order");
 
-    // Only the row was filled: the wire comes back byte for byte.
-    assert_eq!(held.into_bytes(b'|'), line);
-    // And a second pass changes nothing.
-    assert_eq!(reader.enrich_message(held.clone())?, held);
+    // The wire carries what arrived and then what the message implied, so
+    // reading it back states the same content again - a second read dates
+    // an undated line at its own now, which is the one thing that moves.
+    assert_eq!(reader.parse_fix_line(&held.into_bytes(b'|'))?.entries(), held.entries());
     ```
 
 === "Python"
@@ -807,115 +826,64 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
 ### A message's direct identifiers fill one Map
 
-`fix:identifiers` on the message component selects direct scalar members; its compiled `MsgType` supplies their values in declaration order, and enrichment writes their canonical names and UTF-8 values into the sorted `altids` Map. Nested groups are not flattened, non-null keys are required, and nullable values remain nullable across the native row and Arrow doors.
+`fix:identifiers` on the message component selects direct scalar members; its compiled `MsgType` supplies their values in declaration order, and the parse writes their canonical names and text into the sorted `identifiers` Map, tag 65020. Nested groups are not flattened, keys are non-null, and the Map is the event's own - `get_identifiers()` on the message, `by_tag(IDENTIFIERS_TAG_NAME.0)` as a sorted mapping, one column of the fixed row - so it is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares.
 
-A known message with no selected values gets `{}`; an unknown message leaves `altids` absent, so its fixed column is null. A stated map, including an empty one, is preserved; enrichment is idempotent and changes neither arrival entries, emitted bytes nor the digest. This Map has no separate scalar count and introduces no numeric FIX group wire syntax.
+A known message with no selected value states none; an unknown message selects none at all. A stated map is preserved, and the fill changes neither the entries, the emitted bytes nor the digest.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
+
+    use yggdryl::graph::Element;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
+    use yggdryl::{FixCodec, FixRegistry, IDENTIFIERS_TAG_NAME, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let codec = FixCodec::new(Arc::clone(&registry));
     let wire = b"8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|";
-    let original = codec.parse_fix_line(wire)?;
-    let filled = codec.enrich_message(original.clone())?;
-    assert_eq!(filled.by_tag(65_020)?.get_key_str("clordid"), Some(&Scalar::from("C-1")));
-    assert_eq!(filled.entries(), original.entries());
-    assert_eq!(filled.into_bytes(b'|'), wire);
-    assert_eq!(filled.digest(), original.digest());
-    assert_eq!(codec.enrich_message(filled.clone())?, filled);
+    let filled = codec.parse_fix_line(wire)?;
 
-    let schema = fix_schema(&registry, "FixMessage")?;
-    let batches = codec.arrow_reader(schema, [filled.clone()])?;
-    let mut restored = codec.messages(batches);
-    assert_eq!(restored.next().expect("one row")?.by_tag(65_020)?, filled.by_tag(65_020)?);
-    assert!(restored.next().is_none());
-    let mut stated = filled.clone();
-    stated.set("altids", Scalar::from_mapping([])?)?;
-    assert!(codec.enrich_message(stated)?.by_tag(65_020)?.as_mapping().expect("a map").is_empty());
-    let empty = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|")?)?;
-    assert!(empty.by_tag(65_020)?.as_mapping().expect("a map").is_empty());
-    let unknown = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=ZZ|10=0|")?)?;
-    assert!(unknown.get_by_tag(65_020).is_none());
-    ```
+    // The three identifiers the execution report declares, each under the
+    // canonical name of the field that stated it.
+    let names: Vec<(&str, &str)> = filled
+        .get_identifiers()
+        .iter()
+        .map(|(scheme, value)| (scheme.as_str(), value.as_str()))
+        .collect();
+    assert_eq!(names, [("clordid", "C-1"), ("execid", "E-1"), ("orderid", "O-1")]);
+    // One sorted Map, reached by its tag like any typed fact.
+    let held = filled.by_tag(IDENTIFIERS_TAG_NAME.0)?;
+    assert_eq!(held.get_key_str("clordid"), Some(&Scalar::from("C-1")));
+    // The chain is named by the strongest identifier the message spells.
+    assert_eq!(filled.get_crosscode(), "O-1");
 
-=== "Python"
+    // A message declaring none states none, and the column is null.
+    let heartbeat = codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|")?;
+    assert!(heartbeat.get_identifiers().is_empty());
+    assert_eq!(heartbeat.get_by_tag(IDENTIFIERS_TAG_NAME.0), None);
 
-    ```python
-    from pathlib import Path
-    from yggdryl.fix import FixCodec, FixRegistry, fix_schema
-
-    registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    codec = FixCodec(registry)
-    wire = b"8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|"
-    original = codec.parse_fix_line(wire)
-    filled = codec.enrich_message(original)
-    expected = {"clordid": "C-1", "execid": "E-1", "orderid": "O-1"}
-    assert filled.by_tag(65_020).as_py() == expected
-    assert filled.entries() == original.entries()
-    assert filled.into_bytes(124) == wire and filled.digest() == original.digest()
-    assert codec.enrich_message(filled) == filled
-
-    table = codec.arrow_reader(fix_schema(registry), [filled]).read_all()
-    assert table.schema.field("altids").type.keys_sorted
-    restored, = codec.messages(table)
-    assert restored.by_name("altids").as_py() == expected
-    filled.set("altids", {})
-    assert codec.enrich_message(filled).by_name("altids").as_py() == {}
-    empty = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|"))
-    assert empty.by_name("altids").as_py() == {}
-    unknown = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=ZZ|10=0|"))
-    assert unknown.get_by_name("altids") is None
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const path = require('node:path')
-    const { fix } = require('yggdryl')
-
-    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    const codec = new fix.FixCodec(registry)
-    const wire = Buffer.from('8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|')
-    const original = codec.parseFixLine(wire)
-    const filled = codec.enrichMessage(original)
-    const expected = new Map([['clordid', 'C-1'], ['execid', 'E-1'], ['orderid', 'O-1']])
-    assert.ok(filled.byTag(65020).asJs() instanceof Map)
-    assert.deepEqual(filled.byTag(65020).asJs(), expected)
-    assert.deepEqual(filled.arrivals(), original.arrivals())
-    assert.deepEqual(filled.intoBytes(124), wire)
-    assert.deepEqual(filled.digest(), original.digest())
-    assert.ok(codec.enrichMessage(filled).equals(filled))
-
-    const table = codec.arrowReader(fix.schema(registry), [filled]).intoTable()
-    assert.equal(table.schema.fields.find((field) => field.name === 'altids').type.keysSorted, true)
-    assert.deepEqual([...table.getChild('altids').get(0)], [...expected])
-    const restored = [...codec.messages(table)]
-    assert.equal(restored.length, 1)
-    assert.deepEqual(restored[0].byName('altids').asJs(), expected)
-    filled.set('altids', new Map())
-    assert.deepEqual(codec.enrichMessage(filled).byName('altids').asJs(), new Map())
-    const empty = codec.enrichMessage(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=0|10=0|')))
-    assert.deepEqual(empty.byName('altids').asJs(), new Map())
-    const unknown = codec.enrichMessage(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=ZZ|10=0|')))
-    assert.equal(unknown.getByName('altids'), null)
+    // Filling changed nothing the message received: the row carries the map
+    // and the wire carries the pairs.
+    let schema = fix_schema(&registry, "fix")?;
+    let row = filled.into_row(&schema)?;
+    let at = schema.index_of("identifiers").expect("the identifiers column");
+    assert!(row.get(at).is_some_and(|held| !held.is_null()));
+    assert_eq!(filled.into_text('|')?, "8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|59=0|");
     ```
 
 ### A composed key fills the field its last segment names
 
-A bridge writes a field under its own namespace, so one row carries `TECH.CLIENTID`, `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME` and `OMSVENDOR.CALC.EXECBROKER` beside its plain keys. The fact is the field's however the writer spelled the key: where the last dotted segment of a child's name resolves to a dictionary field and that field is absent, the composed key fills it, and the filled child takes the field's tag, so every rule after it reads the value like any other. A segment naming no field of this dictionary names nothing, and the composed child stays in the row exactly as it arrived.
+A bridge writes a field under its own namespace, so one row carries `TECH.CLIENTID`, `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME` and `OMSVENDOR.CALC.EXECBROKER` beside its plain keys. The fact is the field's however the writer spelled the key: where the last dotted segment of a key resolves to a dictionary field and that field is absent, the composed key fills it, and the filled child takes the field's tag, so every rule after it reads the value like any other.
+
+The key itself is the bridge's own statement and not a FIX field, so it lands in the [`metadata`](#the-crates-own-columns) Map - tag 65049, one sorted `map<utf8, utf8>` under the key as the bridge spelled it, folded - rather than as a child of the content row: `metadata()` answers them, `by_tag(METADATA_TAG_NAME.0)` is the map, and one column of the fixed row carries it. A key whose last segment names no field of this dictionary is in the map and nowhere else.
 
 One voice or silence. Where a row names one absent field under several composed keys and they do not agree, none of them fills it. That is not a precaution: on nine lines of the committed corpus `FIRM.ORIG.CLIENTID` is `3000090.006` and `ULLINK.CLIENTID` is `trader1` with `CLIENTID` absent - a firm account number and a trader login, and nothing in the row says which one the field means. Filling from either would invent a fact; filling from neither states what the row actually settled, which is nothing.
 
 Never overwriting is load-bearing here too, and the same corpus proves it: `CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and `OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is `2003103.001`. A namespace's spelling of a fact is not the fact.
 
-The cancel reject the corpus ends on shows the fill and its bound side by side: `OMSVENDOR.ORDERQTY=10000` fills the `OrderQty` the row never states and `OMSVENDOR.TIMEINFORCE=day` its `TimeInForce`, each composed pair staying the arrival it was under its own dotted name and tag 0, while `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID` and `ULLINK.BYPASSRISK` name no field of the dictionary and stay under their namespaces, read back by `by_name("firm.acronym")` and never as `acronym`.
+The cancel reject the corpus ends on shows the fill and its bound side by side: `OMSVENDOR.ORDERQTY=10000` fills the `OrderQty` the row never states and `OMSVENDOR.TIMEINFORCE=day` its `TimeInForce`, while `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID` and `ULLINK.BYPASSRISK` name no field of the dictionary; every one of the seven keys is in the message's metadata under its own dotted spelling, read back as `metadata()["firm.acronym"]` and never as `acronym`.
 
 === "Rust"
 
@@ -926,22 +894,28 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let enriched = |row: &[u8]| -> yggdryl::Result<FixMsg> {
-        reader.enrich_message(reader.parse_line(row)?.next().expect("one row")?)
+    let read = |row: &[u8]| -> yggdryl::Result<FixMsg> {
+        reader.parse_line(row)?.next().expect("one row")
     };
 
-    // The namespace is the writer's; the fact is the field's.
-    let filled = enriched(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|")?;
+    // The namespace is the writer's; the fact is the field's, and the key
+    // the bridge wrote is the message's metadata.
+    let filled = read(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|FIRM.ACRONYM=XYZ|")?;
     assert_eq!(filled.by_name("Account")?.as_str(), Some("ACCT-000117"));
+    assert_eq!(filled.metadata()["tech.account"], "ACCT-000117");
+    assert_eq!(filled.metadata()["firm.acronym"], "XYZ", "no field, so the map alone");
+    assert_eq!(filled.get_by_name("firm.acronym"), None);
 
-    // Two namespaces naming one absent field, disagreeing: nothing fills it.
-    let split = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")?;
+    // Two namespaces naming one absent field, disagreeing: nothing fills it,
+    // and both statements are still in the metadata.
+    let split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")?;
     assert_eq!(split.get_by_name("ClientID"), None);
+    assert_eq!(split.metadata().len(), 2);
 
     // Agreeing, they fill; and a namespace never lands over a stated value.
-    let agreed = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")?;
+    let agreed = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")?;
     assert_eq!(agreed.by_name("ClientID")?.as_str(), Some("trader1"));
-    let stated = enriched(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")?;
+    let stated = read(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")?;
     assert_eq!(stated.by_name("Symbol")?.as_str(), Some("XAU/USD"));
     ```
 
@@ -1005,8 +979,8 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 - The derivations read codes, and a venue's own word for one is not the code. A bridge row spelling `SECURITYIDSOURCE=isin` beside a `SECURITYID` the check digit closes has stated a source, which stands, and `isin` is not `4` - the dictionary names that code `ISINNumber`, so nothing translated it - so the ISIN column is left null; the same row spelling `SECURITYTYPE=equity` names no code of the `SecurityType` set, so no group files it and no CFI is read off it. The bridge's own `ISINCODE` states the column directly, and the `CFICODE` it spells beside it states the product.
 - A trade stating no quantities states no status: `150=F` alone leaves `OrdStatus` absent, and `state` then holds what the report said happened, `F` as the column spells it, `40TRADE`.
 - An option stating no `PutOrCall` gets a CFI whose exercise is `X`, and `PutOrCall` is not then read back off it: `X` is the code for an exercise left open.
-- A derivation the dictionary cannot compile refuses the first enrichment, naming the field, and reads no message for it: `lastqty * nosuchfield` on `GrossTradeAmt` names a column no field or group of the registry answers to, and `lastqty * symbol` does not bind. The refusal is every door's: `enrich_message`, `enrich_messages`, `into_row` and the batch reader answer it alike, and the registry keeps it as it keeps a compiled list, so a refused registry compiles once and refuses every ask until a field changes. A text that is not a term is refused earlier still, by the registry, at insert, update and load - a store whose shard spells `lastqty *` on a field does not load, and neither does a JSON snapshot.
-- A registry built from a handful of fields enriches: the crate columns' own derivations read the standard's fields by name, and a name such a registry lacks is a column no message states, null in the working schema, rather than a refusal.
+- A derivation the dictionary cannot compile refuses the first parse, naming the field, and reads no message for it: `lastqty * nosuchfield` on `GrossTradeAmt` names a column no field or group of the registry answers to, and `lastqty * symbol` does not bind. The refusal is every door's: every `parse_*` reader, `into_row` and the batch reader answer it alike, and the registry keeps it as it keeps a compiled list, so a refused registry compiles once and refuses every ask until a field changes. A text that is not a term is refused earlier still, by the registry, at insert, update and load - a store whose shard spells `lastqty *` on a field does not load, and neither does a JSON snapshot.
+- A registry built from a handful of fields still fills: the crate columns' own derivations read the standard's fields by name, and a name such a registry lacks is a column no message states, null in the working schema, rather than a refusal.
 - A `SecurityID` under source `4` that no check digit closes falls through to the alternate identifier whose source is `4`: `22=4|48=NOTANISIN00` beside `455=CH0012221716|456=4` fills `isincode` with the alternate and `CountryOfIssue` with `CH`; a primary the digit closes answers itself whatever the alternate says; a message neither closes answers nothing.
 - `CountryOfIssue` answers for exactly the 249 prefixes `StringEnum::COUNTRIES` lists, and for no other of the 676 pairs: `AB`, `UK`, `TP` and `XS` are silence, `GB` and `US` answer.
 - A report with nothing left that states a canceled quantity ordered what it did plus what it canceled: `39=4|14=40|84=60` derives `OrderQty` 100 and `LeavesQty` 0, and `151=0` stated beside them changes nothing - Appendix D's cancel, where the deleted hand-laid order answered `CumQty` alone. A working report stating what is left answers done plus left, whatever it canceled.
@@ -1018,7 +992,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [lookup](registry.md) would be a hash and a verification. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `fix:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
 
-So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A List group column is filled by its `fix:counter`, while the numeric count stays in its own column; the self-counting `altids` Map occupies only its own column.
+So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A List group column is filled by its `fix:counter`, while the numeric count stays in its own column; the self-counting `identifiers` and `metadata` Maps occupy only their own column each.
 
 ### A group is laid out the way the column declares it
 
@@ -1116,13 +1090,13 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 - A tag the dictionary does not have is skipped rather than invented: a column with no field behind it could not be typed.
 - A column whose field carries neither a `fix:tag` nor a `fix:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture fills it.
 - `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is refused at intake; a stated clock that does not read as an instant is a located error item, never a default.
-- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `updatedat` is an instant, `msghash` sixteen fixed bytes, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
-- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's `TransactTime`, then `SendingTime`, reading.
-- `altids` is filled by enrichment, never derived by `into_row` alone. A known message with no stated identifiers gets an empty map; an unknown message remains null in the fixed row. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
+- A column of the crate's own is typed by the crate's definition, on a tag from 65003 that no dictionary publishes: `unix` is an instant, `hashcode` a `uint64`, `curruuid` a `uuid`, `miccode` a `mic`, `px` a `decimal128(38, 18)`, whatever text a venue spelled them in.
+- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's `TransactTime`, then `SendingTime`, reading of `unix`.
+- `identifiers` and `metadata` are the message's own facts, filled as it is built: a message declaring no identifier, and one no message type explains, leave the column null. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
-- Nothing drops a row unasked: `FixDedup`, Rust only, drops adjacent republications over any message stream, and is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) the caller composes.
+- Nothing drops a row unasked: `FixDedup`, Rust only, drops a message whose `digest` equals the one before it - an adjacent republication - over any message stream, and is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) the caller composes.
 
 ## Performance
 

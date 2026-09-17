@@ -171,7 +171,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
-- Wire group counters remain separate `int32` fields. The built-in `altids` Map group at 65020 has no scalar counter; its length is its cardinality.
+- Wire group counters remain separate `int32` fields. The built-in `identifiers` (65020) and `metadata` (65049) Map groups have no scalar counter; a map's length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
 - `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.

@@ -12,8 +12,8 @@ your own bytes.
 | Single frames | `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` each answer one message and [refuse a body holding a second](#a-line-yields-none-one-or-many-messages) |
 | Scalar fields | Values resolve through the field catalog; inline `fix:codes` supplies enum names |
 | Repeating groups | The count remains an `int32` field; a named List holds its component occurrences |
-| Wire record | Original entries retain order and raw values, including values that fail typed conversion |
-| Browser | Shows native sample fields, values, arrivals, emissions and anomalies from `assets/fix.json` |
+| Content | The [entries](message.md) are the content row read as a tree, in the row's order: a value the field could not type is null in the row and the entry still spells what arrived |
+| Browser | Shows native sample fields, values, entries and emissions from `assets/fix.json` |
 
 ## Use
 
@@ -33,9 +33,11 @@ One frame, read against the dictionary. A line can carry more than one, and
     let mut messages = codec.parse_line(frame)?;
     let message = messages.next().expect("one frame")?;
     assert!(messages.next().is_none());
-    assert_eq!(message.by_tag(453)?, &yggdryl::Scalar::from(1_i32));
+    assert_eq!(message.by_tag(453)?, yggdryl::Scalar::from(1_i32));
     assert_eq!(message.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?.as_str(), Some("BROKER"));
-    assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|");
+    // The message re-emits what it now states: what arrived, and the day
+    // order its dictionary derived from an order stating no TimeInForce.
+    assert_eq!(message.into_text('|')?, "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|59=0|");
     ```
 
 === "Python"
@@ -119,8 +121,9 @@ a line that stated no frame.
         .map(|message| message.map(|message| message.into_bytes(b'|')))
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(read.len(), 2);
-    assert_eq!(read[0], b"8=FIX.4.4|35=D|11=A|10=001|");
-    assert_eq!(read[1], b"8=FIX.4.4|35=8|37=O1|10=002|");
+    // Each re-emits its own bytes, and the day order its dictionary derived.
+    assert_eq!(read[0], b"8=FIX.4.4|35=D|11=A|10=001|59=0|");
+    assert_eq!(read[1], b"8=FIX.4.4|35=8|37=O1|10=002|59=0|");
 
     // A sentence states no message, whatever `=` it happens to hold.
     assert!(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")?.next().is_none());
@@ -206,12 +209,12 @@ entries; this page does not parse arbitrary FIX text or reconstruct its schema.
 This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
-### What is checked
+### What is shown
 
-The displayed anomalies are exactly those returned by the package for each
-sample. The viewer does not calculate additional checksum, body-length,
-required-field or group-count findings. An empty anomaly list is not a venue's
-acceptance of an order.
+Every value, entry and emitted line displayed for a sample is what the package
+answered for it. The viewer calculates nothing of its own: no checksum,
+body-length, required-field or group-count finding is computed in the browser,
+and a sample that displays cleanly is not a venue's acceptance of an order.
 
 ## Every shape a capture holds
 
@@ -227,13 +230,13 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## Edges
 
-- A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired - the committed capture's cancel reject states `#NOTRDREGTIMESTAMPS=4` and indexes five occurrences, and reads as five occurrences under a counter of four with the disagreement in `anomalies()` - and an ambiguous group context needs a message definition to select the layout.
+- A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired - the committed capture's cancel reject states `#NOTRDREGTIMESTAMPS=4` and indexes five occurrences, and reads as five occurrences under a counter of four, the count the entries state being the one the group holds - and an ambiguous group context needs a message definition to select the layout.
 - A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
-- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is an anomaly, never an error - except a settled clock or identity (`SendingTime(52)`, `TransactTime(60)`, `updatedat`, `createdat`, `msghash`, `msgphash`, `snapshotat`, and `code` bytes that are not text), whose unreadable value is a located error item.
-- Every generated message carries the version the read used - the codec's target where one is pinned - in the crate's own `version` column, beside the `BeginString` the line itself stated. A read never rewrites what arrived, so the two disagree exactly where the session does.
+- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is silence rather than an error - except a stated clock the identity is settled against (`SendingTime(52)`, `TransactTime(60)`, `unix`, `creatunix`), whose unreadable value is a located error item.
+- Every message states a `BeginString(8)` on its [typed header](message.md#typed-tags): what the line itself said, else the crate's own `FIX.4.4`, so a bridge row and the row a JSON document is say which FIX they were read as exactly as a frame does. A read never rewrites what arrived.
 - A key the dictionary does not name is looked for in the message it arrived in before it is kept unexplained: the message root's own children for a flat key, the occurrence's declared members for a packed one. A dialect that spelled one name over two tags has named neither of them in the dictionary, and this is where its own grammar says which of them a key means.
 - `XmlData(213)` is read into the line that carried it, whichever of the two things a bridge writes into it: a row of its own pairs, or the FIXML the tag is named for. Either becomes real fields resolved to real tags rather than one opaque value, a nested element's attributes flattening the way a packed occurrence already does. The field still holds the bytes it arrived as and the wire re-emits them exactly, because a reading of a value is not a second arrival; a document that will not parse fills nothing and the value stays whole.
-- A row a data field carries is a message of its own type, at its own version, and is read against both. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's `BeginString` is the envelope's version and says nothing about which FIX the row was written to, which is routinely a later one than the session speaks. The row states neither, so its type falls to what it declares and its version to the crate's own 4.4. A version the caller pinned is the caller speaking for the whole run and answers for the row too, and the frame's own statements stay the frame's.
+- A row a data field carries is a message of its own type, at its own version, and is read against both. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's `BeginString` is the envelope's version and says nothing about which FIX the row was written to, which is routinely a later one than the session speaks. The row states neither, so its type falls to what it declares and its version to the crate's own 4.4, and the frame's own statements stay the frame's.
 - A key nothing names at all is kept under its own spelling and its arrival value, its arrival entry carrying tag 0 - a name or a numeric key alike, since tag 0 is never a registry identity. Nothing is dropped for being unexplained.
 - A JSON document, a bulk or wildcard answer as much as a single one, is one `unknown` message carrying only what the row stated; nothing inside the document is read.
 - The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text/index.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.

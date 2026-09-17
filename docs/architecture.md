@@ -16,7 +16,7 @@ root traits, enums, and values
         ├── uri ──────────────────┘
         ├── text
         ├── hashing: xxhash ──► txhash
-        └── graph: element
+        └── graph: element ──► event ──► iterator
 
 fix ── protocol vocabulary over types + holder
 ```
@@ -36,7 +36,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, or value (`iobase.rs` own
 | [`uri`](uri/index.md) | URI, URL, URN, path, glob, and partition syntax |
 | [`arrow`](arrow/index.md) | Arrow schema, scalar, array, batch, and reader boundaries |
 | [`expression`](expression/index.md) | parsing, binding, row evaluation, Arrow evaluation, and pushdown |
-| [`graph`](graph.md) | `graph/element/`: the `Element` and `TimeElement` traits - an element's `Uuid` and its parents' UUIDs, an event's instant and code - as signatures a value implements, with no storage and no walk |
+| [`graph`](graph.md) | `graph/element.rs`: the `Element`, `Event`, `MarketElement` and `MarketEvent` traits - an element's `Uuid`, the identity it has elsewhere, its parents' UUIDs, an event's instant and code, a market element's price, quantity and side - as signatures a value implements; `graph/event.rs` the two holders and `graph/iterator.rs` the one walk |
 | [`hashing`](hashing.md) | `hashing/xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `hashing/txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `digest:time` holder |
 | [`fix`](fix/index.md) | FIX vocabulary over core `Field` values and `IOBase` registry storage |
 

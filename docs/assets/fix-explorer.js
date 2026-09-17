@@ -259,19 +259,37 @@
     body.append(make('h4', null, 'Recorded input (escaped text)'), wire(frame.line))
     body.append(grid(['Native answer', 'Value'], [
       ['MIME type', frame.mime], ['message code', frame.msgtype], ['direction', frame.direction],
-      ['root', frame.root], ['field count', frame.size],
-      ['ticker', frame.ticker], ['updatedat', frame.clock], ['snapshotat', frame.snapshot], ['digest', frame.digest],
+      ['root', frame.root], ['content children', frame.size],
+      ['unix', frame.event.unix], ['identity', frame.event.curruuid],
+      ['cross code', frame.event.crosscode || '(none)'], ['cross identity', frame.event.crossuuid],
+      ['content code', frame.event.hashcode], ['wire digest', frame.digest],
+      ['text (58)', frame.text ?? '(none)'],
     ]))
-    body.append(make('h4', null, 'Native anomalies'), note(frame.anomalies.length ? frame.anomalies.join(', ') : 'No anomalies reported.'))
-    const arrivals = panel('Raw arrivals', `${frame.arrivals.length} entries`)
-    arrivals.body.append(grid(['Tag', 'Original key', 'Original value'], frame.arrivals))
-    body.append(arrivals.element)
+    // The typed facts a message holds beside its content row: the event the
+    // message is, the standard header, and what the capture said.
+    for (const [title, held] of [['Native event', frame.event], ['Native header', frame.header], ['Native capture', frame.capture], ['Native metadata', frame.metadata]]) {
+      const rows = Object.entries(held ?? {}).filter(([, value]) => value !== null && value !== '' && !(Array.isArray(value) && value.length === 0))
+      const held_panel = panel(title, `${rows.length}`)
+      held_panel.body.append(grid(['Fact', 'Value'], rows.map(([name, value]) => [name, typeof value === 'object' ? JSON.stringify(value) : String(value)])))
+      body.append(held_panel.element)
+    }
+    // The content row as entries: one per field the message states, a
+    // group's occurrences and a component's members nested under it.
+    const flat = []
+    const walk = (entries, depth) => {
+      for (const entry of entries ?? []) {
+        flat.push([entry.tag, `${'\u00a0\u00a0'.repeat(depth)}${entry.name}`, entry.value ?? ''])
+        walk(entry.entries, depth + 1)
+      }
+    }
+    walk(frame.entries, 0)
+    const entries = panel('Native entries', `${flat.length}`)
+    entries.body.append(grid(['Tag', 'Name', 'Value'], flat))
+    body.append(entries.element)
     const columns = panel('Populated capture columns', `${frame.columns.length}`)
     columns.body.append(grid(['Tag', 'Name', 'Datatype', 'Value'], frame.columns.map((column) => [column.t, column.n, column.y, column.v])))
     body.append(columns.element)
-    const lifted = panel('Native facets', `${frame.lift.length}`)
-    lifted.body.append(grid(['Facet', 'Value', 'Source tag'], frame.lift))
-    body.append(lifted.element, jsonPanel('Native message Field', frame.field), jsonPanel('Native message Scalar', frame.value))
+    body.append(jsonPanel('Native content Field', frame.field), jsonPanel('Native content Scalar', frame.value))
     if (!emittedFirst) output()
     return body
   }
