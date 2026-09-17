@@ -1,6 +1,6 @@
 [
   {
-    "name": "unix",
+    "name": "currunix",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -9,7 +9,7 @@
     "nullable": false,
     "metadata": {
       "description": "When the message happened: the settled instant, UTC.",
-      "display": "Unix",
+      "display": "CurrUnix",
       "fix:tag": "65003",
       "fix:transient": "false"
     }
@@ -79,14 +79,14 @@
     }
   },
   {
-    "name": "hashcode",
+    "name": "currhashcode",
     "dtype": {
       "type": "u_int64"
     },
     "nullable": false,
     "metadata": {
       "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-      "display": "HashCode",
+      "display": "CurrHashCode",
       "fix:tag": "65017",
       "fix:transient": "false"
     }

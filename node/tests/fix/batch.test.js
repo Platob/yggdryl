@@ -42,7 +42,7 @@ const PIPE = '|'.charCodeAt(0)
 const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
 // The columns a row must carry a value at: the settled identity, and the
 // version every message opens with.
-const REQUIRED = ['unix', 'creatunix', 'curruuid', 'crossuuid', 'hashcode', 'crosshashcode', 'beginstring']
+const REQUIRED = ['currunix', 'creatunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'beginstring']
 
 // Two frames on one row: a line is none, one or many messages, and this
 // one is two.
@@ -293,7 +293,7 @@ test('the schema is decided before the first row is read', () => {
   // when the event happened, each named by its folded name and carrying
   // its tag.
   assert.equal(names[0], 'body')
-  assert.equal(names[1], 'unix')
+  assert.equal(names[1], 'currunix')
   const header = names.indexOf('beginstring')
   assert.ok(header > 0)
   assert.equal(reader.field.fieldAt(header).fix.tag, 8)
@@ -401,7 +401,7 @@ test('messages and arrowReader invert each other', () => {
     // The same arrival record, the same wire, the same digest, the same
     // stated values by tag, and the same row again.
     assert.deepEqual(held.entries(), message.entries())
-    assert.equal(held.hashcode, message.hashcode)
+    assert.equal(held.currhashcode, message.currhashcode)
     assert.equal(held.curruuid, message.curruuid)
     // The row states the sending clock, so a message read back emits it
     // where a parsed one settled it silently.
@@ -607,7 +607,7 @@ test('a set value replaces an existing child in place and keeps the tag index', 
     }
     assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
   }
-  assert.equal(message.byTag(65017).asJs(), message.hashcode)
+  assert.equal(message.byTag(65017).asJs(), message.currhashcode)
 })
 
 test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -719,9 +719,9 @@ test('a row is refused where it cannot state the settled identity', () => {
   assert.equal(message.side, 'UNKNOWN')
   assert.equal(message.size, size)
   // An ordinary child leaves, and the content identity follows it.
-  const identity = message.hashcode
+  const identity = message.currhashcode
   assert.equal(message.remove('VenueThing').asJs(), '7')
-  assert.notEqual(message.hashcode, identity)
+  assert.notEqual(message.currhashcode, identity)
   const settled = message.clone()
   assert.equal(message.remove('absent'), null)
   assert.ok(message.equals(settled))
@@ -741,7 +741,7 @@ test('a row reads back into the message that made it', () => {
   // The content is the row's children, and the facts are read off the
   // columns that hold them, so the message emits what it emitted.
   assert.deepEqual(held.entries(), parsed.entries())
-  assert.equal(held.hashcode, parsed.hashcode)
+  assert.equal(held.currhashcode, parsed.currhashcode)
   assert.equal(held.curruuid, parsed.curruuid)
   for (const tag of [8, 35, 11, 55, 54]) assert.ok(held.byTag(tag).equals(parsed.byTag(tag)), `tag ${tag}`)
   // And it makes the row it came from, whole.
@@ -757,7 +757,7 @@ test('a row reads back into the message that made it', () => {
   const named = fix.FixMsg.fromRow(schema, row.asJs(), registry)
   assert.deepEqual(named.entries(), parsed.entries())
   assert.ok(named.byTag(55).equals(parsed.byTag(55)))
-  assert.equal(named.hashcode, held.hashcode)
+  assert.equal(named.currhashcode, held.currhashcode)
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
 })
 
@@ -826,7 +826,7 @@ test('a row without the entries column has no entries', () => {
   // could not rebuild - so the identity it writes is its own, over what it
   // now says, rather than the one the parsed message settled.
   const again = held.intoRow(narrow)
-  for (const name of ['unix', 'creatunix', 'crossuuid', 'crosshashcode']) {
+  for (const name of ['currunix', 'creatunix', 'crossuuid', 'crosshashcode']) {
     const at = narrow.indexOf(name)
     assert.ok(again.at(at).equals(row.at(at)), name)
   }

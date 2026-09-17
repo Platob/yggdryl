@@ -261,7 +261,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["level", "unix", "creatunix", "prevunix"].windows(2) {
+    for pair in ["level", "currunix", "creatunix", "prevunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     let header = names
@@ -308,7 +308,9 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         ),
         "{clock:?}"
     );
-    let stamp = schema.field_with_name("unix").expect("the clock column");
+    let stamp = schema
+        .field_with_name("currunix")
+        .expect("the clock column");
     assert!(
         matches!(
             stamp.data_type(),
@@ -518,7 +520,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // lands in the event's own instant rather than in the header's column.
     assert!(sent[RESPONSE_ROW].is_null(), "{:?}", sent[RESPONSE_ROW]);
     assert_eq!(
-        tag_column(&read, yggdryl::UNIX_TAG_NAME.0)[RESPONSE_ROW]
+        tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0)[RESPONSE_ROW]
             .temporal_count_at(TimeUnit::Nanosecond),
         Some(1_704_190_530_000_000_000),
         "an unstated sending time stands in as the event's instant"
@@ -567,12 +569,12 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // Every projected row carries the code it settled on its content.
     // Distinct real messages remain distinct, independently of the separate
     // arrival digest.
-    let identities = tag_column(&read, yggdryl::HASHCODE_TAG_NAME.0);
+    let identities = tag_column(&read, yggdryl::CURRHASHCODE_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
         assert!(held.as_u64().is_some(), "row {row} states a content code");
     }
     assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
-    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
     assert!(stamp[FILL_ROW].is_temporal());
     assert!(stamp[ROUTED_ROW].is_temporal());
 }
@@ -586,7 +588,7 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     // settles the real event independently of when the bridge logged it.
     let clock = column(&stage, "timestamp");
     let carried = column(&read, "timestamp");
-    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
     let snapshot = tag_column(&read, yggdryl::SNAPUNIX_TAG_NAME.0);
     let created = tag_column(&read, yggdryl::CREATUNIX_TAG_NAME.0);
     assert_eq!(stamp.len(), MESSAGES);
@@ -789,7 +791,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,
         yggdryl::PLUGINID_TAG_NAME.0,
-        yggdryl::UNIX_TAG_NAME.0,
+        yggdryl::CURRUNIX_TAG_NAME.0,
     ] {
         assert!(
             !recorded.contains(&i64::from(filled)),
@@ -886,7 +888,7 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
     assert_eq!(tag_column(&read, 34)[1].as_i64(), Some(935));
 
     // Capture context is shared, while each frame keeps its own event clock.
-    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
     assert_ne!(stamp[0], stamp[1]);
     assert_eq!(stamp, tag_column(&read, 52));
     let captured = column(&read, "timestamp");

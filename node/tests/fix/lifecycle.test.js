@@ -204,8 +204,8 @@ test('a transaction time stating only a day leaves the sending clock standing', 
   // `60=20260814` states a day and no clock, so the event is the sending
   // time rather than midnight (`rust/tests/fix/`).
   const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))
-  assert.equal(day.unix, 1_704_190_530_000_000_000n)
-  assert.equal(day.header().sendingtime, day.unix)
+  assert.equal(day.currunix, 1_704_190_530_000_000_000n)
+  assert.equal(day.header().sendingtime, day.currunix)
   const [walked] = codec.lifecycle([day])
-  assert.equal(walked.unix, day.unix)
+  assert.equal(walked.currunix, day.currunix)
 })

@@ -13,7 +13,7 @@
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; a key reaching one of [the capture's own columns](#a-row-is-a-message-again) - `sourceurl`, `recordedat` - is refused, naming the column, because a message holds no fact for one; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
-| Settled | `unix` is a stated `unix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`; `SendingTime` is the message's own, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creatunix` is a stated one, else `OrigSendingTime(122)`, else `unix`; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `hashcode`, `curruuid`, `crossuuid` - is derived from what the message *states*: the event's facts, the text, the metadata, the header fields it stated, then the entry tree, so two readings that lay one message out differently answer one code |
+| Settled | `currunix` is a stated `currunix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`; `SendingTime` is the message's own, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creatunix` is a stated one, else `OrigSendingTime(122)`, else `currunix`; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states*: the event's facts, the text, the metadata, the header fields it stated, then the entry tree, so two readings that lay one message out differently answer one code |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
 | Graph | `FixMsg` implements `Element`, `Event` and `MarketElement` - so `MarketEvent` - through its event: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`; import the traits to call them |
 | Serialization | inherited: `as_field().clone().into_json()` renders the row's schema, [`into_json_scalar`](../media/json/index.md) its value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root; `into_row` is the whole message as one fixed row |
@@ -89,9 +89,9 @@
     assert!(msg.value("Parties.PartyID").is_err(), "a group member needs its index");
 
     // The identity is settled from what the message states.
-    assert_ne!(msg.get_hashcode(), 0);
+    assert_ne!(msg.get_currhashcode(), 0);
     assert_eq!(msg.get_curruuid(), msg.time_uuid()?);
-    assert_eq!(msg.get_unix(), msg.header().sendingtime(), "undated, so the sending clock stands in");
+    assert_eq!(msg.get_currunix(), msg.header().sendingtime(), "undated, so the sending clock stands in");
     assert_eq!(msg.get_crosscode(), "", "no OrderID or ClOrdID names a chain");
     assert_eq!(msg.get_crossuuid(), msg.get_curruuid(), "so the message is a chain of one");
 
@@ -194,8 +194,8 @@
     ]
 
     # The identity is settled from what the message states.
-    assert message.hashcode != 0
-    assert message.unix == message.header().sendingtime, "undated, so the sending clock stands in"
+    assert message.currhashcode != 0
+    assert message.currunix == message.header().sendingtime, "undated, so the sending clock stands in"
     assert message.crosscode == "", "no OrderID or ClOrdID names a chain"
     assert message.crossuuid == message.curruuid, "so the message is a chain of one"
 
@@ -293,8 +293,8 @@
     assert.equal(occurrence.entries[0].name, 'PartyID')
 
     // The identity is settled from what the message states.
-    assert.notEqual(message.hashcode, 0n)
-    assert.equal(message.unix, message.header().sendingtime, 'undated, so the sending clock stands in')
+    assert.notEqual(message.currhashcode, 0n)
+    assert.equal(message.currunix, message.header().sendingtime, 'undated, so the sending clock stands in')
     assert.equal(message.crosscode, '', 'no OrderID or ClOrdID names a chain')
     assert.equal(message.crossuuid, message.curruuid, 'so the message is a chain of one')
 
@@ -328,7 +328,7 @@ A message holds each fact once. The tags below are the holders' and are never in
 | every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) and `recordedat` (65028) | `event()` and `capture()` | the identities, the codes, the instants, the state, the place in the chain, the price, the quantity, the unit, the lane currencies and units, the instrument codes and the market on the event; `pluginid`, `msgctxid` and `msgsessionid` on the capture; `identifiers` and `metadata` are the event's names and the bridge's namespaced keys. The two exceptions are [the capture's own columns](#a-row-is-a-message-again): no holder answers them, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
 | 58 | `text()` | the free text |
 
-A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(HASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(IDENTIFIERS_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a state of `00UNKNOWN`, a place of zero in no chain - answers nothing.
+A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(IDENTIFIERS_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a state of `00UNKNOWN`, a place of zero in no chain - answers nothing.
 
 ## One namespace
 
@@ -357,7 +357,7 @@ Every lookup answers an owned `Scalar`: a holder's fact is rendered into the col
 
 ## Written into the row
 
-A message is read once and then written to: a [walk](lifecycle.md) stamps what the stream implied, a caller corrects a value. All of it goes through one door. `set` writes one value, `set_many` lands several with one rebuild, `with_value` is the consuming twin, and `remove` takes a value out and answers what it held. A key reaching a [typed tag](#typed-tags) writes its holder - `set(34, ..)` is the header's sequence number, `set(PX_TAG_NAME.0, ..)` the event's price - and a `Null` clears it; any other key writes the row, typed by the field the key reaches. Every write settles the [identity](../hashing.md) again, so a content write moves `hashcode` and `curruuid` while `crossuuid` stays with the cross code; and every write drops the derived entries, so `into_bytes` re-emits the message as it now stands.
+A message is read once and then written to: a [walk](lifecycle.md) stamps what the stream implied, a caller corrects a value. All of it goes through one door. `set` writes one value, `set_many` lands several with one rebuild, `with_value` is the consuming twin, and `remove` takes a value out and answers what it held. A key reaching a [typed tag](#typed-tags) writes its holder - `set(34, ..)` is the header's sequence number, `set(PX_TAG_NAME.0, ..)` the event's price - and a `Null` clears it; any other key writes the row, typed by the field the key reaches. Every write settles the [identity](../hashing.md) again, so a content write moves `currhashcode` and `curruuid` while `crossuuid` stays with the cross code; and every write drops the derived entries, so `into_bytes` re-emits the message as it now stands.
 
 | Key | Reaches |
 | --- | --- |
@@ -388,7 +388,7 @@ A written child keeps its position, so every reader already holding the row addr
     let mut message = reader.parse_fix_line(line)?;
     let children = message.as_field().fields().len();
     let at = message.as_field().index_of("symbol").expect("the symbol child");
-    let (hashcode, crossuuid) = (message.get_hashcode(), message.get_crossuuid());
+    let (hashcode, crossuuid) = (message.get_currhashcode(), message.get_crossuuid());
 
     // A typed tag lands on its holder and never in the row.
     message.set(34, Scalar::from(7_i32))?;
@@ -396,7 +396,7 @@ A written child keeps its position, so every reader already holding the row addr
     assert_eq!(message.by_name("MsgSeqNum")?.as_u64(), Some(7));
     assert_eq!(message.as_field().fields().len(), children);
     // The content identity moved with the content; the chain's is the cross code's alone.
-    assert_ne!(message.get_hashcode(), hashcode);
+    assert_ne!(message.get_currhashcode(), hashcode);
     assert_eq!(message.get_crossuuid(), crossuuid);
 
     // Replaced where it stands: the position is kept, the value changes.
@@ -435,7 +435,7 @@ A written child keeps its position, so every reader already holding the row addr
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
     assert_eq!(held.by_tag(55)?, message.by_tag(55)?);
     assert_eq!(held.entries(), message.entries());
-    assert_eq!(held.get_hashcode(), message.get_hashcode());
+    assert_eq!(held.get_currhashcode(), message.get_currhashcode());
     assert_eq!(held.into_bytes(b'|'), message.into_bytes(b'|'));
     assert_eq!(held.into_row(&schema)?, row);
     ```
@@ -456,7 +456,7 @@ A written child keeps its position, so every reader already holding the row addr
     message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
-    hashcode, crossuuid = message.hashcode, message.crossuuid
+    hashcode, crossuuid = message.currhashcode, message.crossuuid
 
     # A typed tag lands on its holder and never in the row.
     message.set(34, 7)
@@ -464,7 +464,7 @@ A written child keeps its position, so every reader already holding the row addr
     assert message.by_name("MsgSeqNum").as_py() == 7
     assert len(message) == children
     # The content identity moved with the content; the chain's is the cross code's alone.
-    assert message.hashcode != hashcode
+    assert message.currhashcode != hashcode
     assert message.crossuuid == crossuuid
 
     # Replaced where it stands: the position is kept, the value changes.
@@ -501,7 +501,7 @@ A written child keeps its position, so every reader already holding the row addr
     held = FixMsg.from_row(schema, row, registry)
     assert held.by_tag(55) == message.by_tag(55)
     assert held.entries() == message.entries()
-    assert held.hashcode == message.hashcode
+    assert held.currhashcode == message.currhashcode
     assert held.into_bytes(ord("|")) == message.into_bytes(ord("|"))
     assert held.into_row(schema) == row
     ```
@@ -520,7 +520,7 @@ A written child keeps its position, so every reader already holding the row addr
     const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
     const names = [...message].map(entry => entry.name)
-    const hashcode = message.hashcode
+    const hashcode = message.currhashcode
     const crossuuid = message.crossuuid
 
     // A typed tag lands on its holder and never in the row.
@@ -529,7 +529,7 @@ A written child keeps its position, so every reader already holding the row addr
     assert.equal(message.byName('MsgSeqNum').asJs(), 7)
     assert.equal(message.size, children)
     // The content identity moved with the content; the chain's is the cross code's alone.
-    assert.notEqual(message.hashcode, hashcode)
+    assert.notEqual(message.currhashcode, hashcode)
     assert.equal(message.crossuuid, crossuuid)
 
     // Replaced where it stands: the position is kept, the value changes.
@@ -568,14 +568,14 @@ A written child keeps its position, so every reader already holding the row addr
     const held = fix.FixMsg.fromRow(schema, row, registry)
     assert.ok(held.byTag(55).equals(message.byTag(55)))
     assert.deepEqual(held.entries(), message.entries())
-    assert.equal(held.hashcode, message.hashcode)
+    assert.equal(held.currhashcode, message.currhashcode)
     assert.equal(held.intoText('|'), message.intoText('|'))
     assert.ok(held.intoRow(schema).equals(row))
     ```
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. Every one of the capture's own columns is read past: the two the crate tags, `sourceurl` and `recordedat`, and every column no tag and no counter names - the body the line was cut from, its place in the object, its media type, what a bound dropped. A message is what parsing one line answered, and what a *reader* said about that line is not it, so nothing on the message holds one and none can reach an entry, the code the message answers to, or a `body=` at a counterparty. They stay the row's: a namespaced column lands in the [metadata](#typed-tags) as a parsed line's does, and whoever writes rows back restates the rest from the batch they arrived in, which is how a row walked through `from_row` and back [returns to its schema whole](arrow.md#chained-where-it-sits). Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. Every one of the capture's own columns is read past: the two the crate tags, `sourceurl` and `recordedat`, and every column no tag and no counter names - the body the line was cut from, its place in the object, its media type, what a bound dropped. A message is what parsing one line answered, and what a *reader* said about that line is not it, so nothing on the message holds one and none can reach an entry, the code the message answers to, or a `body=` at a counterparty. They stay the row's: a namespaced column lands in the [metadata](#typed-tags) as a parsed line's does, and whoever writes rows back restates the rest from the batch they arrived in, which is how a row walked through `from_row` and back [returns to its schema whole](arrow.md#chained-where-it-sits). Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
 
 The round trip is exact for an entry whose bytes are text - which is every entry a log wrote. It cannot be for one whose bytes are not: the row spells a value as `utf8` because a column a reader can read is what a row is for, and a `data` field carrying bytes no text holds reaches that column as the decode of them. One shape is not exact yet, and `FixMsg::from_row`'s own documentation names it: a repeating group whose occurrences nest a second group that only some of them state - the row holds each occurrence on the union of the members any of them stated, so rebuilding lays the nested level out in the order the entries met it rather than the order the parse did. Over `rust/tests/fix/ulbridge.log`, a bridge capture of 94 messages, 83 rebuild exactly and the 11 that do not are all parties nesting `PtysSubGrp`. A group no dictionary declares - a bridge packing `NOTRADINGSESSIONS[0]=...` under a counter's own name - rebuilds from the row as the list it is. The [example above](#written-into-the-row) ends with the round trip.
 
@@ -760,7 +760,7 @@ A value written into a target is re-typed for the target's field through the cod
 - `set` on a typed tag with a value its type refuses - text into `OrderQty`'s twin `qty`, a spelling outside the side's set - is silence: the holder keeps what it held. `set` with a `Null` on a row child -> a stated null, the child kept and made nullable; on a typed tag -> the fact cleared. `remove` -> the child gone or the fact cleared and its value answered, `None` for a key that reaches nothing; a cleared `crosscode` keeps the settled one, because the identity is re-settled from what the message states and the code, once named, stands.
 - `FixMsg::new` / `with_registry` on a root stating `SendingTime(52)` -> the header's clock, marked stated; on one stating none -> one UTC-now read, marked not stated, so the wire omits it; a stated clock that is not an instant -> a located refusal.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
-- `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its members, a negative tag, a name or value that is not text - or a leaf the JSON reader cannot decode -> refused at the arrival path; on a schema without the column -> a message with the typed facts, no content and a wire of the header alone; on a row leaving `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` or `crossuuid` null -> the schema's refusal, since the fixed row declares them required.
+- `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its members, a negative tag, a name or value that is not text - or a leaf the JSON reader cannot decode -> refused at the arrival path; on a schema without the column -> a message with the typed facts, no content and a wire of the header alone; on a row leaving `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` or `crossuuid` null -> the schema's refusal, since the fixed row declares them required.
 - Two children reaching one field, both stated and different (`lastqty` `50` beside `LastShares` `100`) -> both kept as they arrived; equal once re-typed, or one null -> one child.
 - A child named by a tag's digits (`"32"`) that the registry knows -> re-expressed under the registry's field like any other; one it does not know (`"9999"`) -> kept exactly, name, datatype and value.
 - A List no `fix:counter` heads, and any nested value that is not a repeating group -> kept exactly; only group occurrences are levels.

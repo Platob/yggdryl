@@ -19,7 +19,7 @@
 //!
 //! Their tags sit above every tag FIX publishes and above the user-defined
 //! ranges venues share, so they collide with nothing a dictionary declares
-//! and belong to no dialect: `unix` is one identity in every dictionary, a
+//! and belong to no dialect: `currunix` is one identity in every dictionary, a
 //! bridge row spelling `SESSIONID` lands on the crate's own column, and a
 //! name every registry carries is never an unknown key. [`is_crate_tag`] is
 //! the whole test. A field is its tag and its name, so each is declared as
@@ -41,7 +41,7 @@
 //!
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
 //! else, so a dictionary loaded from a store, built from fields or left empty
-//! answers `unix` and `pluginid` alike - and a store never writes them,
+//! answers `currunix` and `pluginid` alike - and a store never writes them,
 //! because they are the crate's rather than the store's. A stored copy is
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
@@ -65,7 +65,7 @@ pub const CRATE_TAG_MAX: i32 = 65_100;
 
 /// The tag and name carrying when the message happened: the settled
 /// instant, nanoseconds since the Unix epoch, UTC.
-pub const UNIX_TAG_NAME: (i32, &str) = (65_003, "unix");
+pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");
 
 /// The tag and name carrying the message context a bridge handled the
 /// message in.
@@ -87,7 +87,7 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
 /// The tag and name carrying the code the message's content digests to:
 /// the XXH3-64 of what the event states and the named FIX content behind it.
-pub const HASHCODE_TAG_NAME: (i32, &str) = (65_017, "hashcode");
+pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");
 
 /// The tag and name carrying the cross hash code: the XXH3-64 of the cross
 /// code, zero where the message names none.
@@ -387,13 +387,13 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// `isincode`, `miccode`, the identifiers, the lane currencies and units,
 /// the price, the quantity - and carries.
 const SETTLED_TO_ONE_MESSAGE: [i32; 16] = [
-    UNIX_TAG_NAME.0,
+    CURRUNIX_TAG_NAME.0,
     CREATUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     RECORDEDAT_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
-    HASHCODE_TAG_NAME.0,
+    CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
@@ -408,9 +408,9 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 16] = [
 /// The crate's own columns every message states: the instants the identity
 /// is settled against, the codes and the identity it settles to.
 const ALWAYS_STATED: [i32; 6] = [
-    UNIX_TAG_NAME.0,
+    CURRUNIX_TAG_NAME.0,
     CREATUNIX_TAG_NAME.0,
-    HASHCODE_TAG_NAME.0,
+    CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
@@ -493,8 +493,8 @@ fn build() -> Result<Vec<Field>> {
         // When the message happened: the settled instant every clock a
         // message states resolves to, and what its identity opens with.
         crated(
-            UNIX_TAG_NAME,
-            "Unix",
+            CURRUNIX_TAG_NAME,
+            "CurrUnix",
             clock(),
             "When the message happened: the settled instant, UTC.",
         )?,
@@ -551,8 +551,8 @@ fn build() -> Result<Vec<Field>> {
         // The two codes: what the message's content digests to, and what
         // the identifier its lifecycle shares digests to.
         crated(
-            HASHCODE_TAG_NAME,
-            "HashCode",
+            CURRHASHCODE_TAG_NAME,
+            "CurrHashCode",
             DataType::UInt64,
             "The XXH3-64 of what the event states and the named FIX content \
              behind it.",
@@ -821,10 +821,10 @@ fn build() -> Result<Vec<Field>> {
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held.len(), 38);
-/// assert_eq!(held[0].name(), "unix");
-/// assert_eq!(held[0].display(), Some("Unix"));
+/// assert_eq!(held[0].name(), "currunix");
+/// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
-/// // an Iceberg table takes an `hour` transform over `unix` - and a
+/// // an Iceberg table takes an `hour` transform over `currunix` - and a
 /// // materialized copy of that instant was a second owner of it.
 /// assert!(held.iter().all(|field| !field.is_partition()));
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
@@ -836,7 +836,7 @@ fn build() -> Result<Vec<Field>> {
 /// );
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
-/// let (tag, name) = yggdryl::UNIX_TAG_NAME;
+/// let (tag, name) = yggdryl::CURRUNIX_TAG_NAME;
 /// let mine = held[0].as_fix().id()?.expect("an identity");
 /// assert_eq!(mine, yggdryl::FixId::of(tag, name)?);
 /// assert!(yggdryl::is_crate_tag(yggdryl::STATE_TAG_NAME.0));

@@ -157,7 +157,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["body", "unix", "creatunix", "prevunix", "expirunix"].windows(2) {
+    for pair in ["body", "currunix", "creatunix", "prevunix", "expirunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert_eq!(names.last(), Some(&"fixentries"));
@@ -179,8 +179,8 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         454,
         768, // the groups
         10,  // the trailer
-        yggdryl::HASHCODE_TAG_NAME.0,
-        yggdryl::UNIX_TAG_NAME.0,
+        yggdryl::CURRHASHCODE_TAG_NAME.0,
+        yggdryl::CURRUNIX_TAG_NAME.0,
         yggdryl::CREATUNIX_TAG_NAME.0, // the digest and the clocks
         yggdryl::MSGSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
@@ -224,7 +224,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
     // The content code's storage is the `uint64` it is, not a string.
-    let digest = tag_column(&batch, yggdryl::HASHCODE_TAG_NAME.0);
+    let digest = tag_column(&batch, yggdryl::CURRHASHCODE_TAG_NAME.0);
     assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch

@@ -92,11 +92,11 @@ impl Element for Report {
         self.crosscode = crosscode;
     }
 
-    fn get_hashcode(&self) -> u64 {
+    fn get_currhashcode(&self) -> u64 {
         self.hashcode
     }
 
-    fn set_hashcode(&mut self, hashcode: u64) {
+    fn set_currhashcode(&mut self, hashcode: u64) {
         self.hashcode = hashcode;
     }
 
@@ -149,11 +149,11 @@ impl Element for Report {
 }
 
 impl Event for Report {
-    fn get_unix(&self) -> i64 {
+    fn get_currunix(&self) -> i64 {
         self.unix
     }
 
-    fn set_unix(&mut self, unix: i64) {
+    fn set_currunix(&mut self, unix: i64) {
         self.unix = unix;
     }
 
@@ -274,7 +274,7 @@ fn an_element_answers_the_identities_codes_and_parents_it_was_given() {
         "no cross code until it states one"
     );
     assert_eq!(
-        (element.get_hashcode(), element.get_crosshashcode()),
+        (element.get_currhashcode(), element.get_crosshashcode()),
         (0, 0)
     );
     assert!(
@@ -286,9 +286,9 @@ fn an_element_answers_the_identities_codes_and_parents_it_was_given() {
     assert_eq!(element.get_curruuid(), Uuid::from_v8(3));
     element.set_crossuuid(Uuid::from_v8(30));
     assert_eq!(element.get_crossuuid(), Uuid::from_v8(30));
-    element.set_hashcode(0xDEAD_BEEF_CAFE_F00D);
+    element.set_currhashcode(0xDEAD_BEEF_CAFE_F00D);
     element.set_crosshashcode(0xBEEF);
-    assert_eq!(element.get_hashcode(), 0xDEAD_BEEF_CAFE_F00D);
+    assert_eq!(element.get_currhashcode(), 0xDEAD_BEEF_CAFE_F00D);
     assert_eq!(element.get_crosshashcode(), 0xBEEF);
 
     // The cross code is text, and can be unsaid.
@@ -409,13 +409,13 @@ fn an_event_is_after_another_by_its_instant_and_an_element_by_its_lineage() {
 fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
     let mut event = MarketEventData::at(0);
     // Nanoseconds since the epoch, the count every clock the crate reads.
-    event.set_unix(i64::MAX);
-    assert_eq!(event.get_unix(), i64::MAX);
+    event.set_currunix(i64::MAX);
+    assert_eq!(event.get_currunix(), i64::MAX);
     // Negative instants are before the epoch, and the type holds them.
-    event.set_unix(-1);
-    assert_eq!(event.get_unix(), -1);
-    event.set_hashcode(0xDEAD_BEEF_CAFE_F00D);
-    assert_eq!(event.get_hashcode(), 0xDEAD_BEEF_CAFE_F00D);
+    event.set_currunix(-1);
+    assert_eq!(event.get_currunix(), -1);
+    event.set_currhashcode(0xDEAD_BEEF_CAFE_F00D);
+    assert_eq!(event.get_currhashcode(), 0xDEAD_BEEF_CAFE_F00D);
 
     // A state is never absent: a new event reached none, says so with the
     // code that means exactly that, and moves as the lifecycle does.
@@ -442,8 +442,8 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
     let held: &dyn Event = &event;
     assert_eq!(held.get_curruuid(), Uuid::from_v8(7));
     assert_eq!(held.get_parentuuids(), [Uuid::from_v8(1)]);
-    assert_eq!(held.get_unix(), -1);
-    assert_eq!(held.get_hashcode(), 0xDEAD_BEEF_CAFE_F00D);
+    assert_eq!(held.get_currunix(), -1);
+    assert_eq!(held.get_currhashcode(), 0xDEAD_BEEF_CAFE_F00D);
     assert_eq!(held.get_seqnum(), 4);
     assert!(held.get_state().is_done());
 }
@@ -486,7 +486,7 @@ fn following_records_the_predecessor_and_refuses_what_cannot_follow() {
     // the element itself says stays: its parents, its instant.
     assert_eq!(second.get_seqnum(), 1);
     assert!(second.get_parentuuids().is_empty());
-    assert_eq!(second.get_unix(), 20);
+    assert_eq!(second.get_currunix(), 20);
     let third = Report::at(4, 30).with_previous(&second).expect("follows");
     assert_eq!(third.get_seqnum(), 2);
     let mut deep = Report::at(5, 40);
@@ -560,12 +560,12 @@ fn following_carries_the_lifecycle_forward() {
     // code, its parents, and the cross code it states where the
     // predecessor states none - with the cross element in step with it.
     let mut own = Report::at(6, 50);
-    own.set_hashcode(0xABC);
+    own.set_currhashcode(0xABC);
     own.set_crosscode("Q-1".to_owned());
     own.set_parentuuids(vec![Uuid::from_v8(61)]);
     let own = own.with_previous(&previous).expect("follows");
-    assert_eq!(own.get_unix(), 50);
-    assert_eq!(own.get_hashcode(), 0xABC);
+    assert_eq!(own.get_currunix(), 50);
+    assert_eq!(own.get_currhashcode(), 0xABC);
     assert_eq!(own.get_crosscode(), "Q-1");
     assert_eq!(own.get_crosshashcode(), crosshash("Q-1"));
     assert_eq!(own.get_crossuuid(), own.cross_uuid());
@@ -686,7 +686,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     assert_eq!(twin.get_creatunix(), Some(5));
     assert_eq!(twin.get_expirunix(), Some(99));
     assert!(twin.get_state().is_done());
-    assert_eq!(twin.get_unix(), 20);
+    assert_eq!(twin.get_currunix(), 20);
 
     // Two statements of one market event finalize to one identity: the
     // twin of a followed event restates it and is it.
@@ -708,14 +708,14 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
 #[test]
 fn merging_folds_another_statement_of_the_same_element() {
     let mut first = Report::at(1, 10);
-    first.set_hashcode(0xA);
+    first.set_currhashcode(0xA);
     first.set_parentuuids(vec![Uuid::from_v8(7)]);
     first.set_creatunix(Some(9));
     first.set_prevuuid(Some(Uuid::from_v8(0)));
     first.set_prevunix(Some(1));
 
     let mut later = Report::at(1, 20);
-    later.set_hashcode(0xB);
+    later.set_currhashcode(0xB);
     later.set_crosscode("O-10".to_owned());
     later.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(7)]);
     later.set_creatunix(Some(4));
@@ -732,8 +732,8 @@ fn merging_folds_another_statement_of_the_same_element() {
     let merged = first.clone().merge_with(&later).expect("the same element");
     // The later statement has the last word on the instant and the code,
     // and the further place in the chain stands.
-    assert_eq!(merged.get_unix(), 20);
-    assert_eq!(merged.get_hashcode(), 0xB);
+    assert_eq!(merged.get_currunix(), 20);
+    assert_eq!(merged.get_currhashcode(), 0xB);
     assert_eq!(merged.get_seqnum(), 3);
     // The cross code fills what this one left out, its digest and the
     // cross element in step; the parents are the union in this element's
@@ -758,8 +758,8 @@ fn merging_folds_another_statement_of_the_same_element() {
     // names is kept - so the fold answers nothing, and the later statement
     // stands as it was.
     assert!(later.clone().merge_with(&first).is_none());
-    assert_eq!(later.get_unix(), 20);
-    assert_eq!(later.get_hashcode(), 0xB);
+    assert_eq!(later.get_currunix(), 20);
+    assert_eq!(later.get_currhashcode(), 0xB);
     assert_eq!(later.get_crosscode(), "O-10");
     assert_eq!(
         later.get_parentuuids(),
@@ -769,10 +769,10 @@ fn merging_folds_another_statement_of_the_same_element() {
 
     // A statement naming no predecessor takes the other's.
     let mut silent = Report::at(1, 30);
-    silent.set_hashcode(0xC);
+    silent.set_currhashcode(0xC);
     let merged = silent.merge_with(&first).expect("the same element");
     assert_eq!(
-        merged.get_hashcode(),
+        merged.get_currhashcode(),
         0xC,
         "the later statement's code stands"
     );
@@ -794,12 +794,12 @@ fn a_walk_over_elements_reaches_a_root_by_identity() {
     let by_uuid = |uuid: Uuid| held.iter().find(|element| element.get_curruuid() == uuid);
 
     let mut at: &dyn Event = &leaf;
-    let mut lineage = vec![at.get_unix()];
+    let mut lineage = vec![at.get_currunix()];
     while let Some(parent) = at.get_parentuuids().first().copied() {
         at = by_uuid(parent)
             .expect("a parent is an element of the graph")
             .as_ref();
-        lineage.push(at.get_unix());
+        lineage.push(at.get_currunix());
     }
     assert_eq!(lineage, [30, 20, 10]);
     assert!(
@@ -811,7 +811,7 @@ fn a_walk_over_elements_reaches_a_root_by_identity() {
 #[test]
 fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     let mut event = Report::at(1, at(0));
-    event.set_hashcode(0xCAFE);
+    event.set_currhashcode(0xCAFE);
     let held = event.txhash().expect("an instant a TxHash holds");
     assert_eq!(held.unix(), at(0));
     assert_eq!(held.digest().as_u64(), Some(0xCAFE));
@@ -824,21 +824,21 @@ fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     // A later instant sorts later whatever the code, and the same instant
     // sorts by code: the instant is in front, as a UUIDv7's is.
     let mut later = event.clone();
-    later.set_unix(at(0) + 1_000);
-    later.set_hashcode(0);
+    later.set_currunix(at(0) + 1_000);
+    later.set_currhashcode(0);
     assert!(later.time_uuid().expect("an identity") > identity);
     let mut sibling = event.clone();
-    sibling.set_hashcode(0xCAFF);
+    sibling.set_currhashcode(0xCAFF);
     assert_ne!(sibling.time_uuid().expect("an identity"), identity);
 
     // Every instant the count holds - the last one is in 2262 - a UUIDv7
     // holds too; one before the epoch has no UUIDv7 to derive.
     let mut far = event.clone();
-    far.set_unix(i64::MAX);
+    far.set_currunix(i64::MAX);
     assert!(far.txhash().is_ok());
     assert!(far.time_uuid().expect("an identity") > identity);
     let mut before = event.clone();
-    before.set_unix(-1);
+    before.set_currunix(-1);
     assert!(before.txhash().is_ok());
     assert!(before.time_uuid().is_err());
 
@@ -847,7 +847,7 @@ fn the_instant_and_the_code_derive_one_time_ordered_identity() {
     // code; the cross code's own identity where it does.
     let mut finalized = event.clone();
     finalized.finalized(0xCAFE);
-    assert_eq!(finalized.get_hashcode(), 0xCAFE);
+    assert_eq!(finalized.get_currhashcode(), 0xCAFE);
     assert_eq!(finalized.get_curruuid(), identity);
     assert_eq!(finalized.get_crossuuid(), identity);
     finalized.set_crosscode("O-1".to_owned());
@@ -948,7 +948,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
         object.get_curruuid(),
         next.time_uuid().expect("an identity")
     );
-    assert_eq!(object.get_unix(), at(20));
+    assert_eq!(object.get_currunix(), at(20));
     assert_eq!(object.get_seqnum(), 1);
     assert_eq!(object.get_prevuuid(), Some(held.get_curruuid()));
     assert_eq!(
@@ -969,7 +969,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // A later statement of the same trade: the identity kept, the instant
     // and the facts restated.
     let mut later = first.clone();
-    later.set_unix(at(20));
+    later.set_currunix(at(20));
     later.set_px(Decimal::from_int(83));
     later.set_qty(Decimal::from_int(5));
     later.set_unit("MWh".to_owned());
@@ -982,7 +982,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // code is the better of the two: the earlier fills what the later left
     // unknown, and a code only one statement names is that one's.
     let merged = first.clone().merge_with(&later).expect("the same trade");
-    assert_eq!(merged.get_unix(), at(20));
+    assert_eq!(merged.get_currunix(), at(20));
     assert_eq!(
         (merged.get_px(), merged.get_qty(), merged.get_unit()),
         (Decimal::from_int(83), Decimal::from_int(5), "MWh")
@@ -1018,11 +1018,11 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // A statement that knows a code the later one states as none keeps
     // its own: the later statement leads, and unknown takes the other.
     let mut bare = later.clone();
-    bare.set_unix(at(30));
+    bare.set_currunix(at(30));
     bare.set_currency(Currency::none());
     let merged = later.clone().merge_with(&bare).expect("the same trade");
     assert_eq!(merged.get_currency().as_str(), "EUR");
-    assert_eq!(merged.get_unix(), at(30));
+    assert_eq!(merged.get_currunix(), at(30));
 
     // Another trade does not merge at all.
     assert!(first.merge_with(&trade(30)).is_none());
@@ -1064,7 +1064,7 @@ fn merging_a_market_element_lets_this_statement_lead() {
     // Finalized: the identity is what the merged element states.
     assert_eq!(
         merged.get_curruuid(),
-        Uuid::from_v8(u128::from(merged.get_hashcode()))
+        Uuid::from_v8(u128::from(merged.get_currhashcode()))
     );
     assert_ne!(merged.get_curruuid(), this.get_curruuid());
     // Another element does not merge, and nothing new answers nothing.
@@ -1107,16 +1107,19 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
         followed.get_curruuid(),
         followed.time_uuid().expect("an identity")
     );
-    assert_eq!(followed.get_hashcode(), followed.digest_event().as_u64());
+    assert_eq!(
+        followed.get_currhashcode(),
+        followed.digest_event().as_u64()
+    );
     // The market reading finalizes the same way.
     let trade = trade(40);
     let mut later = trade.clone();
-    later.set_unix(at(50));
+    later.set_currunix(at(50));
     let merged = trade
         .clone()
         .merge_with(&later)
         .expect("the same trade, later");
-    assert_eq!(merged.get_unix(), at(50));
+    assert_eq!(merged.get_currunix(), at(50));
     assert_eq!(
         merged.get_curruuid(),
         merged.time_uuid().expect("an identity")
@@ -1180,7 +1183,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     let mut quoted = trade(40);
     quoted.set_bidpx(Some(Decimal::from_int(80)));
     let mut later = quoted.clone();
-    later.set_unix(at(50));
+    later.set_currunix(at(50));
     later.set_bidpx(None);
     later.set_askpx(Some(Decimal::from_int(85)));
     let merged = quoted.merge_with(&later).expect("the same quote");
@@ -1197,9 +1200,9 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     // Two elements stating the same things digest alike, whatever the
     // instant, the identity, the codes or the clocks around them.
     let mut moved = same.clone();
-    moved.set_unix(99);
+    moved.set_currunix(99);
     moved.set_curruuid(Uuid::from_v8(7));
-    moved.set_hashcode(0xAB);
+    moved.set_currhashcode(0xAB);
     moved.set_crosshashcode(0xCD);
     moved.set_creatunix(Some(1));
     moved.set_expirunix(Some(200));
@@ -1263,17 +1266,17 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     element.set_px(Decimal::parse("82.5").expect("a decimal"));
     element.set_side(Side::read("Buy").expect("a side"));
     element.finalize();
-    assert_ne!(element.get_hashcode(), 0);
-    assert_eq!(element.get_hashcode(), element.digest_market().as_u64());
+    assert_ne!(element.get_currhashcode(), 0);
+    assert_eq!(element.get_currhashcode(), element.digest_market().as_u64());
     assert_eq!(
         element.get_curruuid(),
-        Uuid::from_v8(u128::from(element.get_hashcode()))
+        Uuid::from_v8(u128::from(element.get_currhashcode()))
     );
     assert_eq!(element.get_crosshashcode(), crosshash("O-100"));
     assert_eq!(element.get_crossuuid(), element.cross_uuid());
     let mut same = element.clone();
     same.set_curruuid(Uuid::from_v8(1));
-    same.set_hashcode(0);
+    same.set_currhashcode(0);
     same.finalize();
     assert_eq!(same, element);
     // Without a cross code the cross element is the identity itself.
@@ -1289,11 +1292,14 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
         event.get_curruuid(),
         event.time_uuid().expect("an identity")
     );
-    assert_eq!(event.get_hashcode(), event.digest_market_event().as_u64());
+    assert_eq!(
+        event.get_currhashcode(),
+        event.digest_market_event().as_u64()
+    );
     assert_eq!(event.get_crossuuid(), event.get_curruuid(), "no cross code");
     assert_eq!(trade(10), event);
     assert_ne!(trade(11).get_curruuid(), event.get_curruuid());
-    assert_eq!(trade(11).get_hashcode(), event.get_hashcode());
+    assert_eq!(trade(11).get_currhashcode(), event.get_currhashcode());
 }
 
 #[test]
@@ -1319,7 +1325,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(element.get_curruuid(), event.get_curruuid());
     assert_eq!(element.get_crossuuid(), event.get_crossuuid());
     assert_eq!(element.get_crosscode(), "O-100");
-    assert_eq!(element.get_hashcode(), event.get_hashcode());
+    assert_eq!(element.get_currhashcode(), event.get_currhashcode());
     assert_eq!(element.get_crosshashcode(), event.get_crosshashcode());
     assert_eq!(element.get_identifiers(), event.get_identifiers());
     assert_eq!(element.get_parentuuids(), event.get_parentuuids());
@@ -1339,7 +1345,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     // Back: the element at the epoch, stating what it states and no
     // instant, no state, no place, no lifecycle.
     let back = MarketEventData::from(element.clone());
-    assert_eq!(back.get_unix(), 0);
+    assert_eq!(back.get_currunix(), 0);
     assert_eq!(back.get_state(), &State::unknown());
     assert_eq!(back.get_seqnum(), 0);
     assert_eq!((back.get_creatunix(), back.get_expirunix()), (None, None));
@@ -1353,7 +1359,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     // Dated and finalized, its identity is what the instant and the shared
     // facts derive - and back again, the element's own.
     let mut dated = back;
-    dated.set_unix(at(10));
+    dated.set_currunix(at(10));
     dated.finalize();
     assert_eq!(
         dated.get_curruuid(),
@@ -1496,7 +1502,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     first.set_tif(Some("Day".to_owned()));
     first.finalize();
     let mut later = first.clone();
-    later.set_unix(at(40));
+    later.set_currunix(at(40));
     later.set_lastpx(Some(Decimal::from_int(81)));
     later.set_cumqty(None);
     later.set_leavesqty(Some(Decimal::from_int(900)));
@@ -1515,7 +1521,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(merged.get_tif(), Some("Day"));
     assert_eq!(merged.get_tradable(), Some(true));
     assert_eq!(merged.get_symbolticker(), Some("BRN"));
-    assert_eq!(merged.get_unix(), at(40));
+    assert_eq!(merged.get_currunix(), at(40));
 
     // Every one of them is part of what the event is, so two events that
     // differ only there answer to different codes.
@@ -1525,9 +1531,9 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     let mut trading = trade(50);
     trading.set_tradable(Some(true));
     trading.finalize();
-    assert_ne!(halted.get_hashcode(), trading.get_hashcode());
+    assert_ne!(halted.get_currhashcode(), trading.get_currhashcode());
     let mut named = trade(50);
     named.set_symbolticker(Some("BRN".to_owned()));
     named.finalize();
-    assert_ne!(named.get_hashcode(), trade(50).get_hashcode());
+    assert_ne!(named.get_currhashcode(), trade(50).get_currhashcode());
 }

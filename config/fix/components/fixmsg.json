@@ -4,13 +4,13 @@
     "type": "struct",
     "fields": [
       {
-        "name": "unix",
+        "name": "currunix",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "unix",
+          "fix:field": "currunix",
           "fix:tag": "65003"
         }
       },
@@ -169,13 +169,13 @@
         }
       },
       {
-        "name": "hashcode",
+        "name": "currhashcode",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "hashcode",
+          "fix:field": "currhashcode",
           "fix:tag": "65017"
         }
       },

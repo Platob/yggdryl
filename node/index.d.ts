@@ -1531,7 +1531,7 @@ export type JsFixMessages = FixMessages
  *
  * Every message carries its identity settled: the cross code read off the
  * first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
- * over it, the `hashcode` over everything the message says, the `curruuid`
+ * over it, the `currhashcode` over everything the message says, the `curruuid`
  * over its instant and that hash, and the `crossuuid` over the cross hash -
  * or the `curruuid` itself when no cross code names a chain. Every write
  * settles it again.
@@ -1618,11 +1618,11 @@ export declare class FixMsg {
   /** The code the chain is named by, or empty. */
   get crosscode(): string
   /** The XXH3-64 over everything this message says. */
-  get hashcode(): bigint
+  get currhashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   get crosshashcode(): bigint
   /** When the event happened, nanoseconds since the Unix epoch, UTC. */
-  get unix(): bigint
+  get currunix(): bigint
   /**
    * The order state the message reached, ranked: `00UNKNOWN` where it
    * states none.
@@ -5816,8 +5816,8 @@ export interface FixCodecOptions {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `unix` and the chain's `creatunix`, `expirunix`,
- * `prevunix` and `snapunix`; the identities `hashcode`, `crosshashcode`,
+ * The event's instant `currunix` and the chain's `creatunix`, `expirunix`,
+ * `prevunix` and `snapunix`; the identities `currhashcode`, `crosshashcode`,
  * `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
  * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
  * the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
@@ -5825,7 +5825,7 @@ export interface FixCodecOptions {
  * bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`; the
  * capture's own columns, `sourceurl` and `recordedat`, which whoever read
  * the line states on the row and no message holds; and the `nofixentries`
- * that counts the content record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
+ * that counts the content record. `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null. Every registry already holds them, so this is
  * the listing a schema or a document walks rather than something a caller
  * registers.
@@ -5879,7 +5879,7 @@ export interface FixEntryView {
 export interface FixEventView {
   /**
    * This message's own identity: a time UUID over its instant and its
-   * `hashcode`.
+   * `currhashcode`.
    */
   curruuid: string
   /**
@@ -5898,7 +5898,7 @@ export interface FixEventView {
    * The XXH3-64 of the event, the text, the metadata, the header and the
    * row.
    */
-  hashcode: bigint
+  currhashcode: bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   crosshashcode: bigint
   /** The identifiers the message is known by, scheme to value, sorted. */
@@ -5909,7 +5909,7 @@ export interface FixEventView {
    * When the event happened: `TransactTime(60)` where the message states
    * one with a clock, else its sending time.
    */
-  unix: bigint
+  currunix: bigint
   /** The order state the message reached, ranked: `20NEW`, `80FILLED`. */
   state: string
   /** The message's place in its chain, `0` until a lifecycle states it. */
@@ -6015,8 +6015,8 @@ export interface FixHeaderView {
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `fix:tag`,
- * and is what fills it. `beginstring` and the settled identity - `unix`,
- * `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * and is what fills it. `beginstring` and the settled identity - `currunix`,
+ * `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */

@@ -7,7 +7,7 @@
 //!
 //! A digest identifies the bytes or values its owner selects, not an assumed
 //! schema. For example, [`crate::FixMsg::digest`] identifies the arrival body
-//! independently of its delivery envelope. A message's `hashcode` is the
+//! independently of its delivery envelope. A message's `currhashcode` is the
 //! XXH3-64 of what its event states and the canonical named content behind
 //! it, coupled with its instant into the UUIDv7 that is its identity; its
 //! `crosshashcode` is the XXH3-64 of the chain identifier it shares. These

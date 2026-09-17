@@ -1966,7 +1966,7 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let dateless = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
         .unwrap();
-    assert_eq!(dateless.get_unix(), 7_752_123_000_000);
+    assert_eq!(dateless.get_currunix(), 7_752_123_000_000);
     // A parse is not a snapshot, so the snapshot clock is a fact the
     // message does not state: a row that said it was taken at a moment
     // nothing took it at would be a fact nobody stated.
@@ -1974,7 +1974,7 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let dated = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=20240102-10:15:30.000|10=0|")
         .unwrap();
-    assert_eq!(dated.get_unix(), 1_704_190_530_000_000_000);
+    assert_eq!(dated.get_currunix(), 1_704_190_530_000_000_000);
 
     let mut narrow = FixRegistry::new();
     let mut clock = DataType::utf8().nullable_field("transacttime");

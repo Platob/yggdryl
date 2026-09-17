@@ -1276,7 +1276,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
 | `FixMsg.entries()` | `(tag, name, value, entries)` tuples, the content row read as a tree: a group is one entry under its counter valued the count, over one valueless entry per occurrence heading the members, and a key no field resolves, named or numeric, carries tag 0 with its own spelling |
-| `FixMsg` | `FixMsg(field, value, registry=None)` lifts every [typed fact](../fix/message.md#typed-tags) out of the children stating it, settles the clocks and derives the identity, reading the clock once only for a SendingTime nothing states; `event()`, `header()` and `capture()` answer the holders, and `text`, `metadata`, `curruuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `unix`, `state`, `seqnum`, `prevuuid`, `parentuuids`, `identifiers`, `px`, `qty`, `side` and `currency` the facts a reader asks for by name; `field`, `value`, `len()` and iteration are the content row alone; equality over holders, row and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` reach a holder for a typed tag and the row for everything else, settling the identity again, while a key reaching one of [the capture's own columns](../fix/message.md#a-row-is-a-message-again) - `sourceurl`, `recordedat` - is a `ValueError` because no message holds one, and `remove` reaches nothing there; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included, every capture column read past |
+| `FixMsg` | `FixMsg(field, value, registry=None)` lifts every [typed fact](../fix/message.md#typed-tags) out of the children stating it, settles the clocks and derives the identity, reading the clock once only for a SendingTime nothing states; `event()`, `header()` and `capture()` answer the holders, and `text`, `metadata`, `curruuid`, `crossuuid`, `crosscode`, `currhashcode`, `crosshashcode`, `currunix`, `state`, `seqnum`, `prevuuid`, `parentuuids`, `identifiers`, `px`, `qty`, `side` and `currency` the facts a reader asks for by name; `field`, `value`, `len()` and iteration are the content row alone; equality over holders, row and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` reach a holder for a typed tag and the row for everything else, settling the identity again, while a key reaching one of [the capture's own columns](../fix/message.md#a-row-is-a-message-again) - `sourceurl`, `recordedat` - is a `ValueError` because no message holds one, and `remove` reaches nothing there; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included, every capture column read past |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; `field` answers a read-only `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifier_values(message)` | takes a `FixMsg` and answers `list[tuple[Field, Scalar]]` in declaration order, omitting absent or null values; each field is a read-only declaration clone, each scalar retains its native datatype and width, and binary values remain bytes until enrichment needs UTF-8 |
 | `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect; `default_sending_time` (a `Scalar`, a `datetime`, or `None`, read back as a nanosecond UTC `Scalar` or `None`) is the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the crate's own 4.4, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line` and `parse_text_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `lifecycle` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` answer one `FixMsg`; no reader takes a flag, and there is no enriching door - a parse restates the row, fills what the message implies and settles the identity |
@@ -1377,14 +1377,14 @@ with pytest.raises(ValueError, match="shared with a message"):
 # The row holds what no holder owns; the typed facts are the holders'.
 assert [name for name, _ in message] == ["symbol"]
 assert message.header().beginstring == "", "a built message states no version"
-assert message.hashcode != 0
+assert message.currhashcode != 0
 
 # The message is a value: it hashes, copies and pickles, registry included,
 # and its settled clocks and identities rebuild it equal.
 assert copy.deepcopy(message) == message
 unpickled = pickle.loads(pickle.dumps(message))
 assert unpickled.entries() == message.entries()
-assert unpickled.hashcode == message.hashcode and unpickled.curruuid == message.curruuid
+assert unpickled.currhashcode == message.currhashcode and unpickled.curruuid == message.curruuid
 assert unpickled.registry == registry
 assert hash(message) == hash(FixMsg(message.field, message.value, registry))
 assert message.by_id(symbol.fix.id).as_py() == "AAPL"
@@ -1399,7 +1399,7 @@ parsed = next(messages)
 assert next(messages, None) is None
 assert parsed.into_text("|") == "8=FIX.4.4|35=D|59=0|55=AAPL|10=0|"
 assert parsed.by_tag(52) == codec.default_sending_time
-assert parsed.unix == parsed.event().creatunix
+assert parsed.currunix == parsed.event().creatunix
 table_field = fix_schema(registry)
 assert len(parsed.into_row(table_field)) == len(list(table_field))
 ```

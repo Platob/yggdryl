@@ -164,9 +164,9 @@ pub fn fix_schema_tags() -> Vec<i32> {
         BIDCURRENCY_TAG_NAME as BIDCURRENCY, BIDUNIT_TAG_NAME as BIDUNIT,
         BLOOMBERGCODE_TAG_NAME as BLOOMBERG, CREATUNIX_TAG_NAME as CREATUNIX,
         CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
-        CROSSUUID_TAG_NAME as CROSSUUID, CURRUUID_TAG_NAME as CURRUUID,
-        CUSIPCODE_TAG_NAME as CUSIP, EXPIRUNIX_TAG_NAME as EXPIRUNIX,
-        HASHCODE_TAG_NAME as HASHCODE, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
+        CROSSUUID_TAG_NAME as CROSSUUID, CURRHASHCODE_TAG_NAME as HASHCODE,
+        CURRUNIX_TAG_NAME as UNIX, CURRUUID_TAG_NAME as CURRUUID, CUSIPCODE_TAG_NAME as CUSIP,
+        EXPIRUNIX_TAG_NAME as EXPIRUNIX, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
         ISINCODE_TAG_NAME as ISIN, METADATA_TAG_NAME as METADATA, MICCODE_TAG_NAME as MIC,
         MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
         MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
@@ -175,7 +175,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         QTY_TAG_NAME as QTY, RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL,
         SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
         STATE_TAG_NAME as STATE, SYMBOLTICKER_TAG_NAME as SYMBOLTICKER,
-        TRADABLE_TAG_NAME as TRADABLE, UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
+        TRADABLE_TAG_NAME as TRADABLE, UNIT_TAG_NAME as UNIT,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -344,9 +344,9 @@ pub fn fix_schema_tags() -> Vec<i32> {
 fn is_required(tag: i32) -> bool {
     tag == 8
         || [
-            super::UNIX_TAG_NAME.0,
+            super::CURRUNIX_TAG_NAME.0,
             super::CREATUNIX_TAG_NAME.0,
-            super::HASHCODE_TAG_NAME.0,
+            super::CURRHASHCODE_TAG_NAME.0,
             super::CROSSHASHCODE_TAG_NAME.0,
             super::CURRUUID_TAG_NAME.0,
             super::CROSSUUID_TAG_NAME.0,
@@ -1265,7 +1265,7 @@ impl super::FixMsg {
     /// assert_eq!(held.entries(), order.entries());
     /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
     /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|59=0|11=A1|55=AAPL|"));
-    /// assert_eq!(held.get_hashcode(), order.get_hashcode());
+    /// assert_eq!(held.get_currhashcode(), order.get_currhashcode());
     /// // And the row it came from is the row it makes.
     /// assert_eq!(held.into_row(&schema)?, row);
     /// # Ok(())

@@ -109,7 +109,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - A group is emitted as the counter pair valued its occurrence count, then the
   members of each occurrence; the counter column beside the group states the
   same count once and is not a second pair.
-- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `hashcode`, `curruuid`, `crossuuid` - is emitted nowhere.
+- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `currhashcode`, `curruuid`, `crossuuid` - is emitted nowhere.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)

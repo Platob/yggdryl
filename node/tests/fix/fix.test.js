@@ -1133,7 +1133,7 @@ test('a message holds its typed facts beside the content row it resolves through
   // order identifier, the first stated of the tags a chain is named by.
   assert.equal(message.side, 'BUY')
   assert.equal(message.crosscode, 'C-1')
-  assert.equal(message.unix, SENDING_NS)
+  assert.equal(message.currunix, SENDING_NS)
   assert.equal(message.event().creatunix, SENDING_NS)
   assert.equal(message.state, '00UNKNOWN')
   assert.equal(message.seqnum, 0)
@@ -1163,7 +1163,7 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.ok(message.byTag(52).equals(SENDING))
   assert.ok(message.byTag(65003).equals(SENDING), 'unix, as the clock its column holds')
   assert.equal(message.byTag(65039).asJs(), message.curruuid)
-  assert.equal(message.byTag(65017).asJs(), message.hashcode)
+  assert.equal(message.byTag(65017).asJs(), message.currhashcode)
   assert.equal(message.byTag(65048).asJs(), 'C-1')
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
@@ -1270,15 +1270,15 @@ test('the identity is settled on every message and follows what it says', () => 
   // A UUID crosses as its hyphenated text, a hash as a bigint.
   assert.match(message.curruuid, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
   assert.match(message.crossuuid, /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-  assert.equal(typeof message.hashcode, 'bigint')
+  assert.equal(typeof message.currhashcode, 'bigint')
   assert.equal(typeof message.crosshashcode, 'bigint')
-  assert.notEqual(message.hashcode, 0n)
+  assert.notEqual(message.currhashcode, 0n)
   assert.notEqual(message.crosshashcode, 0n)
   // Two builds of one statement are one identity; other content is another
   // message of the same chain.
-  assert.equal(message.hashcode, same.hashcode)
+  assert.equal(message.currhashcode, same.currhashcode)
   assert.equal(message.curruuid, same.curruuid)
-  assert.notEqual(other.hashcode, message.hashcode)
+  assert.notEqual(other.currhashcode, message.currhashcode)
   assert.notEqual(other.curruuid, message.curruuid)
   assert.equal(other.crossuuid, message.crossuuid)
   assert.equal(other.crosshashcode, message.crosshashcode)
@@ -1286,12 +1286,12 @@ test('the identity is settled on every message and follows what it says', () => 
   const event = message.event()
   assert.equal(event.curruuid, message.curruuid)
   assert.equal(event.crossuuid, message.crossuuid)
-  assert.equal(event.hashcode, message.hashcode)
+  assert.equal(event.currhashcode, message.currhashcode)
   assert.equal(event.crosshashcode, message.crosshashcode)
   assert.equal(event.crosscode, message.crosscode)
   assert.deepEqual(event.identifiers, message.identifiers)
   assert.equal(event.side, message.side)
-  assert.equal(event.unix, message.unix)
+  assert.equal(event.currunix, message.currunix)
   assert.equal(event.state, message.state)
   assert.equal(event.seqnum, message.seqnum)
   assert.equal(event.prevuuid, message.prevuuid)
@@ -1550,7 +1550,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.4')
   assert.equal(pairs.header().sendingtime, SENDING_NS)
   assert.ok(pairs.byTag(52).equals(SENDING))
-  assert.equal(pairs.unix, SENDING_NS)
+  assert.equal(pairs.currunix, SENDING_NS)
   assert.equal(pairs.event().creatunix, SENDING_NS)
   assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
   assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
@@ -1558,12 +1558,12 @@ test('a reader parses every frame shape the core reads', () => {
   // transaction time where the message states one with a clock.
   const dated = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|60=20260102-10:15:31.5|11=A|10=0|'))
   assert.equal(dated.header().sendingtime, SENDING_NS)
-  assert.equal(dated.unix, 1_767_348_931_500_000_000n)
+  assert.equal(dated.currunix, 1_767_348_931_500_000_000n)
   assert.equal(dated.intoText('|').startsWith('8=FIX.4.4|35=D|52=20240102-10:15:30|'), true)
   // A transaction time stating only a day sets no event instant: the
   // sending clock stands in.
   const day = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|60=20260814|11=A|10=0|'))
-  assert.equal(day.unix, SENDING_NS)
+  assert.equal(day.currunix, SENDING_NS)
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
@@ -1742,7 +1742,7 @@ test('a row reads back into a message stating the same facts', () => {
   assert.deepEqual(held.entries(), message.entries())
   assert.equal(held.intoText('|'), message.intoText('|'))
   assert.deepEqual(held.digest(), message.digest())
-  assert.equal(held.hashcode, message.hashcode)
+  assert.equal(held.currhashcode, message.currhashcode)
   assert.equal(held.curruuid, message.curruuid)
   assert.equal(held.crossuuid, message.crossuuid)
   assert.deepEqual(held.header(), message.header())

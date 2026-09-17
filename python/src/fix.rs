@@ -1322,7 +1322,7 @@ impl PyFixMsg {
     /// event's own tags, `Text(58)` - fills the holder that owns it and
     /// leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `unix` is the stated one, else `TransactTime`, else
+    /// one; the instant `currunix` is the stated one, else `TransactTime`, else
     /// `SendingTime`; the creation is the stated one, else
     /// `OrigSendingTime`, else the instant. The identity is then derived:
     /// the cross code from the first stated of `OrderID`, `ClOrdID`,
@@ -1706,8 +1706,8 @@ impl PyFixMsg {
     /// The code the message's content digests to: the XXH3-64 of what the
     /// event states and the named FIX content behind it.
     #[getter]
-    fn hashcode(&self) -> u64 {
-        self.inner.get_hashcode()
+    fn currhashcode(&self) -> u64 {
+        self.inner.get_currhashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where the message names none.
@@ -1719,8 +1719,8 @@ impl PyFixMsg {
     /// When the message happened: nanoseconds since the Unix epoch, UTC -
     /// the stated instant, else `TransactTime`, else `SendingTime`.
     #[getter]
-    fn unix(&self) -> i64 {
-        self.inner.get_unix()
+    fn currunix(&self) -> i64 {
+        self.inner.get_currunix()
     }
 
     /// The state the order is in, as the `state` code it is.
@@ -2224,7 +2224,7 @@ impl PyFixCodec {
     /// by position. The line's `timestamp` is capture context and stamps
     /// nothing: `SendingTime` is the message's own, else a `SendingTime`
     /// capture, else the codec's `default_sending_time`, else UTC now, and
-    /// the instant `unix` is `TransactTime`, else that `SendingTime`.
+    /// the instant `currunix` is `TransactTime`, else that `SendingTime`.
     ///
     /// A `pluginid` capture fills the crate's `pluginid` field and selects
     /// nothing: the dictionary is one namespace.
@@ -2506,7 +2506,7 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// `nofixentries` that counts it. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`,
-/// and is what fills it. `beginstring`, `unix`, `creatunix`, `hashcode`,
+/// and is what fills it. `beginstring`, `currunix`, `creatunix`, `currhashcode`,
 /// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
 /// because every message settles them; a tag the dictionary does not hold
 /// is skipped rather than invented.
@@ -2559,9 +2559,9 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `unix`, `creatunix`, `expirunix`, `prevunix`,
+/// The event's clocks - `currunix`, `creatunix`, `expirunix`, `prevunix`,
 /// `snapunix`, the `recordedat` a capture stamped - its identities -
-/// `hashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`,
+/// `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`,
 /// `parentuuids`, the `crosscode` they derive from - the facts a row
 /// derives from what the message said - the instrument's `isincode`,
 /// `cusipcode`, `sedolcode`, `bloombergcode`, its `miccode` and the order's
@@ -2917,8 +2917,8 @@ impl PyMarketEventData {
 
     /// The code the facts digest to.
     #[getter]
-    fn hashcode(&self) -> u64 {
-        self.inner.get_hashcode()
+    fn currhashcode(&self) -> u64 {
+        self.inner.get_currhashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where none is named.
@@ -2946,8 +2946,8 @@ impl PyMarketEventData {
 
     /// When the event happened: nanoseconds since the Unix epoch, UTC.
     #[getter]
-    fn unix(&self) -> i64 {
-        self.inner.get_unix()
+    fn currunix(&self) -> i64 {
+        self.inner.get_currunix()
     }
 
     /// The state the order is in, as the `state` code it is.
@@ -3128,14 +3128,14 @@ impl PyMarketEventData {
 
     /// Hashes by the code the facts digest to, which equal facts share.
     fn __hash__(&self) -> isize {
-        crate::python_hash(self.inner.get_hashcode())
+        crate::python_hash(self.inner.get_currhashcode())
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketEventData({}, unix={}, state={:?}, crosscode={:?})",
+            "MarketEventData({}, currunix={}, state={:?}, crosscode={:?})",
             self.inner.get_curruuid(),
-            self.inner.get_unix(),
+            self.inner.get_currunix(),
             self.inner.get_state().as_str(),
             self.inner.get_crosscode()
         )

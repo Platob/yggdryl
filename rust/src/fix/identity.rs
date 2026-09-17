@@ -13,13 +13,13 @@ use super::schema::CLOCK_DATATYPE;
 use super::{
     ASKCURRENCY_TAG_NAME, ASKUNIT_TAG_NAME, BIDCURRENCY_TAG_NAME, BIDUNIT_TAG_NAME,
     BLOOMBERGCODE_TAG_NAME, CREATUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
-    CROSSUUID_TAG_NAME, CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXPIRUNIX_TAG_NAME, FixRegistry,
-    HASHCODE_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, PARENTUUIDS_TAG_NAME,
-    PLUGINID_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    PX_TAG_NAME, QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME,
-    TRADABLE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME,
+    CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME,
+    CUSIPCODE_TAG_NAME, EXPIRUNIX_TAG_NAME, FixRegistry, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME,
+    MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    PARENTUUIDS_TAG_NAME, PLUGINID_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, PX_TAG_NAME, QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME,
+    SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME,
+    TRADABLE_TAG_NAME, UNIT_TAG_NAME,
 };
 
 /// The standard header facts every message holds typed, beside its row.
@@ -391,9 +391,9 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
     let decimal = || Decimal::from_scalar(value);
     let currency = || text().and_then(|held| Currency::new(held).ok());
     let is = |held: (i32, &str)| held.0 == tag;
-    if is(UNIX_TAG_NAME) {
+    if is(CURRUNIX_TAG_NAME) {
         if let Some(unix) = instant() {
-            event.set_unix(unix);
+            event.set_currunix(unix);
         }
     } else if is(CREATUNIX_TAG_NAME) {
         event.set_creatunix(instant());
@@ -416,9 +416,9 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
         if let Scalar::Uuid(uuid) = value {
             event.set_crossuuid(*uuid);
         }
-    } else if is(HASHCODE_TAG_NAME) {
+    } else if is(CURRHASHCODE_TAG_NAME) {
         if let Some(code) = value.as_u64() {
-            event.set_hashcode(code);
+            event.set_currhashcode(code);
         }
     } else if is(CROSSHASHCODE_TAG_NAME) {
         if let Some(code) = value.as_u64() {
@@ -544,8 +544,8 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
     let text = |held: &str| (!held.is_empty()).then(|| Scalar::from(held));
     let number = |held: Decimal| (!held.is_zero()).then(|| Scalar::from(held));
     let is = |held: (i32, &str)| held.0 == tag;
-    if is(UNIX_TAG_NAME) {
-        instant(event.get_unix())
+    if is(CURRUNIX_TAG_NAME) {
+        instant(event.get_currunix())
     } else if is(CREATUNIX_TAG_NAME) {
         stated(event.get_creatunix())
     } else if is(EXPIRUNIX_TAG_NAME) {
@@ -560,8 +560,8 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
         Some(Scalar::Uuid(event.get_curruuid()))
     } else if is(CROSSUUID_TAG_NAME) {
         Some(Scalar::Uuid(event.get_crossuuid()))
-    } else if is(HASHCODE_TAG_NAME) {
-        Some(Scalar::from(event.get_hashcode()))
+    } else if is(CURRHASHCODE_TAG_NAME) {
+        Some(Scalar::from(event.get_currhashcode()))
     } else if is(CROSSHASHCODE_TAG_NAME) {
         Some(Scalar::from(event.get_crosshashcode()))
     } else if is(CROSSCODE_TAG_NAME) {

@@ -2967,7 +2967,7 @@ mod clock_intake_tests {
         // does not do is fill `snapunix`, which says this row is a reading a
         // walk took.
         assert_eq!(
-            Some(message.get_unix()),
+            Some(message.get_currunix()),
             message
                 .by_tag(60)
                 .unwrap()

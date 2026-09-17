@@ -51,7 +51,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     assert_eq!(
         &tags[..12],
         [
-            yggdryl::UNIX_TAG_NAME.0,
+            yggdryl::CURRUNIX_TAG_NAME.0,
             yggdryl::CREATUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::EXPIRUNIX_TAG_NAME.0,
@@ -72,7 +72,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
             yggdryl::CROSSCODE_TAG_NAME.0,
-            yggdryl::HASHCODE_TAG_NAME.0,
+            yggdryl::CURRHASHCODE_TAG_NAME.0,
             yggdryl::CROSSHASHCODE_TAG_NAME.0,
             yggdryl::PREVUUID_TAG_NAME.0,
             yggdryl::SEQNUM_TAG_NAME.0,
@@ -159,7 +159,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             .index_of(name)
             .unwrap_or_else(|| panic!("a {name} column"))
     };
-    for pair in ["unix", "creatunix", "prevunix", "expirunix", "snapunix"].windows(2) {
+    for pair in ["currunix", "creatunix", "prevunix", "expirunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert!(at("snapunix") < at("curruuid"), "the clocks open the row");
@@ -202,24 +202,24 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     );
     assert_eq!(
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
-        typed(yggdryl::UNIX_TAG_NAME.0)
+        typed(yggdryl::CURRUNIX_TAG_NAME.0)
     );
     assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
     assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid);
-    assert_eq!(typed(yggdryl::HASHCODE_TAG_NAME.0), DataType::UInt64);
+    assert_eq!(typed(yggdryl::CURRHASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::UNIX_TAG_NAME.0, "Unix"),
+        (yggdryl::CURRUNIX_TAG_NAME.0, "CurrUnix"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
         (yggdryl::PLUGINID_TAG_NAME.0, "PluginId"),
         (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
         (yggdryl::ISINCODE_TAG_NAME.0, "ISINCode"),
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::HASHCODE_TAG_NAME.0, "HashCode"),
+        (yggdryl::CURRHASHCODE_TAG_NAME.0, "CurrHashCode"),
         (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
         (yggdryl::CROSSCODE_TAG_NAME.0, "CrossCode"),
         (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
@@ -240,11 +240,11 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "unix",
+            "currunix",
             "creatunix",
             "curruuid",
             "crossuuid",
-            "hashcode",
+            "currhashcode",
             "crosshashcode",
             "beginstring",
         ]
@@ -261,7 +261,9 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
-    use yggdryl::{CROSSHASHCODE_TAG_NAME, FixMsg, HASHCODE_TAG_NAME, IOMedia, PREVUUID_TAG_NAME};
+    use yggdryl::{
+        CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, FixMsg, IOMedia, PREVUUID_TAG_NAME,
+    };
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -298,7 +300,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    for (tag, _) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
+    for (tag, _) in [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
         assert!(
             at(&row, &schema, tag).as_u64().is_some(),
             "tag {tag} is a settled code"
@@ -330,7 +332,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     // A code is a plain `uint64`; an identity is sixteen bytes under the
     // canonical Arrow extension name for one, which is what a lake engine
     // reads it back as.
-    for (_, name) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
+    for (_, name) in [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(field.data_type(), &arrow_schema::DataType::UInt64);
         assert!(!field.metadata().contains_key("ARROW:extension:name"));
@@ -451,24 +453,24 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
     let row = order.into_row(&schema).unwrap();
 
     // The code the content digests to, a sixty-four-bit number the row holds.
-    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::CURRHASHCODE_TAG_NAME.0).is_null());
 
     // The clock the row is cut by - how a layout is cut from it is the
     // target's, not a column of this crate's.
-    assert!(!at(&row, &schema, yggdryl::UNIX_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::CURRUNIX_TAG_NAME.0).is_null());
 
     // The version it was read at, which the header holds and the row states.
     assert_eq!(at(&row, &schema, 8).as_str(), Some("FIX.4.4"));
 
     // Hard identities and clocks are stored mirrors, never invented arrivals.
     assert!(order.get_by_tag(65_000).is_none());
-    assert!(order.get_by_tag(yggdryl::HASHCODE_TAG_NAME.0).is_some());
-    assert!(order.get_by_tag(yggdryl::UNIX_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::CURRHASHCODE_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::CURRUNIX_TAG_NAME.0).is_some());
     assert!(
         order
             .entries()
             .iter()
-            .all(|entry| entry.tag() != yggdryl::UNIX_TAG_NAME.0)
+            .all(|entry| entry.tag() != yggdryl::CURRUNIX_TAG_NAME.0)
     );
 }
 
@@ -604,7 +606,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{CROSSHASHCODE_TAG_NAME, HASHCODE_TAG_NAME, PREVUUID_TAG_NAME};
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -623,7 +625,11 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let identities = [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, PREVUUID_TAG_NAME];
+    let identities = [
+        CURRHASHCODE_TAG_NAME,
+        CROSSHASHCODE_TAG_NAME,
+        PREVUUID_TAG_NAME,
+    ];
     // Read off the projected row, because the fixed schema is what the table
     // holds and a projection is content: `msghash` digests the row it lands in
     // (see `message.md#clocks-and-identity`), and the table's business is to
@@ -753,7 +759,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     assert!(at(&row, &schema, yggdryl::ISINCODE_TAG_NAME.0).is_null());
     // The row is still a row: the columns beside the unreadable ones are
     // filled, and the identity bundle still settled.
-    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::CURRHASHCODE_TAG_NAME.0).is_null());
 }
 
 /// A market spelled wider than a MIC derives nothing rather than refusing.

@@ -28,7 +28,7 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixRegistry, UNIX_TAG_NAME};
+    use yggdryl::{DataType, FixId, FixRegistry, CURRUNIX_TAG_NAME};
     use yggdryl::holder::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -50,11 +50,11 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together.
-    let (tag, name) = UNIX_TAG_NAME;
-    let unix = registry.field_by_id(FixId::of(tag, name)?)?;
-    assert_eq!(unix.name(), "unix");
-    assert_eq!(unix.display(), Some("Unix"));
-    assert_eq!(unix.as_fix().id()?, Some(FixId::of(65_003, "Unix")?));
+    let (tag, name) = CURRUNIX_TAG_NAME;
+    let currunix = registry.field_by_id(FixId::of(tag, name)?)?;
+    assert_eq!(currunix.name(), "currunix");
+    assert_eq!(currunix.display(), Some("CurrUnix"));
+    assert_eq!(currunix.as_fix().id()?, Some(FixId::of(65_003, "CurrUnix")?));
     ```
 
 === "Python"
@@ -79,10 +79,10 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65003, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
-    unix = registry.field_by_tag(65_003)
-    assert unix.name == "unix"
-    assert unix.display == "Unix"
-    assert registry.field_by_id(unix.fix.id) == unix
+    currunix = registry.field_by_tag(65_003)
+    assert currunix.name == "currunix"
+    assert currunix.display == "CurrUnix"
+    assert registry.field_by_id(currunix.fix.id) == currunix
     ```
 
 === "JavaScript"
@@ -109,10 +109,10 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
-    const unix = registry.fieldByTag(65_003)
-    assert.equal(unix.name, 'unix')
-    assert.equal(unix.display, 'Unix')
-    assert.ok(registry.fieldById(unix.fix.id).equals(unix))
+    const currunix = registry.fieldByTag(65_003)
+    assert.equal(currunix.name, 'currunix')
+    assert.equal(currunix.display, 'CurrUnix')
+    assert.ok(registry.fieldById(currunix.fix.id).equals(currunix))
     ```
 
 ## What the registry holds

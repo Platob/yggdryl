@@ -336,5 +336,5 @@ fn a_header_tag_is_the_headers_fact_and_stays_out_of_the_content_code() {
     assert_eq!(read("8").header().msgseqnum(), Some(8));
     assert!(!read("7").entries().iter().any(|entry| entry.tag() == 34));
     assert_eq!(read("7").into_bytes(b'|'), b"8=FIX.4.4|34=7|11=A|");
-    assert_ne!(read("7").get_hashcode(), read("8").get_hashcode());
+    assert_ne!(read("7").get_currhashcode(), read("8").get_currhashcode());
 }

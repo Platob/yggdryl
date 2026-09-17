@@ -35,11 +35,11 @@ use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, S
 /// element.set_qty(Decimal::from_int(1_000));
 /// element.set_side(Side::read("Buy")?);
 /// element.finalize();
-/// assert_ne!(element.get_hashcode(), 0);
+/// assert_ne!(element.get_currhashcode(), 0);
 /// assert_eq!(element.get_crossuuid(), element.cross_uuid());
 /// // The same facts at an instant: the event states them and its own.
 /// let mut event = MarketEventData::from(element.clone());
-/// event.set_unix(1_700_000_000_000_000_000);
+/// event.set_currunix(1_700_000_000_000_000_000);
 /// event.finalize();
 /// assert_eq!(event.get_px(), element.get_px());
 /// assert_eq!(event.get_crosscode(), "O-100");
@@ -56,7 +56,7 @@ pub struct MarketElementData {
     curruuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
-    hashcode: u64,
+    currhashcode: u64,
     crosshashcode: u64,
     identifiers: BTreeMap<String, String>,
     parentuuids: Vec<Uuid>,
@@ -98,7 +98,7 @@ impl Default for MarketElementData {
             curruuid: Uuid::default(),
             crossuuid: Uuid::default(),
             crosscode: String::new(),
-            hashcode: 0,
+            currhashcode: 0,
             crosshashcode: 0,
             identifiers: BTreeMap::new(),
             parentuuids: Vec::new(),
@@ -160,12 +160,12 @@ impl Element for MarketElementData {
         self.crosscode = crosscode;
     }
 
-    fn get_hashcode(&self) -> u64 {
-        self.hashcode
+    fn get_currhashcode(&self) -> u64 {
+        self.currhashcode
     }
 
-    fn set_hashcode(&mut self, hashcode: u64) {
-        self.hashcode = hashcode;
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.currhashcode = hashcode;
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -199,8 +199,8 @@ impl Element for MarketElementData {
     fn finalize(&mut self) {
         self.fill_market();
         self.sync_cross();
-        self.hashcode = self.digest_market().as_u64();
-        self.curruuid = Uuid::from_v8(u128::from(self.hashcode));
+        self.currhashcode = self.digest_market().as_u64();
+        self.curruuid = Uuid::from_v8(u128::from(self.currhashcode));
         self.crossuuid = self.cross_uuid();
     }
 
@@ -495,7 +495,7 @@ impl MarketElement for MarketElementData {
 /// assert_eq!(event.get_bidpx(), Some("82.5".parse()?));
 /// event.finalize();
 /// assert_eq!(event.get_curruuid(), event.time_uuid()?);
-/// assert_ne!(event.get_hashcode(), 0);
+/// assert_ne!(event.get_currhashcode(), 0);
 /// // Restating the same facts is the same identity; a new price is not.
 /// let mut same = MarketEventData::at(1_700_000_000_000_000_000);
 /// same.set_px("82.5".parse()?);
@@ -513,7 +513,7 @@ impl MarketElement for MarketElementData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MarketEventData {
     element: MarketElementData,
-    unix: i64,
+    currunix: i64,
     state: State,
     seqnum: u64,
     creatunix: Option<i64>,
@@ -531,7 +531,7 @@ impl MarketEventData {
     pub fn at(unix: i64) -> Self {
         Self {
             element: MarketElementData::default(),
-            unix,
+            currunix: unix,
             state: State::unknown(),
             seqnum: 0,
             creatunix: None,
@@ -575,12 +575,12 @@ impl Element for MarketEventData {
         self.element.crosscode = crosscode;
     }
 
-    fn get_hashcode(&self) -> u64 {
-        self.element.hashcode
+    fn get_currhashcode(&self) -> u64 {
+        self.element.currhashcode
     }
 
-    fn set_hashcode(&mut self, hashcode: u64) {
-        self.element.hashcode = hashcode;
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.element.currhashcode = hashcode;
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -608,7 +608,7 @@ impl Element for MarketEventData {
     }
 
     fn is_after(&self, other: &Self) -> bool {
-        self.unix > other.unix
+        self.currunix > other.currunix
     }
 
     fn finalize(&mut self) {
@@ -636,12 +636,12 @@ impl Event for MarketEventData {
         super::element::restating_market(self, live)
     }
 
-    fn get_unix(&self) -> i64 {
-        self.unix
+    fn get_currunix(&self) -> i64 {
+        self.currunix
     }
 
-    fn set_unix(&mut self, unix: i64) {
-        self.unix = unix;
+    fn set_currunix(&mut self, unix: i64) {
+        self.currunix = unix;
     }
 
     fn get_state(&self) -> &State {
@@ -941,7 +941,7 @@ fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &
     this.set_curruuid(other.get_curruuid());
     this.set_crossuuid(other.get_crossuuid());
     this.set_crosscode(other.get_crosscode().to_owned());
-    this.set_hashcode(other.get_hashcode());
+    this.set_currhashcode(other.get_currhashcode());
     this.set_crosshashcode(other.get_crosshashcode());
     this.set_identifiers(other.get_identifiers().clone());
     this.set_parentuuids(other.get_parentuuids().to_vec());
@@ -949,7 +949,7 @@ fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &
 
 /// Every fact [`Event`] names, copied from `other` into `this`.
 fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
-    this.set_unix(other.get_unix());
+    this.set_currunix(other.get_currunix());
     this.set_state(other.get_state().clone());
     this.set_seqnum(other.get_seqnum());
     this.set_creatunix(other.get_creatunix());
@@ -1016,7 +1016,7 @@ impl From<MarketEventData> for MarketElementData {
 
 impl From<MarketElementData> for MarketEventData {
     /// The element at the epoch, stating what it states and no instant:
-    /// [`Event::set_unix`] dates it, and [`Element::finalize`] then derives
+    /// [`Event::set_currunix`] dates it, and [`Element::finalize`] then derives
     /// the identity the instant and the facts couple to.
     fn from(element: MarketElementData) -> Self {
         Self {

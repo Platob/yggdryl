@@ -596,8 +596,8 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
         free("the settled identity", || {
             let held = black_box(&message);
             black_box((
-                held.event().get_unix(),
-                held.event().get_hashcode(),
+                held.event().get_currunix(),
+                held.event().get_currhashcode(),
                 held.event().get_curruuid(),
                 held.event().get_crosscode(),
             ));

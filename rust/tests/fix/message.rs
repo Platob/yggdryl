@@ -92,7 +92,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         if tag == 55 || tag == 54 {
             continue;
         }
-        if tag == yggdryl::HASHCODE_TAG_NAME.0 {
+        if tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(tag).unwrap(), value);
             continue;
         }
@@ -248,7 +248,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
         if *tag == 55 {
             continue;
         }
-        if *tag == yggdryl::HASHCODE_TAG_NAME.0 {
+        if *tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(*tag).unwrap(), *value);
             continue;
         }
@@ -310,16 +310,16 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     // The same message on the wire, and the code it digests to. The
     // sending time is the one fact a row cannot give back: the line stated
     // none, so it is intake's stand-in rather than something the message
-    // said, the row carries the instant under `unix` alone, and the message
+    // said, the row carries the instant under `currunix` alone, and the message
     // a row makes stands one in again.
     assert!(!parsed.header().stated_sendingtime());
     assert!(!held.header().stated_sendingtime());
     assert_eq!(held.header().beginstring(), parsed.header().beginstring());
     assert_eq!(held.header().msgtype(), parsed.header().msgtype());
     assert_eq!(held.header().msgseqnum(), parsed.header().msgseqnum());
-    assert_eq!(held.get_unix(), parsed.get_unix());
+    assert_eq!(held.get_currunix(), parsed.get_currunix());
     assert_eq!(held.into_bytes(b'|'), parsed.into_bytes(b'|'));
-    assert_eq!(held.get_hashcode(), parsed.get_hashcode());
+    assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
 }
 
 #[test]

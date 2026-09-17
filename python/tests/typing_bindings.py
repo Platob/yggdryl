@@ -1412,9 +1412,9 @@ fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
 fix_message_crosscode: str = fix_message.crosscode
-fix_message_hashcode: int = fix_message.hashcode
+fix_message_currhashcode: int = fix_message.currhashcode
 fix_message_crosshashcode: int = fix_message.crosshashcode
-fix_message_unix: int = fix_message.unix
+fix_message_currunix: int = fix_message.currunix
 fix_message_state: Scalar = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
@@ -1452,11 +1452,11 @@ fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 fix_event_curruuid: Scalar = fix_message_event.curruuid
 fix_event_crossuuid: Scalar = fix_message_event.crossuuid
 fix_event_crosscode: str = fix_message_event.crosscode
-fix_event_hashcode: int = fix_message_event.hashcode
+fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
 fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
-fix_event_unix: int = fix_message_event.unix
+fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creatunix: int | None = fix_message_event.creatunix
@@ -1663,8 +1663,8 @@ assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, dict)
 assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
-assert isinstance(fix_message_hashcode, int) and isinstance(fix_message_crosshashcode, int)
-assert isinstance(fix_message_unix, int) and isinstance(fix_message_seqnum, int)
+assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
+assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
 assert isinstance(fix_message_state, Scalar) and isinstance(fix_message_side, Scalar)
 assert isinstance(fix_message_px, Scalar) and isinstance(fix_message_qty, Scalar)
 assert isinstance(fix_message_currency, Scalar)
@@ -1681,8 +1681,8 @@ assert fix_header_msgdirection is None or fix_header_msgdirection
 assert fix_capture_pluginid is None or fix_capture_pluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
-assert isinstance(fix_event_unix, int) and isinstance(fix_event_crosscode, str)
-assert isinstance(fix_event_hashcode, int) and isinstance(fix_event_crosshashcode, int)
+assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
+assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
 assert fix_event_creatunix is None or fix_event_creatunix
 assert fix_event_expirunix is None or fix_event_expirunix

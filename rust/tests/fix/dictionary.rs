@@ -410,7 +410,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus the crate's six clocks: `unix`,
+    // Sixty-eight shipped fields, plus the crate's six clocks: `currunix`,
     // `creatunix`, `prevunix`, `snapunix`, `recordedat` and `expirunix`.
     let crated = registry
         .iter()
@@ -505,7 +505,7 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// in name order, so a change to that walk or to any shipped document moves
 /// this number on purpose, in the commit that says why. It last moved when
 /// the message became a typed market event: the crate's columns are the
-/// event's facts - `unix`, `creatunix`, `hashcode`, `crosshashcode`,
+/// event's facts - `currunix`, `creatunix`, `currhashcode`, `crosshashcode`,
 /// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
 /// `identifiers` and `metadata` - the shards are named nine digits wide,
 /// every member reference carries its `fix:tag`, and a field FIX Latest
@@ -516,11 +516,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// last moved when the capture's own columns stopped being facts of a
 /// message: `recordedat` states no `fix:derivation`, because when a capture
 /// wrote a line down is whoever read it to say and never the message's own
-/// `SendingTime`.
+/// `SendingTime`. It last moved when the event's instant and its own digest
+/// took the names their columns carry: `unix` became `currunix` and
+/// `hashcode` became `currhashcode`, so the crate's tags 65003 and 65017
+/// read as the current instant and the current code next to `crosshashcode`.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 2_660_894_728_416_977_135);
+    assert_eq!(registry.stable_hash(), 11_906_850_099_867_459_741);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

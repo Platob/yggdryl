@@ -85,9 +85,9 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
 /// assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is kept");
 /// // The identity is settled from what the message states.
-/// assert_ne!(msg.get_hashcode(), 0);
+/// assert_ne!(msg.get_currhashcode(), 0);
 /// assert_eq!(msg.get_curruuid(), msg.time_uuid()?);
-/// assert_eq!(msg.get_unix(), msg.header().sendingtime());
+/// assert_eq!(msg.get_currunix(), msg.header().sendingtime());
 ///
 /// // The row serializes through the paths every field and value share.
 /// let root = msg.as_field();
@@ -393,7 +393,7 @@ impl FixMsg {
                         identity::record(&mut event, &mut header, &mut capture, tag, value);
                     }
                     stated_sending |= tag == 52;
-                    stated_unix |= tag == super::UNIX_TAG_NAME.0;
+                    stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
                     stated_creation |= tag == super::CREATUNIX_TAG_NAME.0;
                 }
                 // A key spelled under a namespace - `TECH.CLIENTID` - is a
@@ -443,7 +443,7 @@ impl FixMsg {
         if !stated_unix {
             const DAY: i64 = 86_400_000_000_000;
             let transact = transact.filter(|unix| unix.rem_euclid(DAY) != 0);
-            event.set_unix(transact.unwrap_or_else(|| header.sendingtime()));
+            event.set_currunix(transact.unwrap_or_else(|| header.sendingtime()));
         }
         // What a message says about its own creation, strongest first: a
         // stated creation, then `OrigSendingTime(122)`, then the instant it
@@ -453,7 +453,7 @@ impl FixMsg {
         // only by the resend would otherwise be created at the moment it
         // was replayed.
         if !stated_creation {
-            event.set_creatunix(Some(origin.unwrap_or_else(|| event.get_unix())));
+            event.set_creatunix(Some(origin.unwrap_or_else(|| event.get_currunix())));
         }
         let field = Field::new_with_metadata(
             field.name(),
@@ -602,8 +602,8 @@ impl FixMsg {
         // stated, before the code it answers to covers either.
         self.event.fill_market();
         self.event.sync_cross();
-        let hashcode = self.hashcode();
-        self.event.finalized(hashcode);
+        let currhashcode = self.currhashcode();
+        self.event.finalized(currhashcode);
     }
 
     /// The code the message digests to: the event's own facts through
@@ -612,7 +612,7 @@ impl FixMsg {
     /// holds a value, by name - and never the capture, because where a
     /// line was read from is a fact about the capture and not about the
     /// message.
-    fn hashcode(&self) -> u64 {
+    fn currhashcode(&self) -> u64 {
         let mut state = self.event.digest_market_event();
         let mut cells: Vec<(&str, Scalar)> = Vec::with_capacity(self.field.fields().len() + 8);
         if let Some(text) = self.text.as_deref() {
@@ -1793,7 +1793,7 @@ impl Hash for FixMsg {
     /// registry is part of equality but not of the hash, which keeps equal
     /// messages hashing alike.
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.event.get_hashcode().hash(state);
+        self.event.get_currhashcode().hash(state);
         self.field.hash(state);
         self.value.hash(state);
     }
@@ -1824,12 +1824,12 @@ impl Element for FixMsg {
         self.event.set_crosscode(crosscode);
     }
 
-    fn get_hashcode(&self) -> u64 {
-        self.event.get_hashcode()
+    fn get_currhashcode(&self) -> u64 {
+        self.event.get_currhashcode()
     }
 
-    fn set_hashcode(&mut self, hashcode: u64) {
-        self.event.set_hashcode(hashcode);
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.event.set_currhashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -1895,12 +1895,12 @@ impl Event for FixMsg {
         crate::graph::element::restating_market(self, live)
     }
 
-    fn get_unix(&self) -> i64 {
-        self.event.get_unix()
+    fn get_currunix(&self) -> i64 {
+        self.event.get_currunix()
     }
 
-    fn set_unix(&mut self, unix: i64) {
-        self.event.set_unix(unix);
+    fn set_currunix(&mut self, unix: i64) {
+        self.event.set_currunix(unix);
     }
 
     fn get_state(&self) -> &State {

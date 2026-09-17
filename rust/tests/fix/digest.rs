@@ -218,13 +218,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         names,
         [
-            "unix",
+            "currunix",
             "msgctxid",
             "pluginid",
             "isincode",
             "miccode",
             "state",
-            "hashcode",
+            "currhashcode",
             "crosshashcode",
             "identifiers",
             "prevunix",
@@ -262,13 +262,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         displays,
         [
-            Some("Unix"),
+            Some("CurrUnix"),
             Some("MsgCtxId"),
             Some("PluginId"),
             Some("ISINCode"),
             Some("MICCode"),
             Some("State"),
-            Some("HashCode"),
+            Some("CurrHashCode"),
             Some("CrossHashCode"),
             Some("Identifiers"),
             Some("PrevUnix"),
@@ -319,14 +319,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(typed("isincode"), &DataType::Isin);
     assert_eq!(typed("miccode"), &DataType::Mic);
     assert_eq!(typed("state"), &DataType::State);
-    for name in ["hashcode", "crosshashcode", "seqnum"] {
+    for name in ["currhashcode", "crosshashcode", "seqnum"] {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }
     for name in ["curruuid", "crossuuid", "prevuuid"] {
         assert_eq!(typed(name), &DataType::Uuid, "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
-    for name in ["unix", "creatunix"] {
+    for name in ["currunix", "creatunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
@@ -336,7 +336,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
-    for name in ["hashcode", "crosshashcode", "curruuid", "crossuuid"] {
+    for name in ["currhashcode", "crosshashcode", "curruuid", "crossuuid"] {
         assert!(!field(name).is_nullable(), "{name}");
     }
     assert_eq!(typed("crosscode"), &DataType::utf8());
@@ -358,7 +358,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
     }
     // No partition column: how a layout is cut is the target's - an Iceberg
-    // table takes an `hour` transform over `unix` - and a materialized copy
+    // table takes an `hour` transform over `currunix` - and a materialized copy
     // of that instant was a second owner of it.
     assert!(held.iter().all(|field| !field.is_partition()));
     assert!(held.iter().all(|field| field.name() != "timepartition"));
@@ -396,8 +396,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
     assert_eq!(
-        [yggdryl::HASHCODE_TAG_NAME, yggdryl::CROSSHASHCODE_TAG_NAME],
-        [(65_017, "hashcode"), (65_018, "crosshashcode")]
+        [
+            yggdryl::CURRHASHCODE_TAG_NAME,
+            yggdryl::CROSSHASHCODE_TAG_NAME
+        ],
+        [(65_017, "currhashcode"), (65_018, "crosshashcode")]
     );
     assert_eq!(
         [yggdryl::PREVUNIX_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
@@ -527,8 +530,8 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
 
     let at =
         yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("a sourceurl column");
-    let hashcode_at =
-        yggdryl::fix_column_of(&schema, yggdryl::HASHCODE_TAG_NAME.0).expect("a hashcode column");
+    let hashcode_at = yggdryl::fix_column_of(&schema, yggdryl::CURRHASHCODE_TAG_NAME.0)
+        .expect("a hashcode column");
     let mut identities = Vec::new();
     for url in [
         "file:///capture/2026-08-14/part-0.txt.gz",
@@ -553,7 +556,7 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
             yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &carried).unwrap();
         assert_eq!(
             held[hashcode_at].as_u64(),
-            Some(yggdryl::graph::Element::get_hashcode(&again)),
+            Some(yggdryl::graph::Element::get_currhashcode(&again)),
             "the row read back is the message that wrote it",
         );
         identities.push(held[hashcode_at].clone());

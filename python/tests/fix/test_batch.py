@@ -200,7 +200,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     # The capture's own column leads; the fixed columns follow, the crate's
     # own first - a table is read by time and joined by identity.
     assert names[0] == "body"
-    assert names[1] == "unix"
+    assert names[1] == "currunix"
     # A column is read by name rather than by position: the bands the row is
     # laid out in are the core's to order.
     for named in ("beginstring", "msgtype", "sendingtime", "symbol", "fixentries"):
@@ -210,7 +210,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
     # The identities cross as what a lake reads: a UUID and a 64-bit integer.
     assert reader.schema.field("curruuid").type == pa.uuid()
-    assert reader.schema.field("hashcode").type == pa.uint64()
+    assert reader.schema.field("currhashcode").type == pa.uint64()
     # And an empty capture yields no batch at all.
     assert reader.read_all().num_rows == 0
 
@@ -223,7 +223,7 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
     assert msgtype[0] == "D", "a framed row states its type"
     # Every row settles its identity, so the non-null columns are filled.
     assert all(held is not None for held in _column(parsed, "curruuid"))
-    assert all(held is not None for held in _column(parsed, "hashcode"))
+    assert all(held is not None for held in _column(parsed, "currhashcode"))
     assert len(_column(parsed, "fixentries")[0]) >= 1
 
 
@@ -286,7 +286,7 @@ def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
         assert held.entries() == message.entries()
         assert held.into_bytes(124) == message.into_bytes(124)
         assert held.digest() == message.digest()
-        assert held.hashcode == message.hashcode
+        assert held.currhashcode == message.currhashcode
         assert held.curruuid == message.curruuid
         assert held.into_row(schema) == message.into_row(schema)
     # And the batches the second pass makes are the batches the first made.
@@ -358,10 +358,10 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
     assert held.entries() == parsed.entries()
     assert held.into_bytes(124) == parsed.into_bytes(124)
     assert held.digest() == parsed.digest()
-    assert held.hashcode == parsed.hashcode
+    assert held.currhashcode == parsed.currhashcode
     assert held.curruuid == parsed.curruuid
     assert held.crossuuid == parsed.crossuuid
-    assert held.unix == parsed.unix
+    assert held.currunix == parsed.currunix
     assert held.header() == parsed.header()
     for tag in (11, 55):
         assert held.by_tag(tag) == parsed.by_tag(tag), tag
@@ -430,12 +430,12 @@ def test_a_row_without_the_entries_column_has_no_content(seed: FixRegistry) -> N
     # typed facts alone.
     assert held.entries() == []
     assert held.header() == parsed.header()
-    assert held.unix == parsed.unix
+    assert held.currunix == parsed.currunix
     # The content columns go with it: a row that kept no record cannot say
     # what the message stated beyond its typed facts.
     again = held.into_row(narrow).as_py()
     assert again[narrow.index_of("symbol")] is None
-    assert again[narrow.index_of("unix")] == row.as_py()[narrow.index_of("unix")]
+    assert again[narrow.index_of("currunix")] == row.as_py()[narrow.index_of("currunix")]
     # A row that does not fit the schema is refused.
     with pytest.raises(ValueError):
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed)
@@ -472,7 +472,7 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed: FixRegistry) -> N
         assert held.prevuuid == message.prevuuid
         assert held.curruuid == message.curruuid
         assert held.crossuuid == message.crossuuid
-        assert held.hashcode == message.hashcode
+        assert held.currhashcode == message.currhashcode
 
 
 def test_format_answers_the_rows_one_message_field_holds(seed: FixRegistry) -> None:
@@ -505,9 +505,9 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegi
         "beginstring",
         "msgtype",
         "sendingtime",
-        "unix",
+        "currunix",
         "creatunix",
-        "hashcode",
+        "currhashcode",
         "crosshashcode",
         "curruuid",
         "crossuuid",
