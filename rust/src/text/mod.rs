@@ -13,7 +13,6 @@ mod limits;
 mod loading;
 mod placeholder;
 pub(crate) mod position;
-mod structured;
 pub mod toml;
 pub(crate) mod typed;
 /// Read one natural text value under one field, coerced and validated.
@@ -28,9 +27,9 @@ pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
 pub use crate::types::{Children, Scalar};
-pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{elide_display, elide_to, expected_got};
+pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
 pub use io::{
@@ -41,7 +40,6 @@ pub use io::{
 pub use limits::Limits;
 pub use loading::Loading;
 pub use placeholder::Placeholders;
-pub use structured::Structured;
 
 use crate::{Error, Field, Result};
 

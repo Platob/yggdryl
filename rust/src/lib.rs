@@ -103,7 +103,7 @@ pub use scheme::Scheme;
 pub use text::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use text::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
-pub use text::{Format, Limits, ScalarIter, Structured};
+pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 #[cfg(feature = "arrow")]
 pub use types::cast::{

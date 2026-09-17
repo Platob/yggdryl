@@ -2703,14 +2703,6 @@ pub struct ScalarIter<'a>
   pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Scalar)>
   pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Scalar)>
 
-### yggdryl::text::structured  [rust/src/text/structured.rs]
-pub enum Structured
-  pub const fn from_format(format: Format) -> Self
-  pub fn for_mime_type(mime_type: &MimeType) -> Result<Self>
-  pub fn for_media_type(media_type: &MediaType) -> Result<Self>
-  pub fn for_url(url: &Url) -> Result<Self>
-  pub fn for_handle<H: IOBase + ?Sized>(handle: &H) -> Result<Self>
-
 ### yggdryl::text::toml  [rust/src/text/toml/mod.rs]
 pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)

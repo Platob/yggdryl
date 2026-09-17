@@ -5,13 +5,14 @@ use std::str::FromStr;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::{Error, MimeType, Result};
+use crate::{Error, IOBase, MediaType, MimeType, Result, Url};
 
 /// A byte-oriented structured-data format understood by Yggdryl codecs.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Format {
     /// One JSON value.
+    #[default]
     Json,
     /// Newline-delimited JSON values.
     JsonLines,
@@ -98,6 +99,36 @@ impl Format {
             })
     }
 
+    /// Name the format a media type describes, ignoring its content codings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the media type names no structured text
+    /// format.
+    pub fn from_media_type(media_type: &MediaType) -> Result<Self> {
+        Self::from_mime_type(media_type.base())
+    }
+
+    /// Name the format a location's compound filename describes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the name identifies no structured text
+    /// format.
+    pub fn from_url(url: &Url) -> Result<Self> {
+        Self::from_media_type(&url.media_type())
+    }
+
+    /// Name the format a handle's own media type describes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the handle names no structured text
+    /// format.
+    pub fn from_handle<H: IOBase + ?Sized>(handle: &H) -> Result<Self> {
+        Self::from_media_type(handle.media_type())
+    }
+
     pub const fn mime_type(self) -> MimeType {
         match self {
             Self::Json => MimeType::JSON,
@@ -146,5 +177,20 @@ impl<'de> Deserialize<'de> for Format {
     {
         let value = String::deserialize(deserializer)?;
         Self::from_str(&value).map_err(D::Error::custom)
+    }
+}
+
+/// A format known only at run time is still a codec.
+///
+/// This is the role [`Structured`] used to hold: the same four formats under a
+/// second set of spellings, with the bijection written in both directions. One
+/// enum answers both now.
+impl crate::text::TextCodec for Format {
+    fn format(&self) -> Self {
+        *self
+    }
+
+    fn limits(&self) -> crate::text::Limits {
+        crate::text::Limits::default()
     }
 }

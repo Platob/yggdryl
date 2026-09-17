@@ -307,7 +307,7 @@ pub trait IOMedia: Send {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
-        if crate::text::Structured::for_media_type(handle.media_type()).is_ok() {
+        if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
             let field = options.and_then(IORecordOptions::field);
             return crate::media::structured::read_arrow(handle, field.as_ref());
         }
@@ -345,7 +345,7 @@ pub trait IOMedia: Send {
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
     ) -> Result<()> {
-        if crate::text::Structured::for_media_type(self.as_io_base().media_type()).is_ok() {
+        if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
             if mode != crate::IOMode::Overwrite {
                 return Err(crate::Error::InvalidRecord {
                     path: smol_str::SmolStr::new_static("$.mode"),
