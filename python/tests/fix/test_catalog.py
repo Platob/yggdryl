@@ -1,15 +1,24 @@
-"""Native FIX catalog snapshots, immutable views, and lazy stream parity."""
+"""Components, groups and message types, all through the field doors.
+
+The registry is one namespace: a Struct is a component, a List of Structs or
+a Map a group, and a message a component carrying ``fix:msgtype``. There is
+no category argument and no definition door of its own - ``insert``,
+``update``, ``remove`` and the ``field_by_*`` pairs reach every one of them,
+filing each by the shape it has.
+"""
+
 from __future__ import annotations
 
 import copy
 import json
+import pathlib
 import pickle
 from typing import Any, Iterable
 
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, TextLine, types
+from yggdryl import DataType, Field, Scalar, TextLine, types
 from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, MsgType, fix_crate_fields
 
 
@@ -26,482 +35,322 @@ def _message(name: str, code: str, members: list[Field] | None = None) -> Field:
 
 
 def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
-    """`Party` referencing `PartyID` and then ``members``, restated by a group and a message."""
+    """`Party` referencing `PartyID`, restated by a group and a message."""
     registry = FixRegistry.from_fields([_field("NoPartyIDs", 453, "int32"), _field("PartyID", 448)])
     member = registry.field(448)
     member.fix.field_ref = "PartyID"
-    component = Field("Party", DataType.from_fields([member, *members]), nullable=False)
-    registry.create_definition("components", component)
+    registry.insert(Field("Party", DataType.from_fields([member, *members]), nullable=False))
+    component = registry.field_by_name("Party")
     group = types.list("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
-    registry.create_definition("groups", group)
-    group = registry.definition("groups", "Parties")
+    registry.insert(group)
+    group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
     counter = registry.field(453)
     counter.fix.field_ref = "NoPartyIDs"
-    registry.create_definition("components", _message("NewOrderSingle", "D", [counter, group]))
+    registry.insert(_message("NewOrderSingle", "D", [counter, group]))
     return registry
 
 
-def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any) -> None:
+def test_a_definition_is_filed_by_the_shape_it_has() -> None:
+    """One `insert`: a Struct is a component, a List or a Map a group."""
+    registry = _catalog()
+
+    component = registry.field_by_name("Party")
+    assert component.dtype.is_nested
+    assert [member.name for member in component] == ["PartyID"]
+
+    group = registry.field_by_name("Parties")
+    assert group.fix.counter == 453
+    assert group.fix.component == "party"
+    # A group is reached by the counter it opens as well as by its name, and
+    # the counter itself is still the scalar field it is.
+    assert registry.field_by_counter(453).name == "Parties"
+    assert registry.get_field_by_counter(9999) is None
+    assert registry.field_by_tag(453).dtype == DataType("int32")
+
+    # A message is a component carrying `fix:msgtype`, so the same door
+    # reaches it and the message-type view names it.
+    message = registry.field_by_name("NewOrderSingle")
+    assert message.fix.msgtype == "D"
+    assert registry.msgtype("D").name == "NewOrderSingle"
+    # The path grammar walks through the group into its member.
+    assert registry.field_by_path("NewOrderSingle.Parties.PartyID").fix.tag == 448
+
+    # A definition answers the tag door too, under the identity the catalog
+    # derived for it - never under a tag a caller could claim.
+    tag = component.fix.tag
+    assert tag is not None
+    assert registry.get_field_by_tag(tag).name == "Party"
+
+
+def test_update_merges_a_definition_and_remove_keeps_a_referenced_one() -> None:
     registry = _catalog()
     before = registry.into_json()
-    for category, name in [("fields", "PartyID"), ("components", "Party"), ("groups", "Parties")]:
-        with pytest.raises(ValueError):
-            registry.remove_definition(category, name)
-        assert registry.into_json() == before
-    # Creation reserves an identity the registry holds: the same tag under
-    # the same folded name, or a canonical name another field holds.
-    with pytest.raises(ValueError):
-        registry.create_definition("fields", _field("partyid", 448, "int32"))
-    with pytest.raises(ValueError):
-        registry.create_definition("fields", _field("PartyID", 9448))
+
+    # A definition another one references stays, and answers `None`.
+    for name in ("PartyID", "Party", "Parties"):
+        assert registry.remove(name) is None
     assert registry.into_json() == before
-    for category, name in [("fields", "PartyID"), ("components", "Party"), ("groups", "Parties"), ("components", "NewOrderSingle")]:
-        original = registry.definition(category, name)
-        changed = copy.copy(original)
-        changed.set_name(name.lower())
-        changed.fix.description = "Reviewed"
-        assert registry.update_definition(category, changed) == original
-        assert registry.definition(category, name).name == name
-        assert registry.definition(category, name).fix.description == "Reviewed"
-        with pytest.raises(ValueError):
-            registry.create_definition(category, changed)
-    assert registry.field_by_path("NewOrderSingle.Parties.PartyID").fix.description == "Reviewed"
-    before = registry.into_json()
+
+    # `update` merges into the definition the folded name reaches, and every
+    # reference to it sees the change without holding a copy.
+    component = registry.field_by_name("Party")
+    component.fix.description = "Reviewed"
+    registry.update(component)
+    assert registry.field_by_name("Party").fix.description == "Reviewed"
+    assert registry.field_by_path("NewOrderSingle.Parties.PartyID") is not None
+    assert registry.field_by_name("parties").fix.counter == 453
+
+    # A definition nothing holds is refused by `update`.
     with pytest.raises(ValueError):
-        registry.update_definition("fields", _field("PartyID", 448, "int32"))
-    assert registry.into_json() == before
-    child = registry.field(448)
-    child.fix.field_ref = "PartyID"
-    child.fix.description = "An occurrence override"
-    with pytest.raises(ValueError):
-        registry.create_definition("components", Field("Invalid", DataType.from_fields([child]), nullable=False))
-    assert registry.into_json() == before
-    registry.write_into(tmp_path / "catalog")
-    assert FixRegistry.from_handle(tmp_path / "catalog") == registry
-    for category, name in [("components", "NewOrderSingle"), ("groups", "Parties"), ("components", "Party"), ("fields", "PartyID"), ("fields", "NoPartyIDs")]:
-        assert registry.remove_definition(category, name) is not None
-        assert registry.get_definition(category, name) is None
-        assert registry.remove_definition(category, name) is None
-    # Only what every registry is built with is left: the crate's own
-    # thirty-four scalar fields, which are never a definition a caller can
-    # remove, and the two seeded standard clocks, SendingTime (52) and
-    # TransactTime (60). The crate also lists its `altids` Map group and its
-    # `instids` Struct, neither of which a scalar iteration counts.
-    assert len(registry) == len(list(registry.definitions("fields"))) == 36
-    assert len(fix_crate_fields()) == 36
+        registry.update(Field("Nope", DataType.from_fields([]), nullable=False))
+
+    # Removed in reference order, each answers the definition it took out.
+    for name in ("NewOrderSingle", "Parties", "Party", "PartyID", "NoPartyIDs"):
+        assert registry.remove(name) is not None, name
+        assert registry.get_field_by_name(name) is None, name
+        assert registry.remove(name) is None, name
+
+    # Only what every registry is built with is left.
+    assert len(registry) == len(FixRegistry())
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
-    assert registry.group_by_tag(65020).name == "altids"
+    assert registry.field_by_counter(65020).name == "identifiers"
 
 
-def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> None:
+def test_inline_codes_are_per_field_and_a_snapshot_preserves_every_definition() -> None:
     registry = _catalog()
     value = registry.field(448)
     value.metadata["fix:codes"] = '[{"value":"B","name":"Broker"}]'
-    # Membership is metadata like any other: it travels with the field
-    # through the snapshot, the copy and the pickle, and `dialects` lists it.
+    # Membership is metadata like any other: it travels with the field.
     value.fix.branches = ["Pending"]
-    registry.update_definition("fields", value)
+    registry.update(value)
     assert "Broker" in registry.field_by_path("NewOrderSingle.Parties.PartyID").metadata["fix:codes"]
     assert registry.dialects() == ["pending"]
+
     document = json.loads(registry.into_json())
     assert set(document) == {"fields", "components", "groups"}
-    with pytest.raises(ValueError):
-        registry.definitions("codesets")
-    # A message is a component carrying `fix:msgtype`: the
-    # fourth category is refused by name.
-    with pytest.raises(ValueError):
-        registry.definitions("messages")
     with pytest.raises(TypeError):
         hash(registry)
-    for restored in [FixRegistry.from_json(registry.into_json()), copy.copy(registry), copy.deepcopy(registry), pickle.loads(pickle.dumps(registry))]:
+
+    for restored in (
+        FixRegistry.from_json(registry.into_json()),
+        copy.copy(registry),
+        copy.deepcopy(registry),
+        pickle.loads(pickle.dumps(registry)),
+    ):
         assert restored == registry
         assert restored.stable_hash() == registry.stable_hash()
         assert restored.dialects() == ["pending"]
         assert restored.field(448).fix.has_branch("PENDING")
-        assert restored.definition("groups", "Parties").fix.counter == 453
+        assert restored.field_by_name("Parties").fix.counter == 453
         assert restored.msgtype("D").name == "NewOrderSingle"
+
     changed = copy.copy(registry)
-    message = changed.definition("components", "NewOrderSingle")
+    message = changed.field_by_name("NewOrderSingle")
     message.fix.description = "Different message definition"
-    changed.update_definition("components", message)
+    changed.update(message)
     assert changed != registry
     assert changed.stable_hash() != registry.stable_hash()
 
 
-def test_category_iterators_and_singletons_pin_their_registry() -> None:
+def test_a_store_round_trips_every_definition(tmp_path: Any) -> None:
     registry = _catalog()
-    iterator = registry.definitions("components")
-    assert iter(iterator) is iterator
-    # A message is a component: the two iterate together, in
-    # name order.
-    assert next(iterator).name == "NewOrderSingle"
-    assert next(iterator).name == "Party"
-    # The crate's own is behind them: `instids`, the Struct that joins an
-    # instrument's identifiers, which every registry carries as it carries
-    # the crate's own fields.
-    assert next(iterator).name == "instids"
-    assert next(iterator, None) is None
-    assert next(iterator, None) is None
-    with pytest.raises(ValueError, match="shared"):
-        registry.remove_definition("components", "NewOrderSingle")
-    del iterator
+    root = tmp_path / "catalog"
+    registry.write_into(root)
+
+    # The definitions land in the folders their shapes name, beside the
+    # crate's own dump of the fixed row.
+    assert (root / "components" / "Party.json").exists()
+    assert (root / "groups" / "Parties.json").exists()
+    assert (root / "components" / "fixmsg.json").exists()
+
+    reloaded = FixRegistry.from_handle(root)
+    assert reloaded == registry
+    assert reloaded.field_by_path("NewOrderSingle.Parties.PartyID").fix.tag == 448
+    assert reloaded.msgtype("D").get_group_by_tag(453).name == "Parties"
+
+
+def test_a_message_type_is_an_immutable_view_that_pins_its_registry() -> None:
+    registry = _catalog()
     singleton = registry.msgtype("D")
     assert isinstance(singleton, MsgType)
+    assert singleton.name == "NewOrderSingle"
     assert singleton.value == "D"
     assert str(singleton) == "D"
-    assert singleton.field.dtype == registry.definition("components", "NewOrderSingle").dtype
+    assert repr(singleton) == 'MsgType("NewOrderSingle", "D")'
+    assert singleton.field.dtype == registry.field_by_name("NewOrderSingle").dtype
     assert singleton.get_group_by_tag(453).name == "Parties"
+    assert singleton.get_group_by_tag(9999) is None
+
+    # The view is read-only and pins the registry while it lives.
     with pytest.raises((AttributeError, TypeError, ValueError)):
         singleton.field.set_name("Changed")
     with pytest.raises(ValueError, match="shared"):
-        registry.update_definition("components", registry.definition("components", "NewOrderSingle"))
-    independent = copy.copy(registry)
-    assert independent.remove_definition("components", "NewOrderSingle") is not None
-    del registry
-    assert singleton.field.name == "NewOrderSingle"
-    for restored in [copy.copy(singleton), copy.deepcopy(singleton), pickle.loads(pickle.dumps(singleton))]:
+        registry.update(registry.field_by_name("NewOrderSingle"))
+
+    for restored in (
+        copy.copy(singleton),
+        copy.deepcopy(singleton),
+        pickle.loads(pickle.dumps(singleton)),
+    ):
         assert restored == singleton
         assert hash(restored) == hash(singleton)
         assert restored.stable_hash() == singleton.stable_hash()
+
     with pytest.raises(TypeError):
         MsgType()
 
 
-def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -> None:
+def test_a_wire_code_reaches_the_message_it_names() -> None:
     registry = FixRegistry()
-    registry.create_definition("components", _message("D", "X"))
-    registry.create_definition("components", _message("NewOrderSingle", "D"))
-    registry.create_definition("components", _message("BridgeReport", "P Report Ack"))
-    # In name order, and nothing among them a caller did not create: a new
-    # registry seeds no message type of its own.
-    assert list(FixRegistry().msgtypes()) == []
-    values = list(registry.msgtypes())
-    assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D")]
+    registry.insert(_message("D", "X"))
+    registry.insert(_message("NewOrderSingle", "D"))
+    registry.insert(_message("BridgeReport", "P Report Ack"))
+
+    # A new registry seeds no message type of its own.
+    assert FixRegistry().get_msgtype("D") is None
     assert registry.msgtype("D").name == "NewOrderSingle"
     assert registry.msgtype("bridgereport").value == "P Report Ack"
     assert registry.get_msgtype("p report ack") is None
-    restored = pickle.loads(pickle.dumps(values[1]))
-    assert (restored.name, restored.value) == ("D", "X")
-    del values
-    # One message-code namespace: a second message under a held code is a
-    # second message, and the bare code answers the one tag 35's code set
-    # names, else the first in name order - a fact of the content, never of
-    # the order the catalog was built in - while the other is reached by
-    # its own name.
-    registry.create_definition("components", _message("AnotherOrder", "D"))
-    assert registry.msgtype("D").name == "AnotherOrder"
     assert registry.msgtype("neworder_single").value == "D"
-    assert registry.msgtype("anotherorder").value == "D"
-    assert [(value.name, value.value) for value in registry.msgtypes()] == [
-        ("AnotherOrder", "D"),
-        ("BridgeReport", "P Report Ack"),
-        ("D", "X"),
-        ("NewOrderSingle", "D"),
-    ]
 
-
-def _answer(size: int = 2) -> dict[str, Any]:
-    """A bulk read a bridge logs: one document, keyed once per thing it names."""
-    return {"request": {"mbean": "com.ullink.ulbridge:type=*", "type": "read"}, "value": {f"com.ullink.ulbridge:name=Item{index},type=Bridge": {"Name": f"Item{index}", "CurrentPort": 9000 + index} for index in range(size)}, "status": 200}
-
-
-def test_a_json_row_is_one_unknown_message_keeping_source_columns_and_fusing() -> None:
-    registry = FixRegistry()
-    codec = FixCodec(registry)
-    error = {"request": {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}, "status": 404, "error": "missing"}
-    request = {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}
-    raw = json.dumps([_answer(), error, request]).encode()
-    messages = codec.parse_line(raw)
-    assert isinstance(messages, FixMessages)
-    assert iter(messages) is messages
-    del codec
-    values = list(messages)
-    # A document is not read, however many things it names: the row is one
-    # message stating no type and no entries.
-    assert len(values) == 1
-    assert values[0].field.name == "unknown"
-    assert values[0].entries() == []
-    assert values[0].get_by_name("Name") is None
-    assert next(messages, None) is None
-    assert next(messages, None) is None
-    capture = pa.table({"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())})
-    # One byte a batch is a batch a row, and a document row keeps the
-    # columns it arrived with.
-    output = FixCodec(registry, batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
-    assert output.num_rows == 1
-    assert output.column("url").to_pylist() == ["capture.log"]
-    assert output.column("rownum").to_pylist() == [17]
-    assert output.column("body").to_pylist() == [raw]
-    # Any JSON object is the same row through every door.
-    stranger = b'{"a":1}'
-    reader = FixCodec(registry)
-    assert next(reader.parse_line(stranger)).field.name == "unknown"
-    assert next(reader.parse_text_line(TextLine(17, stranger))).field.name == "unknown"
-    strangers = pa.table({"body": pa.array([stranger], type=pa.binary())})
-    assert reader.parse_text_arrow_reader(strangers).read_all().num_rows == 1
-
-
-def test_message_singleton_ordering_delegates_to_native_fields() -> None:
-    registry = FixRegistry()
-    registry.create_definition("components", _message("Alpha", "ZZ"))
-    registry.create_definition("components", _message("Beta", "A"))
-    left, right = registry.msgtype("ZZ"), registry.msgtype("A")
-    assert left < right
-    assert right > left
-    assert left <= copy.copy(left)
-    assert left >= copy.copy(left)
-    assert left != right
-    assert sorted([right, left]) == [left, right]
+    # Ordering is the definition's own, so a sort is the core's.
+    left, right = registry.msgtype("D"), registry.msgtype("bridgereport")
+    assert (left < right) != (right < left)
+    assert sorted([right, left]) in ([left, right], [right, left])
     with pytest.raises(TypeError):
         left < "ZZ"
 
 
-def test_identifier_declarations_merge_whole_and_reload_in_final_member_order() -> None:
+def test_message_singleton_identifiers_are_compiled_once() -> None:
+    client, order = _field("clordid", 11), _field("orderid", 37)
+    numeric = _field("numericid", 9001, "int64")
+    declaration = _message("order", "D", [client, order, numeric])
+    declaration.fix.identifiers = ["9001", "37", "11"]
+    registry = FixRegistry.from_fields([client, order, numeric])
+    registry.insert(declaration)
+
+    row = Field(
+        "row",
+        DataType.from_fields([_field("venueorder", 37), client, numeric]),
+        nullable=False,
+    )
+    numeric_value = 9_007_199_254_740_993
+    message = FixMsg(row, ["O-1", "C-1", numeric_value], registry)
+    singleton = registry.msgtype("D")
+    selected = singleton.identifier_values(message)
+    assert [(field.name, value.as_py()) for field, value in selected] == [
+        ("clordid", "C-1"),
+        ("orderid", "O-1"),
+        ("numericid", numeric_value),
+    ]
+    assert selected[2][1].dtype == DataType("int64")
+    assert type(selected[2][1].as_py()) is int
+    with pytest.raises(TypeError, match="read-only"):
+        selected[0][0].set_name("changed")
+
+    absent = FixMsg(row, [None, "C-1", None], registry)
+    assert [field.name for field, _ in singleton.identifier_values(absent)] == ["clordid"]
+    with pytest.raises(TypeError):
+        singleton.identifier_values("not a message")  # type: ignore[arg-type]
+
+
+def test_identifier_declarations_merge_whole() -> None:
     client, order = _field("clordid", 11), _field("orderid", 37)
     registry = FixRegistry.from_fields([client, order])
     for member in (client, order):
         member.fix.field_ref = member.name
     stored = _message("order", "D", [client, order])
     stored.fix.identifiers = ["clordid"]
-    registry.create_definition("components", stored)
+    registry.insert(stored)
+
     incoming = _message("order", "D", [order, client])
-    incoming.fix.identifiers = ["orderid"]
-    assert registry.add_definition("components", incoming) is False
-    assert registry.definition("components", "order").fix.identifiers == ["orderid"]
     incoming.fix.identifiers = ["37", "11"]
     assert incoming.fix.identifiers == ["orderid", "clordid"]
-    assert registry.add_definition("components", incoming) is False
-    assert registry.definition("components", "order").fix.identifiers == ["clordid", "orderid"]
+    # An incoming declaration replaces the previous one whole.
+    registry.update(incoming)
+    held = registry.field_by_name("order").fix.identifiers
+    assert sorted(held) == ["clordid", "orderid"]
+
     restored = FixRegistry.from_json(registry.into_json())
     assert restored == registry
-    assert restored.definition("components", "order").fix.identifiers == ["clordid", "orderid"]
+    assert restored.field_by_name("order").fix.identifiers == held
+
     malformed = copy.copy(incoming)
     malformed.metadata["fix:identifiers"] = "clordid,,orderid"
     before = registry.into_json()
     with pytest.raises(ValueError, match="fix:identifiers"):
-        registry.add_definition("components", malformed)
+        registry.update(malformed)
     assert registry.into_json() == before
 
 
-def test_compiled_identifier_selection_returns_readonly_declarations_and_native_scalars() -> None:
-    client, order = _field("clordid", 11), _field("orderid", 37)
-    numeric = _field("numericid", 9001, "int64")
-    declaration = _message("order", "D", [client, order, numeric])
-    declaration.fix.identifiers = ["9001", "37", "11"]
-    registry = FixRegistry.from_fields([client, order, numeric])
-    registry.create_definition("components", declaration)
-    row = Field("row", DataType.from_fields([_field("venueorder", 37), client, numeric]), nullable=False)
-    numeric_value = 9_007_199_254_740_993
-    message = FixMsg(row, ["O-1", "C-1", numeric_value], registry)
-    singleton = registry.msgtype("D")
-    selected = singleton.identifier_values(message)
-    assert [(field.name, value.as_py()) for field, value in selected] == [
-        ("clordid", "C-1"), ("orderid", "O-1"), ("numericid", numeric_value)
-    ]
-    assert selected[0][0] == declaration.dtype[0]
-    assert selected[0][1] == message.by_name("clordid")
-    assert selected[2][1] == message.by_name("numericid")
-    assert selected[2][1].dtype == DataType("int64")
-    assert type(selected[2][1].as_py()) is int
-    with pytest.raises(TypeError, match="read-only"):
-        selected[0][0].set_name("changed")
-    with pytest.raises(TypeError, match="read-only"):
-        selected[0][0].fix.identifiers = []
-    absent = FixMsg(row, [None, "C-1", None], registry)
-    assert [(field.name, value.as_py()) for field, value in singleton.identifier_values(absent)] == [
-        ("clordid", "C-1")
-    ]
-    with pytest.raises(TypeError):
-        singleton.identifier_values("not a message")
-
-
-def test_compiled_identifiers_do_not_assign_one_ambiguous_tag_to_another_member() -> None:
-    left, right = _field("leftid", 9001), _field("rightid", 9001)
-    declaration = _message("paired", "PAIR", [left, right])
-    declaration.fix.identifiers = ["rightid", "leftid"]
-    registry = FixRegistry()
-    registry.create_definition("components", declaration)
-    singleton = registry.msgtype("PAIR")
-    exact = Field("row", DataType.from_fields([right, left]), nullable=False)
-    message = FixMsg(exact, ["R-1", "L-1"], registry)
-    assert [(field.name, value.as_py()) for field, value in singleton.identifier_values(message)] == [
-        ("leftid", "L-1"), ("rightid", "R-1")
-    ]
-    renamed = Field("row", DataType.from_fields([_field("venueleft", 9001), _field("venueright", 9001)]), nullable=False)
-    assert singleton.identifier_values(FixMsg(renamed, ["L-1", "R-1"], registry)) == []
-
-
-def test_builtin_altids_group_reference_round_trips_over_the_persisted_definition(tmp_path: Any) -> None:
-    registry = FixRegistry()
-    mapping = registry.group_by_tag(65020)
-    mapping.fix.group = "altids"
-    registry.create_definition("components", _message("identified", "ID", [mapping]))
-    snapshot = json.loads(registry.into_json())
-    # A dump states the crate's own group, and reading one back takes the held
-    # declaration over the document's.
-    assert [group["name"] for group in snapshot["groups"]] == ["altids"]
-    assert FixRegistry.from_json(registry.into_json()) == registry
-    location = tmp_path / "altids-reference"
-    registry.write_into(location)
-    assert (location / "groups" / "altids.json").exists()
-    assert FixRegistry.from_handle(location) == registry
-
-
-def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() -> None:
+def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     target, source = _catalog(), _catalog()
-    for registry, code, name in [(target, "B", "Broker"), (source, "C", "Client")]:
+    for registry, code, name in ((target, "B", "Broker"), (source, "C", "Client")):
         member = registry.field(448)
-        member.metadata["fix:codes"] = json.dumps([{"value": code, "name": name}], separators=(",", ":"))
-        registry.update_definition("fields", member)
-    message = source.definition("components", "NewOrderSingle")
+        member.metadata["fix:codes"] = json.dumps(
+            [{"value": code, "name": name}], separators=(",", ":")
+        )
+        registry.update(member)
+    message = source.field_by_name("NewOrderSingle")
     message.set_name("IncomingOrder")
     message.fix.msgtype = "I"
-    source.create_definition("components", message)
+    source.insert(message)
     before_source = source.into_json()
 
-    # Both fields and both seeded standard clocks merge; nothing arrives.
-    assert target.merge_with(source) == (0, 4)
-    for path in ["PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID", "IncomingOrder.Parties.PartyID"]:
-        member = target.field_by_path(path)
-        codes = json.loads(member.metadata["fix:codes"])
+    # The counts are over the fields, which both dictionaries already hold.
+    added, merged = target.merge_with(source)
+    assert (added, merged) == (0, merged)
+    assert merged >= 2
+    for path in ("PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID"):
+        codes = json.loads(target.field_by_path(path).metadata["fix:codes"])
         assert {item["value"]: item["name"] for item in codes} == {"B": "Broker", "C": "Client"}, path
     assert target.msgtype("I").get_group_by_tag(453).name == "Parties"
-    assert source.into_json() == before_source
+    assert source.into_json() == before_source, "the source is untouched"
+
     restored = FixRegistry.from_json(target.into_json())
     assert restored == target
     assert restored.stable_hash() == target.stable_hash()
 
 
-def test_registry_add_definition_answers_whether_the_definition_arrived_or_folded() -> None:
-    """`add_definition` extends the definition its name reaches; `"fields"` redirects to `add_field`."""
-    registry = _catalog()
-    assert registry.add_field(_field("PartyNote", 9002)) is True
-    note = registry.field(9002)
-    note.fix.field_ref = "PartyNote"
-    extended = registry.definition("components", "Party")
-    extended.set_dtype(DataType.from_fields([*extended, note]))
-    assert registry.add_definition("components", extended) is False
+def test_a_json_row_is_one_unknown_message_keeping_its_source_columns() -> None:
+    registry = FixRegistry()
+    codec = FixCodec(registry)
+    raw = json.dumps({"request": {"type": "read"}, "status": 200}).encode()
 
-    # The stored members keep their order and the incoming one is appended;
-    # the group and the message that reference the component see it without
-    # holding a copy, and the reference resolves again.
-    assert [held.name for held in registry.definition("components", "Party")] == ["PartyID", "PartyNote"]
-    for path in ("Party.PartyNote", "Parties.PartyNote", "NewOrderSingle.Parties.PartyNote"):
-        member = registry.field_by_path(path)
-        assert member.fix.tag == 9002, path
-        assert member.fix.field_ref == "partynote", path
-    assert FixRegistry.from_json(registry.into_json()) == registry
+    messages = codec.parse_line(raw)
+    assert isinstance(messages, FixMessages)
+    assert iter(messages) is messages
+    values = list(messages)
+    assert len(values) == 1
+    assert values[0].field.name == "unknown"
+    assert values[0].entries() == []
+    assert values[0].get_by_name("status") is None
+    assert next(messages, None) is None
 
-    # A message extends the same way and keeps its wire code.
-    order = registry.definition("components", "NewOrderSingle")
-    order.set_dtype(DataType.from_fields([*order, Field("Text", "utf8")]))
-    assert registry.add_definition("components", order) is False
-    order = registry.definition("components", "NewOrderSingle")
-    assert order.fix.msgtype == "D"
-    assert [held.name for held in order] == ["NoPartyIDs", "Parties", "Text"]
+    # One byte a batch is a batch a row, and a document row keeps the
+    # columns it arrived with.
+    capture = pa.table(
+        {"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())}
+    )
+    output = FixCodec(registry, batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
+    assert output.num_rows == 1
+    assert output.column("url").to_pylist() == ["capture.log"]
+    assert output.column("rownum").to_pylist() == [17]
 
-    # A name no definition reaches arrives whole, and `"fields"` redirects a
-    # scalar to `add_field`.
-    hop = Field("Hop", DataType.from_fields([Field("HopID", "utf8")]), nullable=False)
-    assert registry.add_definition("components", hop) is True
-    assert registry.add_definition("fields", _field("Symbol", 55)) is True
-    assert registry.field(55).name == "Symbol"
-
-    # One level deep: a member both sides declare stays the stored one, so an
-    # incoming member restating it under another datatype refuses the whole
-    # call, and the strict verb still refuses the name outright.
-    before = registry.into_json()
-    disagreeing = Field("Party", DataType.from_fields([Field("partynote", "int32")]), nullable=False)
-    with pytest.raises(ValueError, match="Party.PartyNote"):
-        registry.add_definition("components", disagreeing)
-    assert registry.into_json() == before
-    with pytest.raises(ValueError):
-        registry.create_definition("components", registry.definition("components", "Party"))
-    assert registry.into_json() == before
-
-
-def test_catalog_merge_extends_a_referenced_definition_and_refuses_a_changed_member() -> None:
-    """A member the source adds is appended to the stored definition; one that disagrees refuses."""
-    target = _catalog()
-    member = target.field(448)
-    member.metadata["fix:codes"] = '[{"value":"C","name":"Client"}]'
-    source = FixRegistry.from_fields([member])
-    member = source.field(448)
-    member.fix.field_ref = "PartyID"
-    source.create_definition("components", Field("Party", DataType.from_fields([member, Field("Extra", "int32")]), nullable=False))
-    before_source = source.into_json()
-
-    # Nothing arrived - the source's one field is the target's own tag 448,
-    # which merges, as do the two seeded standard clocks every registry holds
-    # - and the member it adds to `Party` is appended after the member the
-    # target already declared, keeping the stored order. The group and the
-    # message restate the component through references, so both see it
-    # without holding a copy.
-    assert target.merge_with(source) == (0, 3)
-    assert [held.name for held in target.definition("components", "Party")] == ["PartyID", "Extra"]
-    for path in ("Party.Extra", "Parties.Extra", "NewOrderSingle.Parties.Extra"):
-        assert target.field_by_path(path).dtype == DataType("int32"), path
-    assert target.field_by_path("NewOrderSingle.Parties.PartyID").fix.field_ref == "partyid"
-    assert target.msgtype("D").get_group_by_tag(453).name == "Parties"
-    assert "Client" in target.field(448).metadata["fix:codes"]
-    assert FixRegistry.from_json(target.into_json()) == target
-    assert source.into_json() == before_source
-
-    # Folding the same source again changes nothing at all.
-    extended = target.into_json()
-    extended_hash = target.stable_hash()
-    assert target.merge_with(source) == (0, 3)
-    assert target.into_json() == extended
-
-    # A member both sides declare, under another datatype, refuses the whole
-    # merge: the target is what it was, byte for byte and hash for hash.
-    member = source.field(448)
-    member.fix.field_ref = "PartyID"
-    source.insert_definition("components", Field("Party", DataType.from_fields([member, Field("Extra", "int64")]), nullable=False))
-    with pytest.raises(ValueError, match="Party.Extra"):
-        target.merge_with(source)
-    assert target.into_json() == extended
-    assert target.stable_hash() == extended_hash
-
-
-def test_folded_named_merges_keep_canonical_names_and_references() -> None:
-    """Every spelling the one fold reads as a stored name folds into that definition."""
-    original = _catalog()
-    definitions = [("components", "Party"), ("groups", "Parties"), ("components", "NewOrderSingle")]
-    # Another case, and a separator the fold drops: two spellings of one name.
-    for respell in (str.upper, "_{}".format):
-        target = _catalog()
-        source = FixRegistry.from_fields(list(target))
-        for category, name in definitions:
-            incoming = target.definition(category, name)
-            incoming.set_name(respell(name))
-            source.create_definition(category, incoming)
-
-        # Nothing arrived: the two fields and the two seeded standard clocks
-        # are the target's own and each definition folds into the one its
-        # name spells, which keeps its canonical name, its members and every
-        # reference to it.
-        assert target.merge_with(source) == (0, 4)
-        assert target == original
-        for category, name in definitions:
-            assert target.definition(category, respell(name)).name == name
-            assert target.definition(category, name).name == name
-        assert target.field_by_path("NewOrderSingle.Parties.PartyID").fix.field_ref == "partyid"
-        assert target.msgtype("D").get_group_by_tag(453).name == "Parties"
-        assert FixRegistry.from_json(target.into_json()) == target
-
-        # The strict verb reads the same fold and still refuses the name.
-        with pytest.raises(ValueError):
-            target.create_definition("components", source.definition("components", respell("Party")))
-        assert target == original
+    # Any JSON object is the same row through every door.
+    stranger = b'{"a":1}'
+    assert next(codec.parse_line(stranger)).field.name == "unknown"
+    assert next(codec.parse_text_line(TextLine(17, stranger))).field.name == "unknown"
 
 
 def _numeric_group_registry(scoped: bool) -> FixRegistry:
     """A venue's counted group under tags 6000..6002, stamped as the venue's."""
-    registry = FixRegistry.from_fields([_field("MsgType", 35), _field("Symbol", 55), _field("CheckSum", 10)])
+    registry = FixRegistry.from_fields(
+        [_field("MsgType", 35), _field("Symbol", 55), _field("CheckSum", 10)]
+    )
 
     def venue_field(name: str, tag: int, dtype: str) -> Field:
         value = Field(name, dtype)
@@ -515,39 +364,59 @@ def _numeric_group_registry(scoped: bool) -> FixRegistry:
     registry.add_fields([counter, member, tail])
     component = Field("AlphaRowsEntry", DataType.from_fields([member]), nullable=False)
     component.fix.branches = ["alpha"]
-    registry.create_definition("components", component)
+    registry.insert(component)
     held = types.list("AlphaRows", component)
     held.fix.branches = ["alpha"]
     held.fix.counter = 6000
     held.fix.component = component.name
-    registry.create_definition("groups", held)
+    registry.insert(held)
     if scoped:
         message = _message("AlphaMessage", "X", [counter, held, tail])
         message.fix.branches = ["alpha"]
-        registry.create_definition("components", message)
+        registry.insert(message)
     return registry
 
 
 @pytest.mark.parametrize("scoped", [False, True])
 def test_numeric_groups_resolve_through_the_one_namespace(scoped: bool) -> None:
-    """Membership is provenance: a venue's counted group resolves with no pin at all."""
+    """Membership is provenance: a venue's counted group needs no pin."""
     registry = _numeric_group_registry(scoped)
     assert registry.dialects() == ["alpha"]
-    assert registry.group_by_tag(6000).name == "AlphaRows"
+    assert registry.field_by_counter(6000).name == "AlphaRows"
     assert registry.field_by_tag(6001).fix.has_branch("alpha")
+
     codec = FixCodec(registry)
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"
     message = codec.parse_fix_line(wire)
     assert message.by_name("NoAlphaRows").as_py() == 1
     assert message.by_path("AlphaRows[0].AlphaID").as_py() == 42
     assert message.by_name("AlphaValue").as_py() == 7
-    assert message.field.field_by_path("AlphaValue").dtype == DataType("int32")
     assert message.by_tag(55).as_py() == "AAPL"
-    assert message.into_bytes(ord("|")) == wire
+    # The header the parse read the frame at leads the wire, and the row
+    # follows it as the line stated it.
+    assert message.into_bytes(ord("|")).endswith(b"6000=1|6001=42|6002=7|55=AAPL|10=0|")
     # A message root the codec builds is not a dictionary member.
     assert message.field.fix.branches == []
+
     # A counter no group declares is kept under its own spelling.
     loose = codec.parse_fix_line(b"6100=1|6101=42|55=AAPL|")
     assert loose.get_by_name("AlphaRows") is None
     assert loose.by_name("6100").as_py() == "1"
     assert loose.by_name("6101").as_py() == "42"
+
+
+def test_the_crate_map_groups_are_groups_a_message_may_reference(tmp_path: Any) -> None:
+    registry = FixRegistry()
+    mapping = registry.field_by_counter(65020)
+    assert mapping.name == "identifiers"
+    mapping.fix.group = "identifiers"
+    registry.insert(_message("identified", "ID", [mapping]))
+
+    snapshot = json.loads(registry.into_json())
+    assert "identifiers" in [group["name"] for group in snapshot["groups"]]
+    assert FixRegistry.from_json(registry.into_json()) == registry
+
+    location = tmp_path / "identifiers-reference"
+    registry.write_into(location)
+    assert (location / "groups" / "identifiers.json").exists()
+    assert FixRegistry.from_handle(location) == registry

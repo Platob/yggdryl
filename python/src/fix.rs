@@ -13,16 +13,20 @@
 //! readings. A dictionary's contribution is membership on the field -
 //! `field.fix.branches` - and never a key a lookup takes.
 
+use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDateTime, PyInt, PyIterator};
 
+use yggdryl::graph::{Element, Event, MarketElement, MarketEventData as CoreMarketEventData};
+use yggdryl::types::Uuid as CoreUuid;
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField,
-    FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
-    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
+    FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,
+    FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, TimeUnit,
     Timezone, from_json_scalar_with_field, into_json_scalar,
 };
@@ -34,7 +38,7 @@ use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text_line::{PyTextLine, core_path_from_value};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
-use crate::uri::core_url_from_value;
+use crate::uri::{PyUrl, core_url_from_value};
 use crate::value_error;
 
 /// Read one dictionary file through whatever Python named it with.
@@ -55,20 +59,42 @@ fn read_located<T>(
     read(located_holder(&url)?.as_io()).map_err(value_error)
 }
 
-/// Every arrival entry, pre-order, as the tuple Python reads.
+/// One entry as the tuple Python reads: `(tag, name, value, entries)`.
 ///
-/// The native record nests a group's members under the counter that heads
-/// them; a binding is a view, so it flattens rather than inventing a second
-/// shape. Order is the wire's.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, String, String)>) {
-    for entry in entries {
-        out.push((
-            entry.tag(),
-            entry.key().as_str().unwrap_or_default().to_owned(),
-            entry.value().as_str().unwrap_or_default().to_owned(),
-        ));
-        flatten_entries(entry.children(), out);
-    }
+/// The native record is a tree - a group's occurrences and a component's
+/// members nest under the entry that heads them - and a binding is a view,
+/// so the tuple nests the same way rather than flattening into a second
+/// shape. Order is the row's.
+fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py, PyAny>> {
+    let nested = entry
+        .entries()
+        .iter()
+        .map(|held| entry_tuple(py, held))
+        .collect::<PyResult<Vec<_>>>()?;
+    Ok((entry.tag(), entry.name(), entry.value(), nested)
+        .into_pyobject(py)?
+        .into_any())
+}
+
+/// A native identity as the uuid `Scalar` it is: the binding has no `Uuid`
+/// class of its own, and `as_py()` answers the hyphenated text.
+fn uuid_scalar(uuid: CoreUuid) -> PyScalar {
+    PyScalar::from_inner(Scalar::Uuid(uuid))
+}
+
+/// An optional text as a `repr` spells it: `None`, or the quoted text.
+fn repr_text(value: Option<&str>) -> String {
+    value.map_or_else(|| "None".to_owned(), |held| format!("{held:?}"))
+}
+
+/// A native code - a currency, a side, a state, an identifier - as the
+/// code `Scalar` its datatype is.
+fn code_scalar<C>(code: &C) -> PyScalar
+where
+    C: Clone,
+    Scalar: From<C>,
+{
+    PyScalar::from_inner(Scalar::from(code.clone()))
 }
 
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
@@ -179,10 +205,14 @@ fn absent(error: &CoreError) -> PyErr {
 
 /// FIX field definitions resolved by tag, by name, or by dotted path.
 ///
-/// The registry is mutable, so it is unhashable and compares by the fields it
-/// holds. It is held as an `Arc` because a [`FixMsg`][PyFixMsg] links the very
-/// registry it was resolved against and the process default is one too: a
-/// mutation therefore refuses while anything else shares it, rather than
+/// One namespace of scalar fields, components and repeating groups, each
+/// reached through the field doors alone: a Struct is a component, a List of
+/// Structs or a Map a group, and a message a component carrying
+/// `fix:msgtype`. The registry is mutable, so it is unhashable and compares
+/// by the fields it holds. It is held as an `Arc` because a
+/// [`FixMsg`][PyFixMsg] links the very registry it was resolved against, a
+/// [`MsgType`][PyMsgType] view keeps it, and the process default is one too:
+/// a mutation therefore refuses while anything else shares it, rather than
 /// changing a dictionary underneath a message that already used it.
 #[pyclass(name = "FixRegistry", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixRegistry {
@@ -213,14 +243,14 @@ impl PyFixRegistry {
 
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
-    /// `fix_crate_fields` lists thirty-four scalar fields - tags 65001 to 65015, 65017 to 65019 and 65021 to 65038 -
-    /// the `altids` Map group at 65020 and the `instids` Struct at 65036; the
-    /// retired 65000, 65004 and 65016 are not reused. Beside them sit two
-    /// seeded standard clocks, `SendingTime` (52) and `TransactTime` (60),
-    /// each a nanosecond UTC `datetime64`, so a new registry holds
-    /// thirty-six scalar fields. The seeds are ordinary definitions a loaded dictionary
-    /// supplies its own metadata for; the crate's fields are held by every
-    /// dictionary alike. `len` counts only scalar fields.
+    /// `fix_crate_fields` lists what the crate adds beside the specification:
+    /// its own columns in tag order from 65003 - the clocks, the identities,
+    /// the derived facts and the capture's own - and the two Map groups
+    /// `identifiers` and `metadata`. Beside them sit two seeded standard
+    /// clocks, `SendingTime` (52) and `TransactTime` (60), each a nanosecond
+    /// UTC `datetime64`, ordinary definitions a loaded dictionary supplies its
+    /// own metadata for; the crate's fields are held by every dictionary
+    /// alike. `len` counts the scalar fields, the components and the groups.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -420,7 +450,11 @@ impl PyFixRegistry {
         read_located(location, |handle| registry.add_json_file(handle))
     }
 
-    /// Register a message definition and borrow its immutable singleton view.
+    /// Register a message definition and answer its immutable view.
+    ///
+    /// `spelling` is the wire code, qualified or not - `AR Inbound` is tag
+    /// 35 `AR` used one way - and `name` the definition's name, the
+    /// spelling itself when none is given.
     #[pyo3(signature = (spelling, name=None, description=None))]
     fn register_msgtype(
         &mut self,
@@ -428,139 +462,51 @@ impl PyFixRegistry {
         name: Option<&str>,
         description: Option<&str>,
     ) -> PyResult<PyMsgType> {
-        let held = std::ptr::from_ref(
-            self.inner_mut()?
-                .register_msgtype(spelling, name, description)
-                .map_err(value_error)?
-                .as_field(),
-        );
-        PyMsgType::from_field_pointer(&self.inner, held)
+        let held = self
+            .inner_mut()?
+            .register_msgtype(spelling, name, description)
+            .map_err(value_error)?
+            .clone();
+        Ok(PyMsgType::new(Arc::clone(&self.inner), held))
     }
 
-    fn get_definition(&self, category: &str, name: &str) -> PyResult<Option<PyField>> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        Ok(self
-            .inner
-            .get_definition(category, name)
-            .cloned()
-            .map(PyField::from_inner))
-    }
-
-    fn definition(&self, category: &str, name: &str) -> PyResult<PyField> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+    /// The message definition a spelling reaches, or `None`.
+    ///
+    /// An exact wire code, a folded canonical name, or an alias of tag 35's
+    /// code set, in that order. A code two messages declare under different
+    /// names answers the one tag 35's code set names, else the first in name
+    /// order; the other is reached by its own name.
+    fn get_msgtype(&self, spelling: &str) -> Option<PyMsgType> {
         self.inner
-            .definition(category, name)
-            .cloned()
-            .map(PyField::from_inner)
+            .get_msgtype(spelling)
+            .map(|held| PyMsgType::new(Arc::clone(&self.inner), held.clone()))
+    }
+
+    /// The message definition a spelling reaches; absence is a `KeyError`.
+    fn msgtype(&self, spelling: &str) -> PyResult<PyMsgType> {
+        self.inner
+            .msgtype(spelling)
+            .map(|held| PyMsgType::new(Arc::clone(&self.inner), held.clone()))
             .map_err(|error| absent(&error))
     }
 
-    fn definitions(&self, category: &str) -> PyResult<PyFixDefinitionIterator> {
-        Ok(PyFixDefinitionIterator {
-            registry: Arc::clone(&self.inner),
-            category: CoreFixCategory::from_str(category).map_err(value_error)?,
-            index: 0,
-        })
-    }
-
-    fn insert_definition(
-        &mut self,
-        category: &str,
-        field: &Bound<'_, PyAny>,
-    ) -> PyResult<Option<PyField>> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let field = core_field_from_value(field)?;
-        self.inner_mut()?
-            .insert_definition(category, field)
-            .map(|field| field.map(PyField::from_inner))
-            .map_err(value_error)
-    }
-
-    /// Fold a named definition into the one its name reaches.
+    /// The repeating group one counter tag opens, or `None`.
     ///
-    /// The lenient counterpart of `create_definition`, which refuses a name
-    /// it holds, and of `insert_definition`, which replaces one wholesale.
-    /// Answers `True` when the definition arrived and `False` when it merged;
-    /// `"fields"` redirects to `add_field`.
-    ///
-    /// A merge keeps the stored definition's identity, name and every member
-    /// it declares, in its order, and appends the members it lacks - for a
-    /// group, to the occurrence inside the list, and to the component when
-    /// that occurrence is a component's. It is one level deep: a member both
-    /// sides declare stays the stored one, so a member whose datatype - or
-    /// whose restated reference - disagrees is refused. Every message and
-    /// component referencing the definition sees the appended members.
-    ///
-    /// One mutation: a refusal leaves the dictionary exactly as it was.
-    fn add_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<bool> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let field = core_field_from_value(field)?;
-        self.inner_mut()?
-            .add_definition(category, field)
-            .map_err(value_error)
-    }
-
-    fn create_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<()> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let field = core_field_from_value(field)?;
-        self.inner_mut()?
-            .create_definition(category, field)
-            .map_err(value_error)
-    }
-
-    fn update_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<PyField> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let field = core_field_from_value(field)?;
-        self.inner_mut()?
-            .update_definition(category, field)
-            .map(PyField::from_inner)
-            .map_err(value_error)
-    }
-
-    fn remove_definition(&mut self, category: &str, name: &str) -> PyResult<Option<PyField>> {
-        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        self.inner_mut()?
-            .remove_definition(category, name)
-            .map(|field| field.map(PyField::from_inner))
-            .map_err(value_error)
-    }
-
-    fn get_msgtype(&self, spelling: &str) -> PyResult<Option<PyMsgType>> {
+    /// `tag` is the counter's: `get_field_by_tag` answers the counter itself
+    /// off the same key, and the group it heads is a definition of its own,
+    /// reached here or by its name. Two groups on one counter name nothing.
+    fn get_field_by_counter(&self, tag: FixTag) -> Option<PyField> {
         self.inner
-            .get_msgtype(spelling)
-            .map(|message| PyMsgType::from_field_pointer(&self.inner, message.as_field()))
-            .transpose()
-    }
-
-    fn msgtype(&self, spelling: &str) -> PyResult<PyMsgType> {
-        let message = self
-            .inner
-            .msgtype(spelling)
-            .map_err(|error| absent(&error))?;
-        PyMsgType::from_field_pointer(&self.inner, message.as_field())
-    }
-
-    fn msgtypes(&self) -> PyMsgTypeIterator {
-        PyMsgTypeIterator {
-            registry: Arc::clone(&self.inner),
-            index: 0,
-        }
-    }
-
-    /// The group definition one counter tag heads, or `None`.
-    fn get_group_by_tag(&self, tag: FixTag) -> Option<PyField> {
-        self.inner
-            .get_group_by_tag(tag.0)
+            .get_field_by_counter(tag.0)
             .cloned()
             .map(PyField::from_inner)
     }
 
-    /// The group definition one counter tag heads.
-    fn group_by_tag(&self, tag: FixTag) -> PyResult<PyField> {
+    /// The repeating group one counter tag opens; absence is a `KeyError`.
+    fn field_by_counter(&self, tag: FixTag) -> PyResult<PyField> {
         self.inner
-            .group_by_tag(tag.0)
-            .cloned()
-            .map(PyField::from_inner)
+            .field_by_counter(tag.0)
+            .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
 
@@ -598,10 +544,14 @@ impl PyFixRegistry {
     /// `location`, removing the files no field or definition populates any
     /// more.
     ///
-    /// The crate's own definitions are written like every other, so a store
-    /// states the whole row rather than the half it declared itself; a
-    /// reader takes the definition it holds from construction over the
-    /// document it finds there.
+    /// Shards are named by their tag's hundred, nine digits wide - tag 55
+    /// lands in `fields/000000000.json`, tag 65003 in
+    /// `fields/000000650.json` - beside `components/` and `groups/`. The
+    /// crate's own definitions are written like every other, the fixed row
+    /// among them as `components/fixmsg.json`, so a store states the whole
+    /// row rather than the half it declared itself; a reader takes the
+    /// definition it holds from construction over the document it finds
+    /// there.
     fn write_into(&self, location: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut holder = folder_holder_from_value(location)?;
         self.inner.write_into(&mut holder).map_err(value_error)
@@ -633,7 +583,8 @@ impl PyFixRegistry {
     /// The field a canonical or alternate tag names, or `None`.
     ///
     /// The canonical holder of the tag answers first, then a field holding
-    /// it as an alternate.
+    /// it as an alternate, then a component or a group by the tag that is
+    /// its identity in the catalog.
     fn get_field_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner
             .get_field_by_tag(tag.0)
@@ -652,7 +603,8 @@ impl PyFixRegistry {
     /// The field a canonical name or alias names, ASCII case folded, or
     /// `None`.
     ///
-    /// The canonical name answers before an alias, under the one fold.
+    /// A scalar field answers first - the canonical name before an alias,
+    /// under the one fold - then a component, then a group.
     fn get_field_by_name(&self, name: &str) -> Option<PyField> {
         self.inner
             .get_field_by_name(name)
@@ -712,6 +664,12 @@ impl PyFixRegistry {
     }
 
     /// Add a field, answering the one it replaced.
+    ///
+    /// Filed by its shape: a Struct is a component, a List of Structs or a
+    /// Map a group, anything else a scalar field. A scalar arriving on a tag
+    /// another field holds under another name is a field of its own, added
+    /// beside the holder, which gains the arrival's name as an alias; a
+    /// component or a group replaces the definition its folded name reaches.
     fn insert(&mut self, field: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let field = core_field_from_value(field)?;
         Ok(self
@@ -721,14 +679,20 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// Merge a definition into the stored field with the same identity: the
-    /// same tag under the same folded name.
+    /// Merge a definition into the stored one with the same identity: the
+    /// same tag under the same folded name for a scalar, the folded name for
+    /// a component or a group. A name folding to the stored one keeps the
+    /// stored canonical spelling; a definition nothing holds is refused.
     fn update(&mut self, field: &Bound<'_, PyAny>) -> PyResult<()> {
         let field = core_field_from_value(field)?;
         self.inner_mut()?.update(field).map_err(value_error)
     }
 
-    /// Remove the field a tag or a name reaches, answering it.
+    /// Remove what a tag or a name reaches, answering it.
+    ///
+    /// A scalar field a tag, a name or an alias reaches, else the component
+    /// or the group a name spells. A definition another one references
+    /// stays, as its members stay, and answers `None`.
     fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let key = FixKeyArg::from_py(key)?;
         Ok(self
@@ -786,14 +750,15 @@ impl PyFixRegistry {
         !self.inner.is_empty()
     }
 
-    /// The fields in ascending canonical-identifier order, lazily.
+    /// The scalar fields in ascending canonical-identifier order, lazily.
     ///
     /// The order is the core's: tag-major, then by identifier. The iterator holds
     /// the registry's `Arc` and the identifier it stopped at, so nothing is
     /// collected crossing the boundary and the dictionary is never cloned to
     /// walk it. Holding it is therefore sharing it: a mutation refuses while a
     /// walk is unfinished, which is what stops the vector moving under a
-    /// cursor into it.
+    /// cursor into it. The components and the groups `len` counts are not
+    /// walked here: each is reached by its name or its counter.
     fn __iter__(&self) -> PyFixFieldIterator {
         PyFixFieldIterator {
             registry: Arc::clone(&self.inner),
@@ -835,27 +800,13 @@ pub(crate) struct PyFixFieldIterator {
     done: bool,
 }
 
-#[pyclass(name = "FixDefinitionIterator", module = "yggdryl._native")]
-pub(crate) struct PyFixDefinitionIterator {
-    registry: Arc<CoreFixRegistry>,
-    category: CoreFixCategory,
-    index: usize,
-}
-
-#[pymethods]
-impl PyFixDefinitionIterator {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-    fn __next__(&mut self) -> Option<PyField> {
-        let field = self.registry.definition_at(self.category, self.index)?;
-        self.index += 1;
-        Some(PyField::from_inner(field.clone()))
-    }
-}
-
+/// One message definition, as the registry holds it.
+///
+/// The core borrows one out of its registry; a Python value cannot, so this
+/// is a copy of the definition beside the registry it came from, which it
+/// keeps shared - a mutation of that registry refuses while the view lives,
+/// as it refuses while a message shares it. Immutable, so it hashes, orders,
+/// copies and pickles by the definition's own field.
 #[pyclass(
     name = "MsgType",
     module = "yggdryl._native",
@@ -865,46 +816,39 @@ impl PyFixDefinitionIterator {
 #[derive(Clone)]
 pub(crate) struct PyMsgType {
     registry: Arc<CoreFixRegistry>,
-    index: usize,
+    inner: CoreMsgType,
 }
 
 impl PyMsgType {
-    fn from_field_pointer(
-        registry: &Arc<CoreFixRegistry>,
-        field: *const CoreField,
-    ) -> PyResult<Self> {
-        let index = registry
-            .msgtypes()
-            .position(|message| std::ptr::eq(message.as_field(), field))
-            .ok_or_else(|| {
-                PyValueError::new_err("message singleton does not belong to this registry")
-            })?;
-        Ok(Self {
-            registry: Arc::clone(registry),
-            index,
-        })
+    const fn new(registry: Arc<CoreFixRegistry>, inner: CoreMsgType) -> Self {
+        Self { registry, inner }
     }
-    fn inner(&self) -> &CoreMsgType {
-        self.registry
-            .msgtype_at(self.index)
-            .expect("an immutable registry retains its singleton positions")
+
+    const fn inner(&self) -> &CoreMsgType {
+        &self.inner
     }
 }
 
 #[pymethods]
 impl PyMsgType {
+    /// The definition's canonical name.
     #[getter]
     fn name(&self) -> &str {
         self.inner().name()
     }
+
+    /// The exact wire code, case and every non-control character kept.
     #[getter]
     fn value(&self) -> &str {
         self.inner().as_str()
     }
+
+    /// The definition's own Struct field, read-only.
     #[getter]
     fn field(&self) -> PyField {
         PyField::from_inner_with_read_only(self.inner().as_field().clone(), true)
     }
+
     /// The group this message declares under one counter tag, or `None`.
     fn get_group_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner()
@@ -912,6 +856,7 @@ impl PyMsgType {
             .cloned()
             .map(PyField::from_inner)
     }
+
     /// This component's non-null identifiers at the message's own level.
     ///
     /// The result follows component order, without descending into groups.
@@ -927,12 +872,15 @@ impl PyMsgType {
             })
             .collect()
     }
+
     fn stable_hash(&self) -> u64 {
         self.inner().stable_hash()
     }
+
     fn __hash__(&self) -> isize {
         crate::python_hash(self.stable_hash())
     }
+
     fn __richcmp__(
         &self,
         py: Python<'_>,
@@ -950,57 +898,48 @@ impl PyMsgType {
         .into_any()
         .unbind()
     }
+
     fn __str__(&self) -> &str {
         self.inner().as_str()
     }
+
     fn __repr__(&self) -> String {
         format!("MsgType({:?}, {:?})", self.name(), self.value())
     }
+
     fn __copy__(&self) -> Self {
         self.clone()
     }
+
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
         self.clone()
     }
 
+    /// Rebuild a view from the dictionary's snapshot and the definition's
+    /// name, which is the one spelling that reaches it alone.
     #[staticmethod]
-    fn _from_pickle(registry: &str, index: usize) -> PyResult<Self> {
+    fn _from_pickle(registry: &str, name: &str) -> PyResult<Self> {
         let registry = Arc::new(CoreFixRegistry::from_json(registry).map_err(value_error)?);
-        registry
-            .msgtype_at(index)
-            .ok_or_else(|| PyValueError::new_err("message position is outside the registry"))?;
-        Ok(Self { registry, index })
+        let inner = registry
+            .get_msgtype(name)
+            .filter(|held| held.name() == name)
+            .cloned()
+            .ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "no message definition named {name:?} in the registry"
+                ))
+            })?;
+        Ok(Self { registry, inner })
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, usize))> {
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, String))> {
         Ok((
             py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (self.registry.into_json().map_err(value_error)?, self.index),
+            (
+                self.registry.into_json().map_err(value_error)?,
+                self.inner.name().to_owned(),
+            ),
         ))
-    }
-}
-
-#[pyclass(name = "MsgTypeIterator", module = "yggdryl._native")]
-pub(crate) struct PyMsgTypeIterator {
-    registry: Arc<CoreFixRegistry>,
-    index: usize,
-}
-
-#[pymethods]
-impl PyMsgTypeIterator {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-    fn __next__(&mut self) -> Option<PyMsgType> {
-        self.registry.msgtype_at(self.index)?;
-        let value = PyMsgType {
-            registry: Arc::clone(&self.registry),
-            index: self.index,
-        };
-        self.index += 1;
-        Some(value)
     }
 }
 
@@ -1106,13 +1045,13 @@ fn python_failure(error: PyErr) -> CoreError {
 /// A stream of messages, one at a time.
 ///
 /// Every stage of the codec answers one of these - one line's messages, a
-/// stream of lines parsed, records parsed, messages enriched, filled by a
-/// lifecycle or reduced to its snapshots, a batch read back - so a message
-/// stream has one shape at this boundary whatever made it. Nothing is
-/// collected: the core iterator is the stream, and a Python iterable behind
-/// it is pulled one item at a time. A line the reader refuses, or a message a
-/// stage refuses, raises `ValueError` where it is met and the stream goes on
-/// past it; a Python failure behind the stream raises as itself and ends it.
+/// stream of lines parsed, records parsed, messages chained by the
+/// lifecycle, a batch read back - so a message stream has one shape at this
+/// boundary whatever made it. Nothing is collected: the core iterator is the
+/// stream, and a Python iterable behind it is pulled one item at a time. A
+/// line the reader refuses, or a message a stage refuses, raises `ValueError`
+/// where it is met and the stream goes on past it; a Python failure behind
+/// the stream raises as itself and ends it.
 #[pyclass(name = "FixMessages", module = "yggdryl._native")]
 pub(crate) struct PyFixMessages {
     /// The stream, behind the lock a class shared between threads needs; a
@@ -1271,20 +1210,31 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
 /// documents it needs - the schema, the value, and the dictionary's fields.
 type MsgPickle = (Py<PyAny>, (String, String, String));
 
-/// A FIX message: a value plus the registry that types it.
+/// The tags a message holds typed beside the crate's own: the standard
+/// header, the event's own FIX tags, and `Text(58)`.
+const TYPED_TAGS: [i32; 16] = [
+    8, 35, 49, 56, 34, 52, 43, 385, 15, 54, 461, 132, 133, 134, 135, 58,
+];
+
+/// A FIX message: a typed market event with a content row, against the
+/// registry that types it.
 ///
-/// The schema is one non-null Struct `Field` - the only row schema - and the
-/// value the row it declares, so a mapping input is canonicalized into that
-/// order by the core exactly as every other row is. Every message carries
-/// the settled bundle - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
-/// `snapshotat` and `SendingTime` - each non-null, and the core holds the
-/// first four directly, so their readers answer without a lookup. The row is
-/// written through `set` and `remove`; the entries never are, because they
-/// are what the wire carried. The message hashes, pickles, copies and
-/// compares by the schema and the value it carries, against the registry it
-/// was resolved against - and a hashed message is frozen, which is Python's
-/// contract for a hash, so a write after `hash()` refuses and a copy is what
-/// takes it.
+/// The typed facts live in three holders and two extras - the `event()`
+/// the graph vocabulary answers, the standard `header()`, what the
+/// `capture()` said about the line, the free `text` and a bridge's own
+/// `metadata` - and the row holds everything else the message states: the
+/// dictionary's fields, groups as lists beside their counter, components
+/// as structs. The schema is one non-null Struct `Field` - the only row
+/// schema - and the value the row it declares, so a mapping input is
+/// canonicalized into that order by the core exactly as every other row is,
+/// and a child stating a typed fact fills the holder that owns it and leaves
+/// the row. A lookup by a typed tag answers the holder; every other key
+/// reaches the row. The row and the holders are written through `set` and
+/// `remove`, and every write settles the identity again. The message
+/// hashes, pickles, copies and compares by its facts and its row, against
+/// the registry it was resolved against - and a hashed message is frozen,
+/// which is Python's contract for a hash, so a write after `hash()` refuses
+/// and a copy is what takes it.
 #[pyclass(name = "FixMsg", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixMsg {
     inner: CoreFixMsg,
@@ -1316,9 +1266,43 @@ impl PyFixMsg {
         &self.inner
     }
 
-    /// Wrap an answered value, or report the absence its key names.
-    fn answered(value: Option<&Scalar>) -> Option<PyScalar> {
-        value.cloned().map(PyScalar::from_inner)
+    /// Wrap an answered value.
+    fn answered(value: Option<Scalar>) -> Option<PyScalar> {
+        value.map(PyScalar::from_inner)
+    }
+
+    /// The typed facts as the columns that state them, each under the
+    /// dictionary's field for its tag - or, for a tag the dictionary does
+    /// not hold, a field inferred from the value and carrying the tag - so
+    /// a rebuild from the row lifts them back onto their holders.
+    fn typed_columns(&self) -> PyResult<(Vec<CoreField>, Vec<Scalar>)> {
+        let registry = self.inner.registry();
+        let mut fields = Vec::new();
+        let mut values = Vec::new();
+        let tags = TYPED_TAGS
+            .into_iter()
+            .chain(yggdryl::CRATE_TAG_MIN..yggdryl::CRATE_TAG_MAX);
+        for tag in tags {
+            let Some(value) = self.inner.get_by_tag(tag) else {
+                continue;
+            };
+            let known = registry
+                .get_field_by_tag(tag)
+                .or_else(|| registry.get_field_by_counter(tag));
+            let field = if let Some(known) = known {
+                known.clone()
+            } else {
+                let mut field = value
+                    .dtype()
+                    .map_err(value_error)?
+                    .nullable_field(format!("{tag}"));
+                field.as_fix_mut().set_tag(tag).map_err(value_error)?;
+                field
+            };
+            fields.push(field);
+            values.push(value);
+        }
+        Ok((fields, values))
     }
 }
 
@@ -1328,14 +1312,17 @@ impl PyFixMsg {
     ///
     /// `value` is anything the `Scalar` boundary reads - a native `Scalar`, a
     /// mapping of names, a sequence in the root's own order - and is
-    /// validated and canonicalized against `field` by the core.
-    ///
-    /// A mandatory field the root lacks is appended from the registry's
-    /// definition and settled: `SendingTime` is the stated one, else UTC
-    /// now; `snapshotat` the stated one, else `TransactTime`, else
-    /// `SendingTime`; `updatedat` and `createdat` default to `snapshotat`;
-    /// `code` to the empty unknown name; `msghash` and `msgphash` are computed, and
-    /// a stated one that disagrees is a `ValueError`.
+    /// validated and canonicalized against `field` by the core. A child
+    /// stating a typed fact - a header tag, a crate column, one of the
+    /// event's own tags, `Text(58)` - fills the holder that owns it and
+    /// leaves the row. The clocks settle: `SendingTime` is the stated one,
+    /// else UTC now, so a message meant to compare equal to another states
+    /// one; the instant `unix` is the stated one, else `TransactTime`, else
+    /// `SendingTime`; the creation is the stated one, else
+    /// `OrigSendingTime`, else the instant. The identity is then derived:
+    /// the cross code from the first stated of `OrderID`, `ClOrdID`,
+    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` and `MDReqID`, the hash code
+    /// over the facts and the row, and the identities from both.
     #[new]
     #[pyo3(signature = (field, value, registry=None))]
     fn new(
@@ -1355,16 +1342,15 @@ impl PyFixMsg {
     /// `schema` is the row's root - the one `fix_schema` or
     /// `fix_schema_carrying` built, or the one read off a batch - and `row`
     /// anything the `Scalar` boundary reads as it: a native `Scalar`, a
-    /// mapping of names, a sequence in the schema's order. The columns are
-    /// the message's children under the schema's names, reached by tag as a
-    /// parsed message's are, and the entries are rebuilt from the
-    /// `fixentries` column, so `into_bytes` re-emits the line the row was
-    /// read from; a row without that column has no entries. Nothing is
-    /// parsed again and no clock is read: a replayable row carries the whole
-    /// non-null bundle - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
-    /// `snapshotat` and `SendingTime` - a missing or mistyped member is a
-    /// located `ValueError`, and a stated `msghash` or `msgphash` the row's content
-    /// does not hash to is refused. `registry` defaults to the process one.
+    /// mapping of names, a sequence in the schema's order. The typed
+    /// columns fill the holders, the content is rebuilt from the
+    /// `fixentries` column - so `into_bytes` re-emits the line the row was
+    /// read from, and a row without that column has no content - and a
+    /// column no tag names, a capture's own, stays a child of that name.
+    /// Nothing is parsed again and no clock is read: a row carries the
+    /// instant, the creation and the identities its message settled, and a
+    /// row that does not fit the schema is a located `ValueError`.
+    /// `registry` defaults to the process one.
     #[staticmethod]
     #[pyo3(signature = (schema, row, registry=None))]
     fn from_row(
@@ -1396,64 +1382,74 @@ impl PyFixMsg {
         PyFixRegistry::from_arc(Arc::clone(self.inner.registry()))
     }
 
-    /// The root Struct field: the message's resolved schema.
+    /// The root Struct field: the content row's schema, holding every child
+    /// the message states beyond its typed facts.
     #[getter]
     fn field(&self) -> PyField {
         PyField::from_inner(self.inner.as_field().clone())
     }
 
-    /// The ordered row value.
+    /// The ordered content row.
     #[getter]
     fn value(&self) -> PyScalar {
         PyScalar::from_inner(self.inner.as_value().clone())
     }
 
-    /// The value of the root child an identifier names, or `None`.
+    /// The value an identifier names, or `None`.
     ///
     /// `id` is the `int` a field's `fix.id` answers; the lookup is exact, so
-    /// a field this message's dictionary does not hold simply misses.
+    /// a field this message's dictionary does not hold simply misses. A
+    /// typed tag answers its holder, any other the row.
     fn get_by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
         let id = id_from_py(id)?;
         Ok(Self::answered(self.inner.get_by_id(id)))
     }
 
-    /// The value of the root child an identifier names.
+    /// The value an identifier names; absence is a `KeyError`.
     fn by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         let id = id_from_py(id)?;
         self.inner
             .by_id(id)
-            .map(|value| PyScalar::from_inner(value.clone()))
+            .map(PyScalar::from_inner)
             .map_err(|error| absent(&error))
     }
 
-    /// The value of the root child a tag names, or `None`.
+    /// The value a tag names, or `None`.
     ///
-    /// The canonical holder of the tag answers first, then a field holding
-    /// it as an alternate.
+    /// A tag the typed holders own - a header tag, a crate column, one of
+    /// the event's own tags, `Text(58)` - answers the fact the holder
+    /// states, typed as its column is: `by_tag(35)` is the type as text,
+    /// `by_tag(52)` the sending clock as a nanosecond UTC `datetime64`,
+    /// `by_tag(54)` the side as its explicit value, a crate identity a
+    /// `uuid`. Any other tag reaches the row: the canonical holder of the
+    /// tag answers first, then the child named as the dictionary names the
+    /// tag, then the child named by the tag's decimal spelling.
     fn get_by_tag(&self, tag: FixTag) -> Option<PyScalar> {
         Self::answered(self.inner.get_by_tag(tag.0))
     }
 
-    /// The value of the root child a tag names.
+    /// The value a tag names; absence is a `KeyError`.
     fn by_tag(&self, tag: FixTag) -> PyResult<PyScalar> {
         self.inner
             .by_tag(tag.0)
-            .map(|value| PyScalar::from_inner(value.clone()))
+            .map(PyScalar::from_inner)
             .map_err(|error| absent(&error))
     }
 
-    /// The value of the root child a name reaches, or `None`.
+    /// The value a name reaches, or `None`.
     ///
-    /// The canonical name answers before an alias, under the one fold.
+    /// The name folds through the registry to its canonical spelling - a
+    /// typed fact answers from its holder - and an exact root-child match
+    /// is the fallback when the registry does not know it.
     fn get_by_name(&self, name: &str) -> Option<PyScalar> {
         Self::answered(self.inner.get_by_name(name))
     }
 
-    /// The value of the root child a name reaches.
+    /// The value a name reaches; absence is a `KeyError`.
     fn by_name(&self, name: &str) -> PyResult<PyScalar> {
         self.inner
             .by_name(name)
-            .map(|value| PyScalar::from_inner(value.clone()))
+            .map(PyScalar::from_inner)
             .map_err(|error| absent(&error))
     }
 
@@ -1463,7 +1459,7 @@ impl PyFixMsg {
         Ok(Self::answered(self.inner.get_by_path(&path)))
     }
 
-    /// The value a path reaches.
+    /// The value a path reaches; absence is a `KeyError`.
     ///
     /// A position is spelled the way the one grammar spells it:
     /// ``Parties[0].PartyID``.
@@ -1471,7 +1467,7 @@ impl PyFixMsg {
         let path = core_path_from_value(path)?;
         self.inner
             .by_path(&path)
-            .map(|value| PyScalar::from_inner(value.clone()))
+            .map(PyScalar::from_inner)
             .map_err(|error| absent(&error))
     }
 
@@ -1495,23 +1491,25 @@ impl PyFixMsg {
         let key = FixKeyArg::from_py(key)?;
         self.inner
             .value(key.as_key())
-            .map(|value| PyScalar::from_inner(value.clone()))
+            .map(PyScalar::from_inner)
             .map_err(|error| absent(&error))
     }
 
-    /// Writes one value into the row, typed by the field the key resolves to.
+    /// Writes one value into the message, typed by the field the key
+    /// resolves to.
     ///
     /// `key` is a tag or a name, resolved as a lookup resolves one through
-    /// the dictionary, and a name the dictionary does not know still reaches a child spelled
-    /// that way. A known field types the value through the core's value
-    /// contract; `None` is stored as a stated null, except under a mandatory
-    /// field, which refuses it. An existing child is replaced where it stands
-    /// and an absent one appended; a bare tag no dictionary explains appends
-    /// a text child named by its decimal. Only the row changes, and `msghash`
-    /// and `msgphash` are recomputed from it - a written `msghash` or `msgphash` is an
-    /// assertion the result must hash to; the settled clocks stay unless the
-    /// write names one, and the entries, the wire and the digest stay what
-    /// they were.
+    /// the dictionary. A key reaching a typed fact - a header tag, a crate
+    /// column, one of the event's own tags - records it on the holder that
+    /// owns it, and `None` clears it. Any other key lands in the row: a
+    /// known field types the value through the core's value contract, `None`
+    /// is stored as a stated null, an existing child is replaced where it
+    /// stands and an absent one appended, a name the dictionary does not
+    /// know still reaches a child spelled that way, and a bare tag no
+    /// dictionary explains appends a text child named by its decimal. Every
+    /// write settles the identity again - the hash code, the identities and
+    /// the cross code where it named none - and the entries and the wire
+    /// follow the row, so `into_bytes` re-emits the message as it now stands.
     ///
     /// A key reaching no field and no child is a `KeyError` naming it, a value
     /// the field refuses a `ValueError`, and either leaves the message as it
@@ -1525,14 +1523,13 @@ impl PyFixMsg {
             .map_err(|error| absent(&error))
     }
 
-    /// Removes the child a key reaches, answering its value, or `None`.
+    /// Removes what a key reaches, answering the value it held, or `None`.
     ///
-    /// The key resolves as `set` resolves one, and a key reaching nothing
-    /// answers `None` and changes nothing. The entries are untouched. A
-    /// mandatory field - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`,
-    /// `snapshotat` or `SendingTime` - refuses removal with a `ValueError`,
-    /// and the message stays exactly as it was. A hashed message is frozen
-    /// and refuses with `TypeError`.
+    /// The key resolves as `set` resolves one: a typed fact is cleared on
+    /// its holder, a row child is removed and the children after it move
+    /// up. A key reaching nothing answers `None` and changes nothing. The
+    /// identity is settled again. A hashed message is frozen and refuses
+    /// with `TypeError`.
     fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
         self.require_mutable()?;
         let key = FixKeyArg::from_py(key)?;
@@ -1543,7 +1540,8 @@ impl PyFixMsg {
             .map(PyScalar::from_inner))
     }
 
-    /// The `(name, value)` pairs of the root, in the order it declares.
+    /// The `(name, value)` pairs of the content row, in the order its root
+    /// declares; the typed facts are the holders' to answer.
     fn __iter__(&self) -> PyFixMsgIterator {
         PyFixMsgIterator {
             field: self.inner.as_field().clone(),
@@ -1567,7 +1565,8 @@ impl PyFixMsg {
         crate::python_hash(self.stable_hash())
     }
 
-    /// Two messages are equal with the same schema, value and dictionary.
+    /// Two messages are equal when they state the same facts and the same
+    /// row against the same dictionary.
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return py.NotImplemented();
@@ -1578,152 +1577,228 @@ impl PyFixMsg {
             .unbind()
     }
 
-    /// Carry the schema, the value and the dictionary's fields as documents.
+    /// Carry the row, the typed facts and the dictionary's fields as
+    /// documents.
     ///
-    /// All three travel through the JSON paths a field and a value already
-    /// have, so the message a pickle rebuilds is equal to the one it came
-    /// from - registry included, which equality compares.
+    /// The typed facts travel as columns appended behind the content row,
+    /// each under the field that types it, so the rebuild lifts them back
+    /// onto their holders exactly as a parse does, and all three documents
+    /// travel through the JSON paths a field and a value already have. The
+    /// message a pickle rebuilds is equal to the one it came from - registry
+    /// included, which equality compares - provided it stated its
+    /// `SendingTime`: a settled one is stated again by the rebuild.
     fn __reduce__(&self, py: Python<'_>) -> PyResult<MsgPickle> {
         let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
-        let field = self
+        let (typed_fields, typed_values) = self.typed_columns()?;
+        let root = self.inner.as_field();
+        let mut members = root.fields().to_vec();
+        members.extend(typed_fields);
+        let mut values = self
             .inner
-            .as_field()
-            .clone()
-            .into_json()
+            .as_value()
+            .as_sequence()
+            .unwrap_or_default()
+            .to_vec();
+        values.extend(typed_values);
+        let mut field = root.clone();
+        field
+            .set_dtype(CoreDataType::from_fields(members).map_err(value_error)?)
             .map_err(value_error)?;
-        let value = into_json_scalar(self.inner.as_value()).map_err(value_error)?;
+        let field = field.into_json().map_err(value_error)?;
+        let value = into_json_scalar(&Scalar::from_sequence(values)).map_err(value_error)?;
         let registry = self.inner.registry().into_json().map_err(value_error)?;
         Ok((callable, (field, value, registry)))
     }
 
-    /// This message's value digest, as sixteen big-endian bytes.
+    /// This message's wire digest, as sixteen big-endian bytes.
     ///
-    /// Over what the message says: the whole session envelope is excluded,
-    /// so the same order relayed through two sessions or replayed on a
-    /// resend is one message. Computed on every call and stored nowhere.
+    /// Over every entry `into_bytes` emits, pre-order, so two messages that
+    /// re-emit alike digest alike whatever separator either was read with.
+    /// Computed on every call and stored nowhere.
     fn digest<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         PyBytes::new(py, &self.inner.digest().to_be_bytes())
     }
 
-    /// One instrument symbol that is the same across venues.
-    fn symbol_ticker(&self) -> Option<PyScalar> {
-        Self::answered(Some(&self.inner.symbol_ticker()))
-    }
-
-    /// The settled message instant, or the snapshot grid instant a lifecycle
-    /// truncated it to.
+    /// The event this message is: every fact the graph vocabulary answers,
+    /// held still.
     ///
-    /// The crate's non-null `updatedat` (65003), a nanosecond UTC
-    /// `datetime64`: at intake the stated one, else `snapshotat`. No clock is
-    /// read after intake, and a `FixLifecycle` truncates it to its interval's
-    /// epoch grid while `snapshotat` keeps the real event instant. Every
-    /// message answers, because every message carries it.
-    fn updatedat(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.updatedat().clone())
+    /// A copy at the moment it is asked for, so a message written afterwards
+    /// leaves it behind; the same facts are the message's own properties.
+    fn event(&self) -> PyMarketEventData {
+        PyMarketEventData {
+            inner: self.inner.event().clone(),
+        }
     }
 
-    /// The settled creation instant.
-    ///
-    /// The crate's non-null `createdat` (65023), a nanosecond UTC
-    /// `datetime64`: at intake the stated one, else `snapshotat`; a
-    /// `FixLifecycle` carries a live chain's first accepted creation instant
-    /// onto every later message of that chain.
-    fn createdat(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.createdat().clone())
+    /// The standard header, typed and held still.
+    fn header(&self) -> PyFixHeader {
+        PyFixHeader {
+            inner: self.inner.header().clone(),
+        }
     }
 
-    /// The message's time and content identity.
-    ///
-    /// The crate's non-null `msghash` (65017): sixteen `fixedbinary(16)` bytes,
-    /// the signed nanoseconds of `updatedat` with the sign bit flipped in
-    /// bytes 0..8 and all 64 bits of the XXH64 of the message's named
-    /// content - `msghash`, `updatedat`, `createdat` and the arrival record
-    /// excluded - in bytes 8..16. `bytes` in Python. Recomputed whenever the
-    /// row changes.
-    fn msghash(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.msghash().clone())
+    /// What the capture said about the line, typed and held still.
+    fn capture(&self) -> PyFixCapture {
+        PyFixCapture {
+            inner: self.inner.capture().clone(),
+        }
     }
 
-    /// The event chain's identity.
-    ///
-    /// The crate's non-null `msgphash` (65018): the sixteen big-endian
-    /// `fixedbinary(16)` bytes of the XXH3-128 of `code`'s exact UTF-8 bytes
-    /// alone, so one chain name is one `msgphash` and the empty unknown name
-    /// hashes the empty bytes. `bytes` in Python.
-    fn msgphash(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.msgphash().clone())
+    /// `Text(58)`: the free text the message carries, or `None`.
+    #[getter]
+    fn text(&self) -> Option<&str> {
+        self.inner.text()
     }
 
-    /// The one value a facet names, or `None` where it is not unambiguous.
-    fn lifted(&self, facet: &str) -> Option<PyScalar> {
-        Self::answered(self.inner.lifted(facet))
-    }
-
-    /// Which tag answered a facet, so a fallback is visible.
-    fn lift_source(&self, facet: &str) -> Option<i32> {
-        self.inner.lift_source(facet)
-    }
-
-    /// Every facet this message answers, in the table's own order.
-    fn lift(&self) -> Vec<(String, PyScalar)> {
+    /// What a bridge stated under its own namespaces - a `TECH.CLIENTID`,
+    /// an `AMON.` key - each under the key as the bridge spelled it, folded,
+    /// in sorted order; empty where it stated none.
+    #[getter]
+    fn metadata(&self) -> BTreeMap<String, String> {
         self.inner
-            .lift()
-            .map(|(facet, value)| (facet.to_owned(), PyScalar::from_inner(value.clone())))
+            .metadata()
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect()
     }
 
-    /// The party bearing one role, matched through the code translation.
-    fn party(&self, role: &str) -> Option<Vec<Option<PyScalar>>> {
-        let held = self.inner.party(role)?;
-        Some(vec![
-            Self::answered(held.id()),
-            Self::answered(held.source()),
-            Self::answered(held.role()),
-            Self::answered(held.qualifier()),
-        ])
+    /// The message's identity: the `uuid` its instant and its hash code
+    /// derive.
+    #[getter]
+    fn curruuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_curruuid())
     }
 
-    /// One regulatory timestamp by its type.
-    fn trd_reg_timestamp(&self, kind: &str) -> Option<PyScalar> {
-        Self::answered(self.inner.trd_reg_timestamp(kind))
+    /// The identity every message of one lifecycle shares: derived from
+    /// the cross code, and the message's own where it names none.
+    #[getter]
+    fn crossuuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_crossuuid())
     }
 
-    /// What this message says about itself that does not add up.
-    ///
-    /// Derived by comparing the row against the arrival record, so a caller
-    /// who never asks pays nothing.
-    fn anomalies(&self) -> Vec<String> {
+    /// The cross code: the identifier every message of one lifecycle
+    /// shares, as the message spells it - `OrderID`, else `ClOrdID`,
+    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the first
+    /// stated - and empty where it names none.
+    #[getter]
+    fn crosscode(&self) -> &str {
+        self.inner.get_crosscode()
+    }
+
+    /// The code the message's content digests to: the XXH3-64 of what the
+    /// event states and the named FIX content behind it.
+    #[getter]
+    fn hashcode(&self) -> u64 {
+        self.inner.get_hashcode()
+    }
+
+    /// The XXH3-64 of the cross code, zero where the message names none.
+    #[getter]
+    fn crosshashcode(&self) -> u64 {
+        self.inner.get_crosshashcode()
+    }
+
+    /// When the message happened: nanoseconds since the Unix epoch, UTC -
+    /// the stated instant, else `TransactTime`, else `SendingTime`.
+    #[getter]
+    fn unix(&self) -> i64 {
+        self.inner.get_unix()
+    }
+
+    /// The state the order is in, as the `state` code it is.
+    #[getter]
+    fn state(&self) -> PyScalar {
+        code_scalar(self.inner.get_state())
+    }
+
+    /// The message's place in its chain: how many came before it.
+    #[getter]
+    fn seqnum(&self) -> u64 {
+        self.inner.get_seqnum()
+    }
+
+    /// The identity of the message this one follows, or `None`.
+    #[getter]
+    fn prevuuid(&self) -> Option<PyScalar> {
+        self.inner.get_prevuuid().map(uuid_scalar)
+    }
+
+    /// The identities of the messages this one descends from.
+    #[getter]
+    fn parentuuids(&self) -> Vec<PyScalar> {
         self.inner
-            .anomalies()
-            .map(|held| held.to_string())
+            .get_parentuuids()
+            .iter()
+            .copied()
+            .map(uuid_scalar)
             .collect()
     }
 
-    /// What arrived, in arrival order, untranslated.
+    /// The names the message goes by, each under the field that stated it.
+    #[getter]
+    fn identifiers(&self) -> BTreeMap<String, String> {
+        self.inner.get_identifiers().clone()
+    }
+
+    /// The price the message states, as a decimal; zero where it states
+    /// none.
+    #[getter]
+    fn px(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_px()))
+    }
+
+    /// The quantity the message states, as a decimal; zero where it states
+    /// none.
+    #[getter]
+    fn qty(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_qty()))
+    }
+
+    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    #[getter]
+    fn side(&self) -> PyScalar {
+        code_scalar(self.inner.get_side())
+    }
+
+    /// The currency, as the `currency` code it is; `XXX` where none is
+    /// stated.
+    #[getter]
+    fn currency(&self) -> PyScalar {
+        code_scalar(self.inner.get_currency())
+    }
+
+    /// What the message states, as a tree: `(tag, name, value, entries)`.
     ///
-    /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the sequence reads the wire. A key
-    /// the dictionary resolved carries its canonical positive tag; an
-    /// unresolved name, an unresolved numeric key and an occurrence key all
-    /// carry tag 0, with the raw key and value kept exactly as they arrived.
-    fn entries(&self) -> Vec<(i32, String, String)> {
-        let mut held = Vec::new();
-        flatten_entries(self.inner.entries(), &mut held);
-        held
+    /// One tuple per row child that states a value, in the row's order,
+    /// carrying the tag the dictionary resolved - `0` for a key no
+    /// dictionary explains - the canonical name, and the value as the wire
+    /// spells it. A repeating group is one tuple under its counter with the
+    /// count as its value, and each occurrence a tuple under it with no
+    /// value and the occurrence's members nested; a component is a tuple
+    /// with no value and its members nested. The typed facts are not
+    /// entries: the header, the event and the capture are the holders' to
+    /// answer, and `into_bytes` puts the wire ones in front of these.
+    fn entries<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyAny>>> {
+        self.inner
+            .entries()
+            .iter()
+            .map(|entry| entry_tuple(py, entry))
+            .collect()
     }
 
     /// This message as the fixed row a table holds.
     ///
     /// `schema` is the fixed root :func:`fix_schema` builds. Every column is
-    /// filled by the tag its field carries - never by its spelling - so a
-    /// message that carried nothing at a column answers null there rather than
-    /// shifting its neighbours, which is what makes two rows of one capture
+    /// filled by the tag its field carries - never by its spelling - a typed
+    /// fact from its holder and the rest from the row, so a message that
+    /// carried nothing at a column answers null there rather than shifting
+    /// its neighbours, which is what makes two rows of one capture
     /// comparable at all. A column no tag or group counter names is the
     /// capture's: it takes the child of that name where the message has one
     /// and is null otherwise. The `fixentries` list closes the row with the
-    /// whole arrival record. A schema missing or mistyping a member of the
-    /// settled bundle, or a cell its column cannot hold, is a `ValueError`,
-    /// and the projected `msghash` is recomputed over what the row holds.
+    /// whole content, counted by `nofixentries`. A value a column will not
+    /// hold is that column's null; a column that cannot be null keeps the
+    /// refusal as a `ValueError`.
     #[allow(clippy::wrong_self_convention)]
     fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
@@ -1734,12 +1809,25 @@ impl PyFixMsg {
 
     /// Re-emit this message on the wire, separated by `separator`.
     ///
-    /// Named for what it answers rather than for consuming the message: the
-    /// bytes come from the arrival record, which the message keeps.
+    /// The standard header from the typed header - `SendingTime` only when
+    /// the message stated it - the event's own FIX tags, then the row in
+    /// its order, each entry stating a value as one pair and an occurrence
+    /// or a component as the pairs under it; a coded fact spells as its
+    /// wire code. What is emitted is the message as it now stands, derived
+    /// values included. Named for what it answers rather than for consuming
+    /// the message.
     #[pyo3(signature = (separator=1))]
     #[allow(clippy::wrong_self_convention)]
     fn into_bytes<'py>(&self, py: Python<'py>, separator: u8) -> Bound<'py, PyBytes> {
         PyBytes::new(py, &self.inner.into_bytes(separator))
+    }
+
+    /// The same as `into_bytes`, as text; a value holding a control
+    /// character is a `ValueError`.
+    #[pyo3(signature = (separator='\x01'))]
+    #[allow(clippy::wrong_self_convention)]
+    fn into_text(&self, separator: char) -> PyResult<String> {
+        self.inner.into_text(separator).map_err(value_error)
     }
 
     /// A copy that takes writes again, whatever hashed the original.
@@ -1789,6 +1877,11 @@ impl PyFixCodec {
 
 #[pymethods]
 impl PyFixCodec {
+    // A codec shares the dictionary it resolves against, which is mutable,
+    // so it promises no stable hash of its own.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
     #[staticmethod]
     fn infer_msgtype_bytes(py: Python<'_>, body: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
         with_python_bytes(
@@ -1808,8 +1901,8 @@ impl PyFixCodec {
 
     /// Open a codec over one dictionary, or over the process default.
     ///
-    /// Every pin is the core's, spelled once here. `version` crosses as
-    /// text; `default_sending_time` is the `SendingTime` a genuinely new
+    /// Every pin is the core's, spelled once here.
+    /// `default_sending_time` is the `SendingTime` a genuinely new
     /// message takes when neither it nor its carrier states a valid one -
     /// a native `Scalar` crosses as itself and must already be a nanosecond
     /// UTC `datetime64`, a `datetime` is read once into that clock, and any
@@ -1996,7 +2089,7 @@ impl PyFixCodec {
     /// by position. The line's `timestamp` is capture context and stamps
     /// nothing: `SendingTime` is the message's own, else a `SendingTime`
     /// capture, else the codec's `default_sending_time`, else UTC now, and
-    /// `snapshotat` is `TransactTime`, else that `SendingTime`.
+    /// the instant `unix` is `TransactTime`, else that `SendingTime`.
     ///
     /// A `pluginid` capture fills the crate's `pluginid` field and selects
     /// nothing: the dictionary is one namespace.
@@ -2049,57 +2142,22 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.parse_text_arrow_reader(source))
     }
 
-    /// Fills what one message implies but did not carry.
+    /// Walks a stream of batches of FIX rows as one lifecycle.
     ///
-    /// Restatement is the pass's first step rather than a door of its own:
-    /// every rule below it reads by tag, and a child stored under an alias
-    /// has no tag until the registry's field has canonicalized it, so the
-    /// row comes back at the dictionary's newest version.
-    ///
-    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
-    /// Only the row is filled: the arrival record is what the wire carried
-    /// and is left alone, so `into_bytes` re-emits the received line either
-    /// way, and a stated value is never replaced. The settled clocks are
-    /// carried rather than read again, and `msghash` and `msgphash` are recomputed
-    /// over the filled row, so a second enrichment is equal.
-    /// The component's identifiers fill its own-level `altids` Map without
-    /// flattening groups or replacing a stated map, including an empty one.
-    /// A declared identifier that cannot spell UTF-8 raises the core's
-    /// located `ValueError`.
-    fn enrich_message(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
-        self.inner
-            .enrich_message(message.inner.clone())
-            .map(PyFixMsg::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Fills a stream of messages, lazily.
-    ///
-    /// `messages` is any iterable of `FixMsg`; an item that is not one raises
-    /// `TypeError` where it is met. Each message crosses the pass
-    /// `enrich_message` runs, and nothing is carried from one to the next.
-    fn enrich_messages(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        Ok(PyFixMessages::pulling(
-            self.inner.enrich_messages(pulled),
-            failed,
-        ))
-    }
-
-    /// Fills a stream of batches of FIX rows with what each message implies.
-    ///
-    /// `enrich_messages` over batches: each row is a message through
-    /// `FixMsg.from_row`, filled, and written back under the **same** schema,
-    /// so a carried column returns to its place and the arrival record is
-    /// untouched. Nothing is parsed again.
-    fn enrich_messages_arrow_reader<'py>(
+    /// `lifecycle` over batches: each row is a message through
+    /// `FixMsg.from_row`, the messages are walked as `lifecycle` walks
+    /// them, and each is written back through `FixMsg.into_row` under the
+    /// **same** schema, so a carried column returns to its place and the
+    /// arrival record is untouched. Nothing is parsed again, and batches
+    /// close on the raw bytes of each message's arrival record against
+    /// `batch_byte_size`.
+    fn lifecycle_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         source: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.enrich_messages_arrow_reader(source))
+        Self::reader_to_pyarrow(py, self.inner.lifecycle_arrow_reader(source))
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -2141,8 +2199,9 @@ impl PyFixCodec {
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by: `parse_*` turns a
-    /// capture into messages, `enrich_*` fills what each implies, and this
-    /// answers them under whatever field a consumer reads by - a venue's own
+    /// capture into messages, filled with what each implies, `lifecycle`
+    /// chains them, and this answers them under whatever field a consumer
+    /// reads by - a venue's own
     /// message type, `fix_schema` itself, which keeps every column a capture
     /// lands in, or any Struct root a caller built for the table it is
     /// writing.
@@ -2194,20 +2253,21 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.format_arrow_reader(source, &field))
     }
 
-    /// Fills a stream of messages with the chains it implies, in order,
-    /// lazily.
+    /// Chains a stream of messages, lazily: the lifecycle.
     ///
-    /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
-    /// iterable, every message answered as `FixLifecycle.fill` answers one:
-    /// its `code` names the live chain `msgphash` hashes, its previous-message
-    /// stamps and the chain's first `createdat` are carried, and `updatedat`
-    /// is truncated to the one-second epoch grid while `snapshotat` keeps
-    /// the real instant; a terminal state closes the chain. The iterable is
-    /// pulled once, in order; a message the transition refuses raises
-    /// `ValueError` where it is met without advancing the state, and an item
-    /// that is not a `FixMsg` raises `TypeError` and ends the stream. A
-    /// cadence of another interval, or only the snapshots, is
-    /// `FixLifecycle.snapshots`.
+    /// `messages` is any iterable of `FixMsg`, pulled once, in its own
+    /// order, and nothing is collected. The one walk states each message
+    /// as the one after the live message it follows - the last message of
+    /// its chain, under the cross identity its cross code derives, still
+    /// alive - so a chained message carries its predecessor's identity and
+    /// instant as `prevuuid` and `prevunix`, its place in the chain as
+    /// `seqnum`, the predecessor among its `parentuuids`, the lifecycle's
+    /// creation carried forward as `creatunix`, and is settled again around
+    /// them; a message that arrives before the live one it would follow is
+    /// yielded as it came. A message the walk refuses raises `ValueError`
+    /// where it is met and the stream continues; an item that is not a
+    /// `FixMsg`, or a failure of the iterable itself, raises as itself and
+    /// ends it.
     fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -2254,148 +2314,6 @@ impl PyFixCodec {
     }
 }
 
-/// The state a stream of messages has reached, one chain per live event.
-///
-/// One [`FixLifecycle`](CoreFixLifecycle), fed every message of a stream in
-/// order through `fill` or `snapshot`; the chains it holds are the events
-/// still alive, so it is mutable and, like the registry, unhashable. The
-/// dictionary is held beside it only so `snapshots` can leave a lifecycle of
-/// the same configuration behind.
-#[pyclass(name = "FixLifecycle", module = "yggdryl._native")]
-pub(crate) struct PyFixLifecycle {
-    inner: CoreFixLifecycle,
-    registry: Arc<CoreFixRegistry>,
-}
-
-#[pymethods]
-impl PyFixLifecycle {
-    // The chains move with every message, so no hash is stable.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// The grid interval a lifecycle takes when none is stated: one second,
-    /// in nanoseconds - a deterministic epoch grid, not a timer.
-    #[classattr]
-    const DEFAULT_INTERVAL_NS: i64 = CoreFixLifecycle::DEFAULT_INTERVAL_NS;
-
-    /// A stream with no event alive yet, over one dictionary or the process
-    /// default, on an epoch grid of `interval_ns` nanoseconds.
-    ///
-    /// A nonpositive interval is the core's `ValueError`.
-    #[new]
-    #[pyo3(signature = (registry=None, *, interval_ns=CoreFixLifecycle::DEFAULT_INTERVAL_NS))]
-    fn new(registry: Option<PyRef<'_, PyFixRegistry>>, interval_ns: i64) -> PyResult<Self> {
-        let registry = registry_or_global(registry)?;
-        let inner = CoreFixLifecycle::new(Arc::clone(&registry))
-            .try_with_interval_ns(interval_ns)
-            .map_err(value_error)?;
-        Ok(Self { inner, registry })
-    }
-
-    /// The epoch-grid interval, in nanoseconds.
-    #[getter]
-    fn interval_ns(&self) -> i64 {
-        self.inner.interval_ns()
-    }
-
-    /// Selects the epoch-grid interval, in nanoseconds.
-    ///
-    /// Repeating the current interval changes nothing, even while chains are
-    /// live. A nonpositive interval, or a different one while any chain is
-    /// live, is a `ValueError` that leaves the interval and every chain as
-    /// they were.
-    fn set_interval_ns(&mut self, interval_ns: i64) -> PyResult<()> {
-        self.inner.set_interval_ns(interval_ns).map_err(value_error)
-    }
-
-    /// Normalizes one message to its grid and moves the chain it belongs to
-    /// along, answering the whole result.
-    ///
-    /// A nonempty stated `code` selects its live chain whatever instrument
-    /// scope it names; otherwise the first identifier - from a stated
-    /// `altids`, else the message type's declared identifiers - reaching a
-    /// live chain under the instrument the message names lends that chain's
-    /// code, and the first identifier names a new chain
-    /// `<scope hex or ->/<identifier>` when none does. The instrument is the
-    /// digest of what the message says it is and no column carries it. No identifier and no code opens nothing, and an
-    /// identifier another live chain holds is never taken from it.
-    ///
-    /// `updatedat` becomes its grid instant - floored to a multiple of
-    /// `interval_ns` - while `snapshotat` keeps the real one; a live chain's
-    /// first accepted `createdat` replaces a later one; each absent previous
-    /// stamp, `prevupdatedat` and `prevmsghash`, comes from the chain's last
-    /// message, and a stated one is kept. `msghash` and `msgphash` are then
-    /// settled over the result.
-    /// A terminal state closes the chain after its stamps. The entries are
-    /// untouched, so `into_bytes` re-emits the received line.
-    ///
-    /// A refusal - an unrepresentable grid instant, a malformed identifier or
-    /// previous value, a code-hash collision, a stamp its field refuses - is
-    /// a `ValueError` that changes no chain, history or bucket.
-    fn fill(&mut self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
-        self.inner
-            .fill(message.inner.clone())
-            .map(PyFixMsg::from_inner)
-            .map_err(value_error)
-    }
-
-    /// The same transition as `fill`, answering only a new snapshot.
-    ///
-    /// The result is answered when the message belongs to a named chain,
-    /// arrived off its grid and falls in a bucket above the highest that live
-    /// chain has consumed; otherwise `None`. An already-aligned arrival still
-    /// consumes its bucket, and a suppressed message still advances the
-    /// chain's history and closes it when terminal. Refusals are `fill`'s.
-    fn snapshot(&mut self, message: &PyFixMsg) -> PyResult<Option<PyFixMsg>> {
-        self.inner
-            .snapshot(message.inner.clone())
-            .map(|held| held.map(PyFixMsg::from_inner))
-            .map_err(value_error)
-    }
-
-    /// The snapshots of a stream of messages, lazily, as `snapshot` answers
-    /// each.
-    ///
-    /// `messages` is any iterable of `FixMsg`, pulled once, in order; only a
-    /// suppressed message is dropped. A message the transition refuses raises
-    /// `ValueError` where it is met without advancing the state, and the
-    /// stream continues; an item that is not a `FixMsg`, or a failure of the
-    /// iterable itself, raises as itself and ends it.
-    ///
-    /// The stream owns the state this lifecycle had reached - its chains,
-    /// their creation instants, history and buckets - and carries it on;
-    /// this lifecycle is left with none, at the same interval and over the
-    /// same dictionary, exactly as `clear` would leave it.
-    fn snapshots(&mut self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let left = CoreFixLifecycle::new(Arc::clone(&self.registry))
-            .try_with_interval_ns(self.inner.interval_ns())
-            .map_err(value_error)?;
-        let owned = std::mem::replace(&mut self.inner, left);
-        Ok(PyFixMessages::pulling(
-            owned.snapshots(pulled.map(Ok::<CoreFixMsg, CoreError>)),
-            failed,
-        ))
-    }
-
-    /// How many events are alive: opened by a message and not yet closed by
-    /// a terminal state.
-    fn alive(&self) -> usize {
-        self.inner.alive()
-    }
-
-    /// Forgets every chain's creation instant, history, bucket and
-    /// identifiers, as a new session or a new day would; the interval stays.
-    fn clear(&mut self) {
-        self.inner.clear();
-    }
-
-    fn __repr__(&self) -> String {
-        format!("FixLifecycle({} alive)", self.inner.alive())
-    }
-}
-
 /// Read a default `SendingTime` the way Python states one.
 ///
 /// A `datetime` holds microseconds, so it can never already be the
@@ -2416,16 +2334,18 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 
 /// The fixed root every message answers as, built from one dictionary.
 ///
-/// Header, the fields a consumer reads, the groups worth persisting whole, the
-/// trailer, this crate's own definitions in tag order with `MsgDirection`
-/// (385) after them, and the one `fixentries` list that closes every row
-/// with the whole arrival record. Columns are spelled by the dictionary's
+/// The crate's own columns lead - its clocks, then its identities, then the
+/// rest - because a table is read by time and joined by identity; then the
+/// standard header, the fields a consumer reads, the three groups worth
+/// persisting whole, the trailer, `MsgDirection` (385), and the one
+/// `fixentries` list that closes every row with the whole content under the
+/// `nofixentries` that counts it. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
-/// message reads; the tag stays each column's identity, on its `fix:tag`, and
-/// is what fills it. `beginstring`, `sendingtime`, `updatedat`, `msghash`,
-/// `msgphash`, `createdat` and `code` are the non-null columns, while
-/// `snapshotat` is nullable because only a snapshot stamps it; a dictionary
-/// missing a member of the settled bundle is a `ValueError`.
+/// message reads; the tag stays each column's identity, on its `fix:tag`,
+/// and is what fills it. `beginstring`, `unix`, `creatunix`, `hashcode`,
+/// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
+/// because every message settles them; a tag the dictionary does not hold
+/// is skipped rather than invented.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -2466,27 +2386,22 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The thirty-six definitions this crate lists in tag order: thirty-four
-/// scalar fields at tags 65001 to 65015, 65017 to 65019 and 65021 to 65038, the `altids` Map group at 65020 and the
-/// `instids` Struct at 65036. The retired 65000, 65004 and 65016 are not
-/// reused.
+/// The definitions this crate lists, in tag order from 65003.
 ///
-/// The version read, the cross-venue symbol, the settled `updatedat` clock
-/// and the partition it falls in, the two parent order identifiers no
-/// standard tag names, what a bridge's own log states about a line - the
-/// sessions the message itself names, its message context, the plugin that
-/// logged it and the one it came through before that, and the two session
-/// names the line spells - the three facts a row derives from what the
-/// message said: its ISIN, its market and the order's state - the message's
-/// `msghash` and the chain's `msgphash`,
-/// the previous message's `prevupdatedat` and `prevmsghash`, `createdat`,
-/// `code` and `snapshotat`, the `sourceurl` a line was read from, and the
-/// `nofixentries` that counts its arrival record. The Map holds the message's own-level
-/// identifiers. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
-/// `snapshotat` are non-null; every other definition is nullable. Every
-/// registry holds these definitions from construction beside the seeded
-/// `SendingTime` and `TransactTime`; only scalar fields contribute to its
-/// length.
+/// The event's clocks - `unix`, `creatunix`, `expirunix`, `prevunix`,
+/// `snapunix`, the `recordedat` a capture stamped - its identities -
+/// `hashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`,
+/// `parentuuids`, the `crosscode` they derive from - the facts a row
+/// derives from what the message said - the instrument's `isincode`,
+/// `cusipcode`, `sedolcode`, `bloombergcode`, its `miccode` and the order's
+/// `state`, its `px`, `qty` and `unit`, the two lanes' currencies and
+/// units, its `seqnum` - what a bridge's own log states about a line - the
+/// `pluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl` a line
+/// was read from, the `nofixentries` that counts its content, and the two
+/// Map groups `identifiers` and `metadata`. Every registry holds these
+/// definitions from construction beside the seeded `SendingTime` and
+/// `TransactTime`; a store writes them like every other and reads a stored
+/// copy past.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -2575,4 +2490,503 @@ pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {
 #[pyo3(name = "install_global_registry")]
 pub(crate) fn fix_install_global_registry(registry: &PyFixRegistry) -> PyResult<()> {
     CoreFixRegistry::install_global((*registry.inner).clone()).map_err(value_error)
+}
+
+/// The standard header of one message, typed and held still.
+///
+/// What FIX puts in front of every message: the version it says it speaks,
+/// the type it is, who sent it to whom, its place in the session and when it
+/// was sent - each read off the message's own holder, never looked up in the
+/// row, which holds none of them. A copy at the moment it was asked for;
+/// immutable, so it compares and hashes by its facts.
+#[pyclass(
+    name = "FixHeader",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyFixHeader {
+    inner: CoreFixHeader,
+}
+
+#[pymethods]
+impl PyFixHeader {
+    /// `BeginString(8)`: the version the message says it speaks, empty
+    /// where it stated none.
+    #[getter]
+    fn beginstring(&self) -> &str {
+        self.inner.beginstring()
+    }
+
+    /// `MsgType(35)`, empty for a message stating no type.
+    #[getter]
+    fn msgtype(&self) -> &str {
+        self.inner.msgtype()
+    }
+
+    /// `SenderCompID(49)`, or `None`.
+    #[getter]
+    fn sendercompid(&self) -> Option<&str> {
+        self.inner.sendercompid()
+    }
+
+    /// `TargetCompID(56)`, or `None`.
+    #[getter]
+    fn targetcompid(&self) -> Option<&str> {
+        self.inner.targetcompid()
+    }
+
+    /// `MsgSeqNum(34)`, or `None`.
+    #[getter]
+    fn msgseqnum(&self) -> Option<u64> {
+        self.inner.msgseqnum()
+    }
+
+    /// `SendingTime(52)` as the intake settled it: nanoseconds since the
+    /// Unix epoch, UTC.
+    #[getter]
+    fn sendingtime(&self) -> i64 {
+        self.inner.sendingtime()
+    }
+
+    /// Whether the message stated its sending time itself; only a stated
+    /// one goes back on the wire.
+    #[getter]
+    fn stated_sendingtime(&self) -> bool {
+        self.inner.stated_sendingtime()
+    }
+
+    /// `PossDupFlag(43)`, or `None`.
+    #[getter]
+    fn possdupflag(&self) -> Option<bool> {
+        self.inner.possdupflag()
+    }
+
+    /// `MsgDirection(385)`: the code of tag 385's set the line moved in, or
+    /// `None`.
+    #[getter]
+    fn msgdirection(&self) -> Option<&str> {
+        self.inner.msgdirection()
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return py.NotImplemented();
+        };
+        PyBool::new(py, self.inner == other.inner)
+            .to_owned()
+            .into_any()
+            .unbind()
+    }
+
+    fn __hash__(&self) -> isize {
+        let mut state = std::hash::DefaultHasher::new();
+        (
+            self.inner.beginstring(),
+            self.inner.msgtype(),
+            self.inner.sendercompid(),
+            self.inner.targetcompid(),
+            self.inner.msgseqnum(),
+            self.inner.sendingtime(),
+            self.inner.stated_sendingtime(),
+            self.inner.possdupflag(),
+            self.inner.msgdirection(),
+        )
+            .hash(&mut state);
+        crate::python_hash(state.finish())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "FixHeader({:?}, {:?}, {} -> {})",
+            self.inner.beginstring(),
+            self.inner.msgtype(),
+            repr_text(self.inner.sendercompid()),
+            repr_text(self.inner.targetcompid())
+        )
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// What a capture states about the line a message was read from, typed
+/// and held still.
+///
+/// Facts about the capture and not about the message: where the line was
+/// read from, when the capture recorded it, and what a bridge's own row
+/// header says about the line it wrote - the plugin, the message context
+/// and the session instance. None of them is FIX and none is content, so
+/// nothing here reaches the code the message digests to. A copy at the
+/// moment it was asked for; immutable, so it compares and hashes by its
+/// facts.
+#[pyclass(
+    name = "FixCapture",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyFixCapture {
+    inner: CoreFixCapture,
+}
+
+#[pymethods]
+impl PyFixCapture {
+    /// The object the line was read from, where the capture named it.
+    #[getter]
+    fn sourceurl(&self) -> Option<PyUrl> {
+        self.inner.sourceurl().cloned().map(PyUrl::from_core)
+    }
+
+    /// When the capture recorded the line: nanoseconds since the Unix
+    /// epoch, UTC, or `None`.
+    #[getter]
+    fn recordedat(&self) -> Option<i64> {
+        self.inner.recordedat()
+    }
+
+    /// The plugin that logged the line, as a bridge names it, or `None`.
+    #[getter]
+    fn pluginid(&self) -> Option<&str> {
+        self.inner.pluginid()
+    }
+
+    /// The message context a bridge handled the line in, or `None`.
+    #[getter]
+    fn msgctxid(&self) -> Option<&str> {
+        self.inner.msgctxid()
+    }
+
+    /// The session instance a bridge handled the line on, or `None`.
+    #[getter]
+    fn msgsessionid(&self) -> Option<&str> {
+        self.inner.msgsessionid()
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return py.NotImplemented();
+        };
+        PyBool::new(py, self.inner == other.inner)
+            .to_owned()
+            .into_any()
+            .unbind()
+    }
+
+    fn __hash__(&self) -> isize {
+        let mut state = std::hash::DefaultHasher::new();
+        (
+            self.inner.sourceurl().map(ToString::to_string),
+            self.inner.recordedat(),
+            self.inner.pluginid(),
+            self.inner.msgctxid(),
+            self.inner.msgsessionid(),
+        )
+            .hash(&mut state);
+        crate::python_hash(state.finish())
+    }
+
+    fn __repr__(&self) -> String {
+        let sourceurl = self.inner.sourceurl().map(ToString::to_string);
+        format!(
+            "FixCapture({}, {}, {})",
+            repr_text(sourceurl.as_deref()),
+            repr_text(self.inner.pluginid()),
+            repr_text(self.inner.msgsessionid())
+        )
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// The event a message is: every fact the core's graph vocabulary answers,
+/// held still.
+///
+/// A copy of the message's event at the moment it was asked for - the facts
+/// are forty small values, and a view that borrowed them would pin the
+/// message - so it is immutable, compares by every fact and hashes by the
+/// code the facts digest to. Instants are nanoseconds since the Unix epoch,
+/// UTC, as `int`; identities are `uuid` `Scalar`s; prices and quantities
+/// decimal `Scalar`s; the currency, the side, the state and the instrument
+/// identifiers the code `Scalar` their datatype is.
+#[pyclass(
+    name = "MarketEventData",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyMarketEventData {
+    inner: CoreMarketEventData,
+}
+
+#[pymethods]
+impl PyMarketEventData {
+    /// The event's identity: the `uuid` its instant and its hash code
+    /// derive.
+    #[getter]
+    fn curruuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_curruuid())
+    }
+
+    /// The identity every event of one lifecycle shares: derived from the
+    /// cross code, and the event's own where it names none.
+    #[getter]
+    fn crossuuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_crossuuid())
+    }
+
+    /// The identifier every event of one lifecycle shares, as spelled;
+    /// empty where none is named.
+    #[getter]
+    fn crosscode(&self) -> &str {
+        self.inner.get_crosscode()
+    }
+
+    /// The code the facts digest to.
+    #[getter]
+    fn hashcode(&self) -> u64 {
+        self.inner.get_hashcode()
+    }
+
+    /// The XXH3-64 of the cross code, zero where none is named.
+    #[getter]
+    fn crosshashcode(&self) -> u64 {
+        self.inner.get_crosshashcode()
+    }
+
+    /// The names the event goes by, each under the field that stated it.
+    #[getter]
+    fn identifiers(&self) -> BTreeMap<String, String> {
+        self.inner.get_identifiers().clone()
+    }
+
+    /// The identities of the events this one descends from.
+    #[getter]
+    fn parentuuids(&self) -> Vec<PyScalar> {
+        self.inner
+            .get_parentuuids()
+            .iter()
+            .copied()
+            .map(uuid_scalar)
+            .collect()
+    }
+
+    /// When the event happened: nanoseconds since the Unix epoch, UTC.
+    #[getter]
+    fn unix(&self) -> i64 {
+        self.inner.get_unix()
+    }
+
+    /// The state the order is in, as the `state` code it is.
+    #[getter]
+    fn state(&self) -> PyScalar {
+        code_scalar(self.inner.get_state())
+    }
+
+    /// The event's place in its chain: how many came before it.
+    #[getter]
+    fn seqnum(&self) -> u64 {
+        self.inner.get_seqnum()
+    }
+
+    /// When the lifecycle was created, or `None`.
+    #[getter]
+    fn creatunix(&self) -> Option<i64> {
+        self.inner.get_creatunix()
+    }
+
+    /// When the event stops being good, or `None`.
+    #[getter]
+    fn expirunix(&self) -> Option<i64> {
+        self.inner.get_expirunix()
+    }
+
+    /// When the event this one follows happened, or `None`.
+    #[getter]
+    fn prevunix(&self) -> Option<i64> {
+        self.inner.get_prevunix()
+    }
+
+    /// The identity of the event this one follows, or `None`.
+    #[getter]
+    fn prevuuid(&self) -> Option<PyScalar> {
+        self.inner.get_prevuuid().map(uuid_scalar)
+    }
+
+    /// The grid instant a walk read the event as the snapshot of, or
+    /// `None`.
+    #[getter]
+    fn snapunix(&self) -> Option<i64> {
+        self.inner.get_snapunix()
+    }
+
+    /// The price, as a decimal; zero where none is stated.
+    #[getter]
+    fn px(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_px()))
+    }
+
+    /// The quantity, as a decimal; zero where none is stated.
+    #[getter]
+    fn qty(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_qty()))
+    }
+
+    /// The currency, as the `currency` code it is; `XXX` where none is
+    /// stated.
+    #[getter]
+    fn currency(&self) -> PyScalar {
+        code_scalar(self.inner.get_currency())
+    }
+
+    /// The unit the quantity is counted in; empty where none is stated.
+    #[getter]
+    fn unit(&self) -> &str {
+        self.inner.get_unit()
+    }
+
+    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    #[getter]
+    fn side(&self) -> PyScalar {
+        code_scalar(self.inner.get_side())
+    }
+
+    /// The instrument's ISIN, or `None`.
+    #[getter]
+    fn isincode(&self) -> Option<PyScalar> {
+        self.inner.get_isincode().map(code_scalar)
+    }
+
+    /// The instrument's CUSIP, or `None`.
+    #[getter]
+    fn cusipcode(&self) -> Option<PyScalar> {
+        self.inner.get_cusipcode().map(code_scalar)
+    }
+
+    /// The instrument's SEDOL, or `None`.
+    #[getter]
+    fn sedolcode(&self) -> Option<PyScalar> {
+        self.inner.get_sedolcode().map(code_scalar)
+    }
+
+    /// The instrument's Bloomberg identifier, or `None`.
+    #[getter]
+    fn bloombergcode(&self) -> Option<PyScalar> {
+        self.inner.get_bloombergcode().map(code_scalar)
+    }
+
+    /// The instrument's CFI classification, or `None`.
+    #[getter]
+    fn cficode(&self) -> Option<PyScalar> {
+        self.inner.get_cficode().map(code_scalar)
+    }
+
+    /// The market the event names, as an ISO 10383 MIC, or `None`.
+    #[getter]
+    fn miccode(&self) -> Option<PyScalar> {
+        self.inner.get_miccode().map(code_scalar)
+    }
+
+    /// The bid lane's price, or `None`.
+    #[getter]
+    fn bidpx(&self) -> Option<PyScalar> {
+        self.inner
+            .get_bidpx()
+            .map(|held| PyScalar::from_inner(Scalar::from(held)))
+    }
+
+    /// The bid lane's size, or `None`.
+    #[getter]
+    fn bidqty(&self) -> Option<PyScalar> {
+        self.inner
+            .get_bidqty()
+            .map(|held| PyScalar::from_inner(Scalar::from(held)))
+    }
+
+    /// The currency the bid lane is quoted in, or `None`.
+    #[getter]
+    fn bidcurrency(&self) -> Option<PyScalar> {
+        self.inner.get_bidcurrency().map(code_scalar)
+    }
+
+    /// The unit the bid lane's size is counted in, or `None`.
+    #[getter]
+    fn bidunit(&self) -> Option<&str> {
+        self.inner.get_bidunit()
+    }
+
+    /// The ask lane's price, or `None`.
+    #[getter]
+    fn askpx(&self) -> Option<PyScalar> {
+        self.inner
+            .get_askpx()
+            .map(|held| PyScalar::from_inner(Scalar::from(held)))
+    }
+
+    /// The ask lane's size, or `None`.
+    #[getter]
+    fn askqty(&self) -> Option<PyScalar> {
+        self.inner
+            .get_askqty()
+            .map(|held| PyScalar::from_inner(Scalar::from(held)))
+    }
+
+    /// The currency the ask lane is quoted in, or `None`.
+    #[getter]
+    fn askcurrency(&self) -> Option<PyScalar> {
+        self.inner.get_askcurrency().map(code_scalar)
+    }
+
+    /// The unit the ask lane's size is counted in, or `None`.
+    #[getter]
+    fn askunit(&self) -> Option<&str> {
+        self.inner.get_askunit()
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return py.NotImplemented();
+        };
+        PyBool::new(py, self.inner == other.inner)
+            .to_owned()
+            .into_any()
+            .unbind()
+    }
+
+    /// Hashes by the code the facts digest to, which equal facts share.
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.inner.get_hashcode())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "MarketEventData({}, unix={}, state={:?}, crosscode={:?})",
+            self.inner.get_curruuid(),
+            self.inner.get_unix(),
+            self.inner.get_state().as_str(),
+            self.inner.get_crosscode()
+        )
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
 }

@@ -454,11 +454,11 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
-    module.add_class::<fix::PyFixLifecycle>()?;
     module.add_class::<fix::PyFixMessages>()?;
     module.add_class::<fix::PyMsgType>()?;
-    module.add_class::<fix::PyMsgTypeIterator>()?;
-    module.add_class::<fix::PyFixDefinitionIterator>()?;
+    module.add_class::<fix::PyFixHeader>()?;
+    module.add_class::<fix::PyFixCapture>()?;
+    module.add_class::<fix::PyMarketEventData>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;

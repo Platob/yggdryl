@@ -41,7 +41,7 @@ ORDER = Field(
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
             SEED_REGISTRY.field_by_name("NoPartyIDs"),
-            SEED_REGISTRY.definition("groups", "Parties"),
+            SEED_REGISTRY.field_by_name("Parties"),
         ]
     ),
     nullable=False,
@@ -220,18 +220,20 @@ def _catalog() -> FixRegistry:
     member.fix.tag = 448
     registry = FixRegistry.from_fields([counter, member])
     member.fix.field_ref = "PartyID"
-    component = Field("Party", DataType.from_fields([member]), nullable=False)
-    registry.create_definition("components", component)
+    # One door files each definition by the shape it has: a Struct is a
+    # component, a List of Structs a group.
+    registry.insert(Field("Party", DataType.from_fields([member]), nullable=False))
+    component = registry.field_by_name("Party")
     group = types.list("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
-    registry.create_definition("groups", group)
-    group = registry.definition("groups", "Parties")
+    registry.insert(group)
+    group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
     counter.fix.field_ref = "NoPartyIDs"
     message = Field("NewOrderSingle", DataType.from_fields([counter, group]), nullable=False)
     message.fix.msgtype = "D"
-    registry.create_definition("components", message)
+    registry.insert(message)
     return registry
 
 
@@ -257,9 +259,11 @@ assert PARSED_BATCH.num_rows == len(LINES)
 assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
 ORDER_TYPE = SEED_REGISTRY.msgtype("D")
 ORDER_DECLARATION = ORDER_TYPE.field
-ENRICHED = CODEC.enrich_message(PARSED)
-assert ENRICHED.by_tag(65020).as_py() == {"clordid": "ORDER-000000"}
+# A parse fills what the line implied, so the identifiers are on the message
+# the parse answered rather than behind a pass of its own.
+assert PARSED.identifiers == {"clordid": "ORDER-000000"}
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
+WALKED = next(iter(CODEC.lifecycle([PARSED])))
 
 # The record door with a `pluginid` capture on every row: the capture fills
 # the crate's `pluginid` field and selects nothing, so this is what a row
@@ -290,10 +294,6 @@ def _parse_text_arrow_reader() -> int:
     return CODEC.parse_text_arrow_reader(CAPTURE).read_all().num_rows
 
 
-def _enrich_message() -> object:
-    return CODEC.enrich_message(MESSAGE)
-
-
 def _field_identifiers() -> object:
     return ORDER_DECLARATION.fix.identifiers
 
@@ -302,16 +302,32 @@ def _identifier_values() -> object:
     return ORDER_TYPE.identifier_values(PARSED)
 
 
-def _altids_map() -> object:
-    return ENRICHED.by_tag(65020).as_py()
+def _identifiers_map() -> object:
+    return PARSED.identifiers
 
 
-def _arrow_reader_with_altids() -> int:
-    return CODEC.arrow_reader(FIXED_SCHEMA, (ENRICHED for _ in LINES)).read_all().num_rows
+def _event_facts() -> object:
+    return PARSED.event()
 
 
-def _enrich_messages_arrow_reader() -> int:
-    return CODEC.enrich_messages_arrow_reader(PARSED_BATCH).read_all().num_rows
+def _header_facts() -> object:
+    return PARSED.header()
+
+
+def _message_entries() -> object:
+    return PARSED.entries()
+
+
+def _arrow_reader_with_identifiers() -> int:
+    return CODEC.arrow_reader(FIXED_SCHEMA, (PARSED for _ in LINES)).read_all().num_rows
+
+
+def _lifecycle_drain() -> int:
+    return sum(1 for _ in CODEC.lifecycle(PARSED for _ in LINES))
+
+
+def _lifecycle_arrow_reader() -> int:
+    return CODEC.lifecycle_arrow_reader(PARSED_BATCH).read_all().num_rows
 
 
 def _messages_drain() -> int:
@@ -339,23 +355,18 @@ def _message_from_row() -> object:
 
 
 
-def _category_mutation(operation: str) -> FixRegistry:
+def _definition_mutation(operation: str) -> FixRegistry:
     registry = copy.copy(CATALOG)
-    if operation == "create":
+    if operation == "insert":
         message = Field("OrderCancel", DataType.from_fields([]), nullable=False)
         message.fix.msgtype = "F"
-        registry.create_definition("components", message)
+        registry.insert(message)
     elif operation == "remove":
-        registry.remove_definition("components", "NewOrderSingle")
+        registry.remove("NewOrderSingle")
     else:
-        component = registry.definition("components", "Party")
+        component = registry.field_by_name("Party")
         component.fix.description = "Reviewed"
-        if operation == "update":
-            registry.update_definition("components", component)
-        elif operation == "add":
-            registry.add_definition("components", component)
-        else:
-            registry.insert_definition("components", component)
+        registry.update(component)
     return registry
 
 
@@ -424,21 +435,20 @@ def main() -> None:
         _measure("message get_by_path", _message_get_by_path, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
-        for category in ("fields", "components", "groups"):
-            _measure(f"{category} iterator first", lambda category=category: next(SEED_REGISTRY.definitions(category)), args.iterations)
-            _measure(f"{category} iterator drain", lambda category=category: list(SEED_REGISTRY.definitions(category)), max(1, args.iterations // 50))
-        _measure("category group lookup", lambda: SEED_REGISTRY.definition("groups", "Parties"), args.iterations)
+        _measure("field iterator first", lambda: next(iter(SEED_REGISTRY)), args.iterations)
+        _measure("field iterator drain", lambda: list(SEED_REGISTRY), max(1, args.iterations // 50))
+        _measure("component lookup", lambda: SEED_REGISTRY.field_by_name("Party"), args.iterations)
+        _measure("group lookup", lambda: SEED_REGISTRY.field_by_name("Parties"), args.iterations)
+        _measure("group by counter", lambda: SEED_REGISTRY.field_by_counter(453), args.iterations)
         _measure("message singleton lookup", lambda: SEED_REGISTRY.msgtype("D"), args.iterations)
-        _measure("message singleton first", lambda: next(SEED_REGISTRY.msgtypes()), args.iterations)
-        _measure("message singleton drain", lambda: list(SEED_REGISTRY.msgtypes()), max(1, args.iterations // 50))
         _measure("catalog snapshot encode", CATALOG.into_json, args.iterations)
         _measure("catalog snapshot decode", lambda: FixRegistry.from_json(CATALOG_JSON), args.iterations)
         _measure("catalog pickle encode", lambda: pickle.dumps(CATALOG), args.iterations)
         _measure("catalog pickle decode", lambda: pickle.loads(CATALOG_PICKLE), args.iterations)
         _measure("catalog stable hash", CATALOG.stable_hash, args.iterations)
         _measure("catalog copy baseline", lambda: copy.copy(CATALOG), args.iterations)
-        for operation in ("create", "insert", "update", "add", "remove"):
-            _measure(f"catalog {operation} including copy", lambda operation=operation: _category_mutation(operation), args.iterations)
+        for operation in ("insert", "update", "remove"):
+            _measure(f"definition {operation} including copy", lambda operation=operation: _definition_mutation(operation), args.iterations)
         _measure("catalog add_field merging including copy", lambda: _add_field(FOLDING_FIELD), args.iterations)
         _measure("catalog add_field arriving including copy", lambda: _add_field(ARRIVING_FIELD), args.iterations)
         singleton = CATALOG.msgtype("D")
@@ -449,12 +459,14 @@ def main() -> None:
         _measure("message set", _message_set, args.iterations)
         _measure("message remove", _message_remove, args.iterations)
         _measure("message from_row", _message_from_row, args.iterations)
-        _measure("enrich_message", _enrich_message, args.iterations)
         _measure("field.fix.identifiers", _field_identifiers, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
-        _measure("altids native map crossing", _altids_map, args.iterations)
+        _measure("identifiers native map crossing", _identifiers_map, args.iterations)
+        _measure("message event holder", _event_facts, args.iterations)
+        _measure("message header holder", _header_facts, args.iterations)
+        _measure("message entries", _message_entries, args.iterations)
         streams = max(1, args.iterations // 50)
-        _measure(f"arrow_reader with altids/{len(LINES)}", _arrow_reader_with_altids, streams)
+        _measure(f"arrow_reader with identifiers/{len(LINES)}", _arrow_reader_with_identifiers, streams)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
         _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
         _measure(
@@ -463,7 +475,8 @@ def main() -> None:
             streams,
         )
         _measure(f"parse_text_arrow_reader/{len(LINES)}", _parse_text_arrow_reader, streams)
-        _measure(f"enrich_messages_arrow_reader/{len(LINES)}", _enrich_messages_arrow_reader, streams)
+        _measure(f"lifecycle drain/{len(LINES)}", _lifecycle_drain, streams)
+        _measure(f"lifecycle_arrow_reader/{len(LINES)}", _lifecycle_arrow_reader, streams)
         _measure(f"messages drain/{len(LINES)}", _messages_drain, streams)
         _measure(f"arrow_reader over parse_lines/{len(LINES)}", _arrow_reader_over_lines, streams)
         _measure(f"write_arrow_reader/{len(LINES)}", _write_arrow_reader, streams)

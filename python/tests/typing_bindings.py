@@ -53,13 +53,12 @@ from yggdryl.text import json, toml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
-    FixDefinitionIterator,
     FixDirection,
+    FixEntryTuple,
     FixMessages,
     IOCursor,
     IcebergNames,
     Listing,
-    MsgTypeIterator,
     ScalarEntryIterator,
     ScalarIterator,
     StringEnum,
@@ -174,9 +173,8 @@ listing_hash: None = Listing.__hash__
 value_iterator_hash: None = ScalarIterator.__hash__
 value_entry_iterator_hash: None = ScalarEntryIterator.__hash__
 iceberg_names_hash: None = IcebergNames.__hash__
-fix_definitions_hash: None = FixDefinitionIterator.__hash__
 fix_messages_hash: None = FixMessages.__hash__
-fix_msgtypes_hash: None = MsgTypeIterator.__hash__
+fix_codec_hash: None = fix.FixCodec.__hash__
 bound_hash: None = Bound.__hash__
 bound_selector_hash: None = BoundSelector.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
@@ -1406,19 +1404,29 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_ticker: Scalar | None = fix_message.symbol_ticker()
-fix_message_clock: Scalar = fix_message.updatedat()
-fix_message_created: Scalar = fix_message.createdat()
-fix_message_msghash: Scalar = fix_message.msghash()
-fix_message_msgphash: Scalar = fix_message.msgphash()
-fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
-fix_message_lift_source: int | None = fix_message.lift_source("bidpx")
-fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
-fix_message_party: list[Scalar | None] | None = fix_message.party("1")
-fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
-fix_message_anomalies: list[str] = fix_message.anomalies()
-fix_message_arrivals: list[tuple[int, str, str]] = fix_message.entries()
+fix_message_event: fix.MarketEventData = fix_message.event()
+fix_message_header: fix.FixHeader = fix_message.header()
+fix_message_capture: fix.FixCapture = fix_message.capture()
+fix_message_text: str | None = fix_message.text
+fix_message_metadata: dict[str, str] = fix_message.metadata
+fix_message_curruuid: Scalar = fix_message.curruuid
+fix_message_crossuuid: Scalar = fix_message.crossuuid
+fix_message_crosscode: str = fix_message.crosscode
+fix_message_hashcode: int = fix_message.hashcode
+fix_message_crosshashcode: int = fix_message.crosshashcode
+fix_message_unix: int = fix_message.unix
+fix_message_state: Scalar = fix_message.state
+fix_message_seqnum: int = fix_message.seqnum
+fix_message_prevuuid: Scalar | None = fix_message.prevuuid
+fix_message_parentuuids: list[Scalar] = fix_message.parentuuids
+fix_message_identifiers: dict[str, str] = fix_message.identifiers
+fix_message_px: Scalar = fix_message.px
+fix_message_qty: Scalar = fix_message.qty
+fix_message_side: Scalar = fix_message.side
+fix_message_currency: Scalar = fix_message.currency
+fix_message_entries: list[FixEntryTuple] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
+fix_message_wire_text: str = fix_message.into_text("|")
 fix_message.set(38, 200)
 fix_message.set("OrderQty", None)
 fix_message_removed: Scalar | None = fix_message.remove(38)
@@ -1426,6 +1434,57 @@ fix_message_read_back: fix.FixMsg = fix.FixMsg.from_row(fix_root, {"OrderQty": 1
 fix_message_read_back_explicit: fix.FixMsg = fix.FixMsg.from_row(
     fix_root, fix_message_value, fix_registry_from_fields
 )
+
+fix_header_beginstring: str = fix_message_header.beginstring
+fix_header_msgtype: str = fix_message_header.msgtype
+fix_header_sendercompid: str | None = fix_message_header.sendercompid
+fix_header_targetcompid: str | None = fix_message_header.targetcompid
+fix_header_msgseqnum: int | None = fix_message_header.msgseqnum
+fix_header_sendingtime: int = fix_message_header.sendingtime
+fix_header_stated: bool = fix_message_header.stated_sendingtime
+fix_header_possdupflag: bool | None = fix_message_header.possdupflag
+fix_header_msgdirection: str | None = fix_message_header.msgdirection
+
+fix_capture_sourceurl: Url | None = fix_message_capture.sourceurl
+fix_capture_recordedat: int | None = fix_message_capture.recordedat
+fix_capture_pluginid: str | None = fix_message_capture.pluginid
+fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
+fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
+
+fix_event_curruuid: Scalar = fix_message_event.curruuid
+fix_event_crossuuid: Scalar = fix_message_event.crossuuid
+fix_event_crosscode: str = fix_message_event.crosscode
+fix_event_hashcode: int = fix_message_event.hashcode
+fix_event_crosshashcode: int = fix_message_event.crosshashcode
+fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
+fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
+fix_event_unix: int = fix_message_event.unix
+fix_event_state: Scalar = fix_message_event.state
+fix_event_seqnum: int = fix_message_event.seqnum
+fix_event_creatunix: int | None = fix_message_event.creatunix
+fix_event_expirunix: int | None = fix_message_event.expirunix
+fix_event_prevunix: int | None = fix_message_event.prevunix
+fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
+fix_event_snapunix: int | None = fix_message_event.snapunix
+fix_event_px: Scalar = fix_message_event.px
+fix_event_qty: Scalar = fix_message_event.qty
+fix_event_currency: Scalar = fix_message_event.currency
+fix_event_unit: str = fix_message_event.unit
+fix_event_side: Scalar = fix_message_event.side
+fix_event_isincode: Scalar | None = fix_message_event.isincode
+fix_event_cusipcode: Scalar | None = fix_message_event.cusipcode
+fix_event_sedolcode: Scalar | None = fix_message_event.sedolcode
+fix_event_bloombergcode: Scalar | None = fix_message_event.bloombergcode
+fix_event_cficode: Scalar | None = fix_message_event.cficode
+fix_event_miccode: Scalar | None = fix_message_event.miccode
+fix_event_bidpx: Scalar | None = fix_message_event.bidpx
+fix_event_bidqty: Scalar | None = fix_message_event.bidqty
+fix_event_bidcurrency: Scalar | None = fix_message_event.bidcurrency
+fix_event_bidunit: str | None = fix_message_event.bidunit
+fix_event_askpx: Scalar | None = fix_message_event.askpx
+fix_event_askqty: Scalar | None = fix_message_event.askqty
+fix_event_askcurrency: Scalar | None = fix_message_event.askcurrency
+fix_event_askunit: str | None = fix_message_event.askunit
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1469,28 +1528,15 @@ fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
 fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>")
 fix_read_pairs: fix.FixMsg = fix_reader.parse_pairs([("55", "AAPL")])
-fix_read_filled: fix.FixMsg = fix_reader.enrich_message(fix_read_text)
-fix_read_filled_stream: fix.FixMessages = fix_reader.enrich_messages([fix_read_text])
-fix_read_stamped: fix.FixMessages = fix_reader.lifecycle(iter([fix_read_text]))
-fix_capture: pa.Table = pa.table({"body": pa.array([b"8=FIX.4.4|35=D|10=0|"], pa.binary())})
-fix_parsed: pa.RecordBatchReader = fix_reader.parse_text_arrow_reader(fix_capture)
-fix_filled: pa.RecordBatchReader = fix_reader.enrich_messages_arrow_reader(fix_parsed)
-fix_read_back: fix.FixMessages = fix_reader.messages(fix_filled)
+fix_walked: fix.FixMessages = fix_reader.lifecycle(iter([fix_read_text]))
+fix_capture_table: pa.Table = pa.table(
+    {"body": pa.array([b"8=FIX.4.4|35=D|10=0|"], pa.binary())}
+)
+fix_parsed: pa.RecordBatchReader = fix_reader.parse_text_arrow_reader(fix_capture_table)
+fix_walked_rows: pa.RecordBatchReader = fix_reader.lifecycle_arrow_reader(fix_parsed)
+fix_read_back: fix.FixMessages = fix_reader.messages(fix_walked_rows)
 fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back)
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
-fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
-fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
-fix_default_interval: int = fix.FixLifecycle.DEFAULT_INTERVAL_NS
-fix_life_gridded: fix.FixLifecycle = fix.FixLifecycle(
-    fix_registry_from_fields, interval_ns=fix_default_interval
-)
-fix_life_interval: int = fix_life_gridded.interval_ns
-fix_life_gridded.set_interval_ns(10)
-fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
-fix_life_snapshot: fix.FixMsg | None = fix_life.snapshot(fix_read_text)
-fix_life_snapshots: fix.FixMessages = fix_life_gridded.snapshots(iter([fix_read_text]))
-fix_life_alive: int = fix_life.alive()
-fix_life.clear()
 
 fix_counter: Field = Field("nopartyids", "int32")
 fix_counter.fix.tag = 453
@@ -1526,17 +1572,14 @@ fix_derived.fix.derivation = "orderqty - cumqty"
 fix_derivation: str | None = fix_derived.fix.derivation
 fix_derived.fix.derivation = None
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
-fix_catalog.create_definition("components", fix_component)
-fix_added_definition: bool = fix_catalog.add_definition("components", fix_component)
-fix_inserted_definition: Field | None = fix_catalog.insert_definition("groups", fix_group)
-fix_updated_definition: Field = fix_catalog.update_definition("groups", fix_group)
-fix_definition: Field = fix_catalog.definition("groups", "parties")
-fix_optional_definition: Field | None = fix_catalog.get_definition("components", "party")
-fix_definitions: FixDefinitionIterator = fix_catalog.definitions("groups")
-fix_definition_item: Field = next(fix_definitions)
-fix_group_by_counter: Field = fix_catalog.group_by_tag(453)
-fix_optional_group: Field | None = fix_catalog.get_group_by_tag(453)
-fix_removed_definition: Field | None = fix_catalog.remove_definition("groups", "parties")
+fix_inserted_component: Field | None = fix_catalog.insert(fix_component)
+fix_inserted_group: Field | None = fix_catalog.insert(fix_group)
+fix_catalog.update(fix_group)
+fix_definition: Field = fix_catalog.field_by_name("parties")
+fix_optional_definition: Field | None = fix_catalog.get_field_by_name("party")
+fix_group_by_counter: Field = fix_catalog.field_by_counter(453)
+fix_optional_group: Field | None = fix_catalog.get_field_by_counter(453)
+fix_removed_definition: Field | None = fix_catalog.remove("parties")
 fix_catalog_snapshot: str = fix_catalog.into_json()
 fix_catalog_restored: fix.FixRegistry = fix.FixRegistry.from_json(fix_catalog_snapshot)
 fix_catalog_hash: int = fix_catalog.stable_hash()
@@ -1545,8 +1588,6 @@ fix_catalog_pickle: tuple[object, tuple[str]] = fix_catalog.__reduce__()
 fix_registered_type: fix.MsgType = fix_catalog.register_msgtype("U1", "CustomMessage")
 fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
-fix_msgtypes: MsgTypeIterator = fix_registry_loaded.msgtypes()
-fix_msgtype_item: fix.MsgType = next(fix_msgtypes)
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
 fix_msgtype_field: Field = fix_msgtype.field
@@ -1555,8 +1596,8 @@ fix_identifier_values: list[tuple[Field, Scalar]] = fix_msgtype.identifier_value
 fix_identifier_field: Field = fix_identifier_values[0][0]
 fix_identifier_value: Scalar = fix_identifier_values[0][1]
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
-fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
-fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
+fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype
+fix_msgtype_pickle: tuple[object, tuple[str, str]] = fix_msgtype.__reduce__()
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_formatted_rows: list[Scalar] = fix_reader.format_messages([fix_message], fix_fixed_schema)
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
@@ -1617,16 +1658,61 @@ assert fix_text_msgtype is None or fix_text_msgtype
 assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
-assert fix_message_ticker is None or fix_message_ticker
-assert isinstance(fix_message_clock, Scalar) and isinstance(fix_message_created, Scalar)
-assert isinstance(fix_message_msghash, Scalar) and isinstance(fix_message_msgphash, Scalar)
-assert fix_default_interval == fix_life_interval
-assert fix_message_lifted is None or fix_message_lifted
-assert fix_message_lift_source is None or fix_message_lift_source
-assert isinstance(fix_message_lift, list) and isinstance(fix_message_anomalies, list)
-assert fix_message_party is None or fix_message_party
-assert fix_message_regulatory is None or fix_message_regulatory
-assert isinstance(fix_message_arrivals, list)
+assert isinstance(fix_message_wire_text, str)
+assert isinstance(fix_message_event, fix.MarketEventData)
+assert isinstance(fix_message_header, fix.FixHeader)
+assert isinstance(fix_message_capture, fix.FixCapture)
+assert fix_message_text is None or fix_message_text
+assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, dict)
+assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
+assert isinstance(fix_message_hashcode, int) and isinstance(fix_message_crosshashcode, int)
+assert isinstance(fix_message_unix, int) and isinstance(fix_message_seqnum, int)
+assert isinstance(fix_message_state, Scalar) and isinstance(fix_message_side, Scalar)
+assert isinstance(fix_message_px, Scalar) and isinstance(fix_message_qty, Scalar)
+assert isinstance(fix_message_currency, Scalar)
+assert fix_message_prevuuid is None or fix_message_prevuuid
+assert isinstance(fix_message_parentuuids, list) and isinstance(fix_message_crosscode, str)
+assert isinstance(fix_message_entries, list)
+assert isinstance(fix_header_beginstring, str) and isinstance(fix_header_msgtype, str)
+assert isinstance(fix_header_sendingtime, int) and isinstance(fix_header_stated, bool)
+assert fix_header_sendercompid is None or fix_header_sendercompid
+assert fix_header_targetcompid is None or fix_header_targetcompid
+assert fix_header_msgseqnum is None or fix_header_msgseqnum
+assert fix_header_possdupflag is None or fix_header_possdupflag
+assert fix_header_msgdirection is None or fix_header_msgdirection
+assert fix_capture_sourceurl is None or fix_capture_sourceurl
+assert fix_capture_recordedat is None or fix_capture_recordedat
+assert fix_capture_pluginid is None or fix_capture_pluginid
+assert fix_capture_msgctxid is None or fix_capture_msgctxid
+assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
+assert isinstance(fix_event_unix, int) and isinstance(fix_event_crosscode, str)
+assert isinstance(fix_event_hashcode, int) and isinstance(fix_event_crosshashcode, int)
+assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
+assert fix_event_creatunix is None or fix_event_creatunix
+assert fix_event_expirunix is None or fix_event_expirunix
+assert fix_event_prevunix is None or fix_event_prevunix
+assert fix_event_snapunix is None or fix_event_snapunix
+assert fix_event_prevuuid is None or fix_event_prevuuid
+assert fix_event_isincode is None or fix_event_isincode
+assert fix_event_cusipcode is None or fix_event_cusipcode
+assert fix_event_sedolcode is None or fix_event_sedolcode
+assert fix_event_bloombergcode is None or fix_event_bloombergcode
+assert fix_event_cficode is None or fix_event_cficode
+assert fix_event_miccode is None or fix_event_miccode
+assert fix_event_bidpx is None or fix_event_bidpx
+assert fix_event_bidqty is None or fix_event_bidqty
+assert fix_event_bidcurrency is None or fix_event_bidcurrency
+assert fix_event_bidunit is None or fix_event_bidunit
+assert fix_event_askpx is None or fix_event_askpx
+assert fix_event_askqty is None or fix_event_askqty
+assert fix_event_askcurrency is None or fix_event_askcurrency
+assert fix_event_askunit is None or fix_event_askunit
+assert isinstance(fix_event_identifiers, dict) and isinstance(fix_event_parentuuids, list)
+assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
+assert isinstance(fix_event_state, Scalar) and isinstance(fix_event_side, Scalar)
+assert isinstance(fix_event_px, Scalar) and isinstance(fix_event_qty, Scalar)
+assert isinstance(fix_event_currency, Scalar)
+assert fix_walked is not None and fix_walked_rows is not None and fix_written >= 0
 assert fix_reader_registry is not None and fix_reader_pinned is not None
 assert fix_read_text and fix_read_bytes and fix_read_frame
 assert fix_read_bridge is not None and fix_read_pairs is not None
