@@ -116,7 +116,6 @@ ulbridge[001]:0.entry[66]	t2897 currencycodesource=6
 ulbridge[001]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[001]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[001]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[001]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[001]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[001]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -290,7 +289,6 @@ ulbridge[003]:0.entry[66]	t2897 currencycodesource=6
 ulbridge[003]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[003]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[003]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[003]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[003]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[003]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -466,7 +464,6 @@ ulbridge[004]:0.entry[70]	t2897 currencycodesource=6
 ulbridge[004]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[004]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[004]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[004]:0.field.recordedat	"2026-08-14T12:46:39.000000000Z"
 ulbridge[004]:0.field.sendingtime	"2026-08-14T12:46:39.000000000Z"
 ulbridge[004]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[004]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -617,7 +614,6 @@ ulbridge[005]:0.entry[56]	t470 countryofissue=CH
 ulbridge[005]:0.field.unix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[005]:0.field.creatunix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[005]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[005]:0.field.recordedat	"2026-08-14T12:46:39.761000000Z"
 ulbridge[005]:0.field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 ulbridge[005]:0.field.transacttime	"2026-08-14T12:46:39.743016000Z"
 ulbridge[005]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -769,7 +765,6 @@ ulbridge[006]:0.entry[47]	t2897 currencycodesource=6
 ulbridge[006]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[006]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[006]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[006]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[006]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[006]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -925,7 +920,6 @@ ulbridge[007]:0.entry[56]	t2897 currencycodesource=6
 ulbridge[007]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[007]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[007]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[007]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[007]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[007]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[007]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1082,7 +1076,6 @@ ulbridge[008]:0.entry[55]	t2897 currencycodesource=6
 ulbridge[008]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[008]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[008]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[008]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[008]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[008]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[008]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1239,7 +1232,6 @@ ulbridge[009]:0.entry[56]	t2897 currencycodesource=6
 ulbridge[009]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[009]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[009]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[009]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[009]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[009]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1391,7 +1383,6 @@ ulbridge[010]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[010]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[010]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[010]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[010]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[010]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[010]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1543,7 +1534,6 @@ ulbridge[011]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[011]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[011]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[011]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[011]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[011]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[011]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1696,7 +1686,6 @@ ulbridge[013]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[013]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[013]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[013]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[013]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[013]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[013]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[013]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -1848,7 +1837,6 @@ ulbridge[014]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[014]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[014]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[014]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[014]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[014]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[014]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[014]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -2000,7 +1988,6 @@ ulbridge[015]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[015]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[015]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[015]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[015]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[015]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[015]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[015]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -2156,7 +2143,6 @@ ulbridge[020]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[020]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[020]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[020]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[020]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[020]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[020]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[020]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -2310,7 +2296,6 @@ ulbridge[021]:0.entry[60]	t2897 currencycodesource=6
 ulbridge[021]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[021]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[021]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[021]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[021]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[021]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[021]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -2407,7 +2392,6 @@ ulbridge[023]:0.entry[26]	t470 countryofissue=CH
 ulbridge[023]:0.field.unix	"2026-08-14T12:46:39.757079000Z"
 ulbridge[023]:0.field.creatunix	"2026-08-14T12:46:39.757079000Z"
 ulbridge[023]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[023]:0.field.recordedat	"2026-08-14T12:46:39.764616000Z"
 ulbridge[023]:0.field.sendingtime	"2026-08-14T12:46:39.764616000Z"
 ulbridge[023]:0.field.transacttime	"2026-08-14T12:46:39.757079000Z"
 ulbridge[023]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -2505,7 +2489,6 @@ ulbridge[024]:0.entry[27]	t2897 currencycodesource=6
 ulbridge[024]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[024]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[024]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[024]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[024]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[024]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[024]:0.field.curruuid	"01a0004f-6a8d-7000-ba03-799a688e0f09"
@@ -2653,7 +2636,6 @@ ulbridge[025]:0.entry[58]	t2897 currencycodesource=6
 ulbridge[025]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[025]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[025]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[025]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[025]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[025]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[025]:0.field.curruuid	"01a0004f-6a8d-7000-b0f9-9585fa0d1492"
@@ -2805,7 +2787,6 @@ ulbridge[026]:0.entry[58]	t2897 currencycodesource=6
 ulbridge[026]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[026]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[026]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[026]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[026]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[026]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[026]:0.field.curruuid	"01a0004f-6a8d-7000-b0f9-9585fa0d1492"
@@ -2957,7 +2938,6 @@ ulbridge[027]:0.entry[58]	t2897 currencycodesource=6
 ulbridge[027]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[027]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[027]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[027]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[027]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[027]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[027]:0.field.curruuid	"01a0004f-6a8d-7000-b0f9-9585fa0d1492"
@@ -3111,7 +3091,6 @@ ulbridge[030]:0.entry[58]	t2897 currencycodesource=6
 ulbridge[030]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[030]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[030]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[030]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[030]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[030]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[030]:0.field.curruuid	"01a0004f-6a8d-7000-b0f9-9585fa0d1492"
@@ -3265,7 +3244,6 @@ ulbridge[032]:0.entry[58]	t2897 currencycodesource=6
 ulbridge[032]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[032]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[032]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[032]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[032]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[032]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
 ulbridge[032]:0.field.curruuid	"01a0004f-6a8d-7000-b0f9-9585fa0d1492"
@@ -3421,7 +3399,6 @@ ulbridge[033]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[033]:0.field.unix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[033]:0.field.creatunix	"2026-08-14T12:46:39.757000000Z"
 ulbridge[033]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[033]:0.field.recordedat	"2026-08-14T12:46:39.000000000Z"
 ulbridge[033]:0.field.sendingtime	"2026-08-14T12:46:39.000000000Z"
 ulbridge[033]:0.field.transacttime	"2026-08-14T12:46:39.757000000Z"
 ulbridge[033]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -3570,7 +3547,6 @@ ulbridge[034]:0.entry[59]	t470 countryofissue=CH
 ulbridge[034]:0.field.unix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.creatunix	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[034]:0.field.recordedat	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 ulbridge[034]:0.field.transacttime	"2026-08-14T00:00:00.000000000Z"
 ulbridge[034]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -3706,7 +3682,6 @@ ulbridge[035]:0.entry[47]	t2897 currencycodesource=6
 ulbridge[035]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[035]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[035]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[035]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[035]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[035]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[035]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -3847,7 +3822,6 @@ ulbridge[036]:0.entry[57]	t2897 currencycodesource=6
 ulbridge[036]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[036]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[036]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[036]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[036]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[036]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[036]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -3990,7 +3964,6 @@ ulbridge[037]:0.entry[57]	t2897 currencycodesource=6
 ulbridge[037]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[037]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[037]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[037]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[037]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[037]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[037]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4148,7 +4121,6 @@ ulbridge[038]:0.entry[61]	t2897 currencycodesource=6
 ulbridge[038]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[038]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[038]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[038]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[038]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[038]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[038]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4306,7 +4278,6 @@ ulbridge[039]:0.entry[61]	t2897 currencycodesource=6
 ulbridge[039]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[039]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[039]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[039]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[039]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[039]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[039]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4471,7 +4442,6 @@ ulbridge[043]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[043]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[043]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[043]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[043]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[043]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[043]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[043]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4635,7 +4605,6 @@ ulbridge[044]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[044]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[044]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[044]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[044]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[044]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[044]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[044]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4799,7 +4768,6 @@ ulbridge[045]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[045]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[045]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[045]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[045]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[045]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[045]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[045]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -4965,7 +4933,6 @@ ulbridge[047]:0.entry[63]	t2897 currencycodesource=6
 ulbridge[047]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[047]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[047]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[047]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[047]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[047]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[047]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -5133,7 +5100,6 @@ ulbridge[051]:0.entry[63]	t2897 currencycodesource=6
 ulbridge[051]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[051]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[051]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[051]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[051]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[051]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[051]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -5301,7 +5267,6 @@ ulbridge[052]:0.entry[65]	t2897 currencycodesource=6
 ulbridge[052]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[052]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[052]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[052]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[052]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[052]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[052]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -5468,7 +5433,6 @@ ulbridge[053]:0.entry[65]	t2897 currencycodesource=6
 ulbridge[053]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[053]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[053]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[053]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[053]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[053]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[053]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -5611,7 +5575,6 @@ ulbridge[055]:0.entry[56]	t470 countryofissue=CH
 ulbridge[055]:0.field.unix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[055]:0.field.creatunix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[055]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[055]:0.field.recordedat	"2026-08-14T12:46:39.762000000Z"
 ulbridge[055]:0.field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 ulbridge[055]:0.field.transacttime	"2026-08-14T12:46:39.743016000Z"
 ulbridge[055]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -5763,7 +5726,6 @@ ulbridge[056]:0.entry[47]	t2897 currencycodesource=6
 ulbridge[056]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[056]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[056]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[056]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[056]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[056]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[056]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -5919,7 +5881,6 @@ ulbridge[057]:0.entry[56]	t2897 currencycodesource=6
 ulbridge[057]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[057]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[057]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[057]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[057]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[057]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[057]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6076,7 +6037,6 @@ ulbridge[058]:0.entry[56]	t2897 currencycodesource=6
 ulbridge[058]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[058]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[058]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[058]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[058]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[058]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[058]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6228,7 +6188,6 @@ ulbridge[059]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[059]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[059]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[059]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[059]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[059]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[059]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[059]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6380,7 +6339,6 @@ ulbridge[060]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[060]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[060]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[060]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[060]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[060]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[060]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[060]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6533,7 +6491,6 @@ ulbridge[062]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[062]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[062]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[062]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[062]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[062]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[062]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[062]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6685,7 +6642,6 @@ ulbridge[063]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[063]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[063]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[063]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[063]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[063]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[063]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[063]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6837,7 +6793,6 @@ ulbridge[064]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[064]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[064]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[064]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[064]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[064]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[064]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[064]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -6993,7 +6948,6 @@ ulbridge[069]:0.entry[59]	t2897 currencycodesource=6
 ulbridge[069]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[069]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[069]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[069]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[069]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[069]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[069]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -7147,7 +7101,6 @@ ulbridge[070]:0.entry[60]	t2897 currencycodesource=6
 ulbridge[070]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[070]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[070]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[070]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[070]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[070]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[070]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -7290,7 +7243,6 @@ ulbridge[072]:0.entry[58]	t470 countryofissue=CH
 ulbridge[072]:0.field.unix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[072]:0.field.creatunix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[072]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[072]:0.field.recordedat	"2026-08-14T12:46:39.762000000Z"
 ulbridge[072]:0.field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 ulbridge[072]:0.field.transacttime	"2026-08-14T12:46:39.743016000Z"
 ulbridge[072]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -7426,7 +7378,6 @@ ulbridge[073]:0.entry[47]	t2897 currencycodesource=6
 ulbridge[073]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[073]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[073]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[073]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[073]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[073]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[073]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -7567,7 +7518,6 @@ ulbridge[074]:0.entry[57]	t2897 currencycodesource=6
 ulbridge[074]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[074]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[074]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[074]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[074]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[074]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[074]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -7710,7 +7660,6 @@ ulbridge[075]:0.entry[57]	t2897 currencycodesource=6
 ulbridge[075]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[075]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[075]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[075]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[075]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[075]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[075]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -7868,7 +7817,6 @@ ulbridge[076]:0.entry[61]	t2897 currencycodesource=6
 ulbridge[076]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[076]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[076]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[076]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[076]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[076]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[076]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8026,7 +7974,6 @@ ulbridge[077]:0.entry[61]	t2897 currencycodesource=6
 ulbridge[077]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[077]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[077]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[077]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[077]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[077]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[077]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8191,7 +8138,6 @@ ulbridge[081]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[081]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[081]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[081]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[081]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[081]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[081]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[081]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8355,7 +8301,6 @@ ulbridge[082]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[082]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[082]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[082]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[082]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[082]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[082]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[082]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8519,7 +8464,6 @@ ulbridge[083]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[083]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[083]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[083]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[083]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[083]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[083]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[083]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8685,7 +8629,6 @@ ulbridge[085]:0.entry[63]	t2897 currencycodesource=6
 ulbridge[085]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[085]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[085]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[085]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[085]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[085]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[085]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -8853,7 +8796,6 @@ ulbridge[089]:0.entry[63]	t2897 currencycodesource=6
 ulbridge[089]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[089]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[089]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[089]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[089]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[089]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[089]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -9021,7 +8963,6 @@ ulbridge[090]:0.entry[65]	t2897 currencycodesource=6
 ulbridge[090]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[090]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[090]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[090]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[090]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[090]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[090]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -9188,7 +9129,6 @@ ulbridge[091]:0.entry[65]	t2897 currencycodesource=6
 ulbridge[091]:0.field.unix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[091]:0.field.creatunix	"2026-08-14T12:46:39.743000000Z"
 ulbridge[091]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[091]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[091]:0.field.transacttime	"2026-08-14T12:46:39.743000000Z"
 ulbridge[091]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
 ulbridge[091]:0.field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -9259,7 +9199,6 @@ ulbridge[097]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[097]:0.wire	8=FIX.4.4|
 ulbridge[097]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[097]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[097]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[097]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[097]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[097]:0.field.hashcode	9188214997816454022
@@ -9274,7 +9213,6 @@ ulbridge[098]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[098]:0.wire	8=FIX.4.4|
 ulbridge[098]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[098]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[098]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[098]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[098]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[098]:0.field.hashcode	9188214997816454022
@@ -9289,7 +9227,6 @@ ulbridge[099]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[099]:0.wire	8=FIX.4.4|
 ulbridge[099]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[099]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[099]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[099]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[099]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[099]:0.field.hashcode	9188214997816454022
@@ -9325,7 +9262,6 @@ ulbridge[100]:0.entry[15]	t2897 currencycodesource=6
 ulbridge[100]:0.entry[16]	t470 countryofissue=CH
 ulbridge[100]:0.field.unix	"2026-08-14T12:46:39.743016000Z"
 ulbridge[100]:0.field.creatunix	"2026-08-14T12:46:39.743016000Z"
-ulbridge[100]:0.field.recordedat	"2026-08-14T12:46:39.761000000Z"
 ulbridge[100]:0.field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 ulbridge[100]:0.field.transacttime	"2026-08-14T12:46:39.743016000Z"
 ulbridge[100]:0.field.curruuid	"01a0004f-6a7f-7041-8889-21c28410701e"
@@ -9380,7 +9316,6 @@ ulbridge[101]:0.entry[4]	t448 partyid=TRADER2
 ulbridge[101]:0.entry[5]	t452 partyrole=11
 ulbridge[101]:0.field.unix	"2026-08-14T12:46:40.001000000Z"
 ulbridge[101]:0.field.creatunix	"2026-08-14T12:46:40.001000000Z"
-ulbridge[101]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[101]:0.field.transacttime	"2026-08-14T12:46:40.001000000Z"
 ulbridge[101]:0.field.curruuid	"01a0004f-6b81-7000-9e89-590a03687131"
 ulbridge[101]:0.field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -9411,7 +9346,6 @@ ulbridge[102]:0.entry[0]	t9 bodylength=61
 ulbridge[102]:0.entry[1]	t10 checksum=173
 ulbridge[102]:0.field.unix	"2026-08-14T12:46:40.004000000Z"
 ulbridge[102]:0.field.creatunix	"2026-08-14T12:46:40.004000000Z"
-ulbridge[102]:0.field.recordedat	"2026-08-14T12:46:40.004000000Z"
 ulbridge[102]:0.field.sendingtime	"2026-08-14T12:46:40.004000000Z"
 ulbridge[102]:0.field.curruuid	"01a0004f-6b84-7000-b840-5261279d04ce"
 ulbridge[102]:0.field.crossuuid	"01a0004f-6b84-7000-b840-5261279d04ce"
@@ -9436,7 +9370,6 @@ ulbridge[103]:0.entry[1]	t112 testreqid=PING
 ulbridge[103]:0.entry[2]	t10 checksum=067
 ulbridge[103]:0.field.unix	"2026-08-14T12:46:40.009000000Z"
 ulbridge[103]:0.field.creatunix	"2026-08-14T12:46:40.009000000Z"
-ulbridge[103]:0.field.recordedat	"2026-08-14T12:46:40.009000000Z"
 ulbridge[103]:0.field.sendingtime	"2026-08-14T12:46:40.009000000Z"
 ulbridge[103]:0.field.curruuid	"01a0004f-6b89-7000-9602-43bec2917ef4"
 ulbridge[103]:0.field.crossuuid	"01a0004f-6b89-7000-9602-43bec2917ef4"
@@ -9562,7 +9495,6 @@ ulbridge[104]:0.entry[62]	t2897 currencycodesource=6
 ulbridge[104]:0.field.unix	"2026-08-14T12:46:58.453000000Z"
 ulbridge[104]:0.field.creatunix	"2026-08-14T12:46:58.453000000Z"
 ulbridge[104]:0.field.expirunix	"2026-08-14T16:25:00.000000000Z"
-ulbridge[104]:0.field.recordedat	"2026-08-14T12:46:58.000000000Z"
 ulbridge[104]:0.field.sendingtime	"2026-08-14T12:46:58.000000000Z"
 ulbridge[104]:0.field.transacttime	"2026-08-14T12:46:58.453000000Z"
 ulbridge[104]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -9640,7 +9572,6 @@ ulbridge[105]:0.entry[5]	t553 username=bridge
 ulbridge[105]:0.entry[6]	t10 checksum=042
 ulbridge[105]:0.field.unix	"2026-08-14T12:46:40.012000000Z"
 ulbridge[105]:0.field.creatunix	"2026-08-14T12:46:40.012000000Z"
-ulbridge[105]:0.field.recordedat	"2026-08-14T12:46:40.012000000Z"
 ulbridge[105]:0.field.sendingtime	"2026-08-14T12:46:40.012000000Z"
 ulbridge[105]:0.field.curruuid	"01a0004f-6b8c-7000-ab0a-01a8eceb3c70"
 ulbridge[105]:0.field.crossuuid	"01a0004f-6b8c-7000-ab0a-01a8eceb3c70"
@@ -9674,7 +9605,6 @@ ulbridge[106]:0.entry[5.0.1]	t447 partyidsource=D
 ulbridge[106]:0.entry[5.0.2]	t452 partyrole=11
 ulbridge[106]:0.field.unix	"2026-08-14T12:46:40.001000000Z"
 ulbridge[106]:0.field.creatunix	"2026-08-14T12:46:40.001000000Z"
-ulbridge[106]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[106]:0.field.transacttime	"2026-08-14T12:46:40.001000000Z"
 ulbridge[106]:0.field.curruuid	"01a0004f-6b81-7000-aba2-42c6d7bba801"
 ulbridge[106]:0.field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -9713,7 +9643,6 @@ ulbridge[107]:0.entry[3]	t40 ordtype=2
 ulbridge[107]:0.entry[4]	t10 checksum=115
 ulbridge[107]:0.field.unix	"2026-08-14T12:46:40.020000000Z"
 ulbridge[107]:0.field.creatunix	"2026-08-14T12:46:40.020000000Z"
-ulbridge[107]:0.field.recordedat	"2026-08-14T12:46:40.020000000Z"
 ulbridge[107]:0.field.sendingtime	"2026-08-14T12:46:40.020000000Z"
 ulbridge[107]:0.field.curruuid	"01a0004f-6b94-7000-9693-47321cee5d1e"
 ulbridge[107]:0.field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -9749,7 +9678,6 @@ ulbridge[108]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[108]:0.wire	8=FIX.4.4|
 ulbridge[108]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[108]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[108]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[108]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[108]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[108]:0.field.hashcode	9188214997816454022
@@ -9904,7 +9832,6 @@ ulbridge[111]:0.entry[36]	t48 securityid=EZN11TD1F7K3
 ulbridge[111]:0.entry[37]	t22 securityidsource=4
 ulbridge[111]:0.field.unix	"2026-08-14T14:52:55.000000000Z"
 ulbridge[111]:0.field.creatunix	"2026-08-14T14:52:55.000000000Z"
-ulbridge[111]:0.field.recordedat	"2026-08-14T14:52:55.000000000Z"
 ulbridge[111]:0.field.sendingtime	"2026-08-14T14:52:55.000000000Z"
 ulbridge[111]:0.field.transacttime	"2026-08-14T14:52:55.000000000Z"
 ulbridge[111]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -9973,7 +9900,6 @@ ulbridge[112]:0.entry[17]	t2897 currencycodesource=6
 ulbridge[112]:0.entry[18]	t470 countryofissue=CH
 ulbridge[112]:0.field.unix	"2026-08-14T12:46:41.118000000Z"
 ulbridge[112]:0.field.creatunix	"2026-08-14T12:46:41.118000000Z"
-ulbridge[112]:0.field.recordedat	"2026-08-14T12:46:41.000000000Z"
 ulbridge[112]:0.field.sendingtime	"2026-08-14T12:46:41.000000000Z"
 ulbridge[112]:0.field.transacttime	"2026-08-14T12:46:41.118000000Z"
 ulbridge[112]:0.field.curruuid	"01a0004f-6fde-7000-b131-7eaa844d6d66"
@@ -10025,7 +9951,6 @@ ulbridge[113]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[113]:0.wire	8=FIX.4.4|
 ulbridge[113]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[113]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[113]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[113]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[113]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[113]:0.field.hashcode	9188214997816454022
@@ -10040,7 +9965,6 @@ ulbridge[114]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[114]:0.wire	8=FIX.4.4|
 ulbridge[114]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[114]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[114]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[114]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[114]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[114]:0.field.hashcode	9188214997816454022
@@ -10059,7 +9983,6 @@ ulbridge[119]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[119]:0.wire	8=FIX.4.4|
 ulbridge[119]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[119]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[119]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[119]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[119]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[119]:0.field.hashcode	9188214997816454022
@@ -10077,7 +10000,6 @@ ulbridge[121]:0.entry[0]	t9 bodylength=62
 ulbridge[121]:0.entry[1]	t10 checksum=071
 ulbridge[121]:0.field.unix	"2026-08-14T01:03:16.000000000Z"
 ulbridge[121]:0.field.creatunix	"2026-08-14T01:03:16.000000000Z"
-ulbridge[121]:0.field.recordedat	"2026-08-14T01:03:16.000000000Z"
 ulbridge[121]:0.field.sendingtime	"2026-08-14T01:03:16.000000000Z"
 ulbridge[121]:0.field.curruuid	"019ffdcb-7020-7000-8f97-3424ddae439c"
 ulbridge[121]:0.field.crossuuid	"019ffdcb-7020-7000-8f97-3424ddae439c"
@@ -10128,7 +10050,6 @@ ulbridge[122]:0.entry[21]	t2897 currencycodesource=6
 ulbridge[122]:0.entry[22]	t470 countryofissue=TW
 ulbridge[122]:0.field.unix	"2026-08-14T01:03:17.000000000Z"
 ulbridge[122]:0.field.creatunix	"2026-08-14T01:03:17.000000000Z"
-ulbridge[122]:0.field.recordedat	"2026-08-14T01:03:17.000000000Z"
 ulbridge[122]:0.field.sendingtime	"2026-08-14T01:03:17.000000000Z"
 ulbridge[122]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
 ulbridge[122]:0.field.curruuid	"019ffdcb-7408-7000-ada7-656f3d45677e"
@@ -10208,7 +10129,6 @@ ulbridge[123]:0.entry[17]	t470 countryofissue=TW
 ulbridge[123]:0.entry[18]	t2897 currencycodesource=6
 ulbridge[123]:0.field.unix	"2026-08-14T01:03:17.000000000Z"
 ulbridge[123]:0.field.creatunix	"2026-08-14T01:03:17.000000000Z"
-ulbridge[123]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[123]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
 ulbridge[123]:0.field.curruuid	"019ffdcb-7408-7000-866f-764cea8b4509"
 ulbridge[123]:0.field.crossuuid	"00000000-0000-8000-9fb1-f0b0569d36fc"
@@ -10287,7 +10207,6 @@ ulbridge[125]:0.entry[21]	t470 countryofissue=TW
 ulbridge[125]:0.entry[22]	t2897 currencycodesource=6
 ulbridge[125]:0.field.unix	"2026-08-14T01:03:17.000000000Z"
 ulbridge[125]:0.field.creatunix	"2026-08-14T01:03:17.000000000Z"
-ulbridge[125]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[125]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
 ulbridge[125]:0.field.curruuid	"019ffdcb-7408-7000-b88e-caa71ccdbf19"
 ulbridge[125]:0.field.crossuuid	"00000000-0000-8000-9fb1-f0b0569d36fc"
@@ -10341,7 +10260,6 @@ ulbridge[128]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[128]:0.wire	8=FIX.4.4|
 ulbridge[128]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 ulbridge[128]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-ulbridge[128]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[128]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[128]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 ulbridge[128]:0.field.hashcode	9188214997816454022
@@ -10373,7 +10291,6 @@ ulbridge[129]:0.entry[15]	t460 product=5
 ulbridge[129]:0.entry[16]	t470 countryofissue=TW
 ulbridge[129]:0.field.unix	"2026-08-14T21:59:46.000000000Z"
 ulbridge[129]:0.field.creatunix	"2026-08-14T21:59:46.000000000Z"
-ulbridge[129]:0.field.recordedat	"2026-08-14T21:59:46.000000000Z"
 ulbridge[129]:0.field.sendingtime	"2026-08-14T21:59:46.000000000Z"
 ulbridge[129]:0.field.transacttime	"2026-08-14T21:59:46.000000000Z"
 ulbridge[129]:0.field.curruuid	"01a00249-cc50-7000-892a-08050a576907"
@@ -10424,7 +10341,6 @@ ulbridge[130]:0.entry[7]	t434 cxlrejresponseto=1
 ulbridge[130]:0.entry[8]	t10 checksum=113
 ulbridge[130]:0.field.unix	"2026-08-14T21:59:46.000000000Z"
 ulbridge[130]:0.field.creatunix	"2026-08-14T21:59:46.000000000Z"
-ulbridge[130]:0.field.recordedat	"2026-08-14T21:59:47.000000000Z"
 ulbridge[130]:0.field.sendingtime	"2026-08-14T21:59:47.000000000Z"
 ulbridge[130]:0.field.transacttime	"2026-08-14T21:59:46.000000000Z"
 ulbridge[130]:0.field.curruuid	"01a00249-cc50-7000-9fa5-961e8ac88767"
@@ -10465,7 +10381,6 @@ ulbridge[131]:0.entry[7]	t60 transacttime=20260814-21:59:46.479
 ulbridge[131]:0.entry[8]	t0 ulfromsessionname=Autex_FIX42_BuySide
 ulbridge[131]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[131]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[131]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[131]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[131]:0.field.curruuid	"01a00249-ce2f-7000-9ec0-f8e36f5ea850"
 ulbridge[131]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10500,7 +10415,6 @@ ulbridge[132]:0.entry[8]	t60 transacttime=20260814-21:59:46.479
 ulbridge[132]:0.entry[9]	t0 ulfromsessionname=Autex_FIX42_BuySide
 ulbridge[132]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[132]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[132]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[132]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[132]:0.field.curruuid	"01a00249-ce2f-7000-afda-69ac201794d4"
 ulbridge[132]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10535,7 +10449,6 @@ ulbridge[133]:0.entry[8]	t60 transacttime=20260814-21:59:46.479
 ulbridge[133]:0.entry[9]	t0 ulfromsessionname=Autex_FIX42_BuySide
 ulbridge[133]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[133]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[133]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[133]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[133]:0.field.curruuid	"01a00249-ce2f-7000-afda-69ac201794d4"
 ulbridge[133]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10587,7 +10500,6 @@ ulbridge[134]:0.entry[9]	t60 transacttime=20260814-21:59:46.479
 ulbridge[134]:0.entry[10]	t0 ulfromsessionname=Autex_FIX42_BuySide
 ulbridge[134]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[134]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[134]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[134]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[134]:0.field.curruuid	"01a00249-ce2f-7000-9812-8de3726fee63"
 ulbridge[134]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10641,7 +10553,6 @@ ulbridge[135]:0.entry[9]	t60 transacttime=20260814-21:59:46.479
 ulbridge[135]:0.entry[10]	t0 ulfromsessionname=Autex_FIX42_BuySide
 ulbridge[135]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[135]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[135]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[135]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[135]:0.field.curruuid	"01a00249-ce2f-7000-9812-8de3726fee63"
 ulbridge[135]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10768,7 +10679,6 @@ ulbridge[138]:0.entry[36]	t470 countryofissue=TW
 ulbridge[138]:0.entry[37]	t2897 currencycodesource=6
 ulbridge[138]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[138]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[138]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[138]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[138]:0.field.curruuid	"01a00249-ce2f-7000-a3b8-fddb0f731eff"
 ulbridge[138]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -10919,7 +10829,6 @@ ulbridge[140]:0.entry[36]	t470 countryofissue=TW
 ulbridge[140]:0.entry[37]	t2897 currencycodesource=6
 ulbridge[140]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[140]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[140]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[140]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[140]:0.field.curruuid	"01a00249-ce2f-7000-a3b8-fddb0f731eff"
 ulbridge[140]:0.field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -11072,7 +10981,6 @@ ulbridge[141]:0.entry[40]	t470 countryofissue=TW
 ulbridge[141]:0.entry[41]	t2897 currencycodesource=6
 ulbridge[141]:0.field.unix	"2026-08-14T21:59:46.479000000Z"
 ulbridge[141]:0.field.creatunix	"2026-08-14T21:59:46.479000000Z"
-ulbridge[141]:0.field.recordedat	"2026-08-14T21:59:46.000000000Z"
 ulbridge[141]:0.field.sendingtime	"2026-08-14T21:59:46.000000000Z"
 ulbridge[141]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
 ulbridge[141]:0.field.curruuid	"01a00249-ce2f-7000-814b-ce11a14807c5"
@@ -11132,7 +11040,6 @@ ulbridge[142]:0.entry[0]	t9 bodylength=62
 ulbridge[142]:0.entry[1]	t10 checksum=033
 ulbridge[142]:0.field.unix	"2026-08-14T21:59:48.512549000Z"
 ulbridge[142]:0.field.creatunix	"2026-08-14T21:59:48.512549000Z"
-ulbridge[142]:0.field.recordedat	"2026-08-14T21:59:48.512549000Z"
 ulbridge[142]:0.field.sendingtime	"2026-08-14T21:59:48.512549000Z"
 ulbridge[142]:0.field.curruuid	"01a00249-d620-78c8-84b8-c1981aac7d71"
 ulbridge[142]:0.field.crossuuid	"01a00249-d620-78c8-84b8-c1981aac7d71"
@@ -11155,7 +11062,6 @@ ulbridge[143]:0.entry[0]	t9 bodylength=72
 ulbridge[143]:0.entry[1]	t10 checksum=122
 ulbridge[143]:0.field.unix	"2026-08-14T21:59:49.825000000Z"
 ulbridge[143]:0.field.creatunix	"2026-08-14T21:59:49.825000000Z"
-ulbridge[143]:0.field.recordedat	"2026-08-14T21:59:49.825000000Z"
 ulbridge[143]:0.field.sendingtime	"2026-08-14T21:59:49.825000000Z"
 ulbridge[143]:0.field.curruuid	"01a00249-db41-7000-904a-08369830f0f3"
 ulbridge[143]:0.field.crossuuid	"01a00249-db41-7000-904a-08369830f0f3"
@@ -11177,7 +11083,6 @@ lifecycle[000].digest	99aa06d3014798d86001c324468d497f
 lifecycle[000].wire	8=FIX.4.4|
 lifecycle[000].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[000].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[000].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[000].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[000].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[000].field.hashcode	9188214997816454022
@@ -11191,7 +11096,6 @@ lifecycle[001].digest	99aa06d3014798d86001c324468d497f
 lifecycle[001].wire	8=FIX.4.4|
 lifecycle[001].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[001].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[001].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[001].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[001].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[001].field.hashcode	9188214997816454022
@@ -11205,7 +11109,6 @@ lifecycle[002].digest	99aa06d3014798d86001c324468d497f
 lifecycle[002].wire	8=FIX.4.4|
 lifecycle[002].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[002].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[002].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[002].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[002].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[002].field.hashcode	9188214997816454022
@@ -11219,7 +11122,6 @@ lifecycle[003].digest	99aa06d3014798d86001c324468d497f
 lifecycle[003].wire	8=FIX.4.4|
 lifecycle[003].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[003].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[003].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[003].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[003].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[003].field.hashcode	9188214997816454022
@@ -11232,7 +11134,6 @@ lifecycle[004].digest	99aa06d3014798d86001c324468d497f
 lifecycle[004].wire	8=FIX.4.4|
 lifecycle[004].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[004].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[004].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[004].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[004].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[004].field.hashcode	9188214997816454022
@@ -11246,7 +11147,6 @@ lifecycle[005].digest	99aa06d3014798d86001c324468d497f
 lifecycle[005].wire	8=FIX.4.4|
 lifecycle[005].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[005].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[005].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[005].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[005].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[005].field.hashcode	9188214997816454022
@@ -11260,7 +11160,6 @@ lifecycle[006].digest	99aa06d3014798d86001c324468d497f
 lifecycle[006].wire	8=FIX.4.4|
 lifecycle[006].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[006].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[006].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[006].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[006].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[006].field.hashcode	9188214997816454022
@@ -11274,7 +11173,6 @@ lifecycle[007].digest	99aa06d3014798d86001c324468d497f
 lifecycle[007].wire	8=FIX.4.4|
 lifecycle[007].field.unix	"2024-01-02T10:15:30.000000000Z"
 lifecycle[007].field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lifecycle[007].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[007].field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[007].field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 lifecycle[007].field.hashcode	9188214997816454022
@@ -11290,7 +11188,6 @@ lifecycle[008].entry[0]	t9 bodylength=62
 lifecycle[008].entry[1]	t10 checksum=071
 lifecycle[008].field.unix	"2026-08-14T01:03:16.000000000Z"
 lifecycle[008].field.creatunix	"2026-08-14T01:03:16.000000000Z"
-lifecycle[008].field.recordedat	"2026-08-14T01:03:16.000000000Z"
 lifecycle[008].field.sendingtime	"2026-08-14T01:03:16.000000000Z"
 lifecycle[008].field.curruuid	"019ffdcb-7020-7000-8f97-3424ddae439c"
 lifecycle[008].field.crossuuid	"019ffdcb-7020-7000-8f97-3424ddae439c"
@@ -11340,7 +11237,6 @@ lifecycle[009].entry[21]	t2897 currencycodesource=6
 lifecycle[009].entry[22]	t470 countryofissue=TW
 lifecycle[009].field.unix	"2026-08-14T01:03:17.000000000Z"
 lifecycle[009].field.creatunix	"2026-08-14T01:03:17.000000000Z"
-lifecycle[009].field.recordedat	"2026-08-14T01:03:17.000000000Z"
 lifecycle[009].field.sendingtime	"2026-08-14T01:03:17.000000000Z"
 lifecycle[009].field.transacttime	"2026-08-14T01:03:17.000000000Z"
 lifecycle[009].field.curruuid	"019ffdcb-7408-7000-ada7-656f3d45677e"
@@ -11420,7 +11316,6 @@ lifecycle[010].entry[18]	t2897 currencycodesource=6
 lifecycle[010].field.unix	"2026-08-14T01:03:17.000000000Z"
 lifecycle[010].field.creatunix	"2026-08-14T01:03:17.000000000Z"
 lifecycle[010].field.prevunix	"2026-08-14T01:03:17.000000000Z"
-lifecycle[010].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[010].field.transacttime	"2026-08-14T01:03:17.000000000Z"
 lifecycle[010].field.curruuid	"019ffdcb-7408-7000-bce6-6bd1d3f69a0e"
 lifecycle[010].field.crossuuid	"00000000-0000-8000-9fb1-f0b0569d36fc"
@@ -11503,7 +11398,6 @@ lifecycle[011].entry[22]	t2897 currencycodesource=6
 lifecycle[011].field.unix	"2026-08-14T01:03:17.000000000Z"
 lifecycle[011].field.creatunix	"2026-08-14T01:03:17.000000000Z"
 lifecycle[011].field.prevunix	"2026-08-14T01:03:17.000000000Z"
-lifecycle[011].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[011].field.transacttime	"2026-08-14T01:03:17.000000000Z"
 lifecycle[011].field.curruuid	"019ffdcb-7408-7000-8172-60791ecfb76a"
 lifecycle[011].field.crossuuid	"00000000-0000-8000-9fb1-f0b0569d36fc"
@@ -11668,7 +11562,6 @@ lifecycle[012].entry[66]	t2897 currencycodesource=6
 lifecycle[012].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[012].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[012].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[012].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[012].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[012].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[012].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -11840,7 +11733,6 @@ lifecycle[013].entry[66]	t2897 currencycodesource=6
 lifecycle[013].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[013].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[013].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[013].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[013].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[013].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[013].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12015,7 +11907,6 @@ lifecycle[014].entry[70]	t2897 currencycodesource=6
 lifecycle[014].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[014].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[014].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[014].field.recordedat	"2026-08-14T12:46:39.000000000Z"
 lifecycle[014].field.sendingtime	"2026-08-14T12:46:39.000000000Z"
 lifecycle[014].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[014].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -12170,7 +12061,6 @@ lifecycle[015].entry[47]	t2897 currencycodesource=6
 lifecycle[015].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[015].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[015].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[015].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[015].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[015].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[015].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12326,7 +12216,6 @@ lifecycle[016].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[016].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[016].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[016].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[016].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[016].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[016].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[016].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12488,7 +12377,6 @@ lifecycle[017].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[017].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[017].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[017].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[017].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[017].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[017].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[017].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12650,7 +12538,6 @@ lifecycle[018].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[018].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[018].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[018].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[018].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[018].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[018].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[018].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12807,7 +12694,6 @@ lifecycle[019].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[019].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[019].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[019].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[019].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[019].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[019].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[019].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -12964,7 +12850,6 @@ lifecycle[020].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[020].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[020].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[020].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[020].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[020].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[020].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[020].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13121,7 +13006,6 @@ lifecycle[021].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[021].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[021].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[021].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[021].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[021].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[021].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[021].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13278,7 +13162,6 @@ lifecycle[022].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[022].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[022].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[022].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[022].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[022].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[022].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[022].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13435,7 +13318,6 @@ lifecycle[023].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[023].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[023].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[023].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[023].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[023].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[023].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[023].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13592,7 +13474,6 @@ lifecycle[024].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[024].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[024].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[024].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[024].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[024].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[024].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[024].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13751,7 +13632,6 @@ lifecycle[025].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[025].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[025].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[025].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[025].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[025].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[025].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[025].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -13889,7 +13769,6 @@ lifecycle[026].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[026].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[026].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[026].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[026].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[026].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[026].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[026].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14034,7 +13913,6 @@ lifecycle[027].entry[57]	t2897 currencycodesource=6
 lifecycle[027].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[027].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[027].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[027].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[027].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[027].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[027].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14176,7 +14054,6 @@ lifecycle[028].entry[57]	t2897 currencycodesource=6
 lifecycle[028].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[028].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[028].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[028].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[028].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[028].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[028].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14333,7 +14210,6 @@ lifecycle[029].entry[61]	t2897 currencycodesource=6
 lifecycle[029].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[029].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[029].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[029].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[029].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[029].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[029].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14490,7 +14366,6 @@ lifecycle[030].entry[61]	t2897 currencycodesource=6
 lifecycle[030].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[030].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[030].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[030].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[030].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[030].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[030].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14651,7 +14526,6 @@ lifecycle[031].entry[62]	t2897 currencycodesource=6
 lifecycle[031].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[031].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[031].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[031].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[031].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[031].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[031].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14814,7 +14688,6 @@ lifecycle[032].entry[62]	t2897 currencycodesource=6
 lifecycle[032].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[032].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[032].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[032].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[032].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[032].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[032].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -14977,7 +14850,6 @@ lifecycle[033].entry[62]	t2897 currencycodesource=6
 lifecycle[033].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[033].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[033].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[033].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[033].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[033].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[033].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15141,7 +15013,6 @@ lifecycle[034].entry[63]	t2897 currencycodesource=6
 lifecycle[034].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[034].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[034].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[034].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[034].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[034].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[034].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15305,7 +15176,6 @@ lifecycle[035].entry[63]	t2897 currencycodesource=6
 lifecycle[035].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[035].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[035].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[035].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[035].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[035].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[035].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15472,7 +15342,6 @@ lifecycle[036].entry[65]	t2897 currencycodesource=6
 lifecycle[036].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[036].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[036].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[036].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[036].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[036].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[036].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15638,7 +15507,6 @@ lifecycle[037].entry[65]	t2897 currencycodesource=6
 lifecycle[037].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[037].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[037].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[037].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[037].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[037].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[037].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15788,7 +15656,6 @@ lifecycle[038].entry[47]	t2897 currencycodesource=6
 lifecycle[038].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[038].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[038].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[038].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[038].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[038].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[038].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -15944,7 +15811,6 @@ lifecycle[039].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[039].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[039].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[039].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[039].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[039].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[039].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[039].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16106,7 +15972,6 @@ lifecycle[040].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[040].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[040].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[040].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[040].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[040].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[040].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[040].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16263,7 +16128,6 @@ lifecycle[041].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[041].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[041].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[041].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[041].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[041].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[041].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[041].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16420,7 +16284,6 @@ lifecycle[042].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[042].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[042].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[042].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[042].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[042].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[042].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[042].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16577,7 +16440,6 @@ lifecycle[043].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[043].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[043].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[043].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[043].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[043].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[043].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[043].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16734,7 +16596,6 @@ lifecycle[044].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[044].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[044].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[044].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[044].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[044].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[044].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[044].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -16891,7 +16752,6 @@ lifecycle[045].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[045].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[045].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[045].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[045].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[045].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[045].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[045].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17048,7 +16908,6 @@ lifecycle[046].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[046].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[046].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[046].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[046].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[046].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[046].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[046].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17207,7 +17066,6 @@ lifecycle[047].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[047].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[047].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[047].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[047].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[047].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[047].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[047].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17345,7 +17203,6 @@ lifecycle[048].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[048].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[048].field.prevunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[048].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[048].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[048].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[048].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[048].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17490,7 +17347,6 @@ lifecycle[049].entry[57]	t2897 currencycodesource=6
 lifecycle[049].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[049].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[049].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[049].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[049].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[049].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[049].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17632,7 +17488,6 @@ lifecycle[050].entry[57]	t2897 currencycodesource=6
 lifecycle[050].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[050].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[050].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[050].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[050].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[050].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[050].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17789,7 +17644,6 @@ lifecycle[051].entry[61]	t2897 currencycodesource=6
 lifecycle[051].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[051].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[051].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[051].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[051].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[051].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[051].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -17946,7 +17800,6 @@ lifecycle[052].entry[61]	t2897 currencycodesource=6
 lifecycle[052].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[052].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[052].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[052].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[052].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[052].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[052].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18107,7 +17960,6 @@ lifecycle[053].entry[62]	t2897 currencycodesource=6
 lifecycle[053].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[053].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[053].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[053].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[053].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[053].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[053].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18270,7 +18122,6 @@ lifecycle[054].entry[62]	t2897 currencycodesource=6
 lifecycle[054].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[054].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[054].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[054].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[054].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[054].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[054].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18433,7 +18284,6 @@ lifecycle[055].entry[62]	t2897 currencycodesource=6
 lifecycle[055].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[055].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[055].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[055].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[055].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[055].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[055].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18597,7 +18447,6 @@ lifecycle[056].entry[63]	t2897 currencycodesource=6
 lifecycle[056].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[056].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[056].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[056].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[056].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[056].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[056].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18761,7 +18610,6 @@ lifecycle[057].entry[63]	t2897 currencycodesource=6
 lifecycle[057].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[057].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[057].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[057].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[057].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[057].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[057].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -18928,7 +18776,6 @@ lifecycle[058].entry[65]	t2897 currencycodesource=6
 lifecycle[058].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[058].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[058].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[058].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[058].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[058].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[058].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -19094,7 +18941,6 @@ lifecycle[059].entry[65]	t2897 currencycodesource=6
 lifecycle[059].field.unix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[059].field.creatunix	"2026-08-14T12:46:39.743000000Z"
 lifecycle[059].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[059].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[059].field.transacttime	"2026-08-14T12:46:39.743000000Z"
 lifecycle[059].field.tradedate	"2026-08-14T00:00:00.000000000"
 lifecycle[059].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -19239,7 +19085,6 @@ lifecycle[060].entry[56]	t470 countryofissue=CH
 lifecycle[060].field.unix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[060].field.creatunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[060].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[060].field.recordedat	"2026-08-14T12:46:39.761000000Z"
 lifecycle[060].field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 lifecycle[060].field.transacttime	"2026-08-14T12:46:39.743016000Z"
 lifecycle[060].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -19382,7 +19227,6 @@ lifecycle[061].field.unix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[061].field.creatunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[061].field.prevunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[061].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[061].field.recordedat	"2026-08-14T12:46:39.762000000Z"
 lifecycle[061].field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 lifecycle[061].field.transacttime	"2026-08-14T12:46:39.743016000Z"
 lifecycle[061].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -19532,7 +19376,6 @@ lifecycle[062].field.unix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[062].field.creatunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[062].field.prevunix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[062].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[062].field.recordedat	"2026-08-14T12:46:39.762000000Z"
 lifecycle[062].field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 lifecycle[062].field.transacttime	"2026-08-14T12:46:39.743016000Z"
 lifecycle[062].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -19624,7 +19467,6 @@ lifecycle[063].entry[15]	t2897 currencycodesource=6
 lifecycle[063].entry[16]	t470 countryofissue=CH
 lifecycle[063].field.unix	"2026-08-14T12:46:39.743016000Z"
 lifecycle[063].field.creatunix	"2026-08-14T12:46:39.743016000Z"
-lifecycle[063].field.recordedat	"2026-08-14T12:46:39.761000000Z"
 lifecycle[063].field.sendingtime	"2026-08-14T12:46:39.761000000Z"
 lifecycle[063].field.transacttime	"2026-08-14T12:46:39.743016000Z"
 lifecycle[063].field.curruuid	"01a0004f-6a7f-7041-8889-21c28410701e"
@@ -19705,7 +19547,6 @@ lifecycle[064].entry[27]	t2897 currencycodesource=6
 lifecycle[064].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[064].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[064].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[064].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[064].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[064].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[064].field.curruuid	"01a0004f-6a8d-7000-ba03-799a688e0f09"
@@ -19853,7 +19694,6 @@ lifecycle[065].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[065].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[065].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[065].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[065].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[065].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[065].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[065].field.curruuid	"01a0004f-6a8d-7000-8ffe-4c422eed06c1"
@@ -20010,7 +19850,6 @@ lifecycle[066].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[066].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[066].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[066].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[066].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[066].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[066].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[066].field.curruuid	"01a0004f-6a8d-7000-8ffe-4c422eed06c1"
@@ -20167,7 +20006,6 @@ lifecycle[067].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[067].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[067].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[067].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[067].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[067].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[067].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[067].field.curruuid	"01a0004f-6a8d-7000-8ffe-4c422eed06c1"
@@ -20324,7 +20162,6 @@ lifecycle[068].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[068].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[068].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[068].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[068].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[068].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[068].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[068].field.curruuid	"01a0004f-6a8d-7000-8ffe-4c422eed06c1"
@@ -20482,7 +20319,6 @@ lifecycle[069].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[069].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[069].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[069].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[069].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[069].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[069].field.expiretime	"2026-08-14T16:25:00.000000000Z"
 lifecycle[069].field.curruuid	"01a0004f-6a8d-7000-8ffe-4c422eed06c1"
@@ -20643,7 +20479,6 @@ lifecycle[070].field.unix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[070].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[070].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[070].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[070].field.recordedat	"2026-08-14T12:46:39.000000000Z"
 lifecycle[070].field.sendingtime	"2026-08-14T12:46:39.000000000Z"
 lifecycle[070].field.transacttime	"2026-08-14T12:46:39.757000000Z"
 lifecycle[070].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -20750,7 +20585,6 @@ lifecycle[071].field.unix	"2026-08-14T12:46:39.757079000Z"
 lifecycle[071].field.creatunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[071].field.prevunix	"2026-08-14T12:46:39.757000000Z"
 lifecycle[071].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[071].field.recordedat	"2026-08-14T12:46:39.764616000Z"
 lifecycle[071].field.sendingtime	"2026-08-14T12:46:39.764616000Z"
 lifecycle[071].field.transacttime	"2026-08-14T12:46:39.757079000Z"
 lifecycle[071].field.expiretime	"2026-08-14T16:25:00.000000000Z"
@@ -20899,7 +20733,6 @@ lifecycle[072].entry[59]	t470 countryofissue=CH
 lifecycle[072].field.unix	"2026-08-14T12:46:39.762000000Z"
 lifecycle[072].field.creatunix	"2026-08-14T12:46:39.762000000Z"
 lifecycle[072].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[072].field.recordedat	"2026-08-14T12:46:39.762000000Z"
 lifecycle[072].field.sendingtime	"2026-08-14T12:46:39.762000000Z"
 lifecycle[072].field.transacttime	"2026-08-14T00:00:00.000000000Z"
 lifecycle[072].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -20971,7 +20804,6 @@ lifecycle[073].entry[4]	t448 partyid=TRADER2
 lifecycle[073].entry[5]	t452 partyrole=11
 lifecycle[073].field.unix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[073].field.creatunix	"2026-08-14T12:46:40.001000000Z"
-lifecycle[073].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[073].field.transacttime	"2026-08-14T12:46:40.001000000Z"
 lifecycle[073].field.curruuid	"01a0004f-6b81-7000-9e89-590a03687131"
 lifecycle[073].field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -21010,7 +20842,6 @@ lifecycle[074].entry[5.0.2]	t452 partyrole=11
 lifecycle[074].field.unix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[074].field.creatunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[074].field.prevunix	"2026-08-14T12:46:40.001000000Z"
-lifecycle[074].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[074].field.transacttime	"2026-08-14T12:46:40.001000000Z"
 lifecycle[074].field.curruuid	"01a0004f-6b81-7000-84e4-07f2d0635f6b"
 lifecycle[074].field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -21050,7 +20881,6 @@ lifecycle[075].entry[0]	t9 bodylength=61
 lifecycle[075].entry[1]	t10 checksum=173
 lifecycle[075].field.unix	"2026-08-14T12:46:40.004000000Z"
 lifecycle[075].field.creatunix	"2026-08-14T12:46:40.004000000Z"
-lifecycle[075].field.recordedat	"2026-08-14T12:46:40.004000000Z"
 lifecycle[075].field.sendingtime	"2026-08-14T12:46:40.004000000Z"
 lifecycle[075].field.curruuid	"01a0004f-6b84-7000-b840-5261279d04ce"
 lifecycle[075].field.crossuuid	"01a0004f-6b84-7000-b840-5261279d04ce"
@@ -21074,7 +20904,6 @@ lifecycle[076].entry[1]	t112 testreqid=PING
 lifecycle[076].entry[2]	t10 checksum=067
 lifecycle[076].field.unix	"2026-08-14T12:46:40.009000000Z"
 lifecycle[076].field.creatunix	"2026-08-14T12:46:40.009000000Z"
-lifecycle[076].field.recordedat	"2026-08-14T12:46:40.009000000Z"
 lifecycle[076].field.sendingtime	"2026-08-14T12:46:40.009000000Z"
 lifecycle[076].field.curruuid	"01a0004f-6b89-7000-9602-43bec2917ef4"
 lifecycle[076].field.crossuuid	"01a0004f-6b89-7000-9602-43bec2917ef4"
@@ -21102,7 +20931,6 @@ lifecycle[077].entry[5]	t553 username=bridge
 lifecycle[077].entry[6]	t10 checksum=042
 lifecycle[077].field.unix	"2026-08-14T12:46:40.012000000Z"
 lifecycle[077].field.creatunix	"2026-08-14T12:46:40.012000000Z"
-lifecycle[077].field.recordedat	"2026-08-14T12:46:40.012000000Z"
 lifecycle[077].field.sendingtime	"2026-08-14T12:46:40.012000000Z"
 lifecycle[077].field.curruuid	"01a0004f-6b8c-7000-ab0a-01a8eceb3c70"
 lifecycle[077].field.crossuuid	"01a0004f-6b8c-7000-ab0a-01a8eceb3c70"
@@ -21131,7 +20959,6 @@ lifecycle[078].entry[4]	t10 checksum=115
 lifecycle[078].field.unix	"2026-08-14T12:46:40.020000000Z"
 lifecycle[078].field.creatunix	"2026-08-14T12:46:40.001000000Z"
 lifecycle[078].field.prevunix	"2026-08-14T12:46:40.001000000Z"
-lifecycle[078].field.recordedat	"2026-08-14T12:46:40.020000000Z"
 lifecycle[078].field.sendingtime	"2026-08-14T12:46:40.020000000Z"
 lifecycle[078].field.curruuid	"01a0004f-6b94-7000-be0f-272cf2ef9b6f"
 lifecycle[078].field.crossuuid	"00000000-0000-8000-bce6-bddf3b3cc016"
@@ -21190,7 +21017,6 @@ lifecycle[079].entry[17]	t2897 currencycodesource=6
 lifecycle[079].entry[18]	t470 countryofissue=CH
 lifecycle[079].field.unix	"2026-08-14T12:46:41.118000000Z"
 lifecycle[079].field.creatunix	"2026-08-14T12:46:41.118000000Z"
-lifecycle[079].field.recordedat	"2026-08-14T12:46:41.000000000Z"
 lifecycle[079].field.sendingtime	"2026-08-14T12:46:41.000000000Z"
 lifecycle[079].field.transacttime	"2026-08-14T12:46:41.118000000Z"
 lifecycle[079].field.curruuid	"01a0004f-6fde-7000-b131-7eaa844d6d66"
@@ -21345,7 +21171,6 @@ lifecycle[080].entry[62]	t2897 currencycodesource=6
 lifecycle[080].field.unix	"2026-08-14T12:46:58.453000000Z"
 lifecycle[080].field.creatunix	"2026-08-14T12:46:58.453000000Z"
 lifecycle[080].field.expirunix	"2026-08-14T16:25:00.000000000Z"
-lifecycle[080].field.recordedat	"2026-08-14T12:46:58.000000000Z"
 lifecycle[080].field.sendingtime	"2026-08-14T12:46:58.000000000Z"
 lifecycle[080].field.transacttime	"2026-08-14T12:46:58.453000000Z"
 lifecycle[080].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -21554,7 +21379,6 @@ lifecycle[081].entry[36]	t48 securityid=EZN11TD1F7K3
 lifecycle[081].entry[37]	t22 securityidsource=4
 lifecycle[081].field.unix	"2026-08-14T14:52:55.000000000Z"
 lifecycle[081].field.creatunix	"2026-08-14T14:52:55.000000000Z"
-lifecycle[081].field.recordedat	"2026-08-14T14:52:55.000000000Z"
 lifecycle[081].field.sendingtime	"2026-08-14T14:52:55.000000000Z"
 lifecycle[081].field.transacttime	"2026-08-14T14:52:55.000000000Z"
 lifecycle[081].field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -21620,7 +21444,6 @@ lifecycle[082].entry[15]	t460 product=5
 lifecycle[082].entry[16]	t470 countryofissue=TW
 lifecycle[082].field.unix	"2026-08-14T21:59:46.000000000Z"
 lifecycle[082].field.creatunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[082].field.recordedat	"2026-08-14T21:59:46.000000000Z"
 lifecycle[082].field.sendingtime	"2026-08-14T21:59:46.000000000Z"
 lifecycle[082].field.transacttime	"2026-08-14T21:59:46.000000000Z"
 lifecycle[082].field.curruuid	"01a00249-cc50-7000-892a-08050a576907"
@@ -21671,7 +21494,6 @@ lifecycle[083].entry[8]	t10 checksum=113
 lifecycle[083].field.unix	"2026-08-14T21:59:46.000000000Z"
 lifecycle[083].field.creatunix	"2026-08-14T21:59:46.000000000Z"
 lifecycle[083].field.prevunix	"2026-08-14T21:59:46.000000000Z"
-lifecycle[083].field.recordedat	"2026-08-14T21:59:47.000000000Z"
 lifecycle[083].field.sendingtime	"2026-08-14T21:59:47.000000000Z"
 lifecycle[083].field.transacttime	"2026-08-14T21:59:46.000000000Z"
 lifecycle[083].field.curruuid	"01a00249-cc50-7000-9839-eb38c7eb9b58"
@@ -21719,7 +21541,6 @@ lifecycle[084].entry[7]	t60 transacttime=20260814-21:59:46.479
 lifecycle[084].entry[8]	t0 ulfromsessionname=Autex_FIX42_BuySide
 lifecycle[084].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[084].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[084].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[084].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[084].field.curruuid	"01a00249-ce2f-7000-9ec0-f8e36f5ea850"
 lifecycle[084].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -21753,7 +21574,6 @@ lifecycle[085].entry[8]	t60 transacttime=20260814-21:59:46.479
 lifecycle[085].entry[9]	t0 ulfromsessionname=Autex_FIX42_BuySide
 lifecycle[085].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[085].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[085].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[085].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[085].field.curruuid	"01a00249-ce2f-7000-afda-69ac201794d4"
 lifecycle[085].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -21787,7 +21607,6 @@ lifecycle[086].entry[8]	t60 transacttime=20260814-21:59:46.479
 lifecycle[086].entry[9]	t0 ulfromsessionname=Autex_FIX42_BuySide
 lifecycle[086].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[086].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[086].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[086].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[086].field.curruuid	"01a00249-ce2f-7000-afda-69ac201794d4"
 lifecycle[086].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -21838,7 +21657,6 @@ lifecycle[087].entry[9]	t60 transacttime=20260814-21:59:46.479
 lifecycle[087].entry[10]	t0 ulfromsessionname=Autex_FIX42_BuySide
 lifecycle[087].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[087].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[087].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[087].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[087].field.curruuid	"01a00249-ce2f-7000-9812-8de3726fee63"
 lifecycle[087].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -21891,7 +21709,6 @@ lifecycle[088].entry[9]	t60 transacttime=20260814-21:59:46.479
 lifecycle[088].entry[10]	t0 ulfromsessionname=Autex_FIX42_BuySide
 lifecycle[088].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[088].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[088].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[088].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[088].field.curruuid	"01a00249-ce2f-7000-9812-8de3726fee63"
 lifecycle[088].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -22015,7 +21832,6 @@ lifecycle[089].entry[36]	t470 countryofissue=TW
 lifecycle[089].entry[37]	t2897 currencycodesource=6
 lifecycle[089].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[089].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[089].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[089].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[089].field.curruuid	"01a00249-ce2f-7000-a3b8-fddb0f731eff"
 lifecycle[089].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -22164,7 +21980,6 @@ lifecycle[090].entry[36]	t470 countryofissue=TW
 lifecycle[090].entry[37]	t2897 currencycodesource=6
 lifecycle[090].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[090].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[090].field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lifecycle[090].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[090].field.curruuid	"01a00249-ce2f-7000-a3b8-fddb0f731eff"
 lifecycle[090].field.crossuuid	"00000000-0000-8000-b496-4535ff69b53f"
@@ -22316,7 +22131,6 @@ lifecycle[091].entry[40]	t470 countryofissue=TW
 lifecycle[091].entry[41]	t2897 currencycodesource=6
 lifecycle[091].field.unix	"2026-08-14T21:59:46.479000000Z"
 lifecycle[091].field.creatunix	"2026-08-14T21:59:46.479000000Z"
-lifecycle[091].field.recordedat	"2026-08-14T21:59:46.000000000Z"
 lifecycle[091].field.sendingtime	"2026-08-14T21:59:46.000000000Z"
 lifecycle[091].field.transacttime	"2026-08-14T21:59:46.479000000Z"
 lifecycle[091].field.curruuid	"01a00249-ce2f-7000-814b-ce11a14807c5"
@@ -22375,7 +22189,6 @@ lifecycle[092].entry[0]	t9 bodylength=62
 lifecycle[092].entry[1]	t10 checksum=033
 lifecycle[092].field.unix	"2026-08-14T21:59:48.512549000Z"
 lifecycle[092].field.creatunix	"2026-08-14T21:59:48.512549000Z"
-lifecycle[092].field.recordedat	"2026-08-14T21:59:48.512549000Z"
 lifecycle[092].field.sendingtime	"2026-08-14T21:59:48.512549000Z"
 lifecycle[092].field.curruuid	"01a00249-d620-78c8-84b8-c1981aac7d71"
 lifecycle[092].field.crossuuid	"01a00249-d620-78c8-84b8-c1981aac7d71"
@@ -22397,7 +22210,6 @@ lifecycle[093].entry[0]	t9 bodylength=72
 lifecycle[093].entry[1]	t10 checksum=122
 lifecycle[093].field.unix	"2026-08-14T21:59:49.825000000Z"
 lifecycle[093].field.creatunix	"2026-08-14T21:59:49.825000000Z"
-lifecycle[093].field.recordedat	"2026-08-14T21:59:49.825000000Z"
 lifecycle[093].field.sendingtime	"2026-08-14T21:59:49.825000000Z"
 lifecycle[093].field.curruuid	"01a00249-db41-7000-904a-08369830f0f3"
 lifecycle[093].field.crossuuid	"01a00249-db41-7000-904a-08369830f0f3"
@@ -22423,7 +22235,6 @@ shapes[000]:0.entry[2]	t55 symbol=AAPL
 shapes[000]:0.entry[3]	t10 checksum=203
 shapes[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[000]:0.field.curruuid	"018cc9ab-d1d0-7000-97e7-4573601b8c38"
 shapes[000]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
 shapes[000]:0.field.crosscode	"ORDER-1"
@@ -22453,7 +22264,6 @@ shapes[001]:0.entry[3]	t10 checksum=118
 shapes[001]:0.entry[4]	t381 grosstradeamt=637.5
 shapes[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[001]:0.field.curruuid	"018cc9ab-d1d0-7000-a9cc-5df5be298a26"
 shapes[001]:0.field.crossuuid	"00000000-0000-8000-ba5c-93b624fdfa5c"
 shapes[001]:0.field.crosscode	"O9"
@@ -22480,7 +22290,6 @@ shapes[002]:0.wire	8=FIX.4.4|35=8|59=0|10=1|
 shapes[002]:0.entry[0]	t10 checksum=1
 shapes[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9c95-5d4f0417cc70"
 shapes[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9c95-5d4f0417cc70"
 shapes[002]:0.field.hashcode	6671341016971725936
@@ -22500,7 +22309,6 @@ shapes[003]:0.entry[0]	t55 symbol=TTF
 shapes[003]:0.entry[1]	t10 checksum=044
 shapes[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[003]:0.field.curruuid	"018cc9ab-d1d0-7000-8bd2-5bd340c01464"
 shapes[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-8bd2-5bd340c01464"
 shapes[003]:0.field.hashcode	851844242409002084
@@ -22523,7 +22331,6 @@ shapes[004]:0.entry[1]	t55 symbol=AAPL
 shapes[004]:0.entry[2]	t10 checksum=000
 shapes[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[004]:0.field.curruuid	"018cc9ab-d1d0-7000-aac1-c497f88679e1"
 shapes[004]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
 shapes[004]:0.field.crosscode	"ORDER-1"
@@ -22547,7 +22354,6 @@ shapes[005]:0.wire	8=FIX.4.4|54=1|55=TTF|
 shapes[005]:0.entry[0]	t55 symbol=TTF
 shapes[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[005]:0.field.curruuid	"018cc9ab-d1d0-7000-9189-c48cdcbc8305"
 shapes[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-9189-c48cdcbc8305"
 shapes[005]:0.field.hashcode	5875443298159330053
@@ -22567,7 +22373,6 @@ shapes[006]:0.entry[1]	t11 clordid=ORDER-1
 shapes[006]:0.entry[2]	t55 symbol=AAPL
 shapes[006]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[006]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[006]:0.field.curruuid	"018cc9ab-d1d0-7000-adfd-5614a53adf38"
 shapes[006]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
 shapes[006]:0.field.crosscode	"ORDER-1"
@@ -22595,7 +22400,6 @@ shapes[009]:0.wire	8=FIX.4.4|11=XML-1|
 shapes[009]:0.entry[0]	t11 clordid=XML-1
 shapes[009]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[009]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[009]:0.field.curruuid	"018cc9ab-d1d0-7000-a219-ee9b2befbc61"
 shapes[009]:0.field.crossuuid	"00000000-0000-8000-8a53-2bb5fb637a04"
 shapes[009]:0.field.crosscode	"XML-1"
@@ -22612,7 +22416,6 @@ shapes[010]:0.wire	8=FIX.4.4|17=E1|
 shapes[010]:0.entry[0]	t17 execid=E1
 shapes[010]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 shapes[010]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-shapes[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 shapes[010]:0.field.curruuid	"018cc9ab-d1d0-7000-a7e1-d1ad8ca8b876"
 shapes[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-a7e1-d1ad8ca8b876"
 shapes[010]:0.field.hashcode	16708866635840665718
@@ -22656,7 +22459,6 @@ frames[000]:0.entry[1]	t55 symbol=AAPL
 frames[000]:0.entry[2]	t10 checksum=0
 frames[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[000]:0.field.curruuid	"018cc9ab-d1d0-7000-8ec1-1e83b45ae7a9"
 frames[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-8ec1-1e83b45ae7a9"
 frames[000]:0.field.hashcode	14898222593333716905
@@ -22682,7 +22484,6 @@ frames[001]:0.entry[0.1]	t0 party
 frames[001]:0.entry[0.1.0]	t448 partyid=VENUE
 frames[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[001]:0.field.curruuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 frames[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 frames[001]:0.field.hashcode	16112262951392613404
@@ -22705,7 +22506,6 @@ frames[002]:0.entry[0.1]	t0 party
 frames[002]:0.entry[0.1.0]	t448 partyid=VENUE
 frames[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 frames[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 frames[002]:0.field.hashcode	16112262951392613404
@@ -22728,7 +22528,6 @@ frames[003]:0.entry[0.1]	t0 linesoftextcomponent
 frames[003]:0.entry[0.1.0]	t58 text=b
 frames[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[003]:0.field.curruuid	"018cc9ab-d1d0-7000-9f09-812516a14ef7"
 frames[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f09-812516a14ef7"
 frames[003]:0.field.hashcode	11459832723114381047
@@ -22749,7 +22548,6 @@ frames[004]:0.entry[1.0.1]	t80 allocqty=5
 frames[004]:0.entry[2]	t10 checksum=0
 frames[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[004]:0.field.curruuid	"018cc9ab-d1d0-7000-b3fe-debe50791fc2"
 frames[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-b3fe-debe50791fc2"
 frames[004]:0.field.hashcode	17581734904276262850
@@ -22779,7 +22577,6 @@ frames[005]:0.entry[1.0.1.0.2.0.1]	t803 partysubidtype=1
 frames[005]:0.entry[2]	t10 checksum=0
 frames[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[005]:0.field.curruuid	"018cc9ab-d1d0-7000-ab62-7fdfa98ad8a3"
 frames[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-ab62-7fdfa98ad8a3"
 frames[005]:0.field.hashcode	7737887708374816931
@@ -22798,7 +22595,6 @@ frames[006]:0.entry[0]	t55 symbol=AAPL
 frames[006]:0.entry[1]	t10 checksum=0
 frames[006]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[006]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[006]:0.field.curruuid	"018cc9ab-d1d0-7000-8d5b-f9a60e8e8b41"
 frames[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-8d5b-f9a60e8e8b41"
 frames[006]:0.field.hashcode	10186009473832618817
@@ -22821,7 +22617,6 @@ frames[007]:0.entry[1]	t0 9999=y
 frames[007]:0.entry[2]	t10 checksum=0
 frames[007]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[007]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[007]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[007]:0.field.curruuid	"018cc9ab-d1d0-7000-94a6-770622dc72cd"
 frames[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-94a6-770622dc72cd"
 frames[007]:0.field.hashcode	1488007595130909389
@@ -22841,7 +22636,6 @@ frames[008]:0.entry[1]	t55 symbol=AAPL
 frames[008]:0.entry[2]	t10 checksum=000
 frames[008]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[008]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[008]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[008]:0.field.curruuid	"018cc9ab-d1d0-7000-af25-2fe1eb5688e4"
 frames[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-af25-2fe1eb5688e4"
 frames[008]:0.field.hashcode	12620546178138147044
@@ -22862,7 +22656,6 @@ frames[009]:0.wire	8=FIX.4.4|35=D|59=0|55=AAPL|
 frames[009]:0.entry[0]	t55 symbol=AAPL
 frames[009]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[009]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[009]:0.field.curruuid	"018cc9ab-d1d0-7000-a2ea-8de2d32fefbd"
 frames[009]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2ea-8de2d32fefbd"
 frames[009]:0.field.hashcode	16351037402467266493
@@ -22883,7 +22676,6 @@ frames[010]:0.entry[0.0]	t448 partyid=first
 frames[010]:0.entry[0.1]	t448 partyid=third
 frames[010]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[010]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[010]:0.field.curruuid	"018cc9ab-d1d0-7000-ad89-874b5307799d"
 frames[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-ad89-874b5307799d"
 frames[010]:0.field.hashcode	7892988579528800669
@@ -22900,7 +22692,6 @@ frames[011]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 frames[011]:0.entry[0]	t10 checksum=0
 frames[011]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[011]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[011]:0.field.curruuid	"018cc9ab-d1d0-7000-9288-8fcde79cc69c"
 frames[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-9288-8fcde79cc69c"
 frames[011]:0.field.hashcode	1335475404032231068
@@ -22919,7 +22710,6 @@ frames[012]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 frames[012]:0.entry[0]	t10 checksum=0
 frames[012]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[012]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[012]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[012]:0.field.curruuid	"018cc9ab-d1d0-7000-92e8-49321298167c"
 frames[012]:0.field.crossuuid	"018cc9ab-d1d0-7000-92e8-49321298167c"
 frames[012]:0.field.hashcode	15197477421970888316
@@ -22937,7 +22727,6 @@ frames[013]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[013]:0.entry[0]	t37 orderid=123
 frames[013]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[013]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[013]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[013]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[013]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[013]:0.field.crosscode	"123"
@@ -22956,7 +22745,6 @@ frames[014]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[014]:0.entry[0]	t37 orderid=123
 frames[014]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[014]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[014]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[014]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[014]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[014]:0.field.crosscode	"123"
@@ -22975,7 +22763,6 @@ frames[015]:0.wire	8=FIX.4.4|35=D|59=0|37=345|
 frames[015]:0.entry[0]	t37 orderid=345
 frames[015]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[015]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[015]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[015]:0.field.curruuid	"018cc9ab-d1d0-7000-898b-a7f4a67ec31f"
 frames[015]:0.field.crossuuid	"00000000-0000-8000-bff6-9f69b1f83036"
 frames[015]:0.field.crosscode	"345"
@@ -22994,7 +22781,6 @@ frames[016]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[016]:0.entry[0]	t37 orderid=123
 frames[016]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[016]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[016]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[016]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[016]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[016]:0.field.crosscode	"123"
@@ -23013,7 +22799,6 @@ frames[017]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[017]:0.entry[0]	t37 orderid=123
 frames[017]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[017]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[017]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[017]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[017]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[017]:0.field.crosscode	"123"
@@ -23032,7 +22817,6 @@ frames[018]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[018]:0.entry[0]	t37 orderid=123
 frames[018]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[018]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[018]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[018]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[018]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[018]:0.field.crosscode	"123"
@@ -23051,7 +22835,6 @@ frames[019]:0.wire	8=FIX.4.4|35=D|59=0|37=abc|
 frames[019]:0.entry[0]	t37 orderid=abc
 frames[019]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[019]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[019]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[019]:0.field.curruuid	"018cc9ab-d1d0-7000-bf68-d0ccdfb8757c"
 frames[019]:0.field.crossuuid	"00000000-0000-8000-b8af-5f94892f3950"
 frames[019]:0.field.crosscode	"abc"
@@ -23070,7 +22853,6 @@ frames[020]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[020]:0.entry[0]	t37 orderid=123
 frames[020]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[020]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[020]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[020]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[020]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[020]:0.field.crosscode	"123"
@@ -23089,7 +22871,6 @@ frames[021]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[021]:0.entry[0]	t37 orderid=123
 frames[021]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[021]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[021]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[021]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[021]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[021]:0.field.crosscode	"123"
@@ -23108,7 +22889,6 @@ frames[022]:0.wire	8=FIX.4.4|35=D|59=0|#orderid=345|
 frames[022]:0.entry[0]	t0 #orderid=345
 frames[022]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[022]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[022]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[022]:0.field.curruuid	"018cc9ab-d1d0-7000-96e8-0850edd41ecb"
 frames[022]:0.field.crossuuid	"018cc9ab-d1d0-7000-96e8-0850edd41ecb"
 frames[022]:0.field.hashcode	15485636462393958091
@@ -23126,7 +22906,6 @@ frames[023]:0.entry[0]	t37 orderid=123
 frames[023]:0.entry[1]	t10 checksum=0
 frames[023]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[023]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[023]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[023]:0.field.curruuid	"018cc9ab-d1d0-7000-bf97-1a57a7f1f72e"
 frames[023]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[023]:0.field.crosscode	"123"
@@ -23146,7 +22925,6 @@ frames[024]:0.entry[0]	t37 orderid=123
 frames[024]:0.entry[1]	t10 checksum=0
 frames[024]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[024]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[024]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[024]:0.field.curruuid	"018cc9ab-d1d0-7000-bf97-1a57a7f1f72e"
 frames[024]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[024]:0.field.crosscode	"123"
@@ -23165,7 +22943,6 @@ frames[025]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 frames[025]:0.entry[0]	t37 orderid=123
 frames[025]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[025]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[025]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[025]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 frames[025]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 frames[025]:0.field.crosscode	"123"
@@ -23187,7 +22964,6 @@ frames[026]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 frames[026]:0.entry[0.0.1]	t452 partyrole=1
 frames[026]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[026]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[026]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[026]:0.field.curruuid	"018cc9ab-d1d0-7000-9ec1-21bb4554bd97"
 frames[026]:0.field.crossuuid	"018cc9ab-d1d0-7000-9ec1-21bb4554bd97"
 frames[026]:0.field.hashcode	16051147635130940823
@@ -23207,7 +22983,6 @@ frames[027]:0.entry[0.0]	t0 party
 frames[027]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 frames[027]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[027]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[027]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[027]:0.field.curruuid	"018cc9ab-d1d0-7000-b0d0-2eab13cfd7ce"
 frames[027]:0.field.crossuuid	"018cc9ab-d1d0-7000-b0d0-2eab13cfd7ce"
 frames[027]:0.field.hashcode	12740734658137806798
@@ -23227,7 +23002,6 @@ frames[028]:0.entry[0.0.0]	t448 partyid=A
 frames[028]:0.entry[0.0.1]	t452 partyrole=1
 frames[028]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[028]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[028]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[028]:0.field.curruuid	"018cc9ab-d1d0-7000-acd5-3bcc7ee8545c"
 frames[028]:0.field.crossuuid	"018cc9ab-d1d0-7000-acd5-3bcc7ee8545c"
 frames[028]:0.field.hashcode	3230554057196721244
@@ -23254,7 +23028,6 @@ frames[029]:0.entry[0.2.0]	t448 partyid=BARE
 frames[029]:0.entry[0.2.1]	t452 partyrole=1
 frames[029]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[029]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[029]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[029]:0.field.curruuid	"018cc9ab-d1d0-7000-a9f6-efb23d36d58c"
 frames[029]:0.field.crossuuid	"018cc9ab-d1d0-7000-a9f6-efb23d36d58c"
 frames[029]:0.field.hashcode	7635553767063475596
@@ -23279,7 +23052,6 @@ frames[030]:0.entry[0.1.0]	t448 partyid=B
 frames[030]:0.entry[0.1.1]	t452 partyrole=1
 frames[030]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[030]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[030]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[030]:0.field.curruuid	"018cc9ab-d1d0-7000-a834-68a13b8d18ae"
 frames[030]:0.field.crossuuid	"018cc9ab-d1d0-7000-a834-68a13b8d18ae"
 frames[030]:0.field.hashcode	2897055502004197550
@@ -23309,7 +23081,6 @@ frames[031]:0.entry[0.1.1]	t448 partyid=X
 frames[031]:0.entry[0.1.2]	t452 partyrole=1
 frames[031]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[031]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[031]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[031]:0.field.curruuid	"018cc9ab-d1d0-7000-a90d-6e8a209b0051"
 frames[031]:0.field.crossuuid	"018cc9ab-d1d0-7000-a90d-6e8a209b0051"
 frames[031]:0.field.hashcode	12181514106638630993
@@ -23336,7 +23107,6 @@ frames[032]:0.entry[0.0.2]	t448 partyid=X
 frames[032]:0.entry[0.0.3]	t452 partyrole=1
 frames[032]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[032]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[032]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[032]:0.field.curruuid	"018cc9ab-d1d0-7000-a362-2d6ba467102b"
 frames[032]:0.field.crossuuid	"018cc9ab-d1d0-7000-a362-2d6ba467102b"
 frames[032]:0.field.hashcode	16384708334670254123
@@ -23367,7 +23137,6 @@ frames[033]:0.entry[0.0.0.1.1]	t448 partyid=X
 frames[033]:0.entry[0.0.0.1.2]	t452 partyrole=1
 frames[033]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[033]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[033]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[033]:0.field.curruuid	"018cc9ab-d1d0-7000-a1bc-e41072aadd98"
 frames[033]:0.field.crossuuid	"018cc9ab-d1d0-7000-a1bc-e41072aadd98"
 frames[033]:0.field.hashcode	2431068658167635352
@@ -23384,7 +23153,6 @@ frames[034]:0.entry[0]	t9 bodylength=61
 frames[034]:0.entry[1]	t10 checksum=017
 frames[034]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[034]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[034]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[034]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[034]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[034]:0.field.hashcode	7129265649621184724
@@ -23405,7 +23173,6 @@ frames[035]:0.entry[0]	t9 bodylength=61
 frames[035]:0.entry[1]	t10 checksum=017
 frames[035]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[035]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[035]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[035]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[035]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[035]:0.field.hashcode	7129265649621184724
@@ -23426,7 +23193,6 @@ frames[036]:0.entry[0]	t9 bodylength=61
 frames[036]:0.entry[1]	t10 checksum=017
 frames[036]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[036]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[036]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[036]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[036]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[036]:0.field.hashcode	7129265649621184724
@@ -23447,7 +23213,6 @@ frames[037]:0.entry[0]	t9 bodylength=61
 frames[037]:0.entry[1]	t10 checksum=017
 frames[037]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[037]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[037]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[037]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[037]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[037]:0.field.hashcode	7129265649621184724
@@ -23468,7 +23233,6 @@ frames[038]:0.entry[0]	t9 bodylength=61
 frames[038]:0.entry[1]	t10 checksum=017
 frames[038]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[038]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[038]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[038]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[038]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 frames[038]:0.field.hashcode	7129265649621184724
@@ -23492,7 +23256,6 @@ frames[039]:0.entry[3]	t37 orderid=9
 frames[039]:0.entry[4]	t10 checksum=0
 frames[039]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[039]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[039]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[039]:0.field.curruuid	"018cc9ab-d1d0-7000-b751-da7004d52382"
 frames[039]:0.field.crossuuid	"00000000-0000-8000-a835-3a066812b268"
 frames[039]:0.field.crosscode	"9"
@@ -23521,7 +23284,6 @@ frames[040]:0.entry[3]	t150 exectype=D
 frames[040]:0.entry[4]	t10 checksum=0
 frames[040]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[040]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[040]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[040]:0.field.curruuid	"018cc9ab-d1d0-7000-a2a5-4827f71f8018"
 frames[040]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2a5-4827f71f8018"
 frames[040]:0.field.hashcode	11719852941788545048
@@ -23550,7 +23312,6 @@ frames[041]:0.entry[6]	t55 symbol=HOLN
 frames[041]:0.entry[7]	t10 checksum=0
 frames[041]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[041]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[041]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[041]:0.field.curruuid	"018cc9ab-d1d0-7000-95bf-9cfa48fd6745"
 frames[041]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
 frames[041]:0.field.crosscode	"ORDER-1"
@@ -23580,7 +23341,6 @@ frames[042]:0.entry[0]	t11 clordid=A
 frames[042]:0.entry[1]	t10 checksum=001
 frames[042]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[042]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[042]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[042]:0.field.curruuid	"018cc9ab-d1d0-7000-8d11-3911a35ce763"
 frames[042]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 frames[042]:0.field.crosscode	"A"
@@ -23600,7 +23360,6 @@ frames[042]:1.entry[0]	t37 orderid=O
 frames[042]:1.entry[1]	t10 checksum=002
 frames[042]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[042]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[042]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[042]:1.field.curruuid	"018cc9ab-d1d0-7000-ac05-62e034ca14fc"
 frames[042]:1.field.crossuuid	"00000000-0000-8000-b997-5fc288a25a61"
 frames[042]:1.field.crosscode	"O"
@@ -23621,7 +23380,6 @@ frames[043]:0.wire	8=FIX.4.4|35=D|59=0|11=A|
 frames[043]:0.entry[0]	t11 clordid=A
 frames[043]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[043]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[043]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[043]:0.field.curruuid	"018cc9ab-d1d0-7000-a5da-abb388bcec80"
 frames[043]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 frames[043]:0.field.crosscode	"A"
@@ -23640,7 +23398,6 @@ frames[043]:1.entry[0]	t37 orderid=O
 frames[043]:1.entry[1]	t10 checksum=002
 frames[043]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[043]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[043]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[043]:1.field.curruuid	"018cc9ab-d1d0-7000-ac05-62e034ca14fc"
 frames[043]:1.field.crossuuid	"00000000-0000-8000-b997-5fc288a25a61"
 frames[043]:1.field.crosscode	"O"
@@ -23661,7 +23418,6 @@ frames[044]:0.wire	8=FIX.4.4|35=D|59=0|11=A1|
 frames[044]:0.entry[0]	t11 clordid=A1
 frames[044]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[044]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[044]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[044]:0.field.curruuid	"018cc9ab-d1d0-7000-8e59-30a5647767c7"
 frames[044]:0.field.crossuuid	"00000000-0000-8000-af62-adb79d3769fd"
 frames[044]:0.field.crosscode	"A1"
@@ -23680,7 +23436,6 @@ frames[044]:1.entry[0]	t11 clordid=A1
 frames[044]:1.entry[1]	t10 checksum=000
 frames[044]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[044]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[044]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[044]:1.field.curruuid	"018cc9ab-d1d0-7000-b539-e5230c620fd3"
 frames[044]:1.field.crossuuid	"00000000-0000-8000-af62-adb79d3769fd"
 frames[044]:1.field.crosscode	"A1"
@@ -23701,7 +23456,6 @@ frames[045]:0.wire	8=FIX.4.4|35=D|59=0|10=000|
 frames[045]:0.entry[0]	t10 checksum=000
 frames[045]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 frames[045]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-frames[045]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 frames[045]:0.field.curruuid	"018cc9ab-d1d0-7000-9de5-071124fc8e53"
 frames[045]:0.field.crossuuid	"018cc9ab-d1d0-7000-9de5-071124fc8e53"
 frames[045]:0.field.hashcode	6765821785410408019
@@ -23723,7 +23477,6 @@ bridge[000]:0.entry[3]	t60 transacttime=20240102-10:15:30
 bridge[000]:0.entry[4]	t10 checksum=203
 bridge[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[000]:0.field.transacttime	"2024-01-02T10:15:30.000000000Z"
 bridge[000]:0.field.curruuid	"018cc9ab-d1d0-7000-a595-a9caf5f83cd9"
 bridge[000]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
@@ -23764,7 +23517,6 @@ bridge[001]:0.entry[7]	t10 checksum=118
 bridge[001]:0.entry[8]	t381 grosstradeamt=420
 bridge[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[001]:0.field.settldate	"2024-01-04T00:00:00.000000000"
 bridge[001]:0.field.curruuid	"018cc9ab-d1d0-7000-a310-0efd8f17f1c9"
 bridge[001]:0.field.crossuuid	"00000000-0000-8000-99c0-95f231bde5de"
@@ -23816,7 +23568,6 @@ bridge[002]:0.entry[10]	t2897 currencycodesource=6
 bridge[002]:0.entry[11]	t119 settlcurramt=693
 bridge[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[002]:0.field.curruuid	"018cc9ab-d1d0-7000-b33b-dfc454c7f155"
 bridge[002]:0.field.crossuuid	"00000000-0000-8000-99c0-95f231bde5de"
 bridge[002]:0.field.crosscode	"O-9"
@@ -23864,7 +23615,6 @@ bridge[003]:0.entry[1.0.1]	t447 partyidsource=D
 bridge[003]:0.entry[1.0.2]	t452 partyrole=1
 bridge[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[003]:0.field.curruuid	"018cc9ab-d1d0-7000-9e31-1bec406e328a"
 bridge[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-9e31-1bec406e328a"
 bridge[003]:0.field.hashcode	6787236814931243658
@@ -23890,7 +23640,6 @@ bridge[004]:0.entry[0]	t11 clordid=ORDER-2
 bridge[004]:0.entry[1]	t0 ordqty=50
 bridge[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[004]:0.field.curruuid	"018cc9ab-d1d0-7000-b406-4bd955fef292"
 bridge[004]:0.field.crossuuid	"00000000-0000-8000-aed9-a4c54eea99f9"
 bridge[004]:0.field.crosscode	"ORDER-2"
@@ -23907,7 +23656,6 @@ bridge[005]:0.digest	99aa06d3014798d86001c324468d497f
 bridge[005]:0.wire	8=FIX.4.4|
 bridge[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[005]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 bridge[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 bridge[005]:0.field.hashcode	9188214997816454022
@@ -23925,7 +23673,6 @@ bridge[007]:0.entry[0]	t9 bodylength=68
 bridge[007]:0.entry[1]	t10 checksum=159
 bridge[007]:0.field.unix	"2026-08-14T04:46:30.415655000Z"
 bridge[007]:0.field.creatunix	"2026-08-14T04:46:30.415655000Z"
-bridge[007]:0.field.recordedat	"2026-08-14T04:46:30.415655000Z"
 bridge[007]:0.field.sendingtime	"2026-08-14T04:46:30.415655000Z"
 bridge[007]:0.field.curruuid	"019ffe97-d20f-7a7a-87f4-adea9997c60f"
 bridge[007]:0.field.crossuuid	"019ffe97-d20f-7a7a-87f4-adea9997c60f"
@@ -23963,7 +23710,6 @@ bridge[008]:0.entry[14]	t381 grosstradeamt=537910.14
 bridge[008]:0.entry[15]	t2897 currencycodesource=6
 bridge[008]:0.field.unix	"2026-08-14T04:46:36.000000000Z"
 bridge[008]:0.field.creatunix	"2026-08-14T04:46:36.000000000Z"
-bridge[008]:0.field.recordedat	"2026-08-14T04:46:36.000000000Z"
 bridge[008]:0.field.sendingtime	"2026-08-14T04:46:36.000000000Z"
 bridge[008]:0.field.transacttime	"2026-08-14T04:46:36.000000000Z"
 bridge[008]:0.field.tradedate	"2026-08-14T00:00:00.000000000"
@@ -24031,7 +23777,6 @@ bridge[009]:0.entry[10]	t381 grosstradeamt=537910.14
 bridge[009]:0.entry[11]	t2897 currencycodesource=6
 bridge[009]:0.field.unix	"2026-08-14T04:46:36.000000000Z"
 bridge[009]:0.field.creatunix	"2026-08-14T04:46:36.000000000Z"
-bridge[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[009]:0.field.transacttime	"2026-08-14T04:46:36.000000000Z"
 bridge[009]:0.field.curruuid	"019ffe97-e7e0-7000-b142-b0c305cfeaa4"
 bridge[009]:0.field.crossuuid	"00000000-0000-8000-bb29-668d4b36024e"
@@ -24076,7 +23821,6 @@ bridge[011]:0.digest	99aa06d3014798d86001c324468d497f
 bridge[011]:0.wire	8=FIX.4.4|
 bridge[011]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 bridge[011]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-bridge[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 bridge[011]:0.field.curruuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 bridge[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-bf83-18dbf8c42b86"
 bridge[011]:0.field.hashcode	9188214997816454022
@@ -24094,7 +23838,6 @@ lift[000]:0.entry[2]	t60 transacttime=20240102-10:15:30
 lift[000]:0.entry[3]	t10 checksum=0
 lift[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[000]:0.field.transacttime	"2024-01-02T10:15:30.000000000Z"
 lift[000]:0.field.curruuid	"018cc9ab-d1d0-7000-8eda-571ee55e01ac"
 lift[000]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
@@ -24129,7 +23872,6 @@ lift[001]:0.entry[2]	t10 checksum=0
 lift[001]:0.entry[3]	t381 grosstradeamt=637.5
 lift[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[001]:0.field.curruuid	"018cc9ab-d1d0-7000-ab97-938b92b132a9"
 lift[001]:0.field.crossuuid	"00000000-0000-8000-842d-142b1a87158d"
 lift[001]:0.field.crosscode	"ORD-9"
@@ -24157,7 +23899,6 @@ lift[002]:0.entry[1]	t10 checksum=0
 lift[002]:0.entry[2]	t381 grosstradeamt=637.5
 lift[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9b08-14050c6899ca"
 lift[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9b08-14050c6899ca"
 lift[002]:0.field.hashcode	6559514869180701130
@@ -24185,7 +23926,6 @@ lift[003]:0.entry[0]	t11 clordid=A
 lift[003]:0.entry[1]	t10 checksum=0
 lift[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[003]:0.field.curruuid	"018cc9ab-d1d0-7000-8a04-376ef12f66c0"
 lift[003]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[003]:0.field.crosscode	"A"
@@ -24212,7 +23952,6 @@ lift[004]:0.entry[0]	t11 clordid=A
 lift[004]:0.entry[1]	t10 checksum=0
 lift[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[004]:0.field.curruuid	"018cc9ab-d1d0-7000-9507-2ef41be72cc8"
 lift[004]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[004]:0.field.crosscode	"A"
@@ -24239,7 +23978,6 @@ lift[005]:0.entry[0]	t11 clordid=A
 lift[005]:0.entry[1]	t10 checksum=0
 lift[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[005]:0.field.curruuid	"018cc9ab-d1d0-7000-b23d-45e63fa27a16"
 lift[005]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[005]:0.field.crosscode	"A"
@@ -24264,7 +24002,6 @@ lift[006]:0.entry[0]	t11 clordid=A
 lift[006]:0.entry[1]	t10 checksum=0
 lift[006]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[006]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[006]:0.field.curruuid	"018cc9ab-d1d0-7000-bdd5-e222f0908a18"
 lift[006]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[006]:0.field.crosscode	"A"
@@ -24290,7 +24027,6 @@ lift[007]:0.entry[3]	t120 settlcurrency=USD
 lift[007]:0.entry[4]	t2897 currencycodesource=6
 lift[007]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[007]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[007]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[007]:0.field.curruuid	"018cc9ab-d1d0-7000-a973-8f5f173b4ad6"
 lift[007]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[007]:0.field.crosscode	"A"
@@ -24320,7 +24056,6 @@ lift[008]:0.entry[2]	t854 qtytype=2
 lift[008]:0.entry[3]	t10 checksum=0
 lift[008]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[008]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[008]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[008]:0.field.curruuid	"018cc9ab-d1d0-7000-8424-5614fb396b2a"
 lift[008]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[008]:0.field.crosscode	"A"
@@ -24344,7 +24079,6 @@ lift[009]:0.entry[0]	t11 clordid=A
 lift[009]:0.entry[1]	t10 checksum=0
 lift[009]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[009]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[009]:0.field.curruuid	"018cc9ab-d1d0-7000-8886-c9b156ba58f1"
 lift[009]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[009]:0.field.crosscode	"A"
@@ -24367,7 +24101,6 @@ lift[010]:0.entry[0]	t117 quoteid=Q1
 lift[010]:0.entry[1]	t10 checksum=0
 lift[010]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[010]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[010]:0.field.curruuid	"018cc9ab-d1d0-7000-8544-8589214ab107"
 lift[010]:0.field.crossuuid	"00000000-0000-8000-9b5d-dae469c8c810"
 lift[010]:0.field.crosscode	"Q1"
@@ -24391,7 +24124,6 @@ lift[011]:0.entry[1]	t60 transacttime=20240102-09:00:00
 lift[011]:0.entry[2]	t10 checksum=0
 lift[011]:0.field.unix	"2024-01-02T09:00:00.000000000Z"
 lift[011]:0.field.creatunix	"2024-01-02T09:00:00.000000000Z"
-lift[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[011]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[011]:0.field.transacttime	"2024-01-02T09:00:00.000000000Z"
 lift[011]:0.field.curruuid	"018cc966-b280-7000-95f4-307a5bda7d71"
@@ -24418,7 +24150,6 @@ lift[012]:0.entry[1.1]	t55 symbol=MSFT
 lift[012]:0.entry[2]	t10 checksum=0
 lift[012]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[012]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[012]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[012]:0.field.curruuid	"018cc9ab-d1d0-7000-8f45-abb5e69e20e4"
 lift[012]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[012]:0.field.crosscode	"A"
@@ -24440,7 +24171,6 @@ lift[013]:0.entry[0]	t11 clordid=A
 lift[013]:0.entry[1]	t10 checksum=0
 lift[013]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[013]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[013]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[013]:0.field.curruuid	"018cc9ab-d1d0-7000-8572-2d6892e8b6f6"
 lift[013]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 lift[013]:0.field.crosscode	"A"
@@ -24461,7 +24191,6 @@ lift[014]:0.wire	8=FIX.4.4|49=SENDER|56=TARGET|34=1092|43=Y|52=20240102-10:15:30
 lift[014]:0.entry[0]	t122 origsendingtime=20240102-10:15:30
 lift[014]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[014]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[014]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[014]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[014]:0.field.origsendingtime	"2024-01-02T10:15:30.000000000Z"
 lift[014]:0.field.curruuid	"018cc9ab-d1d0-7000-8daa-94d2a2bb6b1f"
@@ -24484,7 +24213,6 @@ lift[015]:0.entry[0.0]	t0 party
 lift[015]:0.entry[0.0.0]	t448 partyid=ONE
 lift[015]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 lift[015]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-lift[015]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 lift[015]:0.field.curruuid	"018cc9ab-d1d0-7000-9e7c-77a76b6da98d"
 lift[015]:0.field.crossuuid	"018cc9ab-d1d0-7000-9e7c-77a76b6da98d"
 lift[015]:0.field.hashcode	2196762279195552141
@@ -24505,7 +24233,6 @@ enrich[000]:0.entry[1]	t10 checksum=0
 enrich[000]:0.entry[2]	t39 ordstatus=0
 enrich[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[000]:0.field.curruuid	"018cc9ab-d1d0-7000-9045-9dc9d8c92dda"
 enrich[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-9045-9dc9d8c92dda"
 enrich[000]:0.field.hashcode	1172516768250932698
@@ -24531,7 +24258,6 @@ enrich[001]:0.entry[1]	t10 checksum=0
 enrich[001]:0.entry[2]	t39 ordstatus=1
 enrich[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[001]:0.field.curruuid	"018cc9ab-d1d0-7000-9a06-2eb5287ac8bb"
 enrich[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-9a06-2eb5287ac8bb"
 enrich[001]:0.field.hashcode	11098609687304259771
@@ -24557,7 +24283,6 @@ enrich[002]:0.entry[1]	t10 checksum=0
 enrich[002]:0.entry[2]	t39 ordstatus=2
 enrich[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[002]:0.field.curruuid	"018cc9ab-d1d0-7000-8bd5-5783ad5709b1"
 enrich[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-8bd5-5783ad5709b1"
 enrich[002]:0.field.hashcode	852683927517071793
@@ -24583,7 +24308,6 @@ enrich[003]:0.entry[1]	t10 checksum=0
 enrich[003]:0.entry[2]	t39 ordstatus=2
 enrich[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[003]:0.field.curruuid	"018cc9ab-d1d0-7000-acb9-72c1ba2e775a"
 enrich[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-acb9-72c1ba2e775a"
 enrich[003]:0.field.hashcode	3222733184738162522
@@ -24607,7 +24331,6 @@ enrich[004]:0.entry[1]	t150 exectype=F
 enrich[004]:0.entry[2]	t10 checksum=0
 enrich[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[004]:0.field.curruuid	"018cc9ab-d1d0-7000-9113-e545dc0ddc2b"
 enrich[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-9113-e545dc0ddc2b"
 enrich[004]:0.field.hashcode	10453951248264453163
@@ -24630,7 +24353,6 @@ enrich[005]:0.entry[1]	t150 exectype=F
 enrich[005]:0.entry[2]	t10 checksum=0
 enrich[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[005]:0.field.curruuid	"018cc9ab-d1d0-7000-9d7b-db5a8652c6bc"
 enrich[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-9d7b-db5a8652c6bc"
 enrich[005]:0.field.hashcode	15959590886364595900
@@ -24656,7 +24378,6 @@ enrich[006]:0.entry[1]	t10 checksum=0
 enrich[006]:0.entry[2]	t39 ordstatus=A
 enrich[006]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[006]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[006]:0.field.curruuid	"018cc9ab-d1d0-7000-a8a6-0649bf54f3b1"
 enrich[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-a8a6-0649bf54f3b1"
 enrich[006]:0.field.hashcode	12152407558318257073
@@ -24678,7 +24399,6 @@ enrich[007]:0.entry[0]	t150 exectype=D
 enrich[007]:0.entry[1]	t10 checksum=0
 enrich[007]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[007]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[007]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[007]:0.field.curruuid	"018cc9ab-d1d0-7000-bfb9-371256bdc0ac"
 enrich[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-bfb9-371256bdc0ac"
 enrich[007]:0.field.hashcode	9203447865412534444
@@ -24700,7 +24420,6 @@ enrich[008]:0.entry[1]	t10 checksum=0
 enrich[008]:0.entry[2]	t2897 currencycodesource=6
 enrich[008]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[008]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[008]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[008]:0.field.curruuid	"018cc9ab-d1d0-7000-ad4b-ea117ccaf6d8"
 enrich[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-ad4b-ea117ccaf6d8"
 enrich[008]:0.field.hashcode	7875645734216464088
@@ -24726,7 +24445,6 @@ enrich[009]:0.entry[3]	t22 securityidsource=4
 enrich[009]:0.entry[4]	t470 countryofissue=US
 enrich[009]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[009]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[009]:0.field.curruuid	"018cc9ab-d1d0-7000-be02-27399d9f428a"
 enrich[009]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[009]:0.field.crosscode	"A"
@@ -24754,7 +24472,6 @@ enrich[010]:0.entry[3]	t22 securityidsource=4
 enrich[010]:0.entry[4]	t470 countryofissue=US
 enrich[010]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[010]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[010]:0.field.curruuid	"018cc9ab-d1d0-7000-98fc-3c0f788aeb68"
 enrich[010]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[010]:0.field.crosscode	"A"
@@ -24782,7 +24499,6 @@ enrich[011]:0.entry[3]	t10 checksum=0
 enrich[011]:0.entry[4]	t470 countryofissue=CH
 enrich[011]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[011]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[011]:0.field.curruuid	"018cc9ab-d1d0-7000-9c85-74ea71b45b3f"
 enrich[011]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[011]:0.field.crosscode	"A"
@@ -24809,7 +24525,6 @@ enrich[012]:0.entry[2]	t10 checksum=0
 enrich[012]:0.entry[3]	t22 securityidsource=1
 enrich[012]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[012]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[012]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[012]:0.field.curruuid	"018cc9ab-d1d0-7000-85bd-e792e174bc88"
 enrich[012]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[012]:0.field.crosscode	"A"
@@ -24836,7 +24551,6 @@ enrich[013]:0.entry[2]	t10 checksum=0
 enrich[013]:0.entry[3]	t22 securityidsource=2
 enrich[013]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[013]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[013]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[013]:0.field.curruuid	"018cc9ab-d1d0-7000-b021-2ff16dfa96d0"
 enrich[013]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[013]:0.field.crosscode	"A"
@@ -24864,7 +24578,6 @@ enrich[014]:0.entry[3]	t10 checksum=0
 enrich[014]:0.entry[4]	t55 symbol=ABBN SW
 enrich[014]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[014]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[014]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[014]:0.field.curruuid	"018cc9ab-d1d0-7000-bea4-02e93add3b96"
 enrich[014]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[014]:0.field.crosscode	"A"
@@ -24894,7 +24607,6 @@ enrich[015]:0.entry[3]	t22 securityidsource=8
 enrich[015]:0.entry[4]	t10 checksum=0
 enrich[015]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[015]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[015]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[015]:0.field.curruuid	"018cc9ab-d1d0-7000-86aa-bca338d17c81"
 enrich[015]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[015]:0.field.crosscode	"A"
@@ -24920,7 +24632,6 @@ enrich[016]:0.entry[0]	t11 clordid=A
 enrich[016]:0.entry[1]	t10 checksum=0
 enrich[016]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[016]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[016]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[016]:0.field.curruuid	"018cc9ab-d1d0-7000-8c13-e4e344416e07"
 enrich[016]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[016]:0.field.crosscode	"A"
@@ -24945,7 +24656,6 @@ enrich[017]:0.entry[2]	t167 securitytype=OPT
 enrich[017]:0.entry[3]	t201 putorcall=0
 enrich[017]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[017]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[017]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[017]:0.field.curruuid	"018cc9ab-d1d0-7000-b5d5-b151fe41ef8c"
 enrich[017]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[017]:0.field.crosscode	"A"
@@ -24971,7 +24681,6 @@ enrich[018]:0.entry[2]	t167 securitytype=CS
 enrich[018]:0.entry[3]	t460 product=5
 enrich[018]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[018]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[018]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[018]:0.field.curruuid	"018cc9ab-d1d0-7000-8e1a-0e9270f0d650"
 enrich[018]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[018]:0.field.crosscode	"A"
@@ -24997,7 +24706,6 @@ enrich[019]:0.entry[1]	t167 securitytype=OPT
 enrich[019]:0.entry[2]	t10 checksum=0
 enrich[019]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[019]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[019]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[019]:0.field.curruuid	"018cc9ab-d1d0-7000-b0ef-ca76493256dd"
 enrich[019]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[019]:0.field.crosscode	"A"
@@ -25022,7 +24730,6 @@ enrich[020]:0.entry[1]	t167 securitytype=NOSUCH
 enrich[020]:0.entry[2]	t10 checksum=0
 enrich[020]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[020]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[020]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[020]:0.field.curruuid	"018cc9ab-d1d0-7000-be15-2e9fdca98dbd"
 enrich[020]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[020]:0.field.crosscode	"A"
@@ -25046,7 +24753,6 @@ enrich[021]:0.entry[1]	t41 origclordid=A
 enrich[021]:0.entry[2]	t10 checksum=0
 enrich[021]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[021]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[021]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[021]:0.field.curruuid	"018cc9ab-d1d0-7000-9e3b-7427fb689c0e"
 enrich[021]:0.field.crossuuid	"00000000-0000-8000-b4d3-766ca02423f3"
 enrich[021]:0.field.crosscode	"B"
@@ -25070,7 +24776,6 @@ enrich[022]:0.entry[2]	t470 countryofissue=GB
 enrich[022]:0.entry[3]	t22 securityidsource=4
 enrich[022]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[022]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[022]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[022]:0.field.curruuid	"018cc9ab-d1d0-7000-8ab9-709c0a758ba0"
 enrich[022]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 enrich[022]:0.field.crosscode	"A"
@@ -25097,7 +24802,6 @@ enrich[023]:0.entry[3]	t198 secondaryorderid=SECONDARY-1
 enrich[023]:0.entry[4]	t10 checksum=0
 enrich[023]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[023]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[023]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[023]:0.field.curruuid	"018cc9ab-d1d0-7000-b3f1-305b5f5685d6"
 enrich[023]:0.field.crossuuid	"00000000-0000-8000-9375-07b18a7adfcd"
 enrich[023]:0.field.crosscode	"VENUE-1"
@@ -25123,7 +24827,6 @@ enrich[024]:0.entry[1]	t1003 tradeid=TRADE-1
 enrich[024]:0.entry[2]	t10 checksum=0
 enrich[024]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 enrich[024]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-enrich[024]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 enrich[024]:0.field.curruuid	"018cc9ab-d1d0-7000-9341-b4d9d860bc76"
 enrich[024]:0.field.crossuuid	"018cc9ab-d1d0-7000-9341-b4d9d860bc76"
 enrich[024]:0.field.hashcode	1387589007937944694
@@ -25160,7 +24863,6 @@ latest[000]:0.entry[11.1.1]	t452 partyrole=3
 latest[000]:0.entry[12]	t381 grosstradeamt=1050
 latest[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 latest[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-latest[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 latest[000]:0.field.curruuid	"018cc9ab-d1d0-7000-b88a-3e440fed392c"
 latest[000]:0.field.crossuuid	"00000000-0000-8000-9a1e-5c9610eadaf3"
 latest[000]:0.field.crosscode	"O1"
@@ -25202,7 +24904,6 @@ latest[001]:0.entry[2]	t10 checksum=0
 latest[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 latest[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
 latest[001]:0.field.expirunix	"2024-06-05T00:00:00.000000000Z"
-latest[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 latest[001]:0.field.curruuid	"018cc9ab-d1d0-7000-b92e-4063171813d3"
 latest[001]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 latest[001]:0.field.crosscode	"A"
@@ -25245,7 +24946,6 @@ verbatim[000]:0.entry[1]	t55 symbol=AAPL
 verbatim[000]:0.entry[2]	t10 checksum=0
 verbatim[000]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[000]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[000]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[000]:0.field.curruuid	"018cc9ab-d1d0-7000-8ec1-1e83b45ae7a9"
 verbatim[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-8ec1-1e83b45ae7a9"
 verbatim[000]:0.field.hashcode	14898222593333716905
@@ -25271,7 +24971,6 @@ verbatim[001]:0.entry[0.1]	t0 party
 verbatim[001]:0.entry[0.1.0]	t448 partyid=VENUE
 verbatim[001]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[001]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[001]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[001]:0.field.curruuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 verbatim[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 verbatim[001]:0.field.hashcode	16112262951392613404
@@ -25294,7 +24993,6 @@ verbatim[002]:0.entry[0.1]	t0 party
 verbatim[002]:0.entry[0.1.0]	t448 partyid=VENUE
 verbatim[002]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[002]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[002]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 verbatim[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f9a-41c9b171941c"
 verbatim[002]:0.field.hashcode	16112262951392613404
@@ -25317,7 +25015,6 @@ verbatim[003]:0.entry[0.1]	t0 linesoftextcomponent
 verbatim[003]:0.entry[0.1.0]	t58 text=b
 verbatim[003]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[003]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[003]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[003]:0.field.curruuid	"018cc9ab-d1d0-7000-9f09-812516a14ef7"
 verbatim[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-9f09-812516a14ef7"
 verbatim[003]:0.field.hashcode	11459832723114381047
@@ -25338,7 +25035,6 @@ verbatim[004]:0.entry[1.0.1]	t80 allocqty=5
 verbatim[004]:0.entry[2]	t10 checksum=0
 verbatim[004]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[004]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[004]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[004]:0.field.curruuid	"018cc9ab-d1d0-7000-b3fe-debe50791fc2"
 verbatim[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-b3fe-debe50791fc2"
 verbatim[004]:0.field.hashcode	17581734904276262850
@@ -25368,7 +25064,6 @@ verbatim[005]:0.entry[1.0.1.0.2.0.1]	t803 partysubidtype=1
 verbatim[005]:0.entry[2]	t10 checksum=0
 verbatim[005]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[005]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[005]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[005]:0.field.curruuid	"018cc9ab-d1d0-7000-ab62-7fdfa98ad8a3"
 verbatim[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-ab62-7fdfa98ad8a3"
 verbatim[005]:0.field.hashcode	7737887708374816931
@@ -25387,7 +25082,6 @@ verbatim[006]:0.entry[0]	t55 symbol=AAPL
 verbatim[006]:0.entry[1]	t10 checksum=0
 verbatim[006]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[006]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[006]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[006]:0.field.curruuid	"018cc9ab-d1d0-7000-8d5b-f9a60e8e8b41"
 verbatim[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-8d5b-f9a60e8e8b41"
 verbatim[006]:0.field.hashcode	10186009473832618817
@@ -25410,7 +25104,6 @@ verbatim[007]:0.entry[1]	t0 9999=y
 verbatim[007]:0.entry[2]	t10 checksum=0
 verbatim[007]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[007]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[007]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[007]:0.field.curruuid	"018cc9ab-d1d0-7000-94a6-770622dc72cd"
 verbatim[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-94a6-770622dc72cd"
 verbatim[007]:0.field.hashcode	1488007595130909389
@@ -25430,7 +25123,6 @@ verbatim[008]:0.entry[1]	t55 symbol=AAPL
 verbatim[008]:0.entry[2]	t10 checksum=000
 verbatim[008]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[008]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[008]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[008]:0.field.curruuid	"018cc9ab-d1d0-7000-af25-2fe1eb5688e4"
 verbatim[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-af25-2fe1eb5688e4"
 verbatim[008]:0.field.hashcode	12620546178138147044
@@ -25451,7 +25143,6 @@ verbatim[009]:0.wire	8=FIX.4.4|35=D|59=0|55=AAPL|
 verbatim[009]:0.entry[0]	t55 symbol=AAPL
 verbatim[009]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[009]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[009]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[009]:0.field.curruuid	"018cc9ab-d1d0-7000-a2ea-8de2d32fefbd"
 verbatim[009]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2ea-8de2d32fefbd"
 verbatim[009]:0.field.hashcode	16351037402467266493
@@ -25472,7 +25163,6 @@ verbatim[010]:0.entry[0.0]	t448 partyid=first
 verbatim[010]:0.entry[0.1]	t448 partyid=third
 verbatim[010]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[010]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[010]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[010]:0.field.curruuid	"018cc9ab-d1d0-7000-ad89-874b5307799d"
 verbatim[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-ad89-874b5307799d"
 verbatim[010]:0.field.hashcode	7892988579528800669
@@ -25489,7 +25179,6 @@ verbatim[011]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 verbatim[011]:0.entry[0]	t10 checksum=0
 verbatim[011]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[011]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[011]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[011]:0.field.curruuid	"018cc9ab-d1d0-7000-9288-8fcde79cc69c"
 verbatim[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-9288-8fcde79cc69c"
 verbatim[011]:0.field.hashcode	1335475404032231068
@@ -25508,7 +25197,6 @@ verbatim[012]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 verbatim[012]:0.entry[0]	t10 checksum=0
 verbatim[012]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[012]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[012]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[012]:0.field.curruuid	"018cc9ab-d1d0-7000-9fe3-3ce698ecaf8e"
 verbatim[012]:0.field.crossuuid	"018cc9ab-d1d0-7000-9fe3-3ce698ecaf8e"
 verbatim[012]:0.field.hashcode	6909433214422265742
@@ -25527,7 +25215,6 @@ verbatim[013]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[013]:0.entry[0]	t37 orderid=123
 verbatim[013]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[013]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[013]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[013]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[013]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[013]:0.field.crosscode	"123"
@@ -25546,7 +25233,6 @@ verbatim[014]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[014]:0.entry[0]	t37 orderid=123
 verbatim[014]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[014]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[014]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[014]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[014]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[014]:0.field.crosscode	"123"
@@ -25565,7 +25251,6 @@ verbatim[015]:0.wire	8=FIX.4.4|35=D|59=0|37=345|
 verbatim[015]:0.entry[0]	t37 orderid=345
 verbatim[015]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[015]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[015]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[015]:0.field.curruuid	"018cc9ab-d1d0-7000-898b-a7f4a67ec31f"
 verbatim[015]:0.field.crossuuid	"00000000-0000-8000-bff6-9f69b1f83036"
 verbatim[015]:0.field.crosscode	"345"
@@ -25584,7 +25269,6 @@ verbatim[016]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[016]:0.entry[0]	t37 orderid=123
 verbatim[016]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[016]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[016]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[016]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[016]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[016]:0.field.crosscode	"123"
@@ -25603,7 +25287,6 @@ verbatim[017]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[017]:0.entry[0]	t37 orderid=123
 verbatim[017]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[017]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[017]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[017]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[017]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[017]:0.field.crosscode	"123"
@@ -25622,7 +25305,6 @@ verbatim[018]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[018]:0.entry[0]	t37 orderid=123
 verbatim[018]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[018]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[018]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[018]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[018]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[018]:0.field.crosscode	"123"
@@ -25641,7 +25323,6 @@ verbatim[019]:0.wire	8=FIX.4.4|35=D|59=0|37=abc|
 verbatim[019]:0.entry[0]	t37 orderid=abc
 verbatim[019]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[019]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[019]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[019]:0.field.curruuid	"018cc9ab-d1d0-7000-bf68-d0ccdfb8757c"
 verbatim[019]:0.field.crossuuid	"00000000-0000-8000-b8af-5f94892f3950"
 verbatim[019]:0.field.crosscode	"abc"
@@ -25660,7 +25341,6 @@ verbatim[020]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[020]:0.entry[0]	t37 orderid=123
 verbatim[020]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[020]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[020]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[020]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[020]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[020]:0.field.crosscode	"123"
@@ -25679,7 +25359,6 @@ verbatim[021]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[021]:0.entry[0]	t37 orderid=123
 verbatim[021]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[021]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[021]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[021]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[021]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[021]:0.field.crosscode	"123"
@@ -25698,7 +25377,6 @@ verbatim[022]:0.wire	8=FIX.4.4|35=D|59=0|#orderid=345|
 verbatim[022]:0.entry[0]	t0 #orderid=345
 verbatim[022]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[022]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[022]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[022]:0.field.curruuid	"018cc9ab-d1d0-7000-96e8-0850edd41ecb"
 verbatim[022]:0.field.crossuuid	"018cc9ab-d1d0-7000-96e8-0850edd41ecb"
 verbatim[022]:0.field.hashcode	15485636462393958091
@@ -25716,7 +25394,6 @@ verbatim[023]:0.entry[0]	t37 orderid=123
 verbatim[023]:0.entry[1]	t10 checksum=0
 verbatim[023]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[023]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[023]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[023]:0.field.curruuid	"018cc9ab-d1d0-7000-bf97-1a57a7f1f72e"
 verbatim[023]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[023]:0.field.crosscode	"123"
@@ -25736,7 +25413,6 @@ verbatim[024]:0.entry[0]	t37 orderid=123
 verbatim[024]:0.entry[1]	t10 checksum=0
 verbatim[024]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[024]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[024]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[024]:0.field.curruuid	"018cc9ab-d1d0-7000-bf97-1a57a7f1f72e"
 verbatim[024]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[024]:0.field.crosscode	"123"
@@ -25755,7 +25431,6 @@ verbatim[025]:0.wire	8=FIX.4.4|35=D|59=0|37=123|
 verbatim[025]:0.entry[0]	t37 orderid=123
 verbatim[025]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[025]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[025]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[025]:0.field.curruuid	"018cc9ab-d1d0-7000-b54d-f572db97bcef"
 verbatim[025]:0.field.crossuuid	"00000000-0000-8000-804a-763b3f4c8c9a"
 verbatim[025]:0.field.crosscode	"123"
@@ -25777,7 +25452,6 @@ verbatim[026]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 verbatim[026]:0.entry[0.0.1]	t452 partyrole=1
 verbatim[026]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[026]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[026]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[026]:0.field.curruuid	"018cc9ab-d1d0-7000-9ec1-21bb4554bd97"
 verbatim[026]:0.field.crossuuid	"018cc9ab-d1d0-7000-9ec1-21bb4554bd97"
 verbatim[026]:0.field.hashcode	16051147635130940823
@@ -25797,7 +25471,6 @@ verbatim[027]:0.entry[0.0]	t0 party
 verbatim[027]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 verbatim[027]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[027]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[027]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[027]:0.field.curruuid	"018cc9ab-d1d0-7000-b0d0-2eab13cfd7ce"
 verbatim[027]:0.field.crossuuid	"018cc9ab-d1d0-7000-b0d0-2eab13cfd7ce"
 verbatim[027]:0.field.hashcode	12740734658137806798
@@ -25817,7 +25490,6 @@ verbatim[028]:0.entry[0.0.0]	t448 partyid=A
 verbatim[028]:0.entry[0.0.1]	t452 partyrole=1
 verbatim[028]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[028]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[028]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[028]:0.field.curruuid	"018cc9ab-d1d0-7000-acd5-3bcc7ee8545c"
 verbatim[028]:0.field.crossuuid	"018cc9ab-d1d0-7000-acd5-3bcc7ee8545c"
 verbatim[028]:0.field.hashcode	3230554057196721244
@@ -25844,7 +25516,6 @@ verbatim[029]:0.entry[0.2.0]	t448 partyid=BARE
 verbatim[029]:0.entry[0.2.1]	t452 partyrole=1
 verbatim[029]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[029]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[029]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[029]:0.field.curruuid	"018cc9ab-d1d0-7000-a9f6-efb23d36d58c"
 verbatim[029]:0.field.crossuuid	"018cc9ab-d1d0-7000-a9f6-efb23d36d58c"
 verbatim[029]:0.field.hashcode	7635553767063475596
@@ -25869,7 +25540,6 @@ verbatim[030]:0.entry[0.1.0]	t448 partyid=B
 verbatim[030]:0.entry[0.1.1]	t452 partyrole=1
 verbatim[030]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[030]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[030]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[030]:0.field.curruuid	"018cc9ab-d1d0-7000-a834-68a13b8d18ae"
 verbatim[030]:0.field.crossuuid	"018cc9ab-d1d0-7000-a834-68a13b8d18ae"
 verbatim[030]:0.field.hashcode	2897055502004197550
@@ -25899,7 +25569,6 @@ verbatim[031]:0.entry[0.1.1]	t448 partyid=X
 verbatim[031]:0.entry[0.1.2]	t452 partyrole=1
 verbatim[031]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[031]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[031]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[031]:0.field.curruuid	"018cc9ab-d1d0-7000-a90d-6e8a209b0051"
 verbatim[031]:0.field.crossuuid	"018cc9ab-d1d0-7000-a90d-6e8a209b0051"
 verbatim[031]:0.field.hashcode	12181514106638630993
@@ -25926,7 +25595,6 @@ verbatim[032]:0.entry[0.0.2]	t448 partyid=X
 verbatim[032]:0.entry[0.0.3]	t452 partyrole=1
 verbatim[032]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[032]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[032]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[032]:0.field.curruuid	"018cc9ab-d1d0-7000-a362-2d6ba467102b"
 verbatim[032]:0.field.crossuuid	"018cc9ab-d1d0-7000-a362-2d6ba467102b"
 verbatim[032]:0.field.hashcode	16384708334670254123
@@ -25957,7 +25625,6 @@ verbatim[033]:0.entry[0.0.0.1.1]	t448 partyid=X
 verbatim[033]:0.entry[0.0.0.1.2]	t452 partyrole=1
 verbatim[033]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[033]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[033]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[033]:0.field.curruuid	"018cc9ab-d1d0-7000-a1bc-e41072aadd98"
 verbatim[033]:0.field.crossuuid	"018cc9ab-d1d0-7000-a1bc-e41072aadd98"
 verbatim[033]:0.field.hashcode	2431068658167635352
@@ -25974,7 +25641,6 @@ verbatim[034]:0.entry[0]	t9 bodylength=61
 verbatim[034]:0.entry[1]	t10 checksum=017
 verbatim[034]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[034]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[034]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[034]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[034]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[034]:0.field.hashcode	7129265649621184724
@@ -25995,7 +25661,6 @@ verbatim[035]:0.entry[0]	t9 bodylength=61
 verbatim[035]:0.entry[1]	t10 checksum=017
 verbatim[035]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[035]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[035]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[035]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[035]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[035]:0.field.hashcode	7129265649621184724
@@ -26016,7 +25681,6 @@ verbatim[036]:0.entry[0]	t9 bodylength=61
 verbatim[036]:0.entry[1]	t10 checksum=017
 verbatim[036]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[036]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[036]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[036]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[036]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[036]:0.field.hashcode	7129265649621184724
@@ -26037,7 +25701,6 @@ verbatim[037]:0.entry[0]	t9 bodylength=61
 verbatim[037]:0.entry[1]	t10 checksum=017
 verbatim[037]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[037]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[037]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[037]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[037]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[037]:0.field.hashcode	7129265649621184724
@@ -26058,7 +25721,6 @@ verbatim[038]:0.entry[0]	t9 bodylength=61
 verbatim[038]:0.entry[1]	t10 checksum=017
 verbatim[038]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[038]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[038]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[038]:0.field.curruuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[038]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2f0-3d55fb10b0d4"
 verbatim[038]:0.field.hashcode	7129265649621184724
@@ -26082,7 +25744,6 @@ verbatim[039]:0.entry[3]	t37 orderid=9
 verbatim[039]:0.entry[4]	t10 checksum=0
 verbatim[039]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[039]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[039]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[039]:0.field.curruuid	"018cc9ab-d1d0-7000-b751-da7004d52382"
 verbatim[039]:0.field.crossuuid	"00000000-0000-8000-a835-3a066812b268"
 verbatim[039]:0.field.crosscode	"9"
@@ -26111,7 +25772,6 @@ verbatim[040]:0.entry[3]	t150 exectype=D
 verbatim[040]:0.entry[4]	t10 checksum=0
 verbatim[040]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[040]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[040]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[040]:0.field.curruuid	"018cc9ab-d1d0-7000-a2a5-4827f71f8018"
 verbatim[040]:0.field.crossuuid	"018cc9ab-d1d0-7000-a2a5-4827f71f8018"
 verbatim[040]:0.field.hashcode	11719852941788545048
@@ -26140,7 +25800,6 @@ verbatim[041]:0.entry[6]	t55 symbol=HOLN
 verbatim[041]:0.entry[7]	t10 checksum=0
 verbatim[041]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[041]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[041]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[041]:0.field.curruuid	"018cc9ab-d1d0-7000-95bf-9cfa48fd6745"
 verbatim[041]:0.field.crossuuid	"00000000-0000-8000-a343-26b3b448dbed"
 verbatim[041]:0.field.crosscode	"ORDER-1"
@@ -26170,7 +25829,6 @@ verbatim[042]:0.entry[0]	t11 clordid=A
 verbatim[042]:0.entry[1]	t10 checksum=001
 verbatim[042]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[042]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[042]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[042]:0.field.curruuid	"018cc9ab-d1d0-7000-8d11-3911a35ce763"
 verbatim[042]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 verbatim[042]:0.field.crosscode	"A"
@@ -26190,7 +25848,6 @@ verbatim[042]:1.entry[0]	t37 orderid=O
 verbatim[042]:1.entry[1]	t10 checksum=002
 verbatim[042]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[042]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[042]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[042]:1.field.curruuid	"018cc9ab-d1d0-7000-ac05-62e034ca14fc"
 verbatim[042]:1.field.crossuuid	"00000000-0000-8000-b997-5fc288a25a61"
 verbatim[042]:1.field.crosscode	"O"
@@ -26211,7 +25868,6 @@ verbatim[043]:0.wire	8=FIX.4.4|35=D|59=0|11=A|
 verbatim[043]:0.entry[0]	t11 clordid=A
 verbatim[043]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[043]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[043]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[043]:0.field.curruuid	"018cc9ab-d1d0-7000-a5da-abb388bcec80"
 verbatim[043]:0.field.crossuuid	"00000000-0000-8000-90d4-96e05c553485"
 verbatim[043]:0.field.crosscode	"A"
@@ -26230,7 +25886,6 @@ verbatim[043]:1.entry[0]	t37 orderid=O
 verbatim[043]:1.entry[1]	t10 checksum=002
 verbatim[043]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[043]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[043]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[043]:1.field.curruuid	"018cc9ab-d1d0-7000-ac05-62e034ca14fc"
 verbatim[043]:1.field.crossuuid	"00000000-0000-8000-b997-5fc288a25a61"
 verbatim[043]:1.field.crosscode	"O"
@@ -26251,7 +25906,6 @@ verbatim[044]:0.wire	8=FIX.4.4|35=D|59=0|11=A1|
 verbatim[044]:0.entry[0]	t11 clordid=A1
 verbatim[044]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[044]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[044]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[044]:0.field.curruuid	"018cc9ab-d1d0-7000-8e59-30a5647767c7"
 verbatim[044]:0.field.crossuuid	"00000000-0000-8000-af62-adb79d3769fd"
 verbatim[044]:0.field.crosscode	"A1"
@@ -26270,7 +25924,6 @@ verbatim[044]:1.entry[0]	t11 clordid=A1
 verbatim[044]:1.entry[1]	t10 checksum=000
 verbatim[044]:1.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[044]:1.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[044]:1.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[044]:1.field.curruuid	"018cc9ab-d1d0-7000-b539-e5230c620fd3"
 verbatim[044]:1.field.crossuuid	"00000000-0000-8000-af62-adb79d3769fd"
 verbatim[044]:1.field.crosscode	"A1"
@@ -26291,7 +25944,6 @@ verbatim[045]:0.wire	8=FIX.4.4|35=D|59=0|10=000|
 verbatim[045]:0.entry[0]	t10 checksum=000
 verbatim[045]:0.field.unix	"2024-01-02T10:15:30.000000000Z"
 verbatim[045]:0.field.creatunix	"2024-01-02T10:15:30.000000000Z"
-verbatim[045]:0.field.recordedat	"2024-01-02T10:15:30.000000000Z"
 verbatim[045]:0.field.curruuid	"018cc9ab-d1d0-7000-9de5-071124fc8e53"
 verbatim[045]:0.field.crossuuid	"018cc9ab-d1d0-7000-9de5-071124fc8e53"
 verbatim[045]:0.field.hashcode	6765821785410408019

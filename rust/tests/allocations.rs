@@ -1581,7 +1581,7 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// A caller who decoded the line already owns the page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
 /// takes it: one fewer at each, which is the page's own vector.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 76), (16, 101), (64, 162)];
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 65), (16, 90), (64, 151)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1631,7 +1631,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (76, 85)), (16, (101, 146)), (64, (162, 351))];
+    [(4, (65, 74)), (16, (90, 135)), (64, (151, 340))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1724,7 +1724,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// packed value would have been scanned into is not among these.
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 152), (16, 220)];
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 141), (16, 209)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1758,7 +1758,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 75), (16, 100), (64, 161)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 64), (16, 89), (64, 150)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {

@@ -512,11 +512,15 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// removed is marked `fix:deprecated`. It last moved when the market numbers
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
-/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block.
+/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
+/// last moved when the capture's own columns stopped being facts of a
+/// message: `recordedat` states no `fix:derivation`, because when a capture
+/// wrote a line down is whoever read it to say and never the message's own
+/// `SendingTime`.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_181_957_206_944_849_792);
+    assert_eq!(registry.stable_hash(), 2_660_894_728_416_977_135);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

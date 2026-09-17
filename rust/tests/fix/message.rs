@@ -9,8 +9,8 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event};
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, fix_schema,
-    fix_schema_carrying,
+    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone,
+    fix_schema, fix_schema_carrying,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -406,9 +406,9 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
 }
 
 #[test]
-fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
+fn a_captures_own_columns_never_reach_the_message() {
     let (registry, reader) = reader();
-    // Nullable, because a message parsed on its own states none of them.
+    // Nullable, because a message states none of them - ever.
     let capture = DataType::from_fields([
         DataType::utf8().nullable_field("url"),
         DataType::Int64.nullable_field("rownum"),
@@ -423,27 +423,36 @@ fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
     // A parsed message has no capture columns: they are null in its row, and
     // a row read back off that one is the message it came from.
     let row = parsed.into_row(&schema).unwrap();
-    assert!(row.get(at("url")).unwrap().is_null());
-    assert!(row.get(at("rownum")).unwrap().is_null());
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(row.get(at(carrier)).unwrap().is_null(), "{carrier}");
+    }
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(held.entries(), parsed.entries());
     assert_eq!(held.into_row(&schema).unwrap(), row);
 
-    // A row a reader put its own columns in front of says what the line was
-    // read from, not what the message states. Read back, those columns stay
-    // columns: each is a child of the row under its own name, none is an
-    // entry, and so none of them reaches a counterparty.
+    // A row a reader put its own statements in - the two the crate tags
+    // among them - says what the *line* was read from. Read back, the
+    // message holds none of it: no child, no entry, nothing on the wire, and
+    // nothing to answer by name or by tag.
     let mut columns = row.as_sequence().expect("a row").to_vec();
     columns[at("url")] = Scalar::from("file:///capture.log");
     columns[at("rownum")] = Scalar::from(42_i64);
     columns[at("body")] = Scalar::from(ORDER.to_vec());
+    columns[at("sourceurl")] = Scalar::from(yggdryl::Url::from_str("file:///capture.log").unwrap());
+    columns[at("recordedat")] = Scalar::datetime64(
+        1_704_190_530_000_000_000,
+        TimeUnit::Nanosecond,
+        Timezone::UTC,
+    )
+    .unwrap();
     let carried = Scalar::from_sequence(columns);
     let again = FixMsg::from_row(Arc::clone(&registry), &schema, &carried).unwrap();
     assert_eq!(again.entries(), held.entries());
     assert_eq!(again.into_bytes(b'|'), held.into_bytes(b'|'));
     assert_eq!(again.by_tag(55).unwrap().as_str(), Some("AAPL"));
-    for carrier in ["url", "rownum", "body"] {
-        assert!(again.as_field().index_of(carrier).is_some(), "{carrier}");
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(again.as_field().index_of(carrier).is_none(), "{carrier}");
+        assert!(again.get_by_name(carrier).is_none(), "{carrier}");
         assert!(
             !again.entries().iter().any(|entry| entry.name() == carrier),
             "{carrier}"
@@ -451,15 +460,45 @@ fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
         let wire = String::from_utf8_lossy(&again.into_bytes(b'|')).into_owned();
         assert!(!wire.contains(&format!("{carrier}=")), "{wire}");
     }
-    assert_eq!(
-        again.by_name("url").unwrap().as_str(),
-        Some("file:///capture.log")
+    assert!(again.capture().pluginid().is_none());
+    assert!(
+        again.get_by_tag(yggdryl::SOURCEURL_TAG_NAME.0).is_none(),
+        "the object a line came out of is not a fact of the message"
     );
 
-    // And the row returns to its schema whole: a column that is not content
-    // is still a column, so what the reader put in front of the row is
-    // where it was.
-    assert_eq!(again.into_row(&schema).unwrap(), carried);
+    // So a message alone cannot put them back: the row it writes states them
+    // null, and only a reader holding the batch they arrived in can.
+    let written = again.into_row(&schema).unwrap();
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(written.get(at(carrier)).unwrap().is_null(), "{carrier}");
+    }
+    assert_eq!(written, row, "every other column is the message's own");
+}
+
+/// Writing one of the capture's own columns onto a message is refused.
+///
+/// Silence would leave a caller believing the message states where its line
+/// came from, and a row child would put `sourceurl=` on the wire.
+#[test]
+fn writing_a_captures_own_column_onto_a_message_is_refused() {
+    let (_registry, reader) = reader();
+    let mut parsed = reader.sole_line(ORDER).unwrap();
+    for (tag, name) in [yggdryl::SOURCEURL_TAG_NAME, yggdryl::RECORDEDAT_TAG_NAME] {
+        let refusal = parsed
+            .set(tag, Scalar::from("file:///capture.log"))
+            .unwrap_err()
+            .to_string();
+        assert!(refusal.contains(name), "{refusal}");
+        assert!(refusal.contains("capture"), "{refusal}");
+        // Removing one reaches nothing rather than refusing: there was never
+        // a fact there to clear.
+        assert_eq!(parsed.remove(tag).unwrap(), None);
+    }
+    // Refused and unchanged: the row grew nothing and the wire is the line.
+    assert_eq!(
+        parsed.into_bytes(b'|'),
+        reader.sole_line(ORDER).unwrap().into_bytes(b'|')
+    );
 }
 
 #[test]

@@ -197,9 +197,8 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
+      "description": "The instant the capture recorded this line, as whoever read the line states it; null where nobody did.",
       "display": "RecordedAt",
-      "fix:derivation": "sendingtime",
       "fix:names": [
         "mtime"
       ],

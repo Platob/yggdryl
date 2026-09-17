@@ -175,37 +175,29 @@ impl FixHeader {
     }
 }
 
-/// What a capture states about the line a message was read from, typed.
+/// What the line itself said about the capture it was written for, typed.
 ///
-/// Facts about the capture and not about the message: where the line was
-/// read from, when the capture recorded it, and what a bridge's own row
-/// header says about the line it wrote - the plugin, the message context
-/// and the session instance. None of them is FIX and none is content: the
-/// same message read out of a second copy of the log is the same message,
-/// so nothing here reaches the code the message digests to.
+/// What a bridge's own row header states about the line it wrote - the
+/// plugin, the message context and the session instance - read off the
+/// line's own bytes like every other fact a message holds. None of it is
+/// FIX and none of it is content, so nothing here reaches the code the
+/// message digests to or the wire it re-emits.
+///
+/// What the *reader* says about the line is not here and is held nowhere on
+/// a message: the object the line was read from, when the capture wrote it
+/// down, the body it was cut from, its place in that object. Those are
+/// [the capture's own columns](super::FixMsg::from_row), stated by whoever
+/// read the line and restated by whoever writes the row back, because the
+/// same message read out of a second copy of one day's log is the same
+/// message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
-    sourceurl: Option<std::sync::Arc<crate::Url>>,
-    recordedat: Option<i64>,
     pluginid: Option<SmolStr>,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
 }
 
 impl FixCapture {
-    /// The object the line was read from, where the capture named it.
-    #[must_use]
-    pub fn sourceurl(&self) -> Option<&crate::Url> {
-        self.sourceurl.as_deref()
-    }
-
-    /// When the capture recorded the line, nanoseconds since the Unix
-    /// epoch, UTC, where it dated it.
-    #[must_use]
-    pub const fn recordedat(&self) -> Option<i64> {
-        self.recordedat
-    }
-
     /// The plugin that logged the line inside a bridge, as the bridge names
     /// it.
     #[must_use]
@@ -228,12 +220,7 @@ impl FixCapture {
     fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         let is = |held: (i32, &str)| held.0 == tag;
-        if is(SOURCEURL_TAG_NAME) {
-            self.sourceurl.clone().map(Scalar::Url)
-        } else if is(RECORDEDAT_TAG_NAME) {
-            self.recordedat
-                .and_then(|unix| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok())
-        } else if is(PLUGINID_TAG_NAME) {
+        if is(PLUGINID_TAG_NAME) {
             text(&self.pluginid)
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
@@ -252,17 +239,7 @@ impl FixCapture {
                 .filter(|held| !held.is_empty())
         };
         let is = |held: (i32, &str)| held.0 == tag;
-        if is(SOURCEURL_TAG_NAME) {
-            self.sourceurl = match value {
-                Scalar::Url(url) => Some(std::sync::Arc::clone(url)),
-                other => other
-                    .as_str()
-                    .and_then(|text| text.parse::<crate::Url>().ok())
-                    .map(std::sync::Arc::new),
-            };
-        } else if is(RECORDEDAT_TAG_NAME) {
-            self.recordedat = value.temporal_count_at(TimeUnit::Nanosecond);
-        } else if is(PLUGINID_TAG_NAME) {
+        if is(PLUGINID_TAG_NAME) {
             self.pluginid = text();
         } else if is(MSGCTXID_TAG_NAME) {
             self.msgctxid = text();
@@ -331,14 +308,39 @@ const HEADER_TAGS: [i32; 8] = [8, 35, 49, 56, 34, 52, 43, MSGDIRECTION_TAG_NAME.
 /// holds typed beside its event.
 pub(super) const TEXT_TAG: i32 = 58;
 
+/// The crate's own columns that state what the *reader* said about a line
+/// rather than what the line said: the object it was read from, and when
+/// the capture wrote it down.
+///
+/// No message holds either. They are columns of the row all the same - a
+/// monitor orders, joins and prunes on where a row came out of and when it
+/// was recorded - so whoever read the line states them and whoever writes
+/// the row back restates them, beside the columns a capture carries under
+/// no tag at all: the body the line was cut from, its place in the object,
+/// its media type, what a bound dropped.
+pub(super) const CAPTURE_TAGS: [i32; 2] = [SOURCEURL_TAG_NAME.0, RECORDEDAT_TAG_NAME.0];
+
+/// Whether a tag names one of the capture's own columns.
+///
+/// Read wherever a message meets a row: such a column is read past on the
+/// way in, answers the reader's cell rather than a fact on the way out, and
+/// is never a fill, an entry, a digest input or a byte on the wire.
+pub(super) fn is_capture_tag(tag: i32) -> bool {
+    CAPTURE_TAGS.contains(&tag)
+}
+
 /// Whether a tag names a fact the message holds typed rather than in its
 /// row: one of the crate's own columns, a standard header tag, or one of
 /// FIX's own event tags.
+///
+/// The capture's own columns are none of them: a message states nothing
+/// about the reading it arrived through.
 pub(super) fn is_typed_tag(tag: i32) -> bool {
-    super::is_crate_tag(tag)
-        || HEADER_TAGS.contains(&tag)
-        || OWN_EVENT_TAGS.contains(&tag)
-        || tag == TEXT_TAG
+    !is_capture_tag(tag)
+        && (super::is_crate_tag(tag)
+            || HEADER_TAGS.contains(&tag)
+            || OWN_EVENT_TAGS.contains(&tag)
+            || tag == TEXT_TAG)
 }
 
 /// The three typed holders of a message, read and written by tag.

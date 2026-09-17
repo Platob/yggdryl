@@ -939,6 +939,79 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
     );
 }
 
+/// A capture's own cells follow the message, not the row's position.
+///
+/// The walk answers messages in their own order, which a capture's lines are
+/// routinely not in, and no message holds anything about the reading it
+/// arrived through. So the door has to carry each row's own cells beside the
+/// message it made and state them again where that message lands: pairing by
+/// position would hand row two's `body` to row one's message.
+#[test]
+fn a_walk_keeps_each_rows_own_cells_with_its_own_message() {
+    let codec = codec();
+    // Three messages of one order, written to the log in the reverse of the
+    // order they happened in - which is what makes the walk reorder them.
+    let lines = [
+        "line-2 8=FIX.4.4|35=8|11=WALK-1|37=O1|17=E2|150=F|39=2|55=AAPL|52=20260102-10:15:32.000|10=0|",
+        "line-1 8=FIX.4.4|35=8|11=WALK-1|37=O1|17=E1|150=0|39=0|55=AAPL|52=20260102-10:15:31.000|10=0|",
+        "line-0 8=FIX.4.4|35=D|11=WALK-1|55=AAPL|54=1|38=100|52=20260102-10:15:30.000|10=0|",
+    ];
+    let parsed = codec
+        .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
+        .unwrap();
+    let schema = parsed.schema();
+    let held = batches(parsed);
+    assert_eq!(row_count(&held), 3);
+
+    // The reader stated the body of each line in the row it made: the parse
+    // door is the one door that can, because the message holds none of it.
+    let body_of = |batch: &RecordBatch, row: usize| {
+        let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
+        let columns = rows.as_sequence().expect("rows")[row].clone();
+        let columns = columns.as_sequence().expect("columns").to_vec();
+        let at = batch.schema().index_of("body").expect("a body column");
+        let exec = batch.schema().index_of("execid").expect("an execid column");
+        let ordtype = batch
+            .schema()
+            .index_of("clordid")
+            .expect("a clordid column");
+        (
+            String::from_utf8_lossy(columns[at].as_bytes().expect("bytes")).into_owned(),
+            columns[exec].as_str().map(ToOwned::to_owned),
+            columns[ordtype].as_str().map(ToOwned::to_owned),
+        )
+    };
+    let read: Vec<_> = (0..3).map(|row| body_of(&held[0], row)).collect();
+    assert!(read[0].0.starts_with("line-2"), "{:?}", read[0]);
+
+    // Walked, the rows come back in the order the messages happened in - and
+    // each still carries the line it was read from.
+    let walked = codec
+        .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(schema.clone(), held.clone()))
+        .unwrap();
+    assert_eq!(walked.schema(), schema, "the same schema in and out");
+    let after = batches(walked);
+    assert_eq!(row_count(&after), 3);
+    let after: Vec<_> = (0..3).map(|row| body_of(&after[0], row)).collect();
+    assert_eq!(
+        after.iter().map(|held| held.0.clone()).collect::<Vec<_>>(),
+        vec![
+            "line-0 ".to_owned() + lines[2].trim_start_matches("line-0 "),
+            "line-1 ".to_owned() + lines[1].trim_start_matches("line-1 "),
+            "line-2 ".to_owned() + lines[0].trim_start_matches("line-2 "),
+        ],
+        "the walk reordered the rows",
+    );
+    // And the line each row holds is the line its own message came off: the
+    // order's row carries no ExecID, and the two reports carry their own.
+    assert_eq!(after[0].1, None, "the order states no ExecID");
+    assert_eq!(after[1].1.as_deref(), Some("E1"));
+    assert_eq!(after[2].1.as_deref(), Some("E2"));
+    for held in &after {
+        assert_eq!(held.2.as_deref(), Some("WALK-1"));
+    }
+}
+
 #[test]
 fn dedup_composes_over_the_messages_a_batch_holds() {
     let codec = codec();

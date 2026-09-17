@@ -1445,8 +1445,6 @@ fix_header_stated: bool = fix_message_header.stated_sendingtime
 fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
-fix_capture_sourceurl: Url | None = fix_message_capture.sourceurl
-fix_capture_recordedat: int | None = fix_message_capture.recordedat
 fix_capture_pluginid: str | None = fix_message_capture.pluginid
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
@@ -1680,8 +1678,6 @@ assert fix_header_targetcompid is None or fix_header_targetcompid
 assert fix_header_msgseqnum is None or fix_header_msgseqnum
 assert fix_header_possdupflag is None or fix_header_possdupflag
 assert fix_header_msgdirection is None or fix_header_msgdirection
-assert fix_capture_sourceurl is None or fix_capture_sourceurl
-assert fix_capture_recordedat is None or fix_capture_recordedat
 assert fix_capture_pluginid is None or fix_capture_pluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid

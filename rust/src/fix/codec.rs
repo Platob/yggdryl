@@ -421,14 +421,21 @@ enum CaptureRole {
 
 impl CaptureRole {
     /// What one capture name means to this codec, decided once.
+    ///
+    /// A capture named for one of the capture's own columns - `sourceurl`,
+    /// `recordedat` - is silent: what a reader says about a line is not
+    /// something the message it holds says, so it fills no field here and
+    /// is stated on the row by whoever read it.
     fn of(name: &str, codec: &FixCodec) -> Self {
         let is = |known: &str| crate::types::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
         }
-        codec
-            .fill_target(name)
-            .map_or(Self::Silent, |(field, tag)| Self::Fill(field, tag))
+        match codec.fill_target(name) {
+            Some((_, tag)) if super::identity::is_capture_tag(tag) => Self::Silent,
+            Some((field, tag)) => Self::Fill(field, tag),
+            None => Self::Silent,
+        }
     }
 }
 
@@ -1104,6 +1111,17 @@ impl FixCodec {
     ///
     /// A line that states none of them reads exactly as its bytes would,
     /// which is what makes this an entry point and not a second contract.
+    ///
+    /// # The line's own fields are the reader's, and reach no message
+    ///
+    /// Nothing else a [`TextLine`] holds is communicated: not the object it
+    /// names, not the instant it carries, not its media type, not its place
+    /// in that object, not the body itself as a value - and a capture named
+    /// for one of [the capture's own columns](FixMsg::from_row) fills
+    /// nothing either. The answer is the message the line's bytes parsed to
+    /// and no more. Where a line came from is the reader's to state, on the
+    /// row, which is what [`Self::parse_text_arrow_reader`] does with the
+    /// columns the batch already carries.
     ///
     /// # Errors
     ///
@@ -1886,6 +1904,22 @@ impl FixCodec {
                     Ok(message) => codec.reads_msgtype(message.header().msgtype()),
                 });
         super::enrich::Walked::new(walked)
+    }
+
+    /// [`Self::lifecycle`] over messages a caller has already put in their
+    /// own order, streamed rather than collected and sorted.
+    ///
+    /// One answer per message, in the order it got them. The batch door
+    /// sorts the messages a batch holds beside the cells of the rows they
+    /// came out of, so what a *row* states - where its line was read from,
+    /// when it was recorded - stays with the message the walk's order moved,
+    /// which a message holding nothing about its reading could not do for
+    /// itself.
+    pub(super) fn lifecycle_sorted<I>(messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
+    where
+        I: IntoIterator<Item = Result<FixMsg>>,
+    {
+        super::enrich::Walked::sorted(messages.into_iter().fuse())
     }
 
     /// Builds one message from pairs the caller already split.

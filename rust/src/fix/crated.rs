@@ -304,14 +304,6 @@ const MICCODE_DERIVATION: &str = "coalesce(securityexchange, exdestination, last
 /// happened, both read as the crate's one lifecycle vocabulary.
 const STATE_DERIVATION: &str = "coalesce(ordstatus, exectype)";
 
-/// What dated the line, where the capture did not.
-///
-/// The capture's own instant reaches this column by name (see the aliases on
-/// the field), so this is only the fallback: a message whose line carried no
-/// timestamp is recorded at the instant it says it was sent. Enrichment fills
-/// and never overwrites, so a line that *was* dated keeps that date.
-const RECORDEDAT_DERIVATION: &str = "sendingtime";
-
 /// What a message says about when it stops being good, strongest first.
 ///
 /// `ExpireTime(126)` is the order's own instant and the only one of these
@@ -460,17 +452,16 @@ fn derived(
     Ok(field)
 }
 
-/// One field a bridge spells under its own names *and* that derives where
-/// none of them arrived - the two halves of a fill, on one field.
-fn aliased_derived(
+/// One field a bridge or a reader spells under its own names, deriving
+/// nothing: what nobody stated, nobody knows.
+fn aliased(
     identity: (i32, &str),
     display: &str,
     dtype: DataType,
     description: &str,
     aliases: &[&str],
-    derivation: &str,
 ) -> Result<Field> {
-    let mut field = derived(identity, display, dtype, description, derivation)?;
+    let mut field = crated(identity, display, dtype, description)?;
     field.as_fix_mut().set_names(aliases.iter().copied())?;
     Ok(field)
 }
@@ -625,19 +616,19 @@ fn build() -> Result<Vec<Field>> {
         // replayed or copied records the same message at a second instant,
         // and both copies must digest alike.
         // The text reader already carries the line's own instant, under the
-        // name it gives that column - so the fill is an alias, the way every
-        // other capture column reaches its field, rather than a second
-        // mapping. `mtime` is the reader's own spelling; what no line dated
-        // is the message's own `SendingTime`, which is where the derivation
-        // picks up.
-        aliased_derived(
+        // name it gives that column - so the reading reaches this column by
+        // an alias, the way every other capture column reaches its field,
+        // rather than by a second mapping. `mtime` is the reader's own
+        // spelling. Nothing derives it: a message's `SendingTime` is when
+        // the *message* says it was sent, and answering that here would
+        // have every row claim a recording nobody made.
+        aliased(
             RECORDEDAT_TAG_NAME,
             "RecordedAt",
             clock(),
-            "The instant the capture recorded this line: the line's own text \
-             timestamp, else SendingTime.",
+            "The instant the capture recorded this line, as whoever read the \
+             line states it; null where nobody did.",
             &["mtime"],
-            RECORDEDAT_DERIVATION,
         )?,
         derived(
             EXPIRUNIX_TAG_NAME,

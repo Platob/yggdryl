@@ -170,7 +170,6 @@ test('a bridge capture parses whole and walks its chains', () => {
   assert.equal(report.capture().pluginid, 'ULBridge')
   assert.match(report.capture().msgctxid, /^[0-9a-f]{10}$/)
   assert.match(report.capture().msgsessionid, /^[0-9a-f]{8}$/)
-  assert.equal(typeof report.capture().recordedat, 'bigint')
   assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('ullink.')))
   assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('firm.')))
   assert.ok(Object.keys(report.metadata).every((key) => key === key.toLowerCase()))

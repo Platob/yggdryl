@@ -378267,9 +378267,8 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
+          "description": "The instant the capture recorded this line, as whoever read the line states it; null where nobody did.",
           "display": "RecordedAt",
-          "fix:derivation": "sendingtime",
           "fix:names": [
             "mtime"
           ],
@@ -392536,7 +392535,7 @@
         "t": 65028,
         "n": "RecordedAt",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime."
+        "x": "The instant the capture recorded this line, as whoever read the line states it; null where nobody did."
       },
       {
         "c": "sendingtime",

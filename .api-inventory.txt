@@ -528,7 +528,6 @@ impl<'field> FixField<'field>
   pub fn replacements(&self) -> FixReplacements<'field>
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's fix:directions rules in document order; nothing where absent, which reads by the defaults)
   pub fn is_transient(&self) -> Result<bool>  (the fix:transient flag, true where absent: whether this column travels from one message of a chain to the next, so a column settled to one message says false)
-  pub fn is_captured(&self) -> Result<bool>  (the fix:captured flag, false where absent: whether this column is the capture's own - the body a line was read from, its place in the object, a bridge's row header - rather than something the message said; `FixMsg::from_row` states it on the columns no tag and no counter names, and a message holds such a column so the row returns to its schema whole but never makes it content: no entry, no digest, nothing on the wire)
   pub fn derivation(&self) -> Result<Option<Term>>  (the fix:derivation term: how this field's value is derived from the message where the message states none, one expression over the message's fields by canonical folded name, parsed through Term::from_str and budget-checked; None where absent; InvalidMetadataValue naming fix:derivation for a text that is not a term or one past the budget)
   impl FixFieldMut<'_>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
@@ -556,7 +555,6 @@ impl<'field> FixField<'field>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
   pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; resolves each code as the reading does and refuses one outside the set, a code named twice under any spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged)
   pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>>
-  pub fn set_captured(&mut self, captured: bool) -> Result<()>  (writes fix:captured; false is the default and clears the key)
   pub fn set_transient(&mut self, transient: bool) -> Result<()>  (writes fix:transient; true is the default and is stored as stated)
   pub fn set_derivation(&mut self, term: &Term) -> Result<()>  (stores the term's canonical text; a term past the depth or node budget is Error::Parse and leaves the field unchanged; a registry validates it again at insert, update and load)
   pub fn remove_derivation(&mut self) -> Result<Option<Term>>  (answers the term it spelled; a stored text the reader refuses is InvalidMetadataValue, already removed)
@@ -707,12 +705,12 @@ pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the typ
 
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
 impl FixCodec
-  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
-  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the walk `lifecycle` runs, each back through `FixMsg::into_row`; no re-parse, so a carried column returns to its place)
-  pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
+  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and a `sourceurl` or `recordedat` column is read off the source row and written straight into its own FIX column rather than filling a message fact; batches close on the payload column's raw bytes read once per input batch)
+  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read off the source row and carried beside its message through the walk's own ordering, then stated again at their own columns - the message holds none of them, so the pairing is by message and never by position)
+  pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema; the capture's own columns are read past and not carried, so a `messages` -> `arrow_reader` round trip over a carrying schema answers null at them)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row`; batches close on the arrival record's raw bytes; completed prefix then error and fusion)
   pub fn format_messages<'codec, 'field, I>(&'codec self, messages: I, field: &'field Field) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (each message through `FixMsg::into_row` under one message field of the registry; a column the message does not carry is lifted off its arrival record; a packed occurrence, a composed key and a row-header capture are the codec's readings and are not in the record to lift)
-  pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
+  pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row, restated from the source batch rather than asked of the message, which holds none of them; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `fixentries`)
 
 ### yggdryl::fix::digest  [rust\src\fix\digest.rs]
@@ -743,9 +741,9 @@ pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");  (nullable cloc
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable uuid: the identity of the message this one follows)
 pub const CREATUNIX_TAG_NAME: (i32, &str) = (65_023, "creatunix");  (non-null clock: a stated creation, else OrigSendingTime(122), else `unix`; the earliest a chain knows once walked)
 pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable clock: the opening instant of the grid step a walk read the message as the snapshot of)
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; filled from the text read's own sourceurl column; a capture fact, outside the hashcode)
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column: stated on the row by whoever read the line and restated by whoever writes the row back, held by no message, so outside the hashcode, the entries and the wire)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter, closing the fixed row; outside the hashcode)
-pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");  (nullable clock: when the capture wrote the line down; a capture fact, outside the hashcode)
+pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");  (nullable clock: when the capture wrote the line down, as whoever read the line states it - the text read's mtime column reaches it by that alias; the capture's own column like sourceurl, held by no message, deriving nothing, outside the hashcode, and null where nobody stated one)
 pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_029, "expirunix");  (nullable clock: when the message stops being good)
 pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");  (nullable currency: the bid lane's)
 pub const ASKCURRENCY_TAG_NAME: (i32, &str) = (65_031, "askcurrency");  (nullable currency: the ask lane's)
@@ -788,16 +786,14 @@ pub struct FixHeader  (the standard header facts a message holds typed, beside i
   pub const fn possdupflag(&self) -> Option<bool>
   pub fn msgdirection(&self) -> Option<&str>  (a code of tag 385's set)
   impl Clone, Debug, PartialEq, Eq for FixHeader
-pub struct FixCapture  (what a capture states about the line a message was read from, typed: facts about the capture and not the message, outside the hashcode; no public constructor)
-  pub fn sourceurl(&self) -> Option<&Url>
-  pub const fn recordedat(&self) -> Option<i64>  (nanoseconds since the Unix epoch, UTC)
+pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, the message context, the session instance: facts about the capture and not the message, outside the hashcode; what a reader said about the line is held nowhere on a message, being the capture's own columns; no public constructor)
   pub fn pluginid(&self) -> Option<&str>
   pub fn msgctxid(&self) -> Option<&str>
   pub fn msgsessionid(&self) -> Option<&str>
   impl Clone, Debug, Default, PartialEq, Eq for FixCapture
 
 ### yggdryl::fix::msg  [rust\src\fix\msg.rs]
-pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventData` the graph traits answer, the typed `FixHeader`, the typed `FixCapture`, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once)
+pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventData` the graph traits answer, the typed `FixHeader`, the typed `FixCapture` holding the line's own bridge row header, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once)
   impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
   pub fn new(field: Field, value: Scalar) -> Result<Self>  (links `FixRegistry::global()`)
@@ -816,7 +812,7 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   pub const fn as_value(&self) -> &Scalar  (the content row)
   pub fn get_by_id(&self, id: FixId) -> Option<Scalar>  (owned; a typed field's identity answers its holder, any other the child the identified field's name reaches)
   pub fn by_id(&self, id: FixId) -> Result<Scalar>
-  pub fn get_by_tag(&self, tag: i32) -> Option<Scalar>  (a typed tag answers the holder's fact - `by_tag(35)` the type as text, `by_tag(52)` the sending clock as `datetime64(ns, UTC)`, `by_tag(54)` the side as `BUY`/`SELL`, a crate tag its column's type, `HASHCODE_TAG_NAME` a UInt64, `CURRUUID_TAG_NAME` a Uuid - or nothing where the holder states none; any other tag the child carrying it, else the child named as the dictionary names the tag, else the child named by the tag's decimal)
+  pub fn get_by_tag(&self, tag: i32) -> Option<Scalar>  (a typed tag answers the holder's fact - `by_tag(35)` the type as text, `by_tag(52)` the sending clock as `datetime64(ns, UTC)`, `by_tag(54)` the side as `BUY`/`SELL`, a crate tag its column's type - but 65026 and 65028, the capture's own columns, which no message holds and which therefore answer nothing - `HASHCODE_TAG_NAME` a UInt64, `CURRUUID_TAG_NAME` a Uuid - or nothing where the holder states none; any other tag the child carrying it, else the child named as the dictionary names the tag, else the child named by the tag's decimal)
   pub fn by_tag(&self, tag: i32) -> Result<Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<Scalar>  (folds through the registry to the canonical spelling - a typed field answers its holder - then an exact root-child match)
   pub fn by_name(&self, name: &str) -> Result<Scalar>
@@ -824,12 +820,12 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   pub fn by_path(&self, path: &FieldPath) -> Result<Scalar>
   pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<Scalar>  (a name that reaches nothing and spells more than one segment is read as a path)
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<Scalar>
-  pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()>  (a key reaching a typed fact records it on its holder, a Null clearing it; any other key writes the row, typed by the field the key reaches, replaced in place or appended; a bare unknown tag appends a nullable utf8 child named by its decimal; a name nothing reaches is refused and the message unchanged; every write settles the identity again)
+  pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()>  (a key reaching a typed fact records it on its holder, a Null clearing it; any other key writes the row, typed by the field the key reaches, replaced in place or appended; a bare unknown tag appends a nullable utf8 child named by its decimal; a key reaching one of the capture's own columns - sourceurl, recordedat, by tag or by name - is refused, naming the column, because a message holds no fact for one and a row child would put it on the wire; a name nothing reaches is refused and the message unchanged; every write settles the identity again)
   pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, Scalar)>, K: Into<FixKey<'key>>  (several `set`s with one rebuild; the later of two writes to one child lands; one refusal refuses them all)
   pub fn with_value<'key>(self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self>  (the consuming twin of `set`)
-  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (a typed fact cleared on its holder, a row child taken out, either answered; None for a key reaching nothing)
-  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, the content rebuilt from `fixentries` - every level materialized, the folded leaf decoded - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the list it is; a column no tag and no counter names is the capture's own: it is kept, so the row returns to its schema whole, and marked `fix:captured` so the entries skip it and a message rebuilt from a capture row never re-emits `body=` on the wire; a row without that column has typed facts and no content; exact but for a repeating group whose occurrences nest a second group only some of them state - 83 of the 94 bundled bridge messages rebuild exactly, the 11 that do not being parties nesting PtysSubGrp; refuses a row the schema does not hold or an entries column that is not an arrival entry)
-  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (in schema.rs; each column filled by its tag or its group's counter, a column carrying neither by the child of its name, a value a nullable column will not hold as that column's null; tag 52 only where the message stated it; the entries close the row under `fixentries`)
+  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (a typed fact cleared on its holder, a row child taken out, either answered; None for a key reaching nothing, a capture column among them - which `set` refuses rather than answering None)
+  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, the content rebuilt from `fixentries` - every level materialized, the folded leaf decoded - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the list it is; every capture column is read past - the two the crate tags, sourceurl and recordedat, and every column no tag and no counter names - so nothing on the message holds one and none reaches an entry, a digest or a `body=` on the wire; a column whose name holds a `.` is a bridge's own statement and lands in the metadata; the columns stay the row's, and whoever writes rows back restates them; a row without that column has typed facts and no content; exact but for a repeating group whose occurrences nest a second group only some of them state - 83 of the 94 bundled bridge messages rebuild exactly, the 11 that do not being parties nesting PtysSubGrp; refuses a row the schema does not hold or an entries column that is not an arrival entry)
+  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (in schema.rs; each column filled by its tag or its group's counter, a column carrying neither by the child of its name; the capture's own columns answer null, the two tagged ones included, because no message holds a fact for them, a value a nullable column will not hold as that column's null; tag 52 only where the message stated it; the entries close the row under `fixentries`)
   impl Element, Event, MarketElement for FixMsg  (so MarketEvent; through the held `MarketEventData`: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg  (equal over the holders, the row and the registry - the same Arc or equal registries; hashed over the hashcode, the row's schema and its value)
 
@@ -936,7 +932,7 @@ pub const GROUP_TAGS: [i32; 3]
 pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tag/name/value/fixentries, three levels materialized and the rest folded into a JSON utf8 leaf)
 pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event it is, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the three groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the arrival record's counter: 119 tags. Price(44), OrderQty(38) and Quantity(53) are not among them: `px` and `qty` are the columns they are read and written through)
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 123 columns with the shipped dictionary; `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
-pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a capture's own columns in front of the fixed ones, less any whose folded name a FIX column takes)
+pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a capture's own columns in front of the fixed ones, less any whose folded name a FIX column takes; each carried column is made nullable whatever the capture declared, because only a pass holding the source row can state one)
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own fix:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)
 
@@ -2233,7 +2229,6 @@ pub struct TextLine
   pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
-  pub fn sourceurl(&self) -> Option<&Url>
   pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>)
   pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self
   pub const fn timestamp(&self) -> Option<i128>

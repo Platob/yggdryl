@@ -964,18 +964,15 @@ fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
 /// What the capture stated about the line a message was read from, as
 /// plain values.
 ///
-/// Facts about the capture and not about the message: none of them is FIX,
-/// none is content, and none reaches the code the message digests to.
+/// What the line itself said about the capture it was written for: a
+/// bridge's own row header. None of it is FIX, none is content, and none
+/// reaches the code the message digests to.
+///
+/// What the *reader* said about the line - the object it came out of, when
+/// it was recorded - is held nowhere on a message: those are the capture's
+/// own columns, and they are read off the row.
 #[napi(object, object_from_js = false)]
 pub struct FixCaptureView {
-    /// The URL of the object the line was read from, where the capture
-    /// named it.
-    #[napi(ts_type = "string | null")]
-    pub sourceurl: Either<String, Null>,
-    /// When the capture recorded the line, nanoseconds since the Unix
-    /// epoch, UTC, where it dated it.
-    #[napi(ts_type = "bigint | null")]
-    pub recordedat: Either<BigInt, Null>,
     /// The plugin that logged the line inside a bridge, as the bridge names
     /// it.
     #[napi(ts_type = "string | null")]
@@ -990,8 +987,6 @@ pub struct FixCaptureView {
 
 fn capture_view(capture: &FixCapture) -> FixCaptureView {
     FixCaptureView {
-        sourceurl: or_null(capture.sourceurl().map(ToString::to_string)),
-        recordedat: or_null(capture.recordedat().map(instant)),
         pluginid: or_null(capture.pluginid().map(ToOwned::to_owned)),
         msgctxid: or_null(capture.msgctxid().map(ToOwned::to_owned)),
         msgsessionid: or_null(capture.msgsessionid().map(ToOwned::to_owned)),
@@ -1070,9 +1065,13 @@ impl JsFixMsg {
     /// the content is rebuilt from the `fixentries` column, each entry typed
     /// through the dictionary exactly as the builder types a pair, so
     /// `intoBytes` re-emits the line the row was read from; a row without
-    /// that column has the typed facts and no content. A column no tag names
-    /// is a capture's own and stays a child. Nothing is parsed again and no
-    /// clock is read. The process default is the registry when none is named.
+    /// that column has the typed facts and no content. Every capture column
+    /// is read past - the two the crate tags, `sourceurl` and `recordedat`,
+    /// and every column no tag and no counter names - so nothing on the
+    /// message holds one; a column whose name holds a `.` is a bridge's own
+    /// statement and lands in the metadata. They stay the row's, and
+    /// whoever writes rows back restates them. Nothing is parsed again and
+    /// no clock is read. The process default is the registry when none is named.
     #[napi(factory)]
     pub fn from_row(
         schema: &JsField,
@@ -1127,7 +1126,10 @@ impl JsFixMsg {
         header_view(self.inner.header())
     }
 
-    /// What the capture said about the line, as one plain object read once.
+    /// What the line said about the capture it was written for, as one plain
+    /// object read once: the plugin, the message context and the session
+    /// instance. Not where the line was read from and not when it was
+    /// recorded - those are the reader's, held nowhere on a message.
     #[napi]
     pub fn capture(&self) -> FixCaptureView {
         capture_view(self.inner.capture())
@@ -1431,7 +1433,10 @@ impl JsFixMsg {
     /// row, and the identity is settled again. No clock is read.
     ///
     /// A key reaching no field and no child, or a value the field refuses,
-    /// throws the core's refusal and leaves the message as it was.
+    /// throws the core's refusal and leaves the message as it was. So does a
+    /// key reaching one of the capture's own columns - `sourceurl` (65026),
+    /// `recordedat` (65028), by tag or by name: a message holds no fact for
+    /// one, and a row child would put it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
     pub fn set(&mut self, env: Env, key: Unknown<'_>, value: &JsScalar) -> Result<()> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -2115,6 +2120,12 @@ impl JsFixCodec {
     /// lead and the fixed FIX columns follow. Every row is parsed as the
     /// line door parses one, and batches close on the raw bytes of
     /// the payload column against `batchByteSize`. The source is consumed.
+    ///
+    /// The capture's own columns fill nothing: the carried ones, and the two
+    /// the crate tags - a `sourceurl` column and a `recordedat` one - are
+    /// read off the source row and written straight into the row this
+    /// answers. This is the one door that can state them, and it is why
+    /// they survive a parse without a message holding one.
     #[napi]
     pub fn parse_text_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
         let parsed = self
@@ -2130,6 +2141,12 @@ impl JsFixCodec {
     /// `FixMsg.fromRow`, stated as the one after the live message it follows,
     /// and written back under the **same** schema, so a carried column
     /// returns to its place. Nothing is parsed again. The source is consumed.
+    ///
+    /// A carried column returns to its place because the door keeps it, not
+    /// because the message does: each row's own cells travel beside the
+    /// message it made and are stated again where that message lands. The
+    /// pairing is by message and never by position - a walk answers messages
+    /// in their own order, which a capture's lines are routinely not in.
     #[napi]
     pub fn lifecycle_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
         let walked = self
@@ -2146,6 +2163,11 @@ impl JsFixCodec {
     /// `parseTextArrowReader` wrote comes back as the messages that made it
     /// without a parse. One half of what the Arrow twins compose;
     /// `arrowReader` is the other. The source is consumed.
+    ///
+    /// The capture's own columns are not carried: a message holds none of
+    /// them, so `arrowReader(schema, messages(reader))` answers them null
+    /// where `lifecycleArrowReader(reader)` keeps them. A stage that has to
+    /// keep them runs as one pass instead.
     #[napi]
     pub fn messages(&self, source: &mut JsBatchReader) -> Result<JsFixMessages> {
         Ok(JsFixMessages::over(self.inner.messages(source.take()?)))
@@ -2220,7 +2242,9 @@ impl JsFixCodec {
     /// The Arrow twin of `formatMessages`, and the last stage of the pipeline
     /// a capture runs. The schema is answered before a row is read, from the
     /// source's carried columns and `field`, and the capture's own columns
-    /// still lead the row. A source carrying no arrival record is a
+    /// still lead the row - restated from the source batch, not asked of the
+    /// message, which holds none of them. A source carrying no arrival
+    /// record is a
     /// projection already and is cast batch by batch instead of read back as
     /// messages. The source is consumed.
     #[napi]
@@ -2394,6 +2418,11 @@ pub fn fix_schema(
 /// `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
 /// so each value reaches its column rather than leading the row, and never
 /// over a reading the message stated itself.
+///
+/// A carried column is nullable whatever the capture declared it: a capture's
+/// own column is the *reading's* statement and no message holds one, so a
+/// pass that has no source row in hand writes null there rather than
+/// refusing per row. The one-pass readers state every one of them.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
@@ -2422,9 +2451,10 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
 /// the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
 /// the instrument's ISIN, MIC, Bloomberg, CUSIP and SEDOL codes; what a
-/// bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`,
-/// `sourceurl`, `recordedat`; and the `nofixentries` that counts the content
-/// record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
+/// bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`; the
+/// capture's own columns, `sourceurl` and `recordedat`, which whoever read
+/// the line states on the row and no message holds; and the `nofixentries`
+/// that counts the content record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null. Every registry already holds them, so this is
 /// the listing a schema or a document walks rather than something a caller
 /// registers.

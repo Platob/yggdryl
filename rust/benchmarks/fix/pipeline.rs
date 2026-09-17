@@ -186,7 +186,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The record reader over the same bodies, each row naming the plugin
     // that logged it: the capture fills the crate's `pluginid` field and
     // selects nothing, so this is what a row costs to read with one more
-    // captured column in front of its tags.
+    // capture on every line.
     let plugin_codec = FixCodec::new(Arc::clone(&registry))
         .with_capture_names(["pluginid"])
         .with_exclude_msgtypes::<[&str; 0], &str>([]);

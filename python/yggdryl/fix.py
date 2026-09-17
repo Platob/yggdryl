@@ -42,8 +42,10 @@ core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
 MIC codes and the bid and ask lanes); :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``);
-:meth:`FixMsg.capture`, what the capture said about the line (``sourceurl``,
-``recordedat``, ``pluginid``, ``msgctxid``, ``msgsessionid``); the free
+:meth:`FixMsg.capture`, what the line's own bridge row header said about
+the capture it was written for (``pluginid``, ``msgctxid``,
+``msgsessionid``) - never what a *reader* said about the line, which is
+held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,

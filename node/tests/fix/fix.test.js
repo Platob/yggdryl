@@ -1146,10 +1146,9 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.equal(message.currency, 'XXX')
   assert.equal(message.text, null)
   assert.deepEqual(message.metadata, {})
-  // Nothing was captured: no line, no plugin, no context.
+  // Nothing was captured: no plugin, no context, no session. Where the line
+  // came from is the reader's statement, on the row, and never here.
   assert.deepEqual(message.capture(), {
-    sourceurl: null,
-    recordedat: null,
     pluginid: null,
     msgctxid: null,
     msgsessionid: null,

@@ -733,7 +733,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
         });
     }
     // The dictionary's own rules and the crate's own columns.
-    assert_eq!(carried, 43);
+    assert_eq!(carried, 42);
     for (tag, _) in [
         yggdryl::ISINCODE_TAG_NAME,
         yggdryl::MICCODE_TAG_NAME,

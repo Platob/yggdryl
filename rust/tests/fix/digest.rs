@@ -513,6 +513,11 @@ fn every_registry_registers_the_crates_fields_without_warning() {
 /// so it must not move when only the object does - otherwise a replay
 /// deduplicates against nothing and every archived day re-enters a table as
 /// new rows.
+///
+/// The object is not a fact a message can hold at all: writing one is
+/// refused, the row a message writes states none, and a row a reader stated
+/// one on reads back as the same message. So the code cannot move, rather
+/// than being kept from moving.
 #[test]
 fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     let registry = super::committed_registry();
@@ -531,12 +536,26 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     ] {
         let stated = yggdryl::Scalar::from(yggdryl::Url::from_str(url).unwrap());
         let mut message = reader.sole_line(line).unwrap();
-        message
-            .set(yggdryl::SOURCEURL_TAG_NAME.0, stated.clone())
-            .unwrap();
+        // The message will not hold it: the column is the reader's.
+        assert!(
+            message
+                .set(yggdryl::SOURCEURL_TAG_NAME.0, stated.clone())
+                .is_err(),
+            "a message states no source object"
+        );
         let row = message.into_row(&schema).unwrap();
-        let held = row.as_sequence().expect("a row");
-        assert_eq!(held[at], stated, "the column still states it");
+        let mut held = row.as_sequence().expect("a row").to_vec();
+        assert!(held[at].is_null(), "and its row states none either");
+        // As a reader states it, on the row.
+        held[at] = stated.clone();
+        let carried = yggdryl::Scalar::from_sequence(held.clone());
+        let again =
+            yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &carried).unwrap();
+        assert_eq!(
+            held[hashcode_at].as_u64(),
+            Some(yggdryl::graph::Element::get_hashcode(&again)),
+            "the row read back is the message that wrote it",
+        );
         identities.push(held[hashcode_at].clone());
     }
     assert_eq!(

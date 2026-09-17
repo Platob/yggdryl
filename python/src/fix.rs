@@ -38,7 +38,7 @@ use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text_line::{PyTextLine, core_path_from_value};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
-use crate::uri::{PyUrl, core_url_from_value};
+use crate::uri::core_url_from_value;
 use crate::value_error;
 
 /// Read one dictionary file through whatever Python named it with.
@@ -1351,7 +1351,11 @@ impl PyFixMsg {
     /// columns fill the holders, the content is rebuilt from the
     /// `fixentries` column - so `into_bytes` re-emits the line the row was
     /// read from, and a row without that column has no content - and a
-    /// column no tag names, a capture's own, stays a child of that name.
+    /// capture's own column is read past - the two the crate tags,
+    /// `sourceurl` and `recordedat`, and every column no tag and no counter
+    /// names - so nothing on the message holds one; a column whose name
+    /// holds a `.` is a bridge's own statement and lands in the metadata.
+    /// They stay the row's, and whoever writes rows back restates them.
     /// Nothing is parsed again and no clock is read: a row carries the
     /// instant, the creation and the identities its message settled, and a
     /// row that does not fit the schema is a located `ValueError`.
@@ -1506,7 +1510,11 @@ impl PyFixMsg {
     /// `key` is a tag or a name, resolved as a lookup resolves one through
     /// the dictionary. A key reaching a typed fact - a header tag, a crate
     /// column, one of the event's own tags - records it on the holder that
-    /// owns it, and `None` clears it. Any other key lands in the row: a
+    /// owns it, and `None` clears it. A key reaching one of the capture's
+    /// own columns - `sourceurl` (65026), `recordedat` (65028), by tag or by
+    /// name - is a located `ValueError`: a message holds no fact for one,
+    /// and a row child would put it on the wire. Any other key lands in
+    /// the row: a
     /// known field types the value through the core's value contract, `None`
     /// is stored as a stated null, an existing child is replaced where it
     /// stands and an absent one appended, a name the dictionary does not
@@ -1642,7 +1650,12 @@ impl PyFixMsg {
         }
     }
 
-    /// What the capture said about the line, typed and held still.
+    /// What the line said about the capture it was written for, typed and
+    /// held still: the plugin a bridge logged it under, the message context
+    /// and the session instance.
+    ///
+    /// Not where the line was read from and not when it was recorded: those
+    /// are the reader's statements, held nowhere on a message.
     fn capture(&self) -> PyFixCapture {
         PyFixCapture {
             inner: self.inner.capture().clone(),
@@ -1865,9 +1878,10 @@ impl PyFixMsg {
     /// fact from its holder and the rest from the row, so a message that
     /// carried nothing at a column answers null there rather than shifting
     /// its neighbours, which is what makes two rows of one capture
-    /// comparable at all. A column no tag or group counter names is the
-    /// capture's: it takes the child of that name where the message has one
-    /// and is null otherwise. The `fixentries` list closes the row with the
+    /// comparable at all. The capture's own columns answer null - the two
+    /// the crate tags, `sourceurl` and `recordedat`, and every column no tag
+    /// and no counter names - because a message holds no fact for any of
+    /// them; the capture readers state them on the row instead. The `fixentries` list closes the row with the
     /// whole content, counted by `nofixentries`. A value a column will not
     /// hold is that column's null; a column that cannot be null keeps the
     /// refusal as a `ValueError`.
@@ -2215,6 +2229,14 @@ impl PyFixCodec {
     /// A `pluginid` capture fills the crate's `pluginid` field and selects
     /// nothing: the dictionary is one namespace.
     ///
+    /// Nothing else the line holds is communicated: not the object it names,
+    /// not its media type, not its place in that object, not the body as a
+    /// value - and a capture named for one of the capture's own columns
+    /// (`sourceurl`, `recordedat`, or the `mtime` that aliases it) fills
+    /// nothing either. The answer is the message the line's bytes parsed to
+    /// and no more; where a line came from is the reader's to state, on the
+    /// row, which is what `parse_text_arrow_reader` does.
+    ///
     /// A `direction` capture is named so it cannot silently fill a field of
     /// that name, and is not otherwise read: only `parse_text_arrow_reader`
     /// has a column to put a direction in.
@@ -2254,6 +2276,14 @@ impl PyFixCodec {
     /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the raw bytes of the payload column
     /// against `batch_byte_size`.
+    ///
+    /// The capture's own columns fill nothing: the carried ones, and the two
+    /// the crate tags - a `sourceurl` column and a `recordedat` one - are
+    /// read off the source row and written straight into the row this
+    /// answers, because where a line was read from is this reader's
+    /// statement and never the message's. This is the one door that can
+    /// state them, and it is why they survive a parse without a message
+    /// holding one.
     fn parse_text_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -2267,11 +2297,17 @@ impl PyFixCodec {
     ///
     /// `lifecycle` over batches: each row is a message through
     /// `FixMsg.from_row`, the messages are walked as `lifecycle` walks
-    /// them, and each is written back through `FixMsg.into_row` under the
-    /// **same** schema, so a carried column returns to its place and the
-    /// arrival record is untouched. Nothing is parsed again, and batches
-    /// close on the raw bytes of each message's arrival record against
-    /// `batch_byte_size`.
+    /// them, and each is written back under the **same** schema, so a
+    /// carried column returns to its place and the arrival record is
+    /// untouched. Nothing is parsed again, and batches close on the raw
+    /// bytes of each message's arrival record against `batch_byte_size`.
+    ///
+    /// A carried column returns to its place because the door keeps it, not
+    /// because the message does: a message holds nothing about the reading
+    /// it arrived through, so each row's own cells travel beside the message
+    /// it made and are stated again where that message lands. The pairing is
+    /// by message and never by position - a walk answers messages in their
+    /// own order, which a capture's lines are routinely not in.
     fn lifecycle_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -2288,6 +2324,11 @@ impl PyFixCodec {
     /// `parse_text_arrow_reader` wrote comes back as the messages that made
     /// it without a parse. One half of what the Arrow twins compose;
     /// `arrow_reader` is the other.
+    ///
+    /// The capture's own columns are not carried: a message holds none of
+    /// them, so `arrow_reader(schema, messages(reader))` answers them null
+    /// where `lifecycle_arrow_reader(reader)` keeps them. A stage that has
+    /// to keep them runs as one pass instead.
     fn messages(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let source = batch_reader_from_value(source)?;
         Ok(PyFixMessages::over(self.inner.messages(source)))
@@ -2360,7 +2401,9 @@ impl PyFixCodec {
     /// The Arrow twin of `format_messages`, and the last stage of the
     /// pipeline a capture runs. The schema is answered before a row is read,
     /// from the source's carried columns and `field`, and the capture's own
-    /// columns still lead the row. A source carrying no arrival record is a
+    /// columns still lead the row - restated from the source batch, not
+    /// asked of the message, which holds none of them. A source carrying no
+    /// arrival record is a
     /// projection already and is cast batch by batch instead of read back as
     /// messages.
     fn format_arrow_reader<'py>(
@@ -2487,6 +2530,11 @@ pub(crate) fn fix_schema(
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
 /// and the row fills it from what the capture stated.
+///
+/// A carried column is nullable whatever the capture declared it: a capture's
+/// own column is the *reading's* statement and no message holds one, so a
+/// pass that has no source row in hand writes null there rather than
+/// refusing per row. The one-pass readers state every one of them.
 #[pyfunction]
 #[pyo3(name = "fix_schema_carrying", signature = (carrier, read))]
 pub(crate) fn fix_schema_carrying(
@@ -2737,16 +2785,21 @@ impl PyFixHeader {
     }
 }
 
-/// What a capture states about the line a message was read from, typed
+/// What the line itself said about the capture it was written for, typed
 /// and held still.
 ///
-/// Facts about the capture and not about the message: where the line was
-/// read from, when the capture recorded it, and what a bridge's own row
-/// header says about the line it wrote - the plugin, the message context
-/// and the session instance. None of them is FIX and none is content, so
-/// nothing here reaches the code the message digests to. A copy at the
-/// moment it was asked for; immutable, so it compares and hashes by its
-/// facts.
+/// What a bridge's own row header states about the line it wrote - the
+/// plugin, the message context and the session instance - read off the
+/// line's own bytes like every other fact a message holds. None of it is
+/// FIX and none is content, so nothing here reaches the code the message
+/// digests to.
+///
+/// What the *reader* said about the line is not here and is held nowhere on
+/// a message: the object it was read from and the instant it was recorded
+/// are the capture's own columns, stated on the row by whoever read it.
+///
+/// A copy at the moment it was asked for; immutable, so it compares and
+/// hashes by its facts.
 #[pyclass(
     name = "FixCapture",
     module = "yggdryl._native",
@@ -2760,19 +2813,6 @@ pub(crate) struct PyFixCapture {
 
 #[pymethods]
 impl PyFixCapture {
-    /// The object the line was read from, where the capture named it.
-    #[getter]
-    fn sourceurl(&self) -> Option<PyUrl> {
-        self.inner.sourceurl().cloned().map(PyUrl::from_core)
-    }
-
-    /// When the capture recorded the line: nanoseconds since the Unix
-    /// epoch, UTC, or `None`.
-    #[getter]
-    fn recordedat(&self) -> Option<i64> {
-        self.inner.recordedat()
-    }
-
     /// The plugin that logged the line, as a bridge names it, or `None`.
     #[getter]
     fn pluginid(&self) -> Option<&str> {
@@ -2804,8 +2844,6 @@ impl PyFixCapture {
     fn __hash__(&self) -> isize {
         let mut state = std::hash::DefaultHasher::new();
         (
-            self.inner.sourceurl().map(ToString::to_string),
-            self.inner.recordedat(),
             self.inner.pluginid(),
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
@@ -2815,10 +2853,8 @@ impl PyFixCapture {
     }
 
     fn __repr__(&self) -> String {
-        let sourceurl = self.inner.sourceurl().map(ToString::to_string);
         format!(
-            "FixCapture({}, {}, {})",
-            repr_text(sourceurl.as_deref()),
+            "FixCapture({}, {})",
             repr_text(self.inner.pluginid()),
             repr_text(self.inner.msgsessionid())
         )

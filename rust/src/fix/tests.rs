@@ -4480,7 +4480,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 74, "{names:?}");
+    assert_eq!(names.len(), 73, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -4501,8 +4501,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        43,
-        "29 shipped fields and the crate's fourteen columns"
+        42,
+        "29 shipped fields and the crate's thirteen columns"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -4546,7 +4546,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
     // The edit reads a column another rule already read, so the working
     // schema is no wider.
-    assert_eq!(names.len(), 74, "the edit reads a column another rule read");
+    assert_eq!(names.len(), 73, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -4564,7 +4564,6 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
             super::ISINCODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
             super::STATE_TAG_NAME.0,
-            super::RECORDEDAT_TAG_NAME.0,
             super::EXPIRUNIX_TAG_NAME.0,
             super::BIDCURRENCY_TAG_NAME.0,
             super::ASKCURRENCY_TAG_NAME.0,

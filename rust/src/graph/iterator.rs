@@ -330,7 +330,7 @@ fn is_alive<E: Event>(element: &E) -> bool {
 
 /// The elements' own order as a sort reads it: after is greater, before is
 /// less, and neither is equal.
-fn order<E: Element>(left: &E, right: &E) -> Ordering {
+pub(crate) fn order<E: Element>(left: &E, right: &E) -> Ordering {
     if left.is_after(right) {
         Ordering::Greater
     } else if left.is_before(right) {

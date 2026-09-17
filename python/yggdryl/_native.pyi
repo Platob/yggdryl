@@ -5069,21 +5069,22 @@ class FixHeader:
     def __deepcopy__(self, memo: Any) -> FixHeader: ...
 
 class FixCapture:
-    """What a capture states about the line a message was read from, typed.
+    """What the line itself said about the capture it was written for, typed.
 
-    Where the line was read from, when the capture recorded it (nanoseconds
-    since the Unix epoch, UTC), and what a bridge's own row header says
-    about the line - the plugin, the message context and the session
-    instance. None of them is FIX and none is content, so nothing here
-    reaches the code the message digests to. A copy at the moment
-    ``FixMsg.capture()`` answered it; immutable, comparing and hashing by
-    its facts.
+    What a bridge's own row header states about the line it wrote - the
+    plugin, the message context and the session instance - read off the
+    line's own bytes like every other fact a message holds. None of it is
+    FIX and none is content, so nothing here reaches the code the message
+    digests to.
+
+    What the *reader* said about the line is not here and is held nowhere on
+    a message: the object it was read from and the instant it was recorded
+    are the capture's own columns, stated on the row by whoever read it.
+
+    A copy at the moment ``FixMsg.capture()`` answered it; immutable,
+    comparing and hashing by its facts.
     """
 
-    @property
-    def sourceurl(self) -> Url | None: ...
-    @property
-    def recordedat(self) -> int | None: ...
     @property
     def pluginid(self) -> str | None: ...
     @property

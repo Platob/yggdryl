@@ -838,8 +838,11 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
 
     capture = message.capture()
     assert isinstance(capture, FixCapture)
-    assert capture.sourceurl is None
-    assert capture.recordedat == CLOCK_NS
+    # What the line said about its capture, and nothing the reader said: the
+    # object it came out of and the instant it was recorded are the
+    # capture's own columns, on the row.
+    assert not hasattr(capture, "sourceurl")
+    assert not hasattr(capture, "recordedat")
     assert capture.pluginid is None
     assert capture.msgctxid is None
     assert capture.msgsessionid is None

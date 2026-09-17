@@ -191,8 +191,6 @@ const msgseqnum: number | null = header.msgseqnum
 const sendingtime: bigint = header.sendingtime
 const possdupflag: boolean | null = header.possdupflag
 const msgdirection: string | null = header.msgdirection
-const sourceurl: string | null = capture.sourceurl
-const recordedat: bigint | null = capture.recordedat
 const pluginid: string | null = capture.pluginid
 const msgctxid: string | null = capture.msgctxid
 const msgsessionid: string | null = capture.msgsessionid
@@ -237,8 +235,6 @@ void msgseqnum
 void sendingtime
 void possdupflag
 void msgdirection
-void sourceurl
-void recordedat
 void pluginid
 void msgctxid
 void msgsessionid

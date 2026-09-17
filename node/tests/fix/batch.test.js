@@ -496,7 +496,7 @@ test('messages pull from the reader one batch at a time', () => {
   assert.ok(source.consumed, 'the stream is taken, not copied')
   const first = messages.next().value
   assert.equal(first.byTag(11).asJs(), 'ORDER-1')
-  assert.equal(Buffer.from(first.byName('body').asJs()).toString(), CAPTURE[0], 'a carried column is a child of its own name')
+  assert.equal(first.getByName('body'), null, "a carried column stays the row's, never a child of the message")
   assert.equal([...messages].length, CARRYING.length - 1)
 })
 
@@ -761,31 +761,41 @@ test('a row reads back into the message that made it', () => {
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
 })
 
-test("a row carrying its capture's own columns returns to its schema whole", () => {
+test("a capture's own columns never reach the message", () => {
   const registry = seed()
   const codec = reading(registry)
   const line = fields.struct('line', [fields.utf8('url'), fields.int64('rownum'), fields.binary('body')], { nullable: false })
   const schema = fix.schemaCarrying(line, fix.schema(registry))
+  // A carried column is nullable whatever the capture declared: only a pass
+  // holding the source row can state one.
+  assert.ok(schema.field('url').nullable)
   const parsed = one(codec, ORDER)
 
-  // A parsed message has no capture columns: they are null in its row.
+  // A parsed message has no capture columns: they are null in its row, the
+  // two the crate tags among them.
   const row = parsed.intoRow(schema).asJs()
-  assert.equal(row[schema.indexOf('url')], null)
-  assert.equal(row[schema.indexOf('rownum')], null)
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+    assert.equal(row[schema.indexOf(carrier)], null, carrier)
+  }
 
-  // Read back, the message holds them as children, and a written one lands
-  // in its column: a column no tag names takes the child of its name.
-  const held = fix.FixMsg.fromRow(schema, parsed.intoRow(schema), registry)
-  assert.ok(held.intoRow(schema).equals(parsed.intoRow(schema)))
-  held.set('url', 'file:///capture.log')
-  held.set('rownum', 42n)
-  const filled = held.intoRow(schema).asJs()
-  assert.equal(filled[schema.indexOf('url')], 'file:///capture.log')
-  assert.equal(Number(filled[schema.indexOf('rownum')]), 42)
-  assert.equal(filled[schema.indexOf('symbol')], 'AAPL')
-  const again = fix.FixMsg.fromRow(schema, held.intoRow(schema), registry)
-  assert.deepEqual(again.entries(), held.entries())
-  assert.equal(again.byName('url').asJs(), 'file:///capture.log')
+  // A row a reader stated them on reads back holding none of them, and a
+  // write to one of the crate's two is refused rather than silently kept.
+  const stated = [...row]
+  stated[schema.indexOf('url')] = 'file:///capture.log'
+  stated[schema.indexOf('rownum')] = 42n
+  const again = fix.FixMsg.fromRow(schema, stated, registry)
+  assert.deepEqual(again.entries(), parsed.entries())
+  for (const carrier of ['url', 'rownum', 'body']) {
+    assert.equal(again.getByName(carrier), null, carrier)
+  }
+  assert.throws(() => again.set('sourceurl', 'file:///capture.log'), /sourceurl/)
+
+  // So a message alone writes them null: the readers restate them.
+  const written = again.intoRow(schema).asJs()
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+    assert.equal(written[schema.indexOf(carrier)], null, carrier)
+  }
+  assert.equal(written[schema.indexOf('symbol')], 'AAPL')
 })
 
 test('a row without the entries column has no entries', () => {

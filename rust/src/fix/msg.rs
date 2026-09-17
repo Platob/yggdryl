@@ -105,7 +105,9 @@ pub struct FixMsg {
     event: Box<MarketEventData>,
     /// The standard header, typed.
     header: Box<FixHeader>,
-    /// What the capture said about the line, typed.
+    /// What the line said about the capture it was written for, typed: a
+    /// bridge's own row header. What the *reader* said about the line is
+    /// held nowhere here.
     capture: Box<FixCapture>,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
@@ -150,6 +152,22 @@ pub(super) struct Write {
 enum Staged {
     Typed(i32, Scalar),
     Row(Write),
+}
+
+/// The refusal a write to one of the capture's own columns earns, named by
+/// the column it reached.
+///
+/// Loud rather than silent: a caller writing `sourceurl` on a message means
+/// to state where a line came from, and answering nothing would leave it
+/// believing the message says so.
+fn refused_capture(name: &str, tag: i32) -> Error {
+    identity::refused(
+        name,
+        "a field a message states",
+        format_smolstr!(
+            "the capture's own column {name} ({tag}), which whoever read the line states on the row"
+        ),
+    )
 }
 
 /// Adds one staged write to the batch, the later of two writes to one child
@@ -386,6 +404,12 @@ impl FixMsg {
                         metadata.insert(SmolStr::new(child.name()), SmolStr::new(held));
                     }
                 }
+                // The capture's own column, whoever built the root: the
+                // object the line was read from, the instant it was
+                // recorded. Read past, because a message states nothing
+                // about the reading it arrived through - and never kept as
+                // a child, which would make it content the wire re-emits.
+                Some(tag) if identity::is_capture_tag(tag) => {}
                 Some(60) => {
                     transact = value.temporal_count_at(crate::TimeUnit::Nanosecond);
                     members.push(child.clone());
@@ -472,6 +496,10 @@ impl FixMsg {
                         self.record(tag, &value);
                     }
                 }
+                // The capture's own column, which no restatement of the
+                // content can make a fact of the message: read past, as
+                // every other door reads it past.
+                Some(tag) if identity::is_capture_tag(tag) => {}
                 None if child.name().contains('.') => {
                     if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
                         self.metadata
@@ -647,7 +675,13 @@ impl FixMsg {
         &self.metadata
     }
 
-    /// What the capture said about the line, typed.
+    /// What the line said about the capture it was written for, typed: the
+    /// plugin a bridge logged it under, the message context and the session
+    /// instance, all read off the line's own bytes.
+    ///
+    /// Not where the line was read from and not when it was recorded: those
+    /// are the reader's statements, and they are [the capture's own
+    /// columns](Self::from_row) rather than facts of a message.
     #[must_use]
     pub const fn capture(&self) -> &FixCapture {
         &self.capture
@@ -666,34 +700,19 @@ impl FixMsg {
         self.entries.get_or_init(|| self.derive_entries())
     }
 
-    /// The row read as a tree, the capture's own columns left out.
+    /// The row read as a tree.
     ///
-    /// A column [`FixField::is_captured`](crate::FixField::is_captured)
-    /// answers for is the capture's - the body a line was read from, its
-    /// place in the object, a bridge's row header - and a capture is not
-    /// what the message said. It stays a column, so a row walked through
-    /// [`Self::from_row`] and back returns to its schema whole; it is not an
-    /// entry, so it reaches neither the code the message answers to nor the
-    /// wire. Everything else is content, a key no dictionary explains
-    /// included.
+    /// Every child of the row is content, a key no dictionary explains
+    /// included, because the row holds nothing else: the typed facts are
+    /// their holders' to answer, and the capture's own columns - the body a
+    /// line was read from, its place in the object, the object itself, the
+    /// instant it was recorded - never reach a message at all, so there is
+    /// nothing here to tell apart from what the line said.
     fn derive_entries(&self) -> Vec<FixEntry> {
         let Some(values) = self.value.as_sequence() else {
             return Vec::new();
         };
-        let children = self.field.fields();
-        let captured = |child: &Field| child.as_fix().is_captured().unwrap_or(false);
-        if !children.iter().any(captured) {
-            return entries_of(children, values);
-        }
-        let mut fields: Vec<Field> = Vec::with_capacity(children.len());
-        let mut held: Vec<Scalar> = Vec::with_capacity(children.len());
-        for (child, value) in children.iter().zip(values) {
-            if !captured(child) {
-                fields.push(child.clone());
-                held.push(value.clone());
-            }
-        }
-        entries_of(&fields, &held)
+        entries_of(self.field.fields(), values)
     }
 
     /// Every entry the wire carries, in wire order: the standard header
@@ -911,6 +930,18 @@ impl FixMsg {
         let (at, mut field) = self.target(key)?;
         check(key, &field)?;
         let tag = field.as_fix().tag()?;
+        // The capture's own column is nobody's to write here: a message
+        // holds no fact for it, and landing one in the row would make the
+        // object a line was read from a pair this message re-emits. Whoever
+        // read the line states it on the row instead.
+        if let Some(tag) = tag.filter(|tag| identity::is_capture_tag(*tag)) {
+            return Err(refused_capture(field.name(), tag));
+        }
+        if let FixKey::Tag(tag) = *key {
+            if identity::is_capture_tag(tag) {
+                return Err(refused_capture(field.name(), tag));
+            }
+        }
         if let Some(tag) = tag.filter(|tag| identity::is_typed_tag(*tag)) {
             let value = if value.is_null() {
                 Scalar::Null
