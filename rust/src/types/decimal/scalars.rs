@@ -23,7 +23,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, i256,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, i256,
 };
 
 /// Operations shared by every exact-decimal representation.
@@ -115,41 +115,12 @@ decimal_leaf!(Decimal256, i256);
 macro_rules! decimal_value {
     ($leaf:ident) => {
         impl ScalarValue for $leaf {
-            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Decimal;
 
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$leaf(*self).dtype()
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$leaf(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
-            }
-        }
-
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Decimal;
-
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$leaf
-            }
-
-            fn dtype(&self) -> Result<DataType> {
-                <Self as ScalarValue>::dtype(self)
             }
 
             fn into_scalar(self) -> Scalar {
@@ -163,6 +134,7 @@ macro_rules! decimal_value {
                 }
             }
         }
+
     };
     ($leaf:ident, $native:ty) => {
         decimal_value!($leaf);

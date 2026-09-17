@@ -13,7 +13,7 @@ use std::sync::Arc;
 use yggdryl::types::floating::FloatingValue;
 use yggdryl::types::{Float16, Float32, Float64, Scalar};
 use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, ScalarFamily, ScalarValue, TimeUnit, Timezone, i256,
+    DataType, DataTypeId, DataTypeKind, ScalarValue, TimeUnit, Timezone, i256,
 };
 
 fn order() -> Scalar {
@@ -464,17 +464,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
     assert_eq!(ScalarValue::dtype(&leaf).unwrap(), DataType::Float32);
     assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
-    // A width leaf is its own family.
-    let family: Float32 = ScalarValue::into_family(leaf);
-    assert_eq!(family, leaf);
-    assert_eq!(<Float32 as ScalarValue>::from_family(&family), Some(&leaf));
-    assert_eq!(ScalarFamily::id(&family), DataTypeId::Float32);
-    assert_eq!(ScalarFamily::dtype(&family).unwrap(), DataType::Float32);
-    assert_eq!(
-        <Float32 as ScalarFamily>::from_scalar(&scalar),
-        Some(&family)
-    );
-    assert_eq!(ScalarFamily::into_scalar(family), scalar);
+    assert_eq!(ScalarValue::into_scalar(leaf), scalar);
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }

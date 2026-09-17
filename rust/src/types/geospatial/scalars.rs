@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarValue};
 
 /// Borrowing access shared by geometry and geography values.
 pub trait GeospatialValue: ScalarValue {
@@ -74,41 +74,12 @@ const _: () = assert!(std::mem::size_of::<Geography>() == 16);
 macro_rules! geospatial_value {
     ($leaf:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
-            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Geospatial;
 
             fn dtype(&self) -> Result<DataType> {
                 $dtype
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$leaf(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
-            }
-        }
-
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Geospatial;
-
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$leaf
-            }
-
-            fn dtype(&self) -> Result<DataType> {
-                <Self as ScalarValue>::dtype(self)
             }
 
             fn into_scalar(self) -> Scalar {

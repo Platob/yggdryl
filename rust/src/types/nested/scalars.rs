@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::Scalar;
-use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarValue};
 
 /// Borrowing access shared by every nested value shape.
 pub trait NestedValue: crate::ScalarValue {
@@ -163,41 +163,12 @@ impl std::iter::FusedIterator for Children<'_> {}
 macro_rules! nested_value {
     ($leaf:ident, $variant:ident, $id:ident) => {
         impl ScalarValue for $leaf {
-            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Nested;
 
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$variant(self.clone()).dtype()
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
-            }
-        }
-
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Nested;
-
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$id
-            }
-
-            fn dtype(&self) -> Result<DataType> {
-                <Self as ScalarValue>::dtype(self)
             }
 
             fn into_scalar(self) -> Scalar {
@@ -211,6 +182,7 @@ macro_rules! nested_value {
                 }
             }
         }
+
     };
 }
 

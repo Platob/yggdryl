@@ -73,8 +73,6 @@ use super::version::Version;
 pub trait ScalarValue:
     Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
 {
-    /// The family this representation belongs to; a width leaf is its own.
-    type Family: ScalarFamily;
 
     /// The exact representation identifier.
     const ID: DataTypeId;
@@ -86,34 +84,12 @@ pub trait ScalarValue:
     /// Values whose physical parameters cannot be represented by a valid
     /// [`DataType`] return a typed error instead of guessing or panicking.
     fn dtype(&self) -> Result<DataType>;
-    /// Widen this leaf to its family.
-    fn into_family(self) -> Self::Family;
-    /// Narrow a family value to this leaf.
-    fn from_family(family: &Self::Family) -> Option<&Self>;
     /// Widen this leaf to the dynamic scalar root.
     fn into_scalar(self) -> Scalar;
     /// Narrow a dynamic scalar to this leaf without re-validating it.
     fn from_scalar(value: &Scalar) -> Option<&Self>;
 }
 
-/// One dynamic family of scalar representations.
-///
-/// [`Code`] is the one family grouping several leaves; every other leaf,
-/// including each integer, float, decimal, temporal, geospatial and nested
-/// width, is its own family.
-pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash {
-    /// The datatype family shared by every member.
-    const KIND: DataTypeKind;
-
-    /// Return the exact representation identifier.
-    fn id(&self) -> DataTypeId;
-    /// Return the exact datatype carried by this value.
-    fn dtype(&self) -> Result<DataType>;
-    /// Widen this family value to the dynamic scalar root.
-    fn into_scalar(self) -> Scalar;
-    /// Narrow a dynamic scalar to this family without re-validating it.
-    fn from_scalar(value: &Scalar) -> Option<&Self>;
-}
 
 /// Make one canonical text value a scalar leaf of its own.
 ///
@@ -124,12 +100,11 @@ pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + H
 /// the enum rides behind a shared pointer instead.
 macro_rules! text_scalar_value {
     ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Text;
 
-            fn id(&self) -> DataTypeId {
-                $id
-            }
+        impl ScalarValue for $leaf {
+
+            const ID: DataTypeId = $id;
+            const KIND: DataTypeKind = DataTypeKind::Text;
 
             fn dtype(&self) -> Result<DataType> {
                 Ok($dtype)
@@ -144,33 +119,6 @@ macro_rules! text_scalar_value {
                     Scalar::$variant(value) => Some(value),
                     _ => None,
                 }
-            }
-        }
-
-        impl ScalarValue for $leaf {
-            type Family = Self;
-
-            const ID: DataTypeId = $id;
-            const KIND: DataTypeKind = DataTypeKind::Text;
-
-            fn dtype(&self) -> Result<DataType> {
-                Ok($dtype)
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
             }
         }
 

@@ -15,7 +15,7 @@ use super::codes::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
     SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
-use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarValue, types};
 
 /// Borrowing access shared by every code representation.
 pub trait CodeValue: crate::ScalarValue {
@@ -1197,24 +1197,12 @@ impl fmt::Display for Code {
 macro_rules! code_value {
     ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)?) => {
         impl ScalarValue for $leaf {
-            type Family = Code;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Code;
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(DataType::$id)
-            }
-
-            fn into_family(self) -> Self::Family {
-                Code::$leaf(self)
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Code::$leaf(value) => Some(value),
-                    _ => None,
-                }
             }
 
             fn into_scalar(self) -> Scalar {
@@ -1267,28 +1255,6 @@ code_value!(Side, Side, SIDE_WIDTH, merge = Side::merged);
 code_value!(State, State, STATE_WIDTH, merge = State::merged);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
 
-impl ScalarFamily for Code {
-    const KIND: DataTypeKind = DataTypeKind::Code;
-
-    fn id(&self) -> DataTypeId {
-        self.identifier()
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(self.datatype())
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Code(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Code(value) => Some(value),
-            _ => None,
-        }
-    }
-}
 
 impl From<Code> for Scalar {
     fn from(value: Code) -> Self {

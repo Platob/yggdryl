@@ -7,15 +7,13 @@
 
 use std::sync::Arc;
 
-use crate::types::scalar::{ScalarFamily, ScalarValue};
+use crate::types::scalar::{ScalarValue};
 use crate::{DataType, DataTypeId, DataTypeKind, MediaType, Result, Scalar};
 
-impl ScalarFamily for MediaType {
-    const KIND: DataTypeKind = DataTypeKind::Text;
+impl ScalarValue for MediaType {
 
-    fn id(&self) -> DataTypeId {
-        DataTypeId::MediaType
-    }
+    const ID: DataTypeId = DataTypeId::MediaType;
+    const KIND: DataTypeKind = DataTypeKind::Text;
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::MediaType)
@@ -30,33 +28,6 @@ impl ScalarFamily for MediaType {
             Scalar::MediaType(value) => Some(value),
             _ => None,
         }
-    }
-}
-
-impl ScalarValue for MediaType {
-    type Family = Self;
-
-    const ID: DataTypeId = DataTypeId::MediaType;
-    const KIND: DataTypeKind = DataTypeKind::Text;
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::MediaType)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::MediaType(Arc::new(self))
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        <Self as ScalarFamily>::from_scalar(value)
     }
 }
 

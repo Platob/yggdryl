@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::types::Scalar;
-use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarValue};
 
 /// The one null value.
 #[derive(
@@ -69,12 +69,10 @@ impl From<bool> for Scalar {
     }
 }
 
-impl ScalarFamily for Null {
-    const KIND: DataTypeKind = DataTypeKind::Null;
+impl ScalarValue for Null {
 
-    fn id(&self) -> DataTypeId {
-        DataTypeId::Null
-    }
+    const ID: DataTypeId = DataTypeId::Null;
+    const KIND: DataTypeKind = DataTypeKind::Null;
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Null)
@@ -90,39 +88,10 @@ impl ScalarFamily for Null {
     }
 }
 
-impl ScalarValue for Null {
-    type Family = Self;
+impl ScalarValue for Boolean {
 
-    const ID: DataTypeId = DataTypeId::Null;
-    const KIND: DataTypeKind = DataTypeKind::Null;
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Null)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Null
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        <Self as ScalarFamily>::from_scalar(value)
-    }
-}
-
-impl ScalarFamily for Boolean {
+    const ID: DataTypeId = DataTypeId::Boolean;
     const KIND: DataTypeKind = DataTypeKind::Boolean;
-
-    fn id(&self) -> DataTypeId {
-        DataTypeId::Boolean
-    }
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Boolean)
@@ -137,33 +106,6 @@ impl ScalarFamily for Boolean {
             Scalar::Boolean(value) => Some(value),
             _ => None,
         }
-    }
-}
-
-impl ScalarValue for Boolean {
-    type Family = Self;
-
-    const ID: DataTypeId = DataTypeId::Boolean;
-    const KIND: DataTypeKind = DataTypeKind::Boolean;
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Boolean)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Boolean(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        <Self as ScalarFamily>::from_scalar(value)
     }
 }
 

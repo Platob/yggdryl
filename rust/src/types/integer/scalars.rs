@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, TimeUnit,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, TimeUnit,
 };
 
 /// Operations shared by every signed and unsigned integer representation.
@@ -208,41 +208,12 @@ pub(crate) fn validate_integer_tuple(
 macro_rules! integer_scalar_value {
     ($leaf:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
-            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Integer;
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(($dtype)(self))
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$leaf(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
-            }
-        }
-
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Integer;
-
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$leaf
-            }
-
-            fn dtype(&self) -> Result<DataType> {
-                <Self as ScalarValue>::dtype(self)
             }
 
             fn into_scalar(self) -> Scalar {
@@ -256,6 +227,7 @@ macro_rules! integer_scalar_value {
                 }
             }
         }
+
     };
 }
 

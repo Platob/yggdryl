@@ -8,7 +8,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue};
 
 /// Three numeric version components in four bytes.
 ///
@@ -279,12 +279,10 @@ impl<'de> Deserialize<'de> for Version {
     }
 }
 
-impl ScalarFamily for Version {
-    const KIND: DataTypeKind = DataTypeKind::Text;
+impl ScalarValue for Version {
 
-    fn id(&self) -> DataTypeId {
-        DataTypeId::Version
-    }
+    const ID: DataTypeId = DataTypeId::Version;
+    const KIND: DataTypeKind = DataTypeKind::Text;
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Version)
@@ -299,33 +297,6 @@ impl ScalarFamily for Version {
             Scalar::Version(value) => Some(value),
             _ => None,
         }
-    }
-}
-
-impl ScalarValue for Version {
-    type Family = Self;
-
-    const ID: DataTypeId = DataTypeId::Version;
-    const KIND: DataTypeKind = DataTypeKind::Text;
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Version)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Version(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        <Self as ScalarFamily>::from_scalar(value)
     }
 }
 

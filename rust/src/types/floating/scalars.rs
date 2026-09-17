@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue};
 
 /// Operations shared by every IEEE floating-point representation.
 pub trait FloatingValue: ScalarValue {
@@ -544,38 +544,9 @@ impl<'de> Deserialize<'de> for Float32 {
 macro_rules! floating_value {
     ($leaf:ident, $bits:literal) => {
         impl ScalarValue for $leaf {
-            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Floating;
-
-            fn dtype(&self) -> Result<DataType> {
-                Ok(DataType::$leaf)
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$leaf(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
-            }
-        }
-
-        impl ScalarFamily for $leaf {
-            const KIND: DataTypeKind = DataTypeKind::Floating;
-
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$leaf
-            }
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(DataType::$leaf)

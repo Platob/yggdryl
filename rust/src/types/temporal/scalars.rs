@@ -23,7 +23,7 @@ use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::decimal::scalars::exact_value_parts;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, TimeUnit,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, TimeUnit,
     Timezone, i256,
 };
 
@@ -238,15 +238,14 @@ impl fmt::Display for Interval {
 
 macro_rules! temporal_value {
     ($leaf:ident, $id:ident) => {
-        impl ScalarFamily for $leaf {
+
+        impl ScalarValue for $leaf {
+
+            const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Temporal;
 
-            fn id(&self) -> DataTypeId {
-                DataTypeId::$id
-            }
-
             fn dtype(&self) -> Result<DataType> {
-                <Self as ScalarValue>::dtype(self)
+                Scalar::$id(*self).dtype()
             }
 
             fn into_scalar(self) -> Scalar {
@@ -258,33 +257,6 @@ macro_rules! temporal_value {
                     Scalar::$id(value) => Some(value),
                     _ => None,
                 }
-            }
-        }
-
-        impl ScalarValue for $leaf {
-            type Family = Self;
-
-            const ID: DataTypeId = DataTypeId::$id;
-            const KIND: DataTypeKind = DataTypeKind::Temporal;
-
-            fn dtype(&self) -> Result<DataType> {
-                Scalar::$id(*self).dtype()
-            }
-
-            fn into_family(self) -> Self::Family {
-                self
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                Some(family)
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::$id(self)
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                <Self as ScalarFamily>::from_scalar(value)
             }
         }
     };
@@ -1041,22 +1013,21 @@ mod tests {
         let leaf = <DateTime64 as ScalarValue>::from_scalar(&value)
             .copied()
             .unwrap();
-        assert_eq!(<DateTime64 as ScalarValue>::from_family(&leaf), Some(&leaf));
         assert_eq!(
-            <DateTime64 as ScalarFamily>::id(&leaf),
+            <DateTime64 as ScalarValue>::ID,
             DataTypeId::DateTime64
         );
-        assert_eq!(<DateTime64 as ScalarFamily>::into_scalar(leaf), value);
-        assert!(<Date32 as ScalarFamily>::from_scalar(&value).is_none());
+        assert_eq!(<DateTime64 as ScalarValue>::into_scalar(leaf), value);
+        assert!(<Date32 as ScalarValue>::from_scalar(&value).is_none());
 
         let interval = Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap();
         let held = <Interval as ScalarValue>::into_scalar(interval);
         assert_eq!(
-            <Interval as ScalarFamily>::from_scalar(&held),
+            <Interval as ScalarValue>::from_scalar(&held),
             Some(&interval)
         );
         assert_eq!(
-            <Interval as ScalarFamily>::id(&interval),
+            <Interval as ScalarValue>::ID,
             DataTypeId::Interval
         );
     }

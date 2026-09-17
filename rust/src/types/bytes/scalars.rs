@@ -22,7 +22,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{BytesLayout, BytesParameters};
 use crate::types::Scalar;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, ScalarValue};
 
 /// How many bytes a [`Bytes`] holds without reaching the heap.
 ///
@@ -508,43 +508,11 @@ impl<'de> Deserialize<'de> for Bytes {
 }
 
 impl ScalarValue for Bytes {
-    type Family = Bytes;
 
-    /// The family's default layout; [`ScalarFamily::id`] answers the exact
+    /// The family's default layout; [`Code::id`] answers the exact
     /// layout a value is stored in.
     const ID: DataTypeId = DataTypeId::Binary;
     const KIND: DataTypeKind = DataTypeKind::Bytes;
-
-    fn dtype(&self) -> Result<DataType> {
-        Self::dtype(self)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Bytes(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Bytes(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl ScalarFamily for Bytes {
-    const KIND: DataTypeKind = DataTypeKind::Bytes;
-
-    fn id(&self) -> DataTypeId {
-        self.layout().id()
-    }
 
     fn dtype(&self) -> Result<DataType> {
         Self::dtype(self)

@@ -30,7 +30,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::{StringLayout, StringParameters, trim_padding};
 use crate::types::Scalar;
 use crate::{
-    Charset, DataType, DataTypeId, DataTypeKind, Error, Result, ScalarFamily, ScalarValue,
+    Charset, DataType, DataTypeId, DataTypeKind, Error, Result, ScalarValue,
 };
 
 /// How many bytes of text a [`Str`] holds without reaching the heap.
@@ -623,43 +623,11 @@ impl<'de> Deserialize<'de> for Str {
 }
 
 impl ScalarValue for Str {
-    type Family = Str;
 
-    /// The family's default layout; [`ScalarFamily::id`] answers the exact
+    /// The family's default layout; [`Code::id`] answers the exact
     /// layout a value is stored in.
     const ID: DataTypeId = DataTypeId::String;
     const KIND: DataTypeKind = DataTypeKind::Text;
-
-    fn dtype(&self) -> Result<DataType> {
-        Self::dtype(self)
-    }
-
-    fn into_family(self) -> Self::Family {
-        self
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        Some(family)
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::String(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::String(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl ScalarFamily for Str {
-    const KIND: DataTypeKind = DataTypeKind::Text;
-
-    fn id(&self) -> DataTypeId {
-        self.layout().id()
-    }
 
     fn dtype(&self) -> Result<DataType> {
         Self::dtype(self)
