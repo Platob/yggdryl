@@ -65,7 +65,11 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(value).into_bytes());
     });
     let projected = value.into_uuid().expect("the instant fits nanoseconds");
-    assert_eq!(projected.into_bytes()[6] >> 4, 8);
+    // What the projection is measured as: RFC 9562 UUIDv7, the version in
+    // the high nibble of byte 6 and the variant in the top two bits of byte
+    // 8. A coupling that stopped packing a version would otherwise be timed
+    // here without anything saying it had changed shape.
+    assert_eq!(projected.into_bytes()[6] >> 4, 7);
     assert_eq!(projected.into_bytes()[8] >> 6, 2);
     group.bench_function("into_uuid", |bencher| {
         bencher.iter(|| {
