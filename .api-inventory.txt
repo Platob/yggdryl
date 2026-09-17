@@ -2867,6 +2867,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
   pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowField>
+  pub fn as_arrow_ref(&self) -> Result<&FieldRef>  (borrows the cached projection, building it once)
   pub fn into_arrow_ref(self) -> Result<FieldRef>
   pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_array::RecordBatch>
   pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_schema::SchemaRef>

@@ -346,6 +346,39 @@ impl Field {
         ))
     }
 
+    /// Borrows this field's Arrow projection, building it once.
+    ///
+    /// [`Self::into_arrow_ref`] consumes the field, so a caller that still
+    /// needs it has to clone first and pays for the projection every time.
+    /// This borrows, and fills the same cache an Arrow import seeds and a
+    /// clone shares - so a field exported more than once is projected once.
+    /// Any effective change clears the cache, exactly as it does today.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype or its metadata has no valid Arrow
+    /// projection.
+    pub fn as_arrow_ref(&self) -> Result<&FieldRef> {
+        if let Some(field) = self.arrow.get() {
+            return Ok(field);
+        }
+        let projected =
+            projected_arrow_metadata(&self.dtype, self.metadata.clone().into_arrow())?;
+        let built = Arc::new(arrow_field_from_parts(
+            self.name.as_str(),
+            self.dtype.clone().into_arrow()?,
+            self.nullable,
+            self.dictionary_id,
+            self.dictionary_is_ordered,
+            projected,
+        ));
+        let _ = self.arrow.set(built);
+        Ok(self
+            .arrow
+            .get()
+            .expect("the projection was just placed in the cache"))
+    }
+
     /// Consumes this field and returns a shared Arrow projection.
     pub fn into_arrow_ref(self) -> Result<FieldRef> {
         let Self {

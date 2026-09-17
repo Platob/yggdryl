@@ -110,6 +110,20 @@ fn canonical_display_json_and_arrow_round_trip() {
 }
 
 #[test]
+fn borrowing_the_arrow_projection_builds_it_once() {
+    let field = Field::from_str("price decimal(18,4) not null").unwrap();
+
+    let first = field.as_arrow_ref().unwrap();
+    let second = field.as_arrow_ref().unwrap();
+    // The second call answers the cached projection, not a rebuilt one.
+    assert!(Arc::ptr_eq(first, second));
+
+    // Borrowing and consuming agree, and the field survives the borrow.
+    assert_eq!(field.as_arrow_ref().unwrap(), &field.clone().into_arrow_ref().unwrap());
+    assert_eq!(Field::from_arrow(field.as_arrow_ref().unwrap().as_ref()).unwrap(), field);
+}
+
+#[test]
 fn sql_hive_and_wrapped_forms_parse() {
     assert_eq!(
         Field::from_str("id bigint not null").unwrap().dtype(),
