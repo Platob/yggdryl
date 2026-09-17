@@ -70,12 +70,18 @@ One line in, one row per message out, with the columns named as the dictionary n
     order, = reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
     row = order.into_row(schema).as_py()
 
+    # A column is read by name, never by its place in the row.
     assert row[schema.index_of("msgtype")] == "D"
-    assert row[schema.index_of("symbol")] == "AAPL"
-    # The last column is every pair that arrived; a key no dictionary
-    # explains is an entry of tag 0 under its raw key.
-    assert len(row[-1]) == 7
-    assert [entry for entry in order.entries() if entry[0] == 0] == [(0, "9999", "x")]
+    assert row[schema.index_of("side")] == "BUY"
+
+    # The last column is the content the message states, as entries; the typed
+    # facts - the version, the type, the side - are columns of their own, and a
+    # key no dictionary explains is an entry of tag 0 under its own spelling.
+    assert len(row[schema.index_of("fixentries")]) == 5
+    assert [name for _, name, _, _ in order.entries()] == [
+        "symbol", "price", "9999", "checksum", "timeinforce",
+    ]
+    assert [entry for entry in order.entries() if entry[0] == 0] == [(0, "9999", "x", [])]
     ```
 
 === "JavaScript"
@@ -92,12 +98,19 @@ One line in, one row per message out, with the columns named as the dictionary n
     const [order] = reader.parseLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
     const row = order.intoRow(schema).toJSON()
 
+    // A column is read by name, never by its place in the row.
     assert.equal(row[schema.indexOf('msgtype')], 'D')
-    assert.equal(row[schema.indexOf('symbol')], 'AAPL')
-    // The last column is every pair that arrived; a key no dictionary
-    // explains is an entry of tag 0 under its raw key.
-    assert.equal(row[row.length - 1].length, 7)
-    assert.deepEqual(order.arrivals().filter(([tag]) => tag === 0), [[0, '9999', 'x']])
+    assert.equal(row[schema.indexOf('side')], 'BUY')
+
+    // The last column is the content the message states, as entries; the typed
+    // facts - the version, the type, the side - are columns of their own, and a
+    // key no dictionary explains is an entry of tag 0 under its own spelling.
+    assert.equal(row[schema.indexOf('fixentries')].length, 5)
+    assert.deepEqual(order.entries().map((entry) => entry.name), [
+      'symbol', 'price', '9999', 'checksum', 'timeinforce',
+    ])
+    const unresolved = order.entries().filter((entry) => entry.tag === 0)
+    assert.deepEqual(unresolved.map((entry) => [entry.name, entry.value]), [['9999', 'x']])
     ```
 
 ## Try it
@@ -141,7 +154,10 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    // A bridge row states its fields and not its type, so this reader is told
+    // to read the untyped row the [default refusals](decode.md#a-type-nobody-asked-for-is-never-built) drop.
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?))
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
@@ -186,8 +202,8 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     assert held.by_tag(55).as_py() == "TTF"
     assert held.by_tag(44).as_py() == 41.25
     # The packed members became three real fields under one nesting.
-    party = held.party("1")
-    assert party is not None and party[0].as_py() == "BUYSIDE"
+    assert held.by_path("Parties[0].PartyID").as_py() == "BUYSIDE"
+    assert held.by_tag(453).as_py() == 1
 
     lines = [
         b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
@@ -220,10 +236,11 @@ Every one of them ends in the same builder, so a document is typed by the rules 
       'binary',
     )
     const [held] = reader.parseLine(bridge)
-    assert.equal(held.byTag(55).toJSON(), 'TTF')
-    assert.equal(held.byTag(44).toJSON(), 41.25)
+    assert.equal(held.byTag(55).asJs(), 'TTF')
+    assert.equal(held.byTag(44).asJs(), 41.25)
     // The packed members became three real fields under one nesting.
-    assert.equal(held.party('1')[0].toJSON(), 'BUYSIDE')
+    assert.equal(held.byPath('Parties[0].PartyID').asJs(), 'BUYSIDE')
+    assert.equal(held.byTag(453).asJs(), 1)
 
     const lines = [
       '8=FIX.4.4|35=D|11=A|55=AAPL|10=0|',
@@ -268,7 +285,10 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    // A document states no message type, so this reader reads the untyped row
+    // the [default refusals](decode.md#a-type-nobody-asked-for-is-never-built) drop.
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?))
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     // A Jolokia answer as a bridge logs it: prose in front, a duration behind.
     let line = br#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Router_OrderRouting","SenderCompID":"CLI.PROD.TRD","TargetCompID":"ST.PROD"},"status":200} (12 ms)"#;
@@ -301,7 +321,8 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     # Named `unknown`, with nothing the document said in it.
     assert message.field.name == "unknown"
     assert message.entries() == []
-    assert message.into_bytes(ord("|")) == b""
+    # Nothing but the version it was read at: no type, nobody sending it.
+    assert message.into_text("|") == "8=FIX.4.4|"
     assert message.get_by_tag(35) is None
     assert message.get_by_tag(49) is None
     # The prose in front of it is the row's, read as ever.
@@ -323,8 +344,9 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     assert.equal(rest.length, 0)
     // Named `unknown`, with nothing the document said in it.
     assert.equal(message.field.name, 'unknown')
-    assert.deepEqual(message.arrivals(), [])
-    assert.equal(message.intoBytes('|'.charCodeAt(0)).length, 0)
+    assert.deepEqual(message.entries(), [])
+    // Nothing but the version it was read at: no type, nobody sending it.
+    assert.equal(message.intoText('|'), '8=FIX.4.4|')
     assert.equal(message.getByTag(35), null)
     assert.equal(message.getByTag(49), null)
     // The prose in front of it is the row's, read as ever.
@@ -407,16 +429,20 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     columns = [child.name for child in schema]
     # The crate's own lead the row - a table is read by time and joined by
     # identity - and the protocol's own follow them.
-    assert columns[:3] == ["updatedat", "prevupdatedat", "createdat"]
+    assert columns[:3] == ["unix", "creatunix", "prevunix"]
+    # The band that says which message and session carried it, in its order.
     header = columns.index("beginstring")
-    assert columns[header:header + 3] == ["beginstring", "bodylength", "msgtype"]
+    assert columns[header:header + 3] == ["beginstring", "msgtype", "msgseqnum"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 116
-    assert fix_schema_tags()[header:header + 3] == [8, 9, 35]
+    assert len(fix_schema_tags()) == 114
+    assert len(columns) == 118
+    assert fix_schema_tags()[header:header + 3] == [8, 35, 34]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     assert schema.field("msgtype").display == "MsgType"
     assert schema.field("msgtype").fix.tag == 35
+    # A field no band claims is still a column, further along.
+    assert columns.index("bodylength") > header
     ```
 
 === "JavaScript"
@@ -429,18 +455,23 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const schema = fix.schema(registry, 'FixMessage')
 
+    const columns = [...Array(schema.fieldLen).keys()].map((at) => schema.fieldAt(at).name)
     // The crate's own lead the row - a table is read by time and joined by
     // identity - and the protocol's own follow them.
-    assert.equal(schema.fieldAt(0).name, 'updatedat')
+    assert.deepEqual(columns.slice(0, 3), ['unix', 'creatunix', 'prevunix'])
+    // The band that says which message and session carried it, in its order.
     const header = schema.indexOf('beginstring')
-    assert.equal(schema.fieldAt(header + 2).name, 'msgtype')
-    assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'fixentries')
-    assert.equal(fix.schemaTags().length, 116)
-    assert.deepEqual(fix.schemaTags().slice(header, header + 3), [8, 9, 35])
+    assert.deepEqual(columns.slice(header, header + 3), ['beginstring', 'msgtype', 'msgseqnum'])
+    assert.equal(columns[columns.length - 1], 'fixentries')
+    assert.equal(fix.schemaTags().length, 114)
+    assert.equal(columns.length, 118)
+    assert.deepEqual(fix.schemaTags().slice(header, header + 3), [8, 35, 34])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     assert.equal(schema.field('msgtype').display, 'MsgType')
     assert.equal(schema.field('msgtype').fix.tag, 35)
+    // A field no band claims is still a column, further along.
+    assert.ok(schema.indexOf('bodylength') > header)
     ```
 
 ## Nothing is lost at the end
@@ -580,48 +611,46 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     from yggdryl import DataType
     from yggdryl.fix import FixCodec, FixRegistry, fix_crate_fields
 
-    CODE, SNAPSHOTAT = 65024, 65025
+    UNIX, CREATUNIX = 65003, 65023
     fields = list(fix_crate_fields())
-    assert len(fields) == 36
+    assert len(fields) == 34
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
-    ids = next(field for field in fields if field.name == "instids")
-    assert [member.name for member in ids] == [
-        "cficode",
-        "isincode",
-        "bloombergcode",
-        "cusipcode",
-        "sedolcode",
-    ]
-
-    # The three identity columns are sixteen plain bytes, not a UUID.
-    identity = DataType("fixedbinary(16)")
+    # The two identities are the crate's own uuid, the codes plain integers.
     by_name = {field.name: field for field in fields}
-    for name in ("msghash", "msgphash", "prevmsghash"):
-        assert by_name[name].dtype == identity
+    assert by_name["curruuid"].dtype == DataType("uuid")
+    assert by_name["crossuuid"].dtype == DataType("uuid")
+    assert by_name["hashcode"].dtype == DataType("uint64")
+    assert str(by_name["px"].dtype) == "decimal128(38,18)"
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry, default_sending_time=default)
 
-    # A frame stating neither its version nor a clock is still versioned - at
-    # the crate's own 4.4 - and dated by the codec's default sending time.
+    # A frame stating neither its version nor a clock still states a version - the
+    # crate's own 4.4 - and is dated by the codec's default sending time.
     bare = next(reader.parse_line(b"35=D|55=AAPL|10=0|"))
-    assert bare.by_tag(8).as_py() == f"FIX.{bare.by_name('version').as_py()}"
+    assert bare.header().beginstring == "FIX.4.4"
+    assert bare.by_tag(8).as_py() == "FIX.4.4"
     assert bare.by_tag(52).as_py() == default
-    assert bare.updatedat() == bare.createdat() == bare.by_tag(52)
-    assert bare.by_tag(CODE).as_py() == ""
-    # None of them became an entry, so the wire comes back byte for byte.
-    assert bare.into_bytes(ord("|")) == b"35=D|55=AAPL|10=0|"
+    assert not bare.header().stated_sendingtime
+    assert bare.by_tag(UNIX).as_py() == default
+    assert bare.by_tag(CREATUNIX).as_py() == default
+    assert bare.unix == 1_704_190_530_000_000_000
+    # None of them became a pair on the wire: the header re-emits the version, and
+    # the content what the frame stated, a day order derived.
+    assert bare.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|"
 
     # A frame stating its clocks keeps them: TransactTime is the event, and a
-    # read is not a snapshot, so that column stays empty.
+    # stated SendingTime goes back on the wire.
     sent = next(reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|"))
-    assert sent.by_tag(8).as_py() == "FIX.4.2"
+    assert sent.header().beginstring == "FIX.4.2"
+    assert sent.header().stated_sendingtime
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
-    assert sent.updatedat().as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
-    assert sent.createdat() == sent.updatedat()
-    assert sent.by_tag(SNAPSHOTAT).is_null
+    assert sent.unix == 1_787_308_199_900_000_000
+    assert sent.event().creatunix == sent.unix
+    assert sent.event().snapunix is None, "a read is not a snapshot"
+    assert sent.into_text("|").startswith("8=FIX.4.2|35=D|52=20260821-10:30:00.415|")
     ```
 
 === "JavaScript"
@@ -629,51 +658,49 @@ Six values close every message and are never null: `unix`, `creatunix`, `hashcod
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { DataType, fix, Scalar } = require('yggdryl')
+    const { DataType, fix } = require('yggdryl')
 
-    const [CODE, SNAPSHOTAT] = [65024, 65025]
+    const [UNIX, CREATUNIX] = [65003, 65023]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 36)
+    assert.equal(fields.length, 34)
     // No partition column: how a layout is cut is the target's to decide.
     assert.ok(fields.every((field) => !field.isPartition))
-    const ids = fields.find((field) => field.name === 'instids')
-    assert.deepEqual(
-      Array.from({ length: ids.fieldLen }, (_, at) => ids.getFieldAt(at).name),
-      ['cficode', 'isincode', 'bloombergcode', 'cusipcode', 'sedolcode'],
-    )
-
-    // The three identity columns are sixteen plain bytes, not a UUID.
-    const identity = DataType.fixedSizeBinary(16)
-    for (const name of ['msghash', 'msgphash', 'prevmsghash']) {
-      const column = fields.find((field) => field.name === name)
-      assert.ok(column.dtype.equals(identity))
-    }
+    // The two identities are the crate's own uuid, the codes plain integers.
+    const byName = Object.fromEntries(fields.map((field) => [field.name, field]))
+    assert.equal(byName.curruuid.dtype.toString(), 'uuid')
+    assert.equal(byName.crossuuid.dtype.toString(), 'uuid')
+    assert.equal(byName.hashcode.dtype.toString(), 'uint64')
+    assert.equal(byName.px.dtype.toString(), 'decimal128(38,18)')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry, {
       defaultSendingTime: new Date(Date.UTC(2024, 0, 2, 10, 15, 30)),
     })
 
-    // A frame stating neither its version nor a clock is still versioned - at
-    // the crate's own 4.4 - and dated by the codec's default sending time.
+    // A frame stating neither its version nor a clock still states a version - the
+    // crate's own 4.4 - and is dated by the codec's default sending time.
     const bare = reader.parseLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
-    assert.equal(bare.byTag(8).toJSON(), `FIX.${bare.byName('version').toJSON()}`)
+    assert.equal(bare.header().beginstring, 'FIX.4.4')
+    assert.equal(bare.byTag(8).asJs(), 'FIX.4.4')
     assert.ok(bare.byTag(52).equals(reader.defaultSendingTime))
-    assert.ok(bare.updatedat().equals(bare.byTag(52)))
-    assert.ok(bare.createdat().equals(bare.byTag(52)))
-    assert.equal(bare.byTag(CODE).asJs(), '')
-    // None of them became an entry, so the wire comes back byte for byte.
-    assert.equal(bare.intoBytes('|'.charCodeAt(0)).toString(), '35=D|55=AAPL|10=0|')
+    assert.ok(bare.byTag(UNIX).equals(bare.byTag(52)))
+    assert.ok(bare.byTag(CREATUNIX).equals(bare.byTag(52)))
+    assert.equal(bare.unix, 1_704_190_530_000_000_000n)
+    // None of them became a pair on the wire - only a stated sending clock is a
+    // fact of the message - so the header re-emits the version and the content
+    // what the frame stated, a day order derived.
+    assert.equal(bare.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|10=0|59=0|')
 
     // A frame stating its clocks keeps them: TransactTime is the event, and a
-    // read is not a snapshot, so that column stays empty.
+    // stated SendingTime goes back on the wire.
     const sent = reader
       .parseLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|'))
       .next().value
-    assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
-    assert.ok(sent.updatedat().equals(sent.byTag(60)))
-    assert.ok(sent.createdat().equals(sent.updatedat()))
-    assert.equal(sent.byTag(SNAPSHOTAT).kind, 'null')
+    assert.equal(sent.header().beginstring, 'FIX.4.2')
+    assert.equal(sent.unix, 1_787_308_199_900_000_000n)
+    assert.equal(sent.event().creatunix, sent.unix)
+    assert.equal(sent.event().snapunix, null, 'a read is not a snapshot')
+    assert.ok(sent.intoText('|').startsWith('8=FIX.4.2|35=D|52=20260821-10:30:00.415|'))
     ```
 
 ## What a message implied is filled in
@@ -775,25 +802,28 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
     from yggdryl.fix import FixCodec, FixRegistry
 
+    ISINCODE, MICCODE = 65013, 65014
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
 
     # A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|"
-    held = reader.enrich_message(next(reader.parse_line(line)))
+    held = next(reader.parse_line(line))
     assert held.by_tag(22).as_py() == "4"
-    assert held.by_tag(65013).as_py() == "US0378331005"  # isincode
+    assert held.by_tag(ISINCODE).as_py() == "US0378331005"
     assert held.by_tag(470).as_py() == "US"
     assert held.by_tag(167).as_py() == "CS"
     assert held.by_tag(460).as_py() == 5
-    assert held.by_tag(65014).as_py() == "XNAS"  # miccode
-    # A trade leaving nothing is filled, as the `state` column spells it.
-    assert held.by_tag(39).as_py() == "80FILLED"
-    assert held.by_tag(59).as_py() == "0"  # a day order
+    assert held.by_tag(MICCODE).as_py() == "XNAS"
+    # A trade leaving nothing is filled: FIX's own code in `OrdStatus`, and the
+    # crate's ranked state beside it.
+    assert held.by_tag(39).as_py() == "2"
+    assert held.state.as_py() == "80FILLED"
+    assert held.by_tag(59).as_py() == "0", "a day order"
 
-    # Only the row was filled: the wire comes back byte for byte.
-    assert held.into_bytes(ord("|")) == line
-    # And a second pass changes nothing.
-    assert reader.enrich_message(held) == held
+    # The wire carries what arrived and then what the message implied, so reading
+    # it back states the same content again - a second read dates an undated line
+    # at its own now, which is the one thing that moves.
+    assert reader.parse_fix_line(held.into_bytes(ord("|"))).entries() == held.entries()
     ```
 
 === "JavaScript"
@@ -803,25 +833,29 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
+    const [ISINCODE, MICCODE] = [65013, 65014]
     const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     const line = '8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|'
-    const held = reader.enrichMessage(reader.parseLine(Buffer.from(line)).next().value)
-    assert.equal(held.byTag(22).toJSON(), '4')
-    assert.equal(held.byTag(65013).toJSON(), 'US0378331005') // isincode
-    assert.equal(held.byTag(470).toJSON(), 'US')
-    assert.equal(held.byTag(167).toJSON(), 'CS')
-    assert.equal(held.byTag(460).toJSON(), 5)
-    assert.equal(held.byTag(65014).toJSON(), 'XNAS') // miccode
-    // A trade leaving nothing is filled, as the `state` column spells it.
-    assert.equal(held.byTag(39).toJSON(), '80FILLED')
-    assert.equal(held.byTag(59).toJSON(), '0') // a day order
+    const held = reader.parseLine(Buffer.from(line)).next().value
+    assert.equal(held.byTag(22).asJs(), '4')
+    assert.equal(held.byTag(ISINCODE).asJs(), 'US0378331005')
+    assert.equal(held.byTag(470).asJs(), 'US')
+    assert.equal(held.byTag(167).asJs(), 'CS')
+    assert.equal(held.byTag(460).asJs(), 5)
+    assert.equal(held.byTag(MICCODE).asJs(), 'XNAS')
+    // A trade leaving nothing is filled: FIX's own code in `OrdStatus`, and the
+    // crate's ranked state beside it.
+    assert.equal(held.byTag(39).asJs(), '2')
+    assert.equal(held.state, '80FILLED')
+    assert.equal(held.byTag(59).asJs(), '0', 'a day order')
 
-    // Only the row was filled: the wire comes back byte for byte.
-    assert.equal(held.intoBytes('|'.charCodeAt(0)).toString(), line)
-    // And a second pass changes nothing.
-    assert.ok(reader.enrichMessage(held).equals(held))
+    // The wire carries what arrived and then what the message implied, so reading
+    // it back states the same content again - a second read dates an undated line
+    // at its own now, which is the one thing that moves.
+    const again = reader.parseFixLine(Buffer.from(held.intoBytes(124)))
+    assert.deepEqual(again.entries(), held.entries())
     ```
 
 ### A message's direct identifiers fill one Map
@@ -928,21 +962,28 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
 
-    def enriched(row):
-        return reader.enrich_message(next(reader.parse_line(row)))
+    def read(row):
+        held, = reader.parse_line(row)
+        return held
 
-    # The namespace is the writer's; the fact is the field's.
-    filled = enriched(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|")
+    # The namespace is the writer's; the fact is the field's, and the key the
+    # bridge wrote is the message's metadata.
+    filled = read(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|FIRM.ACRONYM=XYZ|")
     assert filled.by_name("Account").as_py() == "ACCT-000117"
+    assert filled.metadata["tech.account"] == "ACCT-000117"
+    assert filled.metadata["firm.acronym"] == "XYZ", "no field, so the map alone"
+    assert filled.get_by_name("firm.acronym") is None
 
-    # Two namespaces naming one absent field, disagreeing: nothing fills it.
-    split = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")
+    # Two namespaces naming one absent field, disagreeing: nothing fills it, and
+    # both statements are still in the metadata.
+    split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")
     assert split.get_by_name("ClientID") is None
+    assert len(split.metadata) == 2
 
     # Agreeing, they fill; and a namespace never lands over a stated value.
-    agreed = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")
+    agreed = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")
     assert agreed.by_name("ClientID").as_py() == "trader1"
-    stated = enriched(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")
+    stated = read(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")
     assert stated.by_name("Symbol").as_py() == "XAU/USD"
     ```
 
@@ -954,20 +995,26 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
     const { fix } = require('yggdryl')
 
     const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-    const enriched = (row) => reader.enrichMessage(reader.parseLine(Buffer.from(row)).next().value)
+    const read = (row) => reader.parseLine(Buffer.from(row)).next().value
 
-    // The namespace is the writer's; the fact is the field's.
-    const filled = enriched('MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|')
+    // The namespace is the writer's; the fact is the field's, and the key the
+    // bridge wrote is the message's metadata.
+    const filled = read('MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|FIRM.ACRONYM=XYZ|')
     assert.equal(filled.byName('Account').asJs(), 'ACCT-000117')
+    assert.equal(filled.metadata['tech.account'], 'ACCT-000117')
+    assert.equal(filled.metadata['firm.acronym'], 'XYZ', 'no field, so the map alone')
+    assert.equal(filled.getByName('firm.acronym'), null)
 
-    // Two namespaces naming one absent field, disagreeing: nothing fills it.
-    const split = enriched('MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|')
+    // Two namespaces naming one absent field, disagreeing: nothing fills it, and
+    // both statements are still in the metadata.
+    const split = read('MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|')
     assert.equal(split.getByName('ClientID'), null)
+    assert.equal(Object.keys(split.metadata).length, 2)
 
     // Agreeing, they fill; and a namespace never lands over a stated value.
-    const agreed = enriched('MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|')
+    const agreed = read('MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|')
     assert.equal(agreed.byName('ClientID').asJs(), 'trader1')
-    const stated = enriched('MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|')
+    const stated = read('MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|')
     assert.equal(stated.byName('Symbol').asJs(), 'XAU/USD')
     ```
 

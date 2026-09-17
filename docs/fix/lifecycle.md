@@ -87,61 +87,59 @@ One order's life: the order under its client identifier, the acknowledgement und
 === "Python"
 
     ```python
-    from datetime import datetime, timezone
     from pathlib import Path
 
-    import pytest
+    from yggdryl.fix import FixCodec, FixRegistry
 
-    from yggdryl.fix import FixCodec, FixLifecycle, FixRegistry
-
-    PREVUPDATEDAT, PREVUUID, CODE, SNAPSHOTAT = 65021, 65022, 65024, 65025
+    SEQNUM, PREVUUID = 65042, 65022
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
     lines = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|60=20260102-10:15:30.250|10=0|",
         b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|54=1|38=120|60=20260102-10:15:32.000|10=0|",
-        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|60=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|",
     ]
+    parsed = list(reader.parse_lines(lines))
+    # Parsed, each message names the chain it spells: the order its ClOrdID, the
+    # reports the venue's OrderID, and none follows anything yet.
+    assert parsed[0].crosscode == "A1"
+    assert parsed[1].crosscode == "O1"
+    assert all(held.seqnum == 0 and held.prevuuid is None for held in parsed)
 
-    life = FixLifecycle(registry)
-    assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS == 1_000_000_000
-    stamped = [life.fill(reader.parse_fix_line(line)) for line in lines]
+    order, ack, twin, fill, again = reader.lifecycle(parsed)
 
-    # One chain, named by the first identifier under the instrument scope,
-    # whatever identifier each message chose.
-    assert stamped[0].by_tag(CODE).as_py().endswith("/A1")
-    assert all(held.msgphash() == stamped[0].msgphash() for held in stamped)
-    # The first creation instant travels with the chain, and each message
-    # names the one before it.
-    assert all(held.createdat() == stamped[0].by_tag(60) for held in stamped)
-    assert stamped[0].by_tag(PREVUUID).as_py() is None
-    assert stamped[1].by_tag(PREVUUID) == stamped[0].msghash()
-    assert stamped[1].by_tag(PREVUPDATEDAT) == stamped[0].updatedat()
-    # updatedat lands on the one-second grid; `fill` is not a snapshot, so
-    # the snapshot clock stays empty.
-    assert stamped[1].updatedat().as_py() == datetime(2026, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
-    assert stamped[1].by_tag(SNAPSHOTAT).is_null
-    # The fill closed the chain, and the wire is untouched.
-    assert life.alive() == 0
-    assert stamped[3].into_bytes(ord("|")) == lines[3]
+    # The acknowledgement goes by the name the order was placed under, so it
+    # follows the order and the chain keeps the order's code; the fill names only
+    # the venue's identifier, which the acknowledgement went by.
+    chained = [order, ack, twin, fill]
+    assert all(held.crosscode == "A1" for held in chained)
+    assert all(held.crossuuid == order.crossuuid for held in chained)
+    assert (order.seqnum, order.prevuuid) == (0, None)
+    assert (ack.seqnum, ack.prevuuid) == (1, order.curruuid)
+    assert ack.event().prevunix == order.unix
+    assert ack.parentuuids == [order.curruuid]
+    assert (fill.seqnum, fill.prevuuid) == (2, ack.curruuid)
+    # The lifecycle travels: the chain's first creation, and the state.
+    assert fill.event().creatunix == order.event().creatunix
+    assert fill.state.as_py() == "80FILLED"
+    # The acknowledgement logged twice is one message: the second statement takes
+    # the first one's place and identity, and the chain grows by nothing.
+    assert twin.curruuid == ack.curruuid
+    assert (twin.seqnum, twin.prevuuid) == (1, order.curruuid)
+    # The fill ended the chain: the new order under the reused identifier starts
+    # one afresh.
+    assert (again.seqnum, again.prevuuid) == (0, None)
+    assert again.crosscode == "A1"
+    # The stamps are columns, reached like any typed fact, and the wire is what
+    # the message stated.
+    assert ack.by_tag(SEQNUM).as_py() == 1
+    assert ack.by_tag(PREVUUID) == order.curruuid
+    assert ack.into_bytes(ord("|")) == parsed[1].into_bytes(ord("|"))
 
-    # A fresh lifecycle replaying the filled stream answers it unchanged.
-    replay = FixLifecycle(registry)
-    assert [replay.fill(held) for held in stamped] == stamped
-
-    # Snapshots: 30.250 opens bucket 30, 30.500 repeats it, 32.000 is aligned
-    # and consumes bucket 32 silently, 33.100 opens bucket 33.
-    snapshots = list(FixLifecycle(registry).snapshots(reader.parse_lines(lines)))
-    assert [held.updatedat() for held in snapshots] == [stamped[0].updatedat(), stamped[3].updatedat()]
-    assert FixLifecycle(registry).snapshot(reader.parse_fix_line(lines[2])) is None
-
-    # The codec's stream door runs one default-cadence lifecycle.
-    assert all(held.msgphash() == stamped[0].msgphash() for held in reader.lifecycle(reader.parse_lines(lines)))
-    # The interval is positive nanoseconds.
-    assert FixLifecycle(registry, interval_ns=2_000_000_000).interval_ns == 2_000_000_000
-    with pytest.raises(ValueError):
-        FixLifecycle(registry, interval_ns=0)
+    # A chained stream replayed answers the same messages.
+    assert list(reader.lifecycle([order, ack, twin, fill, again])) == [order, ack, twin, fill, again]
     ```
 
 === "JavaScript"
@@ -151,56 +149,56 @@ One order's life: the order under its client identifier, the acknowledgement und
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const [PREVUPDATEDAT, PREVUUID, CODE, SNAPSHOTAT] = [65021, 65022, 65024, 65025]
+    const [SEQNUM, PREVUUID] = [65042, 65022]
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry)
     const lines = [
-      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|',
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|60=20260102-10:15:30.250|10=0|',
       '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|',
-      '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|54=1|38=120|60=20260102-10:15:32.000|10=0|',
-      '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|',
+      '8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|60=20260102-10:15:33.100|10=0|',
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|',
     ].map((line) => Buffer.from(line))
+    const parsed = [...reader.parseLines(lines)]
+    // Parsed, each message names the chain it spells: the order its ClOrdID, the
+    // reports the venue's OrderID, and none follows anything yet.
+    assert.equal(parsed[0].crosscode, 'A1')
+    assert.equal(parsed[1].crosscode, 'O1')
+    assert.ok(parsed.every((held) => held.seqnum === 0 && held.prevuuid === null))
 
-    const life = new fix.FixLifecycle(registry)
-    assert.equal(life.intervalNs, fix.FixLifecycle.DEFAULT_INTERVAL_NS)
-    assert.equal(life.intervalNs, 1_000_000_000n)
-    const stamped = lines.map((line) => life.fill(reader.parseFixLine(line)))
+    const [order, ack, twin, fill, again] = [...reader.lifecycle(parsed)]
 
-    // One chain, named by the first identifier under the instrument scope,
-    // whatever identifier each message chose.
-    assert.ok(stamped[0].byTag(CODE).asJs().endsWith('/A1'))
-    assert.ok(stamped.every((held) => held.msgphash().equals(stamped[0].msgphash())))
-    // The first creation instant travels with the chain, and each message
-    // names the one before it.
-    assert.ok(stamped.every((held) => held.createdat().equals(stamped[0].byTag(60))))
-    assert.equal(stamped[0].byTag(PREVUUID).asJs(), null)
-    assert.ok(stamped[1].byTag(PREVUUID).equals(stamped[0].msghash()))
-    assert.ok(stamped[1].byTag(PREVUPDATEDAT).equals(stamped[0].updatedat()))
-    // updatedat lands on the one-second grid; `fill` is not a snapshot, so
-    // the snapshot clock stays empty.
-    assert.ok(stamped[1].updatedat().equals(stamped[0].updatedat()), 'bucket 10:15:30')
-    assert.equal(stamped[1].byTag(SNAPSHOTAT).kind, 'null')
-    // The fill closed the chain, and the wire is untouched.
-    assert.equal(life.alive, 0)
-    assert.deepEqual(Buffer.from(stamped[3].intoBytes(124)), lines[3])
+    // The acknowledgement goes by the name the order was placed under, so it
+    // follows the order and the chain keeps the order's code; the fill names only
+    // the venue's identifier, which the acknowledgement went by.
+    const chained = [order, ack, twin, fill]
+    assert.ok(chained.every((held) => held.crosscode === 'A1'))
+    assert.ok(chained.every((held) => held.crossuuid === order.crossuuid))
+    assert.deepEqual([order.seqnum, order.prevuuid], [0, null])
+    assert.deepEqual([ack.seqnum, ack.prevuuid], [1, order.curruuid])
+    assert.equal(ack.event().prevunix, order.unix)
+    assert.deepEqual(ack.parentuuids, [order.curruuid])
+    assert.deepEqual([fill.seqnum, fill.prevuuid], [2, ack.curruuid])
+    // The lifecycle travels: the chain's first creation, and the state.
+    assert.equal(fill.event().creatunix, order.event().creatunix)
+    assert.equal(fill.state, '80FILLED')
+    // The acknowledgement logged twice is one message: the second statement takes
+    // the first one's place and identity, and the chain grows by nothing.
+    assert.equal(twin.curruuid, ack.curruuid)
+    assert.deepEqual([twin.seqnum, twin.prevuuid], [1, order.curruuid])
+    // The fill ended the chain: the new order under the reused identifier starts
+    // one afresh.
+    assert.deepEqual([again.seqnum, again.prevuuid], [0, null])
+    assert.equal(again.crosscode, 'A1')
+    // The stamps are columns, reached like any typed fact, and the wire is what
+    // the message stated.
+    assert.equal(ack.byTag(SEQNUM).asJs(), 1)
+    assert.equal(ack.byTag(PREVUUID).asJs(), order.curruuid)
+    assert.deepEqual(Buffer.from(ack.intoBytes(124)), Buffer.from(parsed[1].intoBytes(124)))
 
-    // A fresh lifecycle replaying the filled stream answers it unchanged.
-    const replay = new fix.FixLifecycle(registry)
-    assert.ok(stamped.every((held) => replay.fill(held.clone()).equals(held)))
-
-    // Snapshots: 30.250 opens bucket 30, 30.500 repeats it, 32.000 is aligned
-    // and consumes bucket 32 silently, 33.100 opens bucket 33.
-    const snapshots = [...new fix.FixLifecycle(registry).snapshots(reader.parseLines(lines))]
-    assert.equal(snapshots.length, 2)
-    assert.ok(snapshots[0].updatedat().equals(stamped[0].updatedat()))
-    assert.ok(snapshots[1].updatedat().equals(stamped[3].updatedat()))
-    assert.equal(new fix.FixLifecycle(registry).snapshot(reader.parseFixLine(lines[2])), null)
-
-    // The codec's stream door runs one default-cadence lifecycle.
-    assert.ok([...reader.lifecycle(reader.parseLines(lines))].every((held) => held.msgphash().equals(stamped[0].msgphash())))
-    // The interval is positive nanoseconds.
-    assert.equal(new fix.FixLifecycle(registry, { intervalNs: 2_000_000_000n }).intervalNs, 2_000_000_000n)
-    assert.throws(() => new fix.FixLifecycle(registry, { intervalNs: 0n }))
+    // A chained stream replayed answers the same messages.
+    const replayed = [...reader.lifecycle([order, ack, twin, fill, again])]
+    assert.ok(replayed.every((held, at) => held.equals([order, ack, twin, fill, again][at])))
     ```
 
 ## A chain is named by its cross code

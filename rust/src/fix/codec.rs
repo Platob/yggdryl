@@ -382,6 +382,23 @@ pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 /// The column a payload is read from when nothing names another.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
+/// The message types a codec refuses until a caller says otherwise: the
+/// session's own keepalives and a row that states no type at all.
+///
+/// A capture is mostly `Heartbeat` and `TestRequest` - a quiet session
+/// writes one every thirty seconds and says nothing else - and neither
+/// states anything about a market: no instrument, no order, no price. A row
+/// that states no type is the third: a line a transport wrote that carries
+/// no message this dictionary knows, read as `unknown`. Refusing the three
+/// by default means the common reading of a capture is the messages that
+/// say something, and the cost of the rest is one look at the type rather
+/// than a parse.
+///
+/// Spelled as the wire spells them, because that is what a frame carries;
+/// [`FixCodec::with_exclude_msgtypes`] takes any spelling the dictionary
+/// resolves.
+pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", super::build::UNKNOWN_MSGTYPE];
+
 /// What one row-header capture states about the line it was read from.
 ///
 /// Resolved once, when the codec is told what a run's captures are called,
@@ -439,8 +456,18 @@ pub struct FixCodec {
     direction: Option<SmolStr>,
     /// The registry's reading of tag 385, its rules compiled once.
     msgdirection: Arc<super::MsgDirection>,
+    /// The message types this run reads, resolved to their wire codes, and
+    /// the ones it refuses. Empty inclusions read every type the exclusions
+    /// leave; `exclude_stated` remembers whether the refusals are this
+    /// crate's own default or a caller's own list.
+    include_msgtypes: Arc<[SmolStr]>,
+    exclude_msgtypes: Arc<[SmolStr]>,
+    exclude_stated: bool,
     /// The raw bytes one Arrow batch of messages targets.
     batch_byte_size: u64,
+    /// The rows one Arrow batch of messages targets, whichever bound the
+    /// batch reaches first.
+    batch_row_size: usize,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -470,6 +497,17 @@ impl FixCodec {
     /// the running total over it, so it always holds at least one row and
     /// one enormous message can never produce an empty batch.
     pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;
+
+    /// The rows one Arrow batch targets when the caller states none.
+    ///
+    /// The other half of the bound, and the one that matters at the small
+    /// end: a stream of heartbeats is a few dozen bytes a row, so a batch
+    /// bounded by bytes alone would hold millions of them and a consumer
+    /// would wait for the whole capture before seeing a batch. Thirty-two
+    /// thousand rows is large enough that the per-batch cost is amortized
+    /// and small enough that a reader sees rows while the capture is still
+    /// being read. A batch closes on whichever bound it reaches first.
+    pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;
 
     /// Borrows the message type declared by a captured line without parsing a message.
     #[must_use]
@@ -501,7 +539,14 @@ impl FixCodec {
                 .collect(),
             direction,
             msgdirection: Arc::new(msgdirection),
+            include_msgtypes: Arc::from([]),
+            exclude_msgtypes: DEFAULT_REFUSED_MSGTYPES
+                .iter()
+                .map(|spelling| SmolStr::new_static(spelling))
+                .collect(),
+            exclude_stated: false,
             batch_byte_size: Self::DEFAULT_BATCH_BYTE_SIZE,
+            batch_row_size: Self::DEFAULT_BATCH_ROW_SIZE,
             beginstring,
             memo: Arc::new(Memo::new()),
         }
@@ -700,6 +745,186 @@ impl FixCodec {
     pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self {
         self.batch_byte_size = bytes;
         self
+    }
+
+    /// Sets the rows one Arrow batch of messages targets.
+    ///
+    /// The second of the two bounds, and a batch closes on whichever it
+    /// reaches first; the default is [`Self::DEFAULT_BATCH_ROW_SIZE`]. Zero
+    /// leaves the bytes to decide, since a batch always holds one row.
+    #[must_use]
+    pub const fn with_batch_row_size(mut self, rows: usize) -> Self {
+        self.batch_row_size = rows;
+        self
+    }
+
+    /// The rows one Arrow batch of messages targets.
+    #[must_use]
+    pub const fn batch_row_size(&self) -> usize {
+        self.batch_row_size
+    }
+
+    /// The message types this codec reads, named in any spelling the
+    /// dictionary resolves.
+    ///
+    /// Empty - the default - reads every type the refusals leave. Naming
+    /// even one makes this the whole answer: only these are read, and the
+    /// default refusals step aside, because a caller that says what it wants
+    /// has already said what it does not. A caller that wants both states
+    /// both, and the refusal wins where they disagree.
+    ///
+    /// A spelling is resolved once, here: `Heartbeat`, `HEARTBEAT` and `0`
+    /// are one type, and a code no dictionary knows is kept as it was
+    /// written, so a venue's own type is named the way the venue names it.
+    /// The word `unknown` names a row that states no type at all.
+    ///
+    /// The filter is applied to the type a row *states*, before the message
+    /// is built, so a refused type costs one look rather than a parse.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixCodec, FixRegistry};
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// # let registry = Arc::new(FixRegistry::from_handle(&yggdryl::holder::local::Folder::new(root)?)?);
+    /// // Any spelling the dictionary resolves: `NewOrderSingle` is `35=D`.
+    /// let orders = FixCodec::new(Arc::clone(&registry)).with_include_msgtypes(["NewOrderSingle"]);
+    /// let lines = ["8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=8|37=O1|10=0|"];
+    /// let read: Vec<_> = orders.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
+    /// assert_eq!(read.len(), 1);
+    /// assert_eq!(read[0].by_tag(11)?.as_str(), Some("A"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_include_msgtypes<I, S>(mut self, spellings: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.include_msgtypes = self.resolved_msgtypes(spellings);
+        if !self.exclude_stated {
+            self.exclude_msgtypes = Arc::from([]);
+        }
+        self
+    }
+
+    /// The message types this codec refuses, named in any spelling the
+    /// dictionary resolves.
+    ///
+    /// Replaces [`DEFAULT_REFUSED_MSGTYPES`] - the session's keepalives and
+    /// the untyped row - so an empty list reads everything, which is what a
+    /// caller auditing a session sets. Spellings resolve as
+    /// [`Self::with_include_msgtypes`] resolves them, and a type named here
+    /// is refused whether or not it is included.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixCodec, FixRegistry};
+    /// # let registry = Arc::new(FixRegistry::new());
+    /// let lines = ["8=FIX.4.4|35=0|10=0|", "8=FIX.4.4|35=D|11=A|10=0|"];
+    /// // The keepalive is refused by default and read where nothing is.
+    /// let quiet = FixCodec::new(Arc::clone(&registry));
+    /// assert_eq!(quiet.parse_lines(lines).count(), 1);
+    /// let everything = quiet.clone().with_exclude_msgtypes::<[&str; 0], &str>([]);
+    /// assert_eq!(everything.parse_lines(lines).count(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_exclude_msgtypes<I, S>(mut self, spellings: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.exclude_msgtypes = self.resolved_msgtypes(spellings);
+        self.exclude_stated = true;
+        self
+    }
+
+    /// The types this codec reads, as it resolved them; empty reads every
+    /// type [`Self::exclude_msgtypes`] leaves.
+    #[must_use]
+    pub fn include_msgtypes(&self) -> &[SmolStr] {
+        &self.include_msgtypes
+    }
+
+    /// The types this codec refuses, as it resolved them.
+    #[must_use]
+    pub fn exclude_msgtypes(&self) -> &[SmolStr] {
+        &self.exclude_msgtypes
+    }
+
+    /// Whether a message of this type is read, by any spelling of it.
+    ///
+    /// What the parse asks of every row before it builds one, and what a
+    /// walk asks of every message it is handed. The word `unknown` - or an
+    /// empty spelling - asks about a row that states no type.
+    #[must_use]
+    pub fn reads_msgtype(&self, spelling: &str) -> bool {
+        self.reads_code(&self.resolve_msgtype(spelling))
+    }
+
+    /// One configured spelling as the code it names.
+    fn resolve_msgtype(&self, spelling: &str) -> SmolStr {
+        if spelling.is_empty() || crate::types::folds_equal(spelling, super::build::UNKNOWN_MSGTYPE)
+        {
+            return SmolStr::new_static(super::build::UNKNOWN_MSGTYPE);
+        }
+        self.registry.get_msgtype(spelling).map_or_else(
+            || SmolStr::new(spelling),
+            |held| SmolStr::new(held.as_str()),
+        )
+    }
+
+    /// Every configured spelling as the codes they name, each once.
+    fn resolved_msgtypes<I, S>(&self, spellings: I) -> Arc<[SmolStr]>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<SmolStr> = Vec::new();
+        for spelling in spellings {
+            let code = self.resolve_msgtype(spelling.as_ref());
+            if !held.contains(&code) {
+                held.push(code);
+            }
+        }
+        Arc::from(held)
+    }
+
+    /// Whether one resolved code is read: refused where the refusals name
+    /// it, else read where nothing is included or the inclusions name it.
+    fn reads_code(&self, code: &SmolStr) -> bool {
+        if self.exclude_msgtypes.contains(code) {
+            return false;
+        }
+        self.include_msgtypes.is_empty() || self.include_msgtypes.contains(code)
+    }
+
+    /// Whether a row stating `stated` is read, the type taken off the pairs
+    /// before anything is built; a row stating none asks about `unknown`.
+    fn reads_stated(&self, stated: Option<&str>) -> bool {
+        // Nothing to ask where the codec reads every type, which is the
+        // common configuration and worth not paying a resolution for.
+        if self.include_msgtypes.is_empty() && self.exclude_msgtypes.is_empty() {
+            return true;
+        }
+        self.reads_msgtype(stated.unwrap_or_default())
+    }
+
+    /// Whether a document stating these pairs is read.
+    fn reads_pairs(&self, pairs: &[(Vec<u8>, Vec<u8>)]) -> bool {
+        if self.include_msgtypes.is_empty() && self.exclude_msgtypes.is_empty() {
+            return true;
+        }
+        let stated = msgtype_of(
+            pairs
+                .iter()
+                .map(|(key, value)| (key.as_slice(), value.as_slice())),
+        );
+        self.reads_stated(stated.as_deref())
     }
 
     /// Replaces the spellings that mean "nothing was sent".
@@ -1054,9 +1279,12 @@ impl FixCodec {
             if opened == payload && next_frame(entries.as_slice(), end).is_none() {
                 // One frame and nothing in front of it: the row is read
                 // where it stands, which is what a row of one message costs.
+                let run = &entries.as_slice()[payload..end];
+                if !self.reads_stated(stated_type(run).as_deref()) {
+                    return Ok(FixMessages::none());
+                }
                 return Ok(FixMessages::from_result(
-                    self.frame_with(&entries.as_slice()[payload..end], extras)
-                        .map(FixMessages::one),
+                    self.frame_with(run, extras).map(FixMessages::one),
                 ));
             }
             let stamp = super::build::RowStamp::retained(extras);
@@ -1067,6 +1295,9 @@ impl FixCodec {
         // the document it is, by its attributes.
         if let Some((_, open)) = line::document_behind_prefix(row) {
             let pairs = fixml_pairs(&row[open..])?;
+            if !self.reads_pairs(&pairs) {
+                return Ok(FixMessages::none());
+            }
             return Ok(FixMessages::from_result(
                 self.fixml_with(&pairs, extras).map(FixMessages::one),
             ));
@@ -1076,6 +1307,11 @@ impl FixCodec {
         // no entries - `unknown` names it - carrying what the row stated
         // beside it, its clock and its own columns.
         if document.is_some() {
+            // A body this codec does not read states no type, so it is the
+            // row read as `unknown` and the refusals answer for it.
+            if !self.reads_stated(None) {
+                return Ok(FixMessages::none());
+            }
             return Ok(FixMessages::from_result(
                 self.build_pairs_with(&[], extras).map(FixMessages::one),
             ));
@@ -1087,6 +1323,9 @@ impl FixCodec {
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
             let pairs = fixml_pairs(row)?;
+            if !self.reads_pairs(&pairs) {
+                return Ok(FixMessages::none());
+            }
             return Ok(FixMessages::from_result(
                 self.fixml_with(&pairs, extras).map(FixMessages::one),
             ));
@@ -1105,6 +1344,9 @@ impl FixCodec {
             return Ok(FixMessages::none());
         }
         if next_frame(held, 0).is_none() {
+            if !self.reads_stated(stated_type(held).as_deref()) {
+                return Ok(FixMessages::none());
+            }
             return Ok(FixMessages::from_result(
                 self.bridge_with(held, extras).map(FixMessages::one),
             ));
@@ -1130,21 +1372,37 @@ impl FixCodec {
         stamp: Option<&Arc<super::build::RowStamp>>,
     ) -> Option<RowMessage> {
         let held = entries.as_slice();
-        let run = held.get(at..).filter(|run| !run.is_empty())?;
-        let fills = stamp.map(|stamp| stamp.fills()).unwrap_or_default();
-        let extras = super::build::RowStamp::held(stamp, &fills);
-        if tag_keyed(&run[0]) {
-            let end = at + frame_end(run);
-            return Some(RowMessage {
-                message: self.frame_with(&held[at..end], extras),
-                next: next_frame(held, end).unwrap_or(held.len()),
-            });
+        let mut at = at;
+        loop {
+            let run = held.get(at..).filter(|run| !run.is_empty())?;
+            let framed = tag_keyed(&run[0]);
+            let end = if framed {
+                at + frame_end(run)
+            } else {
+                next_frame(held, at).unwrap_or(held.len())
+            };
+            let next = if framed {
+                next_frame(held, end).unwrap_or(held.len())
+            } else {
+                end
+            };
+            // The type the run states, read off the pairs: a type this codec
+            // refuses costs one look rather than a build, an enrichment and a
+            // settling, and a row of several frames still answers the ones it
+            // does read.
+            if !self.reads_stated(stated_type(&held[at..end]).as_deref()) {
+                at = next;
+                continue;
+            }
+            let fills = stamp.map(|stamp| stamp.fills()).unwrap_or_default();
+            let extras = super::build::RowStamp::held(stamp, &fills);
+            let message = if framed {
+                self.frame_with(&held[at..end], extras)
+            } else {
+                self.bridge_with(&held[at..end], extras)
+            };
+            return Some(RowMessage { message, next });
         }
-        let end = next_frame(held, at).unwrap_or(held.len());
-        Some(RowMessage {
-            message: self.bridge_with(&held[at..end], extras),
-            next: end,
-        })
     }
 
     /// Parses one numeric FIX frame.
@@ -1602,12 +1860,32 @@ impl FixCodec {
     /// messages and their fallible counterparts compose directly. Errors
     /// move through in the order the source had them, and never advance the
     /// walk; exhaustion is fused.
+    ///
+    /// A message whose type this codec refuses never enters the walk: a
+    /// keepalive belongs to the session rather than to a chain, and a
+    /// message handed here from somewhere other than this codec's own parse
+    /// is held to the same reading. The refusal is by
+    /// [`Self::reads_msgtype`], and a codec refusing nothing walks
+    /// everything it is given.
     pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        super::enrich::Walked::new(messages.into_iter().fuse().map(Into::into))
+        let codec = self.clone();
+        let walked =
+            messages
+                .into_iter()
+                .fuse()
+                .map(Into::into)
+                .filter(move |held: &Result<FixMsg>| match held {
+                    // A failure is never filtered: what a stream could not read
+                    // has no type to refuse it by, and swallowing it here would
+                    // lose the one report of it.
+                    Err(_) => true,
+                    Ok(message) => codec.reads_msgtype(message.header().msgtype()),
+                });
+        super::enrich::Walked::new(walked)
     }
 
     /// Builds one message from pairs the caller already split.
@@ -2083,6 +2361,16 @@ fn next_frame(entries: &[TextEntry], from: usize) -> Option<usize> {
 /// A key the line marked is a bridge's own spelling and never a tag, even
 /// where the bytes after the mark are digits: `#453=1` is a bridge naming the
 /// group by its counter, not a frame stating tag 453.
+/// The message type one run of pairs states, read off the pairs rather than
+/// off a message: `35` in a FIX frame, a key folding to `MsgType` in a bridge
+/// row. `None` where the run states none, which is the row read as `unknown`.
+fn stated_type(run: &[TextEntry]) -> Option<String> {
+    msgtype_of(
+        run.iter()
+            .map(|entry| (entry.key_bytes().as_bytes(), entry.value_bytes().as_bytes())),
+    )
+}
+
 fn tag_keyed(entry: &TextEntry) -> bool {
     !entry.marked() && entry.key_bytes().as_bytes().iter().all(u8::is_ascii_digit)
 }
@@ -2489,6 +2777,104 @@ fn folds_twin(left: &[u8], right: &[u8]) -> bool {
 }
 
 #[cfg(test)]
+mod msgtype_filter_tests {
+    use std::sync::Arc;
+
+    use super::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+
+    fn codec() -> FixCodec {
+        FixCodec::new(Arc::new(FixRegistry::new()))
+    }
+
+    #[test]
+    fn the_default_refuses_the_keepalives_and_the_untyped_row() {
+        let codec = codec();
+        assert_eq!(codec.exclude_msgtypes(), DEFAULT_REFUSED_MSGTYPES);
+        assert!(codec.include_msgtypes().is_empty());
+        // A keepalive by its code and by its name, an untyped row by the
+        // word that names one, and everything else read.
+        assert!(!codec.reads_msgtype("0"));
+        assert!(!codec.reads_msgtype("1"));
+        assert!(!codec.reads_msgtype("unknown"));
+        assert!(!codec.reads_msgtype(""));
+        assert!(codec.reads_msgtype("D"));
+        assert!(codec.reads_msgtype("8"));
+
+        let lines = [
+            "8=FIX.4.4|35=0|112=TEST|10=0|",
+            "8=FIX.4.4|35=1|112=TEST|10=0|",
+            "8=FIX.4.4|35=D|11=A|10=0|",
+            "key=value|other=thing|",
+        ];
+        let read: Vec<_> = codec
+            .parse_lines(lines)
+            .collect::<crate::Result<_>>()
+            .unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].header().msgtype(), "D");
+    }
+
+    #[test]
+    fn a_refused_type_is_dropped_wherever_a_row_states_it() {
+        // Two frames on one row: the refused one is passed over and the row
+        // still answers the other, which is what filtering per frame is for.
+        let read: Vec<_> = codec()
+            .parse_line(b"8=FIX.4.4|35=0|10=0|8=FIX.4.4|35=D|11=A|10=0|")
+            .unwrap()
+            .collect::<crate::Result<_>>()
+            .unwrap();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].by_tag(11).unwrap().as_str(), Some("A"));
+        // And a walk refuses what the parse would have: a keepalive handed
+        // in from elsewhere never enters a chain.
+        let keepalive = codec()
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+            .parse_fix_line(b"8=FIX.4.4|35=0|10=0|")
+            .unwrap();
+        assert_eq!(codec().lifecycle([keepalive]).count(), 0);
+    }
+
+    #[test]
+    fn naming_what_to_read_replaces_the_default_refusal() {
+        // Inclusion alone: only what it names, and the keepalive the default
+        // refused is read again where it is named.
+        let orders = codec().with_include_msgtypes(["D"]);
+        assert!(orders.exclude_msgtypes().is_empty());
+        assert!(orders.reads_msgtype("D"));
+        assert!(!orders.reads_msgtype("8"));
+        let keepalives = codec().with_include_msgtypes(["0"]);
+        assert!(keepalives.reads_msgtype("0"));
+        // Both stated: the refusal wins where they disagree, whichever
+        // order the two were named in.
+        let held = codec()
+            .with_include_msgtypes(["D", "8"])
+            .with_exclude_msgtypes(["8"]);
+        assert!(held.reads_msgtype("D"));
+        assert!(!held.reads_msgtype("8"));
+        assert!(!held.reads_msgtype("0"));
+    }
+
+    #[test]
+    fn a_spelling_is_resolved_once_and_an_unknown_code_is_kept() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+        let registry =
+            FixRegistry::from_handle(&crate::holder::local::Folder::new(root).unwrap()).unwrap();
+        let codec = FixCodec::new(Arc::new(registry)).with_include_msgtypes([
+            "NewOrderSingle",
+            "EXECUTIONREPORT",
+            "ZZ",
+        ]);
+        // Two spellings of two shipped types, resolved to their codes, and a
+        // code no dictionary knows kept as the venue wrote it.
+        assert_eq!(codec.include_msgtypes(), ["D", "8", "ZZ"]);
+        assert!(codec.reads_msgtype("D"));
+        assert!(codec.reads_msgtype("ExecutionReport"));
+        assert!(codec.reads_msgtype("ZZ"));
+        assert!(!codec.reads_msgtype("A"));
+    }
+}
+
+#[cfg(test)]
 mod clock_intake_tests {
     use super::*;
     use crate::graph::Event;
@@ -2498,8 +2884,12 @@ mod clock_intake_tests {
         Scalar::datetime64(value, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
     }
 
+    /// A codec that reads every type, because these tests are about the
+    /// clocks a row settles and several of their rows state no type at all,
+    /// which the default refusals would drop before any clock was read.
     fn codec() -> FixCodec {
         FixCodec::new(Arc::new(FixRegistry::new()))
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
             .try_with_default_sending_time(Some(clock(17)))
             .unwrap()
     }

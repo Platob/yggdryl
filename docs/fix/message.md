@@ -119,6 +119,10 @@
     from yggdryl import DataType, Field, types
     from yggdryl.fix import FixMsg, FixRegistry
 
+    msgtype = Field("MsgType", "utf8")
+    msgtype.fix.tag = 35
+    side = Field("Side", "utf8")
+    side.fix.tag = 54
     symbol = Field("Symbol", "utf8", nullable=False)
     symbol.fix.tag = 55
     symbol.fix.names = ["Ticker"]
@@ -128,23 +132,25 @@
     party_id.fix.tag = 448
     count = Field("NoPartyIDs", "int32", nullable=False)
     count.fix.tag = 453
-    item = Field("Party", DataType.from_fields([party_id]), nullable=False)
-    parties = types.list("Parties", item)
+    party = Field("Party", DataType.from_fields([party_id]), nullable=False)
+    parties = types.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
-    registry = FixRegistry.from_fields([symbol, qty, count, party_id])
-    registry.create_definition("components", item)
-    registry.create_definition("groups", parties)
+    registry = FixRegistry.from_fields([msgtype, side, symbol, qty, count, party_id])
+    registry.insert(party)
+    registry.insert(parties)
 
-    # The root carries a tag no dictionary explains, under its rendered name.
+    # The root carries two typed tags and a tag no dictionary explains.
     root = Field(
         "NewOrderSingle",
-        DataType.from_fields([qty, symbol, count, parties, Field("9999", "utf8")]),
+        DataType.from_fields([msgtype, side, qty, symbol, count, parties, Field("9999", "utf8")]),
         nullable=False,
     )
     message = FixMsg(
         root,
         {
+            "MsgType": "D",
+            "Side": "1",
             "Symbol": "AAPL",
             "OrderQty": 100,
             "NoPartyIDs": 1,
@@ -154,11 +160,16 @@
         registry,
     )
 
-    # The mapping became the ordered row the root declares, with the seven
-    # settled values appended behind the five it stated.
-    assert len(message) == 12
-    assert message.updatedat() == message.by_tag(52), "an undated message is dated once"
-    assert message.msgphash() == message.by_name("msgphash")
+    # The typed facts left the row for their holders: the type is the header's,
+    # the side the event's, and the row holds the five others.
+    assert message.header().msgtype == "D"
+    assert message.side.as_py() == "BUY"
+    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]
+    assert len(message) == 5
+
+    # A lookup answers the holder for a typed tag and the row for the rest.
+    assert message.by_tag(35).as_py() == "D"
+    assert message.by_tag(54).as_py() == "BUY"
     assert message.by_tag(38).as_py() == 100
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
@@ -166,10 +177,21 @@
     assert message[55] == message.get_by_tag(55)
     with pytest.raises(KeyError):
         message.by_path("Parties.PartyID")  # a group member needs its index
-    assert [name for name, _ in message] == [
-        "OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999",
-        "updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime",
+
+    # The entries are the row read as a tree: the group is its counter valued
+    # the count, over one valueless entry per occurrence.
+    assert message.entries() == [
+        (38, "OrderQty", "100", []),
+        (55, "Symbol", "AAPL", []),
+        (453, "Parties", "1", [(0, "Party", None, [(448, "PartyID", "BROKER", [])])]),
+        (0, "9999", "custom", []),
     ]
+
+    # The identity is settled from what the message states.
+    assert message.hashcode != 0
+    assert message.unix == message.header().sendingtime, "undated, so the sending clock stands in"
+    assert message.crosscode == "", "no OrderID or ClOrdID names a chain"
+    assert message.crossuuid == message.curruuid, "so the message is a chain of one"
 
     # An identifier is the tag and the name together, under the one fold, and exact.
     folded = Field("order_qty", "int64")
@@ -179,22 +201,26 @@
     renamed = Field("Quantity", "int64")
     renamed.fix.tag = 38
     assert message.get_by_id(renamed.fix.id) is None, "another name is another field"
-    retagged = Field("OrderQty", "int64")
-    retagged.fix.tag = 5001
-    assert message.get_by_id(retagged.fix.id) is None, "another tag is another field"
 
-    # The schema serializes through the path every field already has, and the
-    # value the message holds names the same row, settled values included.
+    # The row serializes through the paths every field and value share, and a
+    # message rebuilt from them holds the same content; its typed facts are its
+    # own to state again.
     assert '"fix:tag":"55"' in message.field.into_json()
-    assert FixMsg(message.field, message.value, registry) == message
+    again = FixMsg(message.field, message.value, registry)
+    assert again.entries() == message.entries()
+    assert again.header().msgtype == "", "the type was the header's, not the row's"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, Scalar, fields, fix } = require('yggdryl')
+    const { Field, fields, fix } = require('yggdryl')
 
+    const msgtype = Field.from('MsgType: utf8')
+    msgtype.fix.tag = 35
+    const side = Field.from('Side: utf8')
+    side.fix.tag = 54
     const symbol = Field.from('Symbol: utf8 not null')
     symbol.fix.tag = 55
     symbol.fix.names = ['Ticker']
@@ -204,25 +230,27 @@
     partyId.fix.tag = 448
     const count = fields.int32('NoPartyIDs', { nullable: false })
     count.fix.tag = 453
-    const item = fields.struct('Party', [partyId], { nullable: false })
-    const parties = fields.list('Parties', item)
+    const party = fields.struct('Party', [partyId], { nullable: false })
+    const parties = fields.list('Parties', party)
     parties.fix.counter = 453
     parties.fix.component = 'Party'
-    const registry = fix.FixRegistry.fromFields([symbol, qty, count, partyId])
-    registry.createDefinition('components', item)
-    registry.createDefinition('groups', parties)
+    const registry = fix.FixRegistry.fromFields([msgtype, side, symbol, qty, count, partyId])
+    registry.insert(party)
+    registry.insert(parties)
 
-    // The root carries a tag no dictionary explains, under its rendered name.
+    // The root carries two typed tags and a tag no dictionary explains.
     const root = fields.struct(
       'NewOrderSingle',
-      [qty, symbol, count, parties, Field.from('9999: utf8')],
+      [msgtype, side, qty, symbol, count, parties, Field.from('9999: utf8')],
       { nullable: false },
     )
     const message = new fix.FixMsg(
       root,
       {
-        Symbol: 'AAPL',
+        MsgType: 'D',
+        Side: '1',
         OrderQty: 100n,
+        Symbol: 'AAPL',
         NoPartyIDs: 1,
         Parties: [{ PartyID: 'BROKER' }],
         9999: 'custom',
@@ -230,25 +258,37 @@
       registry,
     )
 
-    // The plain object became the ordered row the root declares, with the
-    // seven settled values appended behind the five it stated.
-    assert.equal(message.value.kind, 'sequence')
-    assert.equal(message.size, 12)
-    assert.ok(message.updatedat().equals(message.byTag(52)), 'an undated message is dated once')
-    assert.ok(message.msgphash().equals(message.byName('msgphash')))
+    // The typed facts left the row for their holders: the type is the header's,
+    // the side the event's, and the row holds the five others.
+    assert.equal(message.header().msgtype, 'D')
+    assert.equal(message.side, 'BUY')
+    assert.equal(message.size, 5)
+
+    // A lookup answers the holder for a typed tag and the row for the rest.
+    assert.equal(message.byTag(35).asJs(), 'D')
+    assert.equal(message.byTag(54).asJs(), 'BUY')
     assert.equal(message.byTag(38).asJs(), 100)
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
     assert.ok(message.get(55).equals(message.getByTag(55)))
-    assert.throws(() => message.at('Parties.PartyID'), /a fix value/)
+    assert.throws(() => message.at('Parties.PartyID'), /fix/)
+
+    // Iterating a message walks its entries: the row read as a tree, the group
+    // its counter valued the count over one valueless entry per occurrence.
     assert.deepEqual(
-      [...message].map(([name]) => name),
-      [
-        'OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999',
-        'updatedat', 'createdat', 'msghash', 'msgphash', 'code', 'snapshotat', 'sendingtime',
-      ],
+      [...message].map(entry => [entry.tag, entry.name, entry.value]),
+      [[38, 'OrderQty', '100'], [55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
     )
+    const [occurrence] = message.entries()[2].entries
+    assert.deepEqual([occurrence.tag, occurrence.name, occurrence.value], [0, 'Party', null])
+    assert.equal(occurrence.entries[0].name, 'PartyID')
+
+    // The identity is settled from what the message states.
+    assert.notEqual(message.hashcode, 0n)
+    assert.equal(message.unix, message.header().sendingtime, 'undated, so the sending clock stands in')
+    assert.equal(message.crosscode, '', 'no OrderID or ClOrdID names a chain')
+    assert.equal(message.crossuuid, message.curruuid, 'so the message is a chain of one')
 
     // An identifier is the tag and the name together, under the one fold, and exact.
     const folded = Field.from('order_qty: int64')
@@ -258,16 +298,15 @@
     const renamed = Field.from('Quantity: int64')
     renamed.fix.tag = 38
     assert.equal(message.getById(renamed.fix.id), null, 'another name is another field')
-    const retagged = Field.from('OrderQty: int64')
-    retagged.fix.tag = 5001
-    assert.equal(message.getById(retagged.fix.id), null, 'another tag is another field')
 
-    // Schema and value serialize through the paths every field and value
-    // share, and the settled values come back as they were.
+    // Schema and value serialize through the paths every field and value share,
+    // and a message rebuilt from them holds the same content; its typed facts
+    // are its own to state again.
     const document = message.toJSON()
     assert.equal(document.field.dtype.fields[1].metadata['fix:tag'], '55')
-    assert.deepEqual(document.value[1], 'AAPL')
-    assert.ok(new fix.FixMsg(message.field, message.value, registry).equals(message))
+    const again = new fix.FixMsg(message.field, message.value, registry)
+    assert.deepEqual(again.entries(), message.entries())
+    assert.equal(again.header().msgtype, '', 'the type was the header\'s, not the row\'s')
     ```
 
 ## Typed tags
@@ -404,60 +443,57 @@ A written child keeps its position, so every reader already holding the row addr
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
 
-    line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
+    line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|9999=x|10=0|"
     message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
-    msghash, msgphash = message.msghash(), message.msgphash()
+    hashcode, crossuuid = message.hashcode, message.crossuuid
 
-    # Appended under the dictionary's field, typed by it, reached by tag or name.
+    # A typed tag lands on its holder and never in the row.
     message.set(34, 7)
-    assert message.by_tag(34).as_py() == 7
+    assert message.header().msgseqnum == 7
     assert message.by_name("MsgSeqNum").as_py() == 7
-    assert [name for name, _ in message][-1] == "msgseqnum"
+    assert len(message) == children
+    # The content identity moved with the content; the chain's is the cross code's alone.
+    assert message.hashcode != hashcode
+    assert message.crossuuid == crossuuid
 
     # Replaced where it stands: the position is kept, the value changes.
     message.set("Symbol", "MSFT")
     assert [name for name, _ in message].index("symbol") == names.index("symbol")
     assert message.by_tag(55).as_py() == "MSFT"
-    # The content identity moved with the content; the chain's is `code`'s alone.
-    assert message.msghash() != msghash
-    assert message.msgphash() == msgphash
 
-    # A tag no dictionary explains is kept under its decimal spelling.
+    # A tag no dictionary explains is kept under its decimal spelling, and
+    # appended to the row.
     message.set(7777, "custom")
     assert message.by_tag(7777).as_py() == "custom"
+    assert len(message) == children + 1
 
     # A name nothing reaches is refused, and the row stands as it was.
-    with pytest.raises((KeyError, ValueError)):
+    with pytest.raises(KeyError):
         message.set("nosuchfield", "x")
-    assert len(message) == children + 2
+    assert len(message) == children + 1
 
-    # Removed, and the value answered; a mandatory field refuses removal and
-    # a null; the other tags still reach their children.
+    # Removed, and the value answered: a typed fact is cleared on its holder, a
+    # row child taken out, and the other tags still reach theirs.
     assert message.remove(54).as_py() == "BUY"
     assert message.get_by_tag(54) is None
     assert message.remove("nosuchfield") is None
-    with pytest.raises(ValueError):
-        message.remove("updatedat")
-    with pytest.raises((TypeError, ValueError)):
-        message.set("updatedat", None)
     assert message.by_tag(11).as_py() == "A1"
 
-    # Only the row changed: the wire comes back byte for byte.
-    assert message.into_bytes(ord("|")) == line
-    assert message.entries() == reader.parse_fix_line(line).entries()
+    # The wire is the message as it now stands: the header from its holder, then
+    # the row, the written pairs where they landed.
+    assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|10=0|59=0|7777=custom|"
 
-    # The written message is a fixed row, and the row a message again: the
-    # root is the schema, reached the same way, re-emitting the same wire.
+    # The written message is a fixed row, and the row a message again: the same
+    # entries, the same code, re-emitting the same wire.
     schema = fix_schema(registry, "fix")
     row = message.into_row(schema)
     held = FixMsg.from_row(schema, row, registry)
-    assert held.field == schema
     assert held.by_tag(55) == message.by_tag(55)
     assert held.entries() == message.entries()
-    assert held.digest() == message.digest()
-    assert held.into_bytes(ord("|")) == line
+    assert held.hashcode == message.hashcode
+    assert held.into_bytes(ord("|")) == message.into_bytes(ord("|"))
     assert held.into_row(schema) == row
     ```
 
@@ -468,58 +504,63 @@ A written child keeps its position, so every reader already holding the row addr
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
     const reader = new fix.FixCodec(registry)
 
-    const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
+    const line = '8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|55=AAPL|54=1|9999=x|10=0|'
     const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
-    const names = [...message].map(([name]) => name)
-    const [msghash, msgphash] = [message.msghash(), message.msgphash()]
+    const names = [...message].map(entry => entry.name)
+    const hashcode = message.hashcode
+    const crossuuid = message.crossuuid
 
-    // Appended under the dictionary's field, typed by it, reached by tag or name.
+    // A typed tag lands on its holder and never in the row.
     message.set(34, 7)
-    assert.equal(message.byTag(34).asJs(), 7)
+    assert.equal(message.header().msgseqnum, 7)
     assert.equal(message.byName('MsgSeqNum').asJs(), 7)
-    assert.equal([...message].map(([name]) => name).at(-1), 'msgseqnum')
+    assert.equal(message.size, children)
+    // The content identity moved with the content; the chain's is the cross code's alone.
+    assert.notEqual(message.hashcode, hashcode)
+    assert.equal(message.crossuuid, crossuuid)
 
     // Replaced where it stands: the position is kept, the value changes.
     message.set('Symbol', 'MSFT')
-    assert.equal([...message].map(([name]) => name).indexOf('symbol'), names.indexOf('symbol'))
+    assert.equal([...message].map(entry => entry.name).indexOf('symbol'), names.indexOf('symbol'))
     assert.equal(message.byTag(55).asJs(), 'MSFT')
-    // The content identity moved with the content; the chain's is `code`'s alone.
-    assert.ok(!message.msghash().equals(msghash))
-    assert.ok(message.msgphash().equals(msgphash))
 
-    // A tag no dictionary explains is kept under its decimal spelling.
+    // A tag no dictionary explains is kept under its decimal spelling, and
+    // appended to the row.
     message.set(7777, 'custom')
     assert.equal(message.byTag(7777).asJs(), 'custom')
+    assert.equal(message.size, children + 1)
 
     // A name nothing reaches is refused, and the row stands as it was.
-    assert.throws(() => message.set('nosuchfield', 'x'))
-    assert.equal(message.size, children + 2)
+    assert.throws(() => message.set('nosuchfield', 'x'), /nosuchfield/)
+    assert.equal(message.size, children + 1)
 
-    // Removed, and the value answered; a mandatory field refuses removal and
-    // a null; the other tags still reach their children.
+    // Removed, and the value answered: a typed fact is cleared on its holder, a
+    // row child taken out, and the other tags still reach theirs.
     assert.equal(message.remove(54).asJs(), 'BUY')
     assert.equal(message.getByTag(54), null)
     assert.equal(message.remove('nosuchfield'), null)
-    assert.throws(() => message.remove('updatedat'))
-    assert.throws(() => message.set('updatedat', null))
     assert.equal(message.byTag(11).asJs(), 'A1')
 
-    // Only the row changed: the wire comes back byte for byte.
-    assert.equal(Buffer.from(message.intoBytes(124)).toString(), line)
+    // The wire is the message as it now stands: the header from its holder, then
+    // the row, the written pairs where they landed.
+    assert.equal(
+      message.intoText('|'),
+      '8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|10=0|59=0|7777=custom|',
+    )
 
-    // The written message is a fixed row, and the row a message again: the
-    // root is the schema, reached the same way, re-emitting the same wire.
+    // The written message is a fixed row, and the row a message again: the same
+    // entries, the same code, re-emitting the same wire.
     const schema = fix.schema(registry, 'fix')
     const row = message.intoRow(schema)
     const held = fix.FixMsg.fromRow(schema, row, registry)
-    assert.ok(held.field.equals(schema))
     assert.ok(held.byTag(55).equals(message.byTag(55)))
-    assert.deepEqual(held.digest(), message.digest())
-    assert.equal(Buffer.from(held.intoBytes(124)).toString(), line)
+    assert.deepEqual(held.entries(), message.entries())
+    assert.equal(held.hashcode, message.hashcode)
+    assert.equal(held.intoText('|'), message.intoText('|'))
     assert.ok(held.intoRow(schema).equals(row))
     ```
 
@@ -608,21 +649,19 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     # A cancelled partial fill (20=1, 150=1) of an agency order (47=A),
     # naming its broker (76) and client (109), the fill as LastShares (32).
     line = b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|"
-    read = next(reader.parse_line(line))
-    assert read.by_name("version").as_py() == "4.2"
-    assert read.by_tag(150).as_py() == "40PARTFILL", "read at 4.2"
-
-    latest = reader.enrich_message(read)
+    latest = next(reader.parse_line(line))
 
     # ExecTransType Cancel states TradeCancel, but ExecType already stated
-    # PartiallyFilled and a stated value stands, so ExecType's own rule folds
-    # the partial fill into Trade. The source stays as it arrived.
-    assert latest.by_tag(150).as_py() == "40TRADE"
+    # PartiallyFilled and a stated value stands - so the rule that answers 150 is
+    # ExecType's own, folding the partial fill into Trade. The source stays as it
+    # arrived.
+    assert latest.by_tag(150).as_py() == "F"
     assert latest.by_tag(20).as_py() == "1"
     # Rule80A A is an agency order.
     assert latest.by_tag(528).as_py() == "A"
-    # ExecBroker and ClientID are two parties, in tag order, and the
-    # counter states the count.
+    assert latest.by_tag(47).as_py() == "A", "the source stays as read"
+    # ExecBroker and ClientID are two parties, in tag order, and the counter
+    # states the count.
     assert latest.by_tag(453).as_py() == 2
     assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
     assert latest.by_path("parties[0].partyrole").as_py() == 1
@@ -632,13 +671,12 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares") == latest.by_tag(32)
 
-    # The version is what the line said; what the message said of itself,
-    # the entries and the wire are untouched.
-    assert latest.by_name("version").as_py() == "4.2"
-    assert latest.by_tag(8).as_py() == "FIX.4.2"
-    assert latest.entries() == read.entries()
-    assert latest.into_bytes(ord("|")) == line
-    assert reader.enrich_message(latest) == latest, "a second pass changes nothing"
+    # What the message said of itself is its header's; the wire re-emits the
+    # restated row behind what arrived.
+    assert latest.header().beginstring == "FIX.4.2"
+    wire = latest.into_text("|")
+    assert wire.startswith("8=FIX.4.2|35=8|54=1|37=O1|17=E1|20=1|150=F|")
+    assert "|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|" in wire
     ```
 
 === "JavaScript"
@@ -654,36 +692,34 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     // A cancelled partial fill (20=1, 150=1) of an agency order (47=A),
     // naming its broker (76) and client (109), the fill as LastShares (32).
     const line = '8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|'
-    const read = reader.parseLine(Buffer.from(line)).next().value
-    assert.equal(read.byName('version').toJSON(), '4.2')
-    assert.equal(read.byTag(150).toJSON(), '40PARTFILL', 'read at 4.2')
-
-    const latest = reader.enrichMessage(read)
+    const latest = reader.parseLine(Buffer.from(line)).next().value
 
     // ExecTransType Cancel states TradeCancel, but ExecType already stated
-    // PartiallyFilled and a stated value stands, so ExecType's own rule folds
-    // the partial fill into Trade. The source stays as it arrived.
-    assert.equal(latest.byTag(150).toJSON(), '40TRADE')
-    assert.equal(latest.byTag(20).toJSON(), '1')
+    // PartiallyFilled and a stated value stands - so the rule that answers 150 is
+    // ExecType's own, folding the partial fill into Trade. The source stays as it
+    // arrived.
+    assert.equal(latest.byTag(150).asJs(), 'F')
+    assert.equal(latest.byTag(20).asJs(), '1')
     // Rule80A A is an agency order.
-    assert.equal(latest.byTag(528).toJSON(), 'A')
-    // ExecBroker and ClientID are two parties, in tag order, and the
-    // counter states the count.
-    assert.equal(latest.byTag(453).toJSON(), 2)
-    assert.equal(latest.byPath('parties[0].partyid').toJSON(), 'BRKR')
-    assert.equal(latest.byPath('parties[0].partyrole').toJSON(), 1)
-    assert.equal(latest.byPath('parties[1].partyid').toJSON(), 'CLIENT1')
-    assert.equal(latest.byPath('parties[1].partyrole').toJSON(), 3)
+    assert.equal(latest.byTag(528).asJs(), 'A')
+    assert.equal(latest.byTag(47).asJs(), 'A', 'the source stays as read')
+    // ExecBroker and ClientID are two parties, in tag order, and the counter
+    // states the count.
+    assert.equal(latest.byTag(453).asJs(), 2)
+    assert.equal(latest.byPath('parties[0].partyid').asJs(), 'BRKR')
+    assert.equal(latest.byPath('parties[0].partyrole').asJs(), 1)
+    assert.equal(latest.byPath('parties[1].partyid').asJs(), 'CLIENT1')
+    assert.equal(latest.byPath('parties[1].partyrole').asJs(), 3)
     // LastShares is LastQty, reachable by either spelling.
-    assert.equal(latest.byTag(32).toJSON(), 100)
+    assert.equal(latest.byTag(32).asJs(), 100)
     assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
 
-    // The version is what the line said; what the message said of itself
-    // and the wire are untouched.
-    assert.equal(latest.byName('version').toJSON(), '4.2')
-    assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
-    assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
-    assert.ok(reader.enrichMessage(latest).equals(latest), 'a second pass changes nothing')
+    // What the message said of itself is its header's; the wire re-emits the
+    // restated row behind what arrived.
+    assert.equal(latest.header().beginstring, 'FIX.4.2')
+    const wire = latest.intoText('|')
+    assert.ok(wire.startsWith('8=FIX.4.2|35=8|54=1|37=O1|17=E1|20=1|150=F|'), wire)
+    assert.ok(wire.includes('|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|'), wire)
     ```
 
 ### What a held value is, to a rule

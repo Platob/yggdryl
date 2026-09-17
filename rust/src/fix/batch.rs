@@ -159,11 +159,12 @@ impl FixCodec {
         let schema = field.clone();
         let plan = super::schema::column_plan(&schema, self.registry())?;
         let target = self.batch_byte_size();
-        let mut carried = 0_u64;
+        let row_target = self.batch_row_size();
+        let mut carried = Carried::default();
         let rows = rows.map(move |held| match held {
             Err(error) => Closing(Err(error), false),
             Ok((message, front, charge)) => {
-                let closes = closes(&mut carried, charge, target);
+                let closes = closes(&mut carried, charge, target, row_target);
                 let row = row_of(&message, &schema, &plan, front);
                 Closing(row, closes)
             }
@@ -247,7 +248,8 @@ impl FixCodec {
     {
         let root = schema.clone();
         let target = self.batch_byte_size();
-        let mut carried = 0_u64;
+        let row_target = self.batch_row_size();
+        let mut carried = Carried::default();
         let rows = messages
             .into_iter()
             .fuse()
@@ -264,7 +266,7 @@ impl FixCodec {
                     let row = message.into_row(&schema);
                     let charge =
                         wire.unwrap_or_else(|| row.as_ref().map_or(ROW_OVERHEAD, appended_bytes));
-                    let closes = closes(&mut carried, charge, target);
+                    let closes = closes(&mut carried, charge, target, row_target);
                     Closing(row, closes)
                 }
             });
@@ -433,15 +435,27 @@ impl FixCodec {
     }
 }
 
+/// What a batch has taken so far, against the two bounds it closes on.
+#[derive(Default)]
+struct Carried {
+    bytes: u64,
+    rows: usize,
+}
+
 /// Whether the batch closes after a row charged `charge` bytes.
 ///
-/// The running total crosses the target and starts again from nothing, so
-/// the row that crosses it is the last of its batch and a target of zero
-/// closes after every row.
-fn closes(carried: &mut u64, charge: u64, target: u64) -> bool {
-    *carried = carried.saturating_add(charge);
-    if *carried >= target {
-        *carried = 0;
+/// Two bounds, and the batch closes on whichever it reaches first: the bytes
+/// keep a batch about the same size whatever shape arrived, and the rows keep
+/// a batch of very small messages from holding millions of them before a
+/// consumer sees one. Each running total crosses its target and starts again
+/// from nothing, so the row that crosses it is the last of its batch, a byte
+/// target of zero closes after every row, and a row target of zero leaves the
+/// bytes to decide.
+fn closes(carried: &mut Carried, charge: u64, target: u64, rows: usize) -> bool {
+    carried.bytes = carried.bytes.saturating_add(charge);
+    carried.rows = carried.rows.saturating_add(1);
+    if carried.bytes >= target || (rows > 0 && carried.rows >= rows) {
+        *carried = Carried::default();
         return true;
     }
     false

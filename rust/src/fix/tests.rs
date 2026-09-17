@@ -442,8 +442,11 @@ fn the_prose_in_front_of_a_json_document_names_its_half_and_the_document_nothing
     assert_eq!(FixCodec::infer_msgtype_bytes(&stamped), None);
 
     // The prose's reading is filled as tag 385 on the line door, which takes
-    // no pin; a bare document fills nothing there.
-    let codec = FixCodec::new(Arc::new(FixRegistry::new()));
+    // no pin; a bare document fills nothing there. A document states no
+    // message type, so the codec is told to read the untyped row the
+    // default refuses: the subject here is the direction, not the filter.
+    let codec =
+        FixCodec::new(Arc::new(FixRegistry::new())).with_exclude_msgtypes::<[&str; 0], &str>([]);
     let message = codec
         .parse_line(&answered)
         .unwrap()

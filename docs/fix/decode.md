@@ -9,7 +9,8 @@ your own bytes.
 | Aspect | Rule |
 | --- | --- |
 | Native intake | `FixCodec::parse_line` accepts captured bytes and returns a lazy `FixMessages` iterator - [none, one or many](#a-line-yields-none-one-or-many-messages) of them a line; `parse_lines` streams a whole capture |
-| Single frames | `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` each answer one message and [refuse a body holding a second](#a-line-yields-none-one-or-many-messages) |
+| Single frames | `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` each answer one message and [refuse a body holding a second](#a-line-yields-none-one-or-many-messages); a door asked for one message answers it whatever its type, so the [type filter](#a-type-nobody-asked-for-is-never-built) applies to the row and stream doors alone |
+| Message types | `DEFAULT_REFUSED_MSGTYPES` - `Heartbeat`, `TestRequest` and the untyped row - are [dropped before anything is built](#a-type-nobody-asked-for-is-never-built); `with_include_msgtypes` names what to read, `with_exclude_msgtypes` what to refuse |
 | Scalar fields | Values resolve through the field catalog; inline `fix:codes` supplies enum names |
 | Repeating groups | The count remains an `int32` field; a named List holds its component occurrences |
 | Content | The [entries](message.md) are the content row read as a tree, in the row's order: a value the field could not type is null in the row and the entry still spells what arrived |
@@ -51,7 +52,9 @@ One frame, read against the dictionary. A line can carry more than one, and
     message, = codec.parse_line(frame)
     assert message.by_tag(453).as_py() == 1
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
-    assert message.into_bytes(ord("|")) == frame.removeprefix(b"recv ")
+    # The message re-emits what it now states: what arrived, and the day order
+    # its dictionary derived from an order stating no TimeInForce.
+    assert message.into_text("|") == "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|59=0|"
     ```
 
 === "JavaScript"
@@ -66,7 +69,9 @@ One frame, read against the dictionary. A line can carry more than one, and
     const [message] = codec.parseLine(Buffer.from(frame))
     assert.equal(message.byTag(453).asJs(), 1)
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
-    assert.equal(Buffer.from(message.intoBytes(124)).toString(), frame.slice(5))
+    // The message re-emits what it now states: what arrived, and the day order
+    // its dictionary derived from an order stating no TimeInForce.
+    assert.equal(message.intoText('|'), '8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|59=0|')
     ```
 
 ## A line yields none, one or many messages
@@ -85,6 +90,58 @@ line carries and nothing for a line that carries none.
 | a FIXML document | one, whatever prose a transport wrote in front of it |
 | a JSON document | [one, named `unknown`, with no entries](capture.md#a-json-document-is-one-message-stating-nothing): a Jolokia answer, a bulk or wildcard answer, an error-only answer and a bare `{"a":1}` alike, carrying only what the row stated around it |
 | a sentence | none at all |
+
+## A type nobody asked for is never built
+
+A capture is mostly session keepalives. A quiet session writes a `Heartbeat`
+every thirty seconds and a `TestRequest` whenever it doubts the other side, and
+neither says anything about a market: no instrument, no order, no price. Beside
+them sits the row that states no type at all - a line a transport wrote that
+carries no message this dictionary knows, read as `unknown`. A codec refuses
+all three until a caller says otherwise, and the refusal is read off the type
+the row *states*, before a message is built: a refused line costs one look at
+its `35=` rather than a build, a restatement, the dictionary's derivations and
+a settled identity.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let lines = [
+        "8=FIX.4.4|35=0|112=TEST|10=0|",
+        "8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
+        "8=FIX.4.4|35=8|37=O1|10=0|",
+    ];
+
+    // The default: the keepalive is passed over, the rest is read.
+    let codec = FixCodec::new(Arc::clone(&registry));
+    assert_eq!(codec.exclude_msgtypes(), DEFAULT_REFUSED_MSGTYPES);
+    assert_eq!(codec.parse_lines(lines).count(), 2);
+
+    // Naming what to read is the whole answer, in any spelling the
+    // dictionary resolves - and it clears the default refusal, because a
+    // caller that says what it wants has said what it does not.
+    let orders = FixCodec::new(Arc::clone(&registry)).with_include_msgtypes(["NewOrderSingle"]);
+    assert_eq!(orders.include_msgtypes(), ["D"]);
+    assert_eq!(orders.parse_lines(lines).count(), 1);
+
+    // And an empty refusal reads the session whole, which is what an audit sets.
+    let audit = FixCodec::new(registry).with_exclude_msgtypes::<[&str; 0], &str>([]);
+    assert_eq!(audit.parse_lines(lines).count(), 3);
+    ```
+
+The filter is per frame, so a row carrying a keepalive and an order answers the
+order. It reads the type the row states at its top level: a bridge frame whose
+nested `XmlData` states the real type is filtered by the frame's own. The same
+reading holds in a [walk](lifecycle.md) - a keepalive belongs to the session
+rather than to a chain, so `lifecycle` refuses it whatever parsed it - and
+through it in the batch doors, so a capture read into Arrow lands the messages
+that say something.
 
 What opens a frame is the rule the scanner locates a line's first frame by, read
 over the line's own pairs: an unmarked `8=`, and where the rest of the run
@@ -129,7 +186,9 @@ a line that stated no frame.
     assert!(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")?.next().is_none());
 
     // The same pairs behind a separator the line named are a bridge row, and a
-    // row that stated no type is named `unknown`.
+    // row that stated no type is named `unknown` - which this reader is told
+    // to read, since the default refuses it.
+    let codec = codec.with_exclude_msgtypes::<[&str; 0], &str>([]);
     let row = codec.parse_line(b"ACCOUNT=A1|SIDE=1")?.next().expect("a bridge row")?;
     assert_eq!(row.as_field().name(), "unknown");
 
@@ -151,9 +210,10 @@ a line that stated no frame.
 
     # Two frames on one line are two messages, each re-emitting its own bytes.
     both = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|"
-    assert [message.into_bytes(ord("|")) for message in codec.parse_line(both)] == [
-        b"8=FIX.4.4|35=D|11=A|10=001|",
-        b"8=FIX.4.4|35=8|37=O1|10=002|",
+    # Each re-emits its own bytes, and the day order its dictionary derived.
+    assert [message.into_text("|") for message in codec.parse_line(both)] == [
+        "8=FIX.4.4|35=D|11=A|10=001|59=0|",
+        "8=FIX.4.4|35=8|37=O1|10=002|59=0|",
     ]
     # A sentence states no message, whatever `=` it happens to hold.
     assert list(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")) == []
@@ -177,8 +237,9 @@ a line that stated no frame.
 
     // Two frames on one line are two messages, each re-emitting its own bytes.
     const both = Buffer.from('8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|')
-    const read = [...codec.parseLine(both)].map((message) => Buffer.from(message.intoBytes(124)).toString())
-    assert.deepEqual(read, ['8=FIX.4.4|35=D|11=A|10=001|', '8=FIX.4.4|35=8|37=O1|10=002|'])
+    // Each re-emits its own bytes, and the day order its dictionary derived.
+    const read = [...codec.parseLine(both)].map((message) => message.intoText('|'))
+    assert.deepEqual(read, ['8=FIX.4.4|35=D|11=A|10=001|59=0|', '8=FIX.4.4|35=8|37=O1|10=002|59=0|'])
     // A sentence states no message, whatever `=` it happens to hold.
     assert.equal([...codec.parseLine(Buffer.from('After Enrichment -> ACCOUNT=A1 SIDE=1'))].length, 0)
     // The same pairs behind a separator the line named are a bridge row, and a

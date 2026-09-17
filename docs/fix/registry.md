@@ -27,7 +27,7 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 34 definitions from tag 65003: 32 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one but `parentuuids`, which is a column of the fixed row and neither a scalar the registry indexes nor a group it defines, so an empty registry holds 33 crate definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 34 definitions from tag 65003: 32 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one, beside its own `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 34 fields and two groups and its `len()` is 36. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
 | Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated) are typed by, so an empty registry holds 33 scalar fields beside its two Map groups - 35 definitions; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
 
 ## Use
@@ -86,29 +86,32 @@
     party_id.fix.tag = 448
     registry = FixRegistry.from_fields([counter, party_id])
 
+    # One door files each by its shape: a Struct is a component, a List of one a
+    # group, and a scalar a field.
     member = registry.field(448)
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
-    registry.create_definition("components", party)
+    registry.insert(party)
     parties = types.list("Parties", party)
     parties.fix.counter = 453
     parties.fix.component = "Party"
-    registry.create_definition("groups", parties)
+    registry.insert(parties)
 
-    group = registry.definition("groups", "Parties")
+    group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
     count = registry.field(453)
     count.fix.field_ref = "NoPartyIDs"
     order = Field("Order", DataType.from_fields([count, group]), nullable=False)
     order.fix.msgtype = "D"
-    registry.create_definition("components", order)
+    registry.insert(order)
 
     assert registry.field(453).dtype == DataType("int32")
     assert registry.field_by_path("Order.Parties.PartyID").fix.tag == 448
     message = registry.msgtype("D")
     assert message.name == "Order"
-    assert message.get_group_by_tag(453).name == "Parties"
-    assert [field.name for field in registry.definitions("groups")] == ["Parties", "altids"]
+    # A counter names the group it opens; the counter itself is a field.
+    assert registry.field_by_counter(453).name == "Parties"
+    assert [field.name for field in registry.field_by_name("Party").dtype.explode_fields()] == ["PartyID"]
     ```
 
 === "JavaScript"
@@ -123,29 +126,32 @@
     partyId.fix.tag = 448
     const registry = fix.FixRegistry.fromFields([counter, partyId])
 
+    // One door files each by its shape: a Struct is a component, a List of one a
+    // group, and a scalar a field.
     const member = registry.field(448)
     member.fix.fieldRef = 'PartyID'
     const party = fields.struct('Party', [member], { nullable: false })
-    registry.createDefinition('components', party)
+    registry.insert(party)
     const parties = fields.list('Parties', party)
     parties.fix.counter = 453
     parties.fix.component = 'Party'
-    registry.createDefinition('groups', parties)
+    registry.insert(parties)
 
-    const group = registry.definition('groups', 'Parties')
+    const group = registry.fieldByName('Parties')
     group.fix.group = 'Parties'
     const count = registry.field(453)
     count.fix.fieldRef = 'NoPartyIDs'
     const order = fields.struct('Order', [count, group], { nullable: false })
     order.fix.msgtype = 'D'
-    registry.createDefinition('components', order)
+    registry.insert(order)
 
     assert.equal(registry.field(453).dtype.toString(), 'int32')
     assert.equal(registry.fieldByPath('Order.Parties.PartyID').fix.tag, 448)
     const message = registry.msgtype('D')
     assert.equal(message.name, 'Order')
-    assert.equal(message.getGroupByTag(453).name, 'Parties')
-    assert.deepEqual([...registry.definitions('groups')].map(field => field.name), ['Parties', 'altids'])
+    // A counter names the group it opens; the counter itself is a field.
+    assert.equal(registry.fieldByCounter(453).name, 'Parties')
+    assert.deepEqual(registry.fieldByName('Party').dtype.explodeFields().map(field => field.name), ['PartyID'])
     ```
 
 ### Group names
@@ -215,7 +221,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     assert order.into_json() == before
 
     registry = FixRegistry()
-    registry.create_definition("components", order)
+    registry.insert(order)
     # The row is reordered; the result still follows declaration order.
     row = Field("row", DataType.from_fields([server, client]), nullable=False)
     message = FixMsg(row, ["O-1", "C-1"], registry)
@@ -246,7 +252,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     assert.deepEqual(order.toJSON(), before)
 
     const registry = new fix.FixRegistry()
-    registry.createDefinition('components', order)
+    registry.insert(order)
     // The row is reordered; the result still follows declaration order.
     const row = fields.struct('row', [server, client], { nullable: false })
     const message = new fix.FixMsg(row, ['O-1', 'C-1'], registry)
@@ -554,19 +560,21 @@ These mutations preserve stored canonical spelling for case-only input changes. 
     registry = FixRegistry()
     symbol = Field("Symbol", "utf8")
     symbol.fix.tag = 55
-    registry.create_definition("fields", symbol)
-    with pytest.raises(ValueError):
-        registry.create_definition("fields", symbol)
+    assert registry.insert(symbol) is None, "it arrived"
+    assert registry.insert(symbol) is not None, "and the second insert replaced it"
+    assert registry.add_field(symbol) is False, "the lenient twin folds it in"
     symbol.set_name("SYMBOL")
     symbol.fix.description = "Instrument symbol"
-    registry.update_definition("fields", symbol)
+    registry.update(symbol)
+    # A case-only rename keeps the stored spelling, and the metadata merged.
     assert registry.field(55).name == "Symbol"
+    assert registry.field(55).description == "Instrument symbol"
     assert FixRegistry.from_json(registry.into_json()) == registry
     assert pickle.loads(pickle.dumps(registry)) == registry
     assert copy.copy(registry).stable_hash() == registry.stable_hash()
     with pytest.raises(TypeError):
         hash(registry)
-    assert registry.remove_definition("fields", "Symbol") is not None
+    assert registry.remove("Symbol") is not None
     ```
 
 === "JavaScript"
@@ -578,15 +586,18 @@ These mutations preserve stored canonical spelling for case-only input changes. 
     const registry = new fix.FixRegistry()
     const symbol = Field.from('Symbol: utf8')
     symbol.fix.tag = 55
-    registry.createDefinition('fields', symbol)
-    assert.throws(() => registry.createDefinition('fields', symbol))
+    assert.equal(registry.insert(symbol), null, 'it arrived')
+    assert.ok(registry.insert(symbol), 'and the second insert replaced it')
+    assert.equal(registry.addField(symbol), false, 'the lenient twin folds it in')
     symbol.setName('SYMBOL')
     symbol.fix.description = 'Instrument symbol'
-    registry.updateDefinition('fields', symbol)
+    registry.update(symbol)
+    // A case-only rename keeps the stored spelling, and the metadata merged.
     assert.equal(registry.field(55).name, 'Symbol')
+    assert.equal(registry.field(55).description, 'Instrument symbol')
     assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
     assert.equal(registry.clone().stableHash(), registry.stableHash())
-    assert.ok(registry.removeDefinition('fields', 'Symbol'))
+    assert.ok(registry.remove('Symbol'))
     ```
 
 Python registries are mutable and unhashable; `stable_hash()` explicitly computes the native content hash. Python `copy.copy` and Node `clone()` create independently mutable registries, including every category and each field's membership.
@@ -840,8 +851,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     # Every reader linked to the registry restates by the edited rule.
     reader = FixCodec(registry)
-    read = next(reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
-    latest = reader.enrich_message(read)
+    latest = next(reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
     assert latest.by_tag(528).as_py() == "P"
     assert latest.by_tag(47).as_py() == "A", "the source stays as read"
     ```
@@ -865,10 +875,9 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     // Every reader linked to the registry restates by the edited rule.
     const reader = new fix.FixCodec(registry)
-    const read = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
-    const latest = reader.enrichMessage(read)
-    assert.equal(latest.byTag(528).toJSON(), 'P')
-    assert.equal(latest.byTag(47).toJSON(), 'A', 'the source stays as read')
+    const latest = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
+    assert.equal(latest.byTag(528).asJs(), 'P')
+    assert.equal(latest.byTag(47).asJs(), 'A', 'the source stays as read')
     ```
 
 ### The rules the dictionary carries
@@ -976,8 +985,8 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
     # Every reader linked to the registry fills by the edited derivation.
     reader = FixCodec(registry)
-    read = next(reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|"))
-    assert reader.enrich_message(read).by_tag(151).as_py() == 8.0
+    filled = next(reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|"))
+    assert filled.by_tag(151).as_py() == 8.0
     ```
 
 === "JavaScript"
@@ -996,8 +1005,8 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
     // Every reader linked to the registry fills by the edited derivation.
     const reader = new fix.FixCodec(registry)
-    const read = reader.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|')).next().value
-    assert.equal(reader.enrichMessage(read).byTag(151).toJSON(), 8)
+    const filled = reader.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|')).next().value
+    assert.equal(filled.byTag(151).asJs(), 8)
     ```
 
 ### The derivations the dictionary carries
@@ -1048,7 +1057,7 @@ Deliberately not derived, because the answer would be a guess: no amount whose s
 
 ## One merge, with a rule per key
 
-Scalar `update` merges the same identifier: incoming scalar metadata wins, aliases and alternate tags combine under native validation, and canonical spelling is retained. Category `update_definition` instead replaces the entire supplied definition while preserving its identity.
+`update` on a scalar merges the same identifier: incoming scalar metadata wins, aliases and alternate tags combine under native validation, and canonical spelling is retained. `update` on a component or a group instead replaces the entire supplied definition while preserving its identity.
 
 | Metadata | Merge rule |
 | --- | --- |
@@ -1130,7 +1139,7 @@ Registration updates tag 35's inline vocabulary and, if no message owns that cod
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the crate's own definitions - its 31 registered scalar fields and the `identifiers` and `metadata` Map groups - beside the seeded `SendingTime` and `TransactTime`. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the crate's own definitions - its 32 registered scalar fields and the `identifiers` and `metadata` Map groups - beside the seeded `SendingTime` and `TransactTime`, so `len()` is 36. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

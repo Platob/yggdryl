@@ -663,6 +663,7 @@ pub const SOH: u8 = 0x01;
 pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 pub struct FixCodec
   pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;  (the raw bytes one Arrow batch targets; a target, not a ceiling, and a batch always holds one row)
+  pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;  (the rows one Arrow batch targets; a batch closes on whichever of the two bounds it reaches first)
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn default_sending_time(&self) -> Option<&Scalar>
@@ -679,6 +680,13 @@ pub struct FixCodec
   pub fn with_capture_names<I, S>(mut self, names: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (what a run's row-header captures are called, resolved once and read by position)
   pub fn try_with_direction(mut self, code: Option<&str>) -> Result<Self>  (any spelling of a code of tag 385's set, resolved once; None or empty = no pin; a spelling outside the set refused naming it)
   pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self
+  pub const fn with_batch_row_size(mut self, rows: usize) -> Self  (zero leaves the bytes to decide)
+  pub const fn batch_row_size(&self) -> usize
+  pub fn with_include_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (only these types are read; naming any clears the default refusals, since a caller saying what it wants has said what it does not; any spelling the dictionary resolves, a code it does not know kept as written, `unknown` naming a row that states no type)
+  pub fn with_exclude_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (replaces DEFAULT_REFUSED_MSGTYPES; empty reads everything; a type named here is refused whether or not it is included)
+  pub fn include_msgtypes(&self) -> &[SmolStr]
+  pub fn exclude_msgtypes(&self) -> &[SmolStr]
+  pub fn reads_msgtype(&self, spelling: &str) -> bool  (what the parse asks of the type a row states before it builds, and the walk of every message it is handed)
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
@@ -693,6 +701,7 @@ pub struct FixCodec
   pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (the one walk, `graph::EventIterator`, over the messages: collected and stably sorted by instant - a capture's lines are not in their messages' order - then each stated as the one after the live message of its chain by `FixMsg::with_previous`, the chain keyed on the cross identity every incarnation shares with a fallback on a shared identifier; a message arriving under the identity the live one arrived under - the same message logged at another hop - restates it instead; errors move through in source order and never advance the walk; fused)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
+pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the types a codec refuses until a caller says otherwise: Heartbeat, TestRequest, and a row stating no type)
 
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
 impl FixCodec

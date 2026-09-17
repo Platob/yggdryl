@@ -23,7 +23,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 
-The live additions are the crate's 32 fields - 31 scalars and `parentuuids`, a list of the identities a message descends from, which is one column under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 118 columns.
+The live additions are the crate's 32 fields - `parentuuids` among them, a list of the identities a message descends from, which is one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 118 columns.
 
 === "Rust"
 
@@ -33,10 +33,11 @@ The live additions are the crate's 32 fields - 31 scalars and `parentuuids`, a l
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    // Every category is in the one length: the scalars, the components and
+    // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_782);
-    assert_eq!(registry.iter().filter(|field| !field.dtype().is_nested()).count(), 6_272);
+    assert_eq!(registry.len(), 7_783);
+    // The walk is the same listing: the fields, then the definitions.
+    assert_eq!(registry.iter().count(), 7_783);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -63,23 +64,25 @@ The live additions are the crate's 32 fields - 31 scalars and `parentuuids`, a l
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_275
+    # Every category is in the one length: the fields, the components and the
+    # groups; iterating a Python registry walks the fields alone.
+    assert len(registry) == 7_783
+    assert sum(1 for _ in registry) == 6_273
     assert str(registry.field_by_tag(453).dtype) == "int32"
-    parties = registry.definition("groups", "parties")
+    parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    altids = registry.group_by_tag(65_020)
-    assert altids.name == "altids" and altids.fix.tag == 65_020
-    assert altids.fix.counter == 65_020
-    assert altids.into_arrow().type.keys_sorted
+    identifiers = registry.field_by_counter(65_020)
+    assert identifiers.name == "identifiers" and identifiers.fix.tag == 65_020
+    assert identifiers.into_arrow().type.keys_sorted
     assert registry.get_field_by_tag(65_020) is None
     assert registry.msgtype("D").value == "D"
-    # The crate's own columns are fields from tag 65001, held by every registry;
+    # The crate's own columns are fields from tag 65003, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
-    updatedat = registry.field_by_tag(65_003)
-    assert updatedat.name == "updatedat"
-    assert updatedat.display == "UpdatedAt"
-    assert registry.field_by_id(updatedat.fix.id) == updatedat
+    unix = registry.field_by_tag(65_003)
+    assert unix.name == "unix"
+    assert unix.display == "Unix"
+    assert registry.field_by_id(unix.fix.id) == unix
     ```
 
 === "JavaScript"
@@ -90,24 +93,26 @@ The live additions are the crate's 32 fields - 31 scalars and `parentuuids`, a l
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_275)
+    // Every category is in the one size: the fields, the components and the
+    // groups, which is what a Node registry iterates too.
+    assert.equal(registry.size, 7783)
+    assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
-    const parties = registry.definition('groups', 'parties')
+    const parties = registry.fieldByName('parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const altids = registry.groupByTag(65020)
-    assert.equal(altids.name, 'altids')
-    assert.equal(altids.fix.tag, 65020)
-    assert.equal(altids.fix.counter, 65020)
-    assert.match(altids.dtype.toString(), /keys_sorted=true/)
+    const identifiers = registry.fieldByCounter(65020)
+    assert.equal(identifiers.name, 'identifiers')
+    assert.equal(identifiers.fix.tag, 65020)
+    assert.match(identifiers.dtype.toString(), /keys_sorted=true/)
     assert.equal(registry.getFieldByTag(65020), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
-    // The crate's own columns are fields from tag 65001, held by every registry;
+    // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
-    const updatedat = registry.fieldByTag(65_003)
-    assert.equal(updatedat.name, 'updatedat')
-    assert.equal(updatedat.display, 'UpdatedAt')
-    assert.ok(registry.fieldById(updatedat.fix.id).equals(updatedat))
+    const unix = registry.fieldByTag(65_003)
+    assert.equal(unix.name, 'unix')
+    assert.equal(unix.display, 'Unix')
+    assert.ok(registry.fieldById(unix.fix.id).equals(unix))
     ```
 
 ## What the registry holds

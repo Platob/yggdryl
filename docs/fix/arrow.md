@@ -12,8 +12,8 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
-| Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
-| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_null_values`, `try_with_direction`, `try_with_default_sending_time`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace, and no version pin, because a version is what a line said |
+| Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB), or by rows against `batch_row_size`, `DEFAULT_BATCH_ROW_SIZE` (32,768), whichever it reaches first, unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
+| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_null_values`, `try_with_direction`, `try_with_default_sending_time`, `with_batch_byte_size`, `with_batch_row_size`, `with_include_msgtypes`, `with_exclude_msgtypes`; no dialect pin, because the registry is one namespace, and no version pin, because a version is what a line said |
 | Stages | a call, never a flag: `FixCodec::lifecycle` and `FixDedup` compose over `messages` and `arrow_reader`, and `lifecycle_arrow_reader` is the walk composed for you; restating a message and [filling what it implies](capture.md#what-a-message-implied-is-filled-in) are the parse's own, never a stage |
 | Doors | `lifecycle` and `arrow_reader` take owned messages or their `Result`s, so stages compose without collecting; an error item keeps its type, and every door fuses exhaustion |
 | Per row | `beginstring` and `msgdirection` are parameters read from the row; any other column named after a field - `pluginid` among them - fills it where the message did not state it; a capture `timestamp` is carried context, never a FIX clock |
@@ -112,7 +112,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     # the column named after a FIX column, the fixed columns follow, and the
     # arrival record closes it.
     columns = [field.name for field in read.schema]
-    assert columns[:4] == ["url", "rownum", "timestamp", "body"]
+    assert columns[:5] == ["url", "rownum", "timestamp", "bridgesessionid", "body"]
     assert columns[-1] == "fixentries"
 
     held = read.read_all()
@@ -125,7 +125,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     # The capture clock rides along as context and never dates the message;
     # a capture named after a field fills it - where the row stated one.
     assert held.column("timestamp").cast(pa.timestamp("us", "UTC")).to_pylist() == clocks
-    assert held.column("updatedat").null_count == 0
+    assert held.column("unix").null_count == 0
     assert held.column("bridgesessionid").to_pylist() == ["0123abcd", None]
     ```
 
@@ -179,6 +179,9 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `try_with_direction` | the set's `Send` code, `S` | the code of tag 385's set a line that states none of its own takes on the batch door - no `msgdirection` column stating one, and no [rule of tag 385's `fix:directions`](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) matching the prose in front of its payload; any spelling of a code of the set, resolved once, and `None` or `""` pins nothing |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the raw bytes one output batch targets |
+| `batch_row_size` | `with_batch_row_size` | `DEFAULT_BATCH_ROW_SIZE`, 32,768 | the rows one output batch targets; a batch closes on whichever bound it reaches first |
+| `exclude_msgtypes` | `with_exclude_msgtypes` | `DEFAULT_REFUSED_MSGTYPES`: `Heartbeat`, `TestRequest`, the untyped row | the types [no row is built for](decode.md#a-type-nobody-asked-for-is-never-built) |
+| `include_msgtypes` | `with_include_msgtypes` | empty, which reads every type the refusals leave | the types read, naming any clearing the default refusals |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 | `default_sending_time` | `try_with_default_sending_time` | none, one UTC-now read per undated message | the [`SendingTime(52)`](capture.md#every-message-is-dated) a message stating none, on a row stating none, is dated by; an exact nanosecond UTC instant, else refused; pin it for a reproducible read |
 
@@ -235,7 +238,7 @@ Lines to batches, with one stage between them and nothing collected: the walk na
 
     held = read.read_all()
     assert held.num_rows == 2
-    chains = held.column("msgphash").to_pylist()
+    chains = held.column("crossuuid").to_pylist()
     assert None not in chains, "every message names its chain"
     assert chains[0] == chains[1], "one order, one chain"
     ```
@@ -259,9 +262,9 @@ Lines to batches, with one stage between them and nothing collected: the walk na
 
     const held = read.intoTable()
     assert.equal(held.numRows, 2)
-    const chain = held.getChild('msgphash')
+    const chain = held.getChild('crossuuid')
     assert.equal(chain.nullCount, 0, 'every message names its chain')
-    assert.ok(Buffer.from(chain.get(0)).equals(Buffer.from(chain.get(1))), 'one order, one chain')
+    assert.deepEqual(chain.get(0), chain.get(1), 'one order, one chain')
     ```
 
 ## A column is the caller speaking per row
@@ -472,10 +475,15 @@ A source row is read for every message it carries, so a capture answers one row 
         assert held.digest() == message.digest()
         assert held.into_row(schema) == message.into_row(schema)
 
-    # And out to the wire: one line per row, rebuilt from the arrival record.
+    # And out to the wire: one line per row, rebuilt from the message's own
+    # facts and its entries - what arrived, and what the dictionary derived
+    # from it.
     sink = io.BytesIO()
     assert codec.write_arrow_reader(codec.arrow_reader(schema, again), sink) == 2
-    assert sink.getvalue() == b"".join(line + b"\n" for line in lines)
+    assert sink.getvalue().decode().splitlines() == [
+        "8=FIX.4.4|35=D|54=1|11=ORDER-1|55=AAPL|9999=x|10=0|59=0|",
+        "8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|59=0|381=637.5|",
+    ]
     ```
 
 === "JavaScript"
@@ -497,16 +505,20 @@ A source row is read for every message it carries, so a capture answers one row 
     const again = [...codec.messages(codec.arrowReader(schema, parsed))]
     assert.equal(again.length, parsed.length)
     again.forEach((held, at) => {
-      assert.deepEqual(held.arrivals(), parsed[at].arrivals())
+      assert.deepEqual(held.entries(), parsed[at].entries())
       assert.deepEqual(held.digest(), parsed[at].digest())
       assert.ok(held.intoRow(schema).equals(parsed[at].intoRow(schema)))
     })
 
     // And out to the wire: anything with write(chunk) is a sink - a stream,
-    // a socket, an array.
+    // a socket, an array - one line per row, rebuilt from the message's own
+    // facts and its entries.
     const chunks = []
     assert.equal(codec.writeArrowReader(codec.arrowReader(schema, again), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
-    assert.equal(Buffer.concat(chunks).toString(), lines.map((line) => `${line}\n`).join(''))
+    assert.deepEqual(Buffer.concat(chunks).toString().split('\n').slice(0, 2), [
+      '8=FIX.4.4|35=D|54=1|11=ORDER-1|55=AAPL|9999=x|10=0|59=0|',
+      '8=FIX.4.4|35=8|17=E1|37=O9|31=12.75|32=50|10=0|59=0|381=637.5|',
+    ])
     ```
 
 ## Back to the wire

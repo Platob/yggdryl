@@ -418,12 +418,18 @@ names are folded; `display` keeps the specification's spelling.
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     assert str(registry.field_by_tag(453).dtype) == "int32"
-    assert registry.definition("groups", "Parties").fix.counter == 453
-    assert registry.definition("components", "Party").is_struct
+    # The counter names the group it opens, and one door answers all three
+    # categories: a scalar, a component, a group.
+    parties = registry.field_by_counter(453)
+    assert parties.name == "parties"
+    assert parties.fix.counter == 453
+    assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    assert registry.definition("groups", "altids").fix.counter == 65020
-    assert registry.get_field_by_tag(65020) is None
+    identifiers = registry.field_by_counter(65_020)
+    assert identifiers.name == "identifiers"
+    assert identifiers.fix.counter == 65_020
+    assert registry.get_field_by_tag(65_020) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -435,12 +441,18 @@ names are folded; `display` keeps the specification's spelling.
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
-    assert.equal(registry.definition('groups', 'Parties').fix.counter, 453)
-    assert.ok(registry.definition('components', 'Party').fieldLen > 0)
+    // The counter names the group it opens, and one door answers all three
+    // categories: a scalar, a component, a group.
+    const parties = registry.fieldByCounter(453)
+    assert.equal(parties.name, 'parties')
+    assert.equal(parties.fix.counter, 453)
+    assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    assert.equal(registry.definition('groups', 'altids').fix.counter, 65020)
-    assert.equal(registry.getFieldByTag(65020), null)
+    const identifiers = registry.fieldByCounter(65020)
+    assert.equal(identifiers.name, 'identifiers')
+    assert.equal(identifiers.fix.counter, 65020)
+    assert.equal(registry.getFieldByTag(65020), null, 'a Map group is no scalar')
     ```
 
 ## Edges

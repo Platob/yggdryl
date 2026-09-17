@@ -99,28 +99,29 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
     party.fix.identifiers = ["448"]
-    registry.create_definition("components", party)
+    registry.insert(party)
     group = types.list("Parties", party)
     group.fix.counter = 453
     group.fix.component = "Party"
-    registry.create_definition("groups", group)
+    registry.insert(group)
     order = Field("Order", DataType.from_fields([]), nullable=False)
     order.fix.msgtype = "D"
-    registry.create_definition("components", order)
+    registry.insert(order)
 
     with tempfile.TemporaryDirectory(prefix="ygg-doc-store-") as temporary:
         root = pathlib.Path(temporary) / "catalog"
         registry.write_into(root)
-        assert (root / "fields/4.json").is_file()
+        assert (root / "fields/000000004.json").is_file()
         assert (root / "components/Party.json").is_file()
         assert (root / "groups/Parties.json").is_file()
         assert (root / "components/Order.json").is_file()
-        # The crate's own are written beside them, so a store states the
-        # whole row: its tag block is one shard, and its group and Struct
-        # are two documents.
-        assert (root / "fields/650.json").is_file()
-        assert (root / "groups/altids.json").is_file()
-        assert (root / "components/instids.json").is_file()
+        # The crate's own are written beside them, so a store states the whole
+        # row: its tag block is one shard, its two Map groups two documents, and
+        # the fixed row itself one more.
+        assert (root / "fields/000000650.json").is_file()
+        assert (root / "groups/identifiers.json").is_file()
+        assert (root / "groups/metadata.json").is_file()
+        assert (root / "components/fixmsg.json").is_file()
         # The three category directories are the whole layout.
         assert sorted(child.name for child in root.iterdir()) == ["components", "fields", "groups"]
         reloaded = FixRegistry.from_handle(root)
@@ -129,8 +130,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         # Membership travels inside the field's own document.
         assert reloaded.field(448).fix.branches == ["venue"]
         assert reloaded.dialects() == ["venue"]
-        assert reloaded.definition("components", "Party").fix.identifiers == ["PartyID"]
-        assert reloaded.definition("groups", "altids").fix.counter == 65020
+        assert reloaded.field_by_name("Party").fix.identifiers == ["PartyID"]
+        assert reloaded.field_by_counter(65_020).name == "identifiers"
     ```
 
 === "JavaScript"
@@ -152,25 +153,25 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     member.fix.fieldRef = 'PartyID'
     const party = fields.struct('Party', [member], { nullable: false })
     party.fix.identifiers = ['448']
-    registry.createDefinition('components', party)
+    registry.insert(party)
     const group = fields.list('Parties', party)
     group.fix.counter = 453
     group.fix.component = 'Party'
-    registry.createDefinition('groups', group)
+    registry.insert(group)
     const order = fields.struct('Order', [], { nullable: false })
     order.fix.msgtype = 'D'
-    registry.createDefinition('components', order)
+    registry.insert(order)
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-doc-store-'))
     try {
       registry.writeInto(root)
-      for (const file of ['fields/4.json', 'components/Party.json', 'groups/Parties.json', 'components/Order.json']) {
+      for (const file of ['fields/000000004.json', 'components/Party.json', 'groups/Parties.json', 'components/Order.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
-      // The crate's own are written beside them, so a store states the whole
-      // row: its tag block is one shard, and its group and Struct are two
-      // documents.
-      for (const file of ['fields/650.json', 'groups/altids.json', 'components/instids.json']) {
+      // The crate's own are written beside them, so a store states the whole row:
+      // its tag block is one shard, its two Map groups two documents, and the
+      // fixed row itself one more.
+      for (const file of ['fields/000000650.json', 'groups/identifiers.json', 'groups/metadata.json', 'components/fixmsg.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
       // The three category directories are the whole layout.
@@ -181,8 +182,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
       // Membership travels inside the field's own document.
       assert.deepEqual(reloaded.field(448).fix.branches, ['venue'])
       assert.deepEqual(reloaded.dialects(), ['venue'])
-      assert.deepEqual(reloaded.definition('components', 'Party').fix.identifiers, ['PartyID'])
-      assert.equal(reloaded.definition('groups', 'altids').fix.counter, 65020)
+      assert.deepEqual(reloaded.fieldByName('Party').fix.identifiers, ['PartyID'])
+      assert.equal(reloaded.fieldByCounter(65020).name, 'identifiers')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
@@ -233,7 +234,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 32 fields - 31 scalars and the `parentuuids` column list - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,273 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 32 fields - `parentuuids` among them, one column under one name - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,273 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
 
 Beside those 1,573 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
@@ -269,12 +270,10 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // The crate's own definitions are in the store and in the registry alike:
-    // 32 scalar fields and two Map groups, `parentuuids` being a column of
-    // the fixed row that no registry indexes.
+    // 32 scalar fields, the `parentuuids` list and two Map groups.
     assert_eq!(fix_crate_fields()?.len(), 34);
-    let scalars = registry.iter().filter(|field| !field.dtype().is_nested()).count();
-    assert_eq!(scalars, 6_272);
-    assert_eq!(registry.len(), 7_782, "the scalars, the components and the groups");
+    assert_eq!(registry.iter().count(), 7_783, "the fields and the definitions");
+    assert_eq!(registry.len(), 7_783, "the fields, the components and the groups");
     assert_eq!(registry.field_by_counter(65_020)?.name(), "identifiers");
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     ```
@@ -304,12 +303,13 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     # field names a dialect that contributed it.
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
-    # The crate's own definitions are in the store and in the registry alike.
-    assert len(fix_crate_fields()) == 36
-    assert len(registry) == 6_275
-    assert len(list(registry.definitions("groups"))) == 581
-    assert len(list(registry.definitions("components"))) == 929
-    assert len(list(registry.msgtypes())) == 181
+    # The crate's own definitions are in the store and in the registry alike:
+    # 32 scalar fields, the `parentuuids` list and two Map groups.
+    assert len(fix_crate_fields()) == 34
+    assert sum(1 for _ in registry) == 6_273
+    assert len(registry) == 7_783
+    assert registry.field_by_counter(65_020).name == "identifiers"
+    assert registry.msgtype("D").name == "newordersingle"
     ```
 
 === "JavaScript"
@@ -336,12 +336,15 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // field names a dialect that contributed it.
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
-    // The crate's own definitions are in the store and in the registry alike.
-    assert.equal(fix.crateFields().length, 36)
-    assert.equal(registry.size, 6275)
-    assert.equal([...registry.definitions('groups')].length, 581)
-    assert.equal([...registry.definitions('components')].length, 929)
-    assert.equal([...registry.msgtypes()].length, 181)
+    // The crate's own definitions are in the store and in the registry alike:
+    // 32 scalar fields, the `parentuuids` list and two Map groups. A Node
+    // registry sizes and iterates every field, the components and the groups
+    // among them.
+    assert.equal(fix.crateFields().length, 34)
+    assert.equal(registry.size, 7783)
+    assert.equal([...registry].length, registry.size)
+    assert.equal(registry.fieldByCounter(65020).name, 'identifiers')
+    assert.equal(registry.msgtype('D').name, 'newordersingle')
     ```
 
 ### Datatypes in the seed

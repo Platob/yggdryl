@@ -42,7 +42,7 @@ dictionary derived for it behind the ones that arrived; the frame states its
     // content, and the day order the dictionary derived for it.
     assert_eq!(
         emitted,
-        "8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100.000000000000000000|55=AAPL|38=100|10=000|59=0|",
+        "8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|",
     );
     // Emission is idempotent: reading those bytes back emits them again.
     let again = codec.parse_fix_line(emitted.as_bytes())?;
@@ -59,9 +59,15 @@ dictionary derived for it behind the ones that arrived; the frame states its
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
     frame = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|55=AAPL|54=1|38=100|10=000|"
     message = codec.parse_fix_line(frame)
-    emitted = message.into_bytes(ord("|"))
-    assert emitted == frame
-    assert codec.parse_fix_line(emitted) == message
+    emitted = message.into_text("|")
+    # The header from its holder, then the event's own tags - the side as its
+    # wire code, the bid size the order's quantity filled - then the content,
+    # and the day order the dictionary derived for it.
+    assert emitted == "8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|"
+    # Emission is idempotent: reading those bytes back emits them again.
+    again = codec.parse_fix_line(emitted.encode())
+    assert again.into_text("|") == emitted
+    assert again.entries() == message.entries()
     ```
 
 === "JavaScript"
@@ -74,9 +80,15 @@ dictionary derived for it behind the ones that arrived; the frame states its
     const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
     const frame = Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15:30.000|55=AAPL|54=1|38=100|10=000|')
     const message = codec.parseFixLine(frame)
-    const emitted = Buffer.from(message.intoBytes(124))
-    assert.deepEqual(emitted, frame)
-    assert.ok(codec.parseFixLine(emitted).equals(message))
+    const emitted = message.intoText('|')
+    // The header from its holder, then the event's own tags - the side as its
+    // wire code, the bid size the order's quantity filled - then the content,
+    // and the day order the dictionary derived for it.
+    assert.equal(emitted, '8=FIX.4.4|35=D|52=20260102-10:15:30|54=1|134=100|55=AAPL|38=100|10=000|59=0|')
+    // Emission is idempotent: reading those bytes back emits them again.
+    const again = codec.parseFixLine(Buffer.from(emitted))
+    assert.equal(again.intoText('|'), emitted)
+    assert.deepEqual(again.entries(), message.entries())
     ```
 
 ## Inspect emitted bytes
