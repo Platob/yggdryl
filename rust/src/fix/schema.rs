@@ -78,12 +78,20 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 /// order, then the quote's two lanes, then the times, then the outcome -
 /// rather than by tag number, so a row reads the way the message it came
 /// from reads.
-pub const BODY_TAGS: [i32; 49] = [
+///
+/// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not among them, and
+/// that is the one omission worth naming: a message holds what those tags
+/// state as [`get_px`](crate::graph::MarketElement::get_px) and
+/// [`get_qty`](crate::graph::MarketElement::get_qty), so the crate's own
+/// `px` and `qty` are the columns they are read and written through, and a
+/// row carrying both would carry one fact twice.
+pub const BODY_TAGS: [i32; 50] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
-    1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693, // The instrument.
-    55, 48, 22, 167, 762, 207, 461, 541, 460, // The order.
-    54, 40, 44, 38, 53, 854, 15, 120,
+    1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693,
+    // The instrument, and what the market says about trading it.
+    55, 48, 22, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
+    54, 40, 59, 854, 15, 120,
     // The quote's two lanes, which carry no side of their own.
     132, 133, 134, 135, // What was done.
     31, 32, 6, 14, 151, // When.
@@ -167,7 +175,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
         PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX,
         QTY_TAG_NAME as QTY, RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL,
         SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
-        STATE_TAG_NAME as STATE, UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
+        STATE_TAG_NAME as STATE, SYMBOLTICKER_TAG_NAME as SYMBOLTICKER,
+        TRADABLE_TAG_NAME as TRADABLE, UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -235,12 +244,14 @@ pub fn fix_schema_tags() -> Vec<i32> {
             MSGSESSIONID.0,
         ],
     );
-    // Which instrument: what the venue calls it, then the identifiers this
-    // crate resolved for it.
+    // Which instrument: what the venue calls it and the ticker that settled
+    // to, the identifiers this crate resolved for it, then what the market
+    // said about trading it and the answer those add up to.
     band(
         &mut tags,
         &[
             55,
+            SYMBOLTICKER.0,
             48,
             22,
             167,
@@ -254,6 +265,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
             SEDOL.0,
             BLOOMBERG.0,
             MIC.0,
+            326,
+            340,
+            965,
+            TRADABLE.0,
         ],
     );
     // Which order: the chain of identifiers a message and its answers share.
@@ -261,31 +276,34 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &mut tags,
         &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693],
     );
-    // What it states: the side, the price and quantity this crate settled
-    // beside what each moved from, then the protocol's own values - the last
-    // trade among them, which a settled price is read off - then the quote's
-    // two lanes.
+    // What it states: the side it takes, then one ladder of prices and one
+    // of quantities, each from the number the message is about down through
+    // the ones it was read off - what it moved from, what it last traded,
+    // where it has got to - then what those are counted and denominated in,
+    // how the order was written, and last the quote's two lanes.
+    //
+    // `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not columns: `px`
+    // and `qty` are what a message holds them as, so the row states each
+    // number once.
     band(
         &mut tags,
         &[
             54,
             PX.0,
             PREVPX.0,
+            31,
+            6,
             QTY.0,
             PREVQTY.0,
-            UNIT.0,
-            15,
-            44,
-            38,
-            31,
             32,
-            6,
             14,
             151,
-            40,
-            53,
-            854,
+            UNIT.0,
+            15,
             120,
+            854,
+            40,
+            59,
             132,
             BIDCURRENCY.0,
             BIDUNIT.0,
@@ -1617,7 +1635,7 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
 /// float column, and the narrowing is made here, once, rather than at each
 /// lane: the alternative is a null, which loses the fact the fill was for.
 /// Nothing else narrows - a decimal column takes the decimal whole.
-fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
+pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
     let float = matches!(column.dtype(), DataType::Float64 | DataType::Float32);
     let decimal = matches!(
         value,

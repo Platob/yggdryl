@@ -73,6 +73,12 @@ pub struct MarketElementData {
     miccode: Option<Mic>,
     lastpx: Option<Decimal>,
     lastqty: Option<Decimal>,
+    avgpx: Option<Decimal>,
+    cumqty: Option<Decimal>,
+    leavesqty: Option<Decimal>,
+    tif: Option<String>,
+    tradable: Option<bool>,
+    symbolticker: Option<String>,
     prevpx: Option<Decimal>,
     prevqty: Option<Decimal>,
     bidpx: Option<Decimal>,
@@ -99,6 +105,12 @@ impl Default for MarketElementData {
             px: Decimal::ZERO,
             lastpx: None,
             lastqty: None,
+            avgpx: None,
+            cumqty: None,
+            leavesqty: None,
+            tif: None,
+            tradable: None,
+            symbolticker: None,
             prevpx: None,
             prevqty: None,
             currency: Currency::none(),
@@ -197,6 +209,7 @@ impl Element for MarketElementData {
             return None;
         }
         let mut changed = super::element::follow_element(&mut self, previous);
+        changed |= super::element::follow_market(&mut self, previous);
         if !self.parentuuids.contains(&previous.curruuid) {
             self.parentuuids.push(previous.curruuid);
             changed = true;
@@ -316,6 +329,54 @@ impl MarketElement for MarketElementData {
 
     fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.lastqty = qty;
+    }
+
+    fn get_tif(&self) -> Option<&str> {
+        self.tif.as_deref()
+    }
+
+    fn set_tif(&mut self, tif: Option<String>) {
+        self.tif = tif;
+    }
+
+    fn get_tradable(&self) -> Option<bool> {
+        self.tradable
+    }
+
+    fn set_tradable(&mut self, tradable: Option<bool>) {
+        self.tradable = tradable;
+    }
+
+    fn get_symbolticker(&self) -> Option<&str> {
+        self.symbolticker.as_deref()
+    }
+
+    fn set_symbolticker(&mut self, ticker: Option<String>) {
+        self.symbolticker = ticker;
+    }
+
+    fn get_avgpx(&self) -> Option<Decimal> {
+        self.avgpx
+    }
+
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
+        self.avgpx = px;
+    }
+
+    fn get_cumqty(&self) -> Option<Decimal> {
+        self.cumqty
+    }
+
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+        self.cumqty = qty;
+    }
+
+    fn get_leavesqty(&self) -> Option<Decimal> {
+        self.leavesqty
+    }
+
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+        self.leavesqty = qty;
     }
 
     fn get_prevpx(&self) -> Option<Decimal> {
@@ -558,7 +619,7 @@ impl Element for MarketEventData {
     }
 
     fn with_previous(self, previous: &Self) -> Option<Self> {
-        self.following(previous)
+        self.following_market(previous)
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
@@ -567,6 +628,18 @@ impl Element for MarketEventData {
 }
 
 impl Event for MarketEventData {
+    /// The timed restatement, and then the market's: a twin takes the live
+    /// event's place in its chain, which is the step before it as well as
+    /// the predecessor and the position, and what that chain is about where
+    /// this reading of the message said nothing of it.
+    fn restating(mut self, live: &Self) -> Self {
+        super::element::restate_event(&mut self, live);
+        self.fold_lifecycle(live);
+        super::element::restate_market(&mut self, live);
+        self.finalize();
+        self
+    }
+
     fn get_unix(&self) -> i64 {
         self.unix
     }
@@ -735,6 +808,54 @@ impl MarketElement for MarketEventData {
 
     fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.element.lastqty = qty;
+    }
+
+    fn get_tif(&self) -> Option<&str> {
+        self.element.tif.as_deref()
+    }
+
+    fn set_tif(&mut self, tif: Option<String>) {
+        self.element.tif = tif;
+    }
+
+    fn get_tradable(&self) -> Option<bool> {
+        self.element.tradable
+    }
+
+    fn set_tradable(&mut self, tradable: Option<bool>) {
+        self.element.tradable = tradable;
+    }
+
+    fn get_symbolticker(&self) -> Option<&str> {
+        self.element.symbolticker.as_deref()
+    }
+
+    fn set_symbolticker(&mut self, ticker: Option<String>) {
+        self.element.symbolticker = ticker;
+    }
+
+    fn get_avgpx(&self) -> Option<Decimal> {
+        self.element.avgpx
+    }
+
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
+        self.element.avgpx = px;
+    }
+
+    fn get_cumqty(&self) -> Option<Decimal> {
+        self.element.cumqty
+    }
+
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+        self.element.cumqty = qty;
+    }
+
+    fn get_leavesqty(&self) -> Option<Decimal> {
+        self.element.leavesqty
+    }
+
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+        self.element.leavesqty = qty;
     }
 
     fn get_prevpx(&self) -> Option<Decimal> {

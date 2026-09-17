@@ -215,15 +215,41 @@ pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");
 /// chain stated.
 ///
 /// The last trade has no column of its own beside this one: FIX already
-/// names it, at `LastPx(31)` and `LastQty(32)`, and a message's
-/// [`get_lastpx`](crate::graph::MarketElement::get_lastpx) is lifted from
-/// the field the dictionary resolves for that tag. A price *before* the
-/// message has no such field - `PrevClosePx` is the market's close rather
-/// than the step before in this chain - so these two are the crate's.
+/// names it, at `LastPx(31)` and `LastQty(32)`, and a message holds what
+/// those tags state as
+/// [`get_lastpx`](crate::graph::MarketElement::get_lastpx) and
+/// [`get_lastqty`](crate::graph::MarketElement::get_lastqty), under FIX's
+/// own tags. A price *before* the message has no such field -
+/// `PrevClosePx` is the market's close rather than the step before in this
+/// chain - so these two are the crate's.
 pub const PREVPX_TAG_NAME: (i32, &str) = (65_051, "prevpx");
 
 /// The tag and name carrying the quantity that statement stated.
 pub const PREVQTY_TAG_NAME: (i32, &str) = (65_052, "prevqty");
+
+/// The tag and name carrying whether the instrument could be traded when
+/// the message was sent.
+///
+/// FIX states this three different ways and never as one answer: the
+/// security's own trading status, the session's, and the instrument's
+/// listing status, each a code set of its own with a dozen values that are
+/// not about trading at all. The column is the answer those add up to, and
+/// the field that carries it says how, so a desk that reads a fourth
+/// spelling edits the derivation rather than this crate.
+pub const TRADABLE_TAG_NAME: (i32, &str) = (65_053, "tradable");
+
+/// The tag and name carrying the ticker the message's instrument is known
+/// by.
+///
+/// `Symbol(55)` is the field, and the dictionary already says how a message
+/// that carries no `Symbol` still names one - an exchange symbol under
+/// `SecurityID`, a `SecurityAltID` issued by the exchange - as that field's
+/// own derivation. This column reads what that settles on and drops FIX's
+/// one non-answer, the `[N/A]` a message writes when it means "this has no
+/// ticker; it is identified by `SecurityID`", so a consumer reading it
+/// never has to know the convention: a null here is an instrument with no
+/// ticker, and the codes beside it are what names it.
+pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_054, "symbolticker");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -309,13 +335,32 @@ const EXPIRUNIX_DERIVATION: &str = "coalesce(expiretime, validuntiltime, expired
 /// stating one lane's currency keeps it and only the other lane derives.
 const LANE_CURRENCY_DERIVATION: &str = "coalesce(currency, settlcurrency)";
 
-/// What the message's price is, strongest first: the price it states, the
-/// last price it traded at, the average it filled at, the stop it set.
-const PX_DERIVATION: &str = "coalesce(price, lastpx, avgpx, stoppx)";
+/// Whether the message says the instrument could be traded, strongest
+/// first: the security's own trading status, then the session's, then the
+/// instrument's listing status.
+///
+/// Each arm names the codes that trade and the codes that do not, and
+/// answers nothing under a code that is about something else - an imbalance,
+/// a price indication, a status a venue spells `Unknown or Invalid`. A
+/// silence is not a `false`: a market that said nothing about trading did
+/// not say the instrument was closed.
+const TRADABLE_DERIVATION: &str = "coalesce(\
+     case when securitytradingstatus in (3, 17) then true \
+     when securitytradingstatus in (1, 2, 4, 18, 19, 21) then false end, \
+     case when tradsesstatus in (2) then true \
+     when tradsesstatus in (1, 3, 4, 5, 7) then false end, \
+     case when securitystatus in ('1', '3') then true \
+     when securitystatus in ('2', '4', '5', '6', '9', '11') then false end)";
 
-/// What the message's quantity is, strongest first: the quantity it orders,
-/// the last it traded, the total filled, what is left.
-const QTY_DERIVATION: &str = "coalesce(orderqty, lastqty, cumqty, leavesqty)";
+/// How `symbolticker` derives: what `Symbol(55)` settles on, which is the
+/// field's own derivation and not restated here, minus the `[N/A]` a
+/// message writes to say it names no ticker at all.
+///
+/// Both spellings of that non-answer are named because a line ends a field
+/// at a closing bracket - a bridge wraps its frames in them - so `[N/A]` on
+/// the wire reaches a row as `[N/A`.
+const SYMBOLTICKER_DERIVATION: &str =
+    "case when symbol <> '[N/A]' and symbol <> '[N/A' then symbol end";
 
 /// What the quantity is counted in: the unit of measure the message states.
 const UNIT_DERIVATION: &str = "unitofmeasure";
@@ -684,22 +729,24 @@ fn build() -> Result<Vec<Field>> {
             DataType::UInt64,
             "The message's place in its chain: how many came before it.",
         )?,
-        // The market's numbers, exact.
-        derived(
+        // The market's numbers, exact. Price and quantity carry no
+        // derivation: the message holds Price, OrderQty, LastPx, LastQty,
+        // AvgPx, CumQty and LeavesQty as its own typed facts, and
+        // `MarketElement::fill_market` is the one statement of which of them
+        // the message is about.
+        crated(
             PX_TAG_NAME,
             "Px",
             DataType::DECIMAL,
-            "The price the message states: Price, else LastPx, else AvgPx, \
-             else StopPx.",
-            PX_DERIVATION,
+            "The price the message is about: Price, else LastPx, else AvgPx, \
+             else the price its own side's lane quotes.",
         )?,
-        derived(
+        crated(
             QTY_TAG_NAME,
             "Qty",
             DataType::DECIMAL,
-            "The quantity the message states: OrderQty, else LastQty, else \
-             CumQty, else LeavesQty.",
-            QTY_DERIVATION,
+            "The quantity the message is about: OrderQty, else LastQty, else \
+             CumQty, else LeavesQty, else the size its own side's lane quotes.",
         )?,
         derived(
             UNIT_TAG_NAME,
@@ -751,6 +798,23 @@ fn build() -> Result<Vec<Field>> {
             DataType::DECIMAL,
             "The quantity the message's predecessor in the chain stated.",
         )?,
+        derived(
+            TRADABLE_TAG_NAME,
+            "Tradable",
+            DataType::Boolean,
+            "Whether the instrument could be traded when the message was \
+             sent: SecurityTradingStatus, else TradSesStatus, else \
+             SecurityStatus; null where none of them says.",
+            TRADABLE_DERIVATION,
+        )?,
+        derived(
+            SYMBOLTICKER_TAG_NAME,
+            "SymbolTicker",
+            DataType::utf8(),
+            "The ticker the instrument is known by: what Symbol settles on, \
+             null where the message names none.",
+            SYMBOLTICKER_DERIVATION,
+        )?,
         metadata,
     ])
 }
@@ -764,7 +828,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 36);
+/// assert_eq!(held.len(), 38);
 /// assert_eq!(held[0].name(), "unix");
 /// assert_eq!(held[0].display(), Some("Unix"));
 /// // No partition column: how a layout is cut is the target's to decide -

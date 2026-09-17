@@ -2694,28 +2694,31 @@ fn a_message_resolves_values_through_its_registry() {
     let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value.clone()).unwrap();
     assert!(Arc::ptr_eq(msg.registry(), &registry));
     assert_eq!(msg.as_field().name(), root.name());
-    assert_eq!(&msg.as_field().fields()[..5], &root.fields()[..5]);
+    assert_eq!(&msg.as_field().fields()[..4], &root.fields()[1..5]);
 
     // A record input canonicalizes to the ordered sequence the root declares.
     let row = msg.as_value().as_sequence().unwrap();
     assert_eq!(
         row.len(),
-        5,
-        "five business fields; the clock is the header's"
+        4,
+        "four business fields; the clock is the header's and OrderQty is the \
+         event's own quantity"
     );
-    assert_eq!(row[0], Scalar::from(100));
-    assert_eq!(row[2], Scalar::from(2_i32));
-    assert_eq!(row[4], Scalar::from("custom"));
+    assert_eq!(row[1], Scalar::from(2_i32));
+    assert_eq!(row[3], Scalar::from("custom"));
     assert_eq!(
         msg.by_tag(52).unwrap(),
         Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap()
     );
 
-    // By tag, through the registry's canonical name.
-    assert_eq!(msg.by_tag(38).unwrap(), Scalar::from(100));
+    // By tag, through the registry's canonical name. `OrderQty` is the
+    // quantity the event holds, so it answers exact whatever the row's own
+    // column would have typed it as.
+    let hundred = Scalar::from(crate::types::Decimal::from_int(100));
+    assert_eq!(msg.by_tag(38).unwrap(), hundred);
     // By name, folded through the registry, and by alias.
-    assert_eq!(msg.by_name("orderqty").unwrap(), Scalar::from(100));
-    assert_eq!(msg.by_name("QUANTITY").unwrap(), Scalar::from(100));
+    assert_eq!(msg.by_name("orderqty").unwrap(), hundred);
+    assert_eq!(msg.by_name("QUANTITY").unwrap(), hundred);
     // An unknown tag is kept under its rendered name.
     assert_eq!(msg.by_tag(9999).unwrap(), Scalar::from("custom"));
     assert_eq!(msg.by_name("9999").unwrap(), Scalar::from("custom"));
@@ -2969,6 +2972,93 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
         .expect("a readable report");
     assert_eq!(ordered.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+}
+
+#[test]
+fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes() {
+    use crate::graph::MarketElement;
+
+    let codec = deriving();
+    let held = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=8|55=BRN|54=1|44=82.5|38=300|31=82.5|59=1|326=17|10=0|",
+        )
+        .expect("a readable report");
+    // The price and the quantity have one home. `Price(44)`, `OrderQty(38)`
+    // and `Quantity(53)` are read and written through the crate's own
+    // columns, so the row carries `px` and `qty` and no column of its own
+    // for any of the three.
+    let columns = super::fix_schema_tags();
+    assert!(columns.contains(&super::PX_TAG_NAME.0) && columns.contains(&super::QTY_TAG_NAME.0));
+    for tag in [44, 38, 53] {
+        assert!(!columns.contains(&tag), "{tag} is px or qty, not a column");
+    }
+    assert_eq!(
+        held.by_tag(super::PX_TAG_NAME.0).unwrap(),
+        Scalar::from(crate::types::Decimal::parse("82.5").unwrap())
+    );
+    // Read back under FIX's own tag it answers as that tag's field types it,
+    // which is the float the dictionary gives every `Price`.
+    assert_eq!(held.by_tag(44).unwrap(), Scalar::from(82.5_f64));
+    assert_eq!(held.by_tag(38).unwrap(), Scalar::from(300.0_f64));
+    // `Quantity(53)` is the retired spelling of the same fact: a line
+    // stating it fills the quantity, and every reading answers under the
+    // spelling the dictionary keeps, exactly as a restatement leaves it.
+    assert!(held.get_by_tag(53).is_none());
+    let spelled = codec
+        .parse_fix_line(b"8=FIX.4.4|35=8|53=300|10=0|")
+        .expect("a readable report");
+    assert_eq!(spelled.by_tag(38).unwrap(), Scalar::from(300.0_f64));
+    // The last trade is its own fact beside them, under FIX's own tag.
+    assert_eq!(held.get_lastpx(), crate::types::Decimal::parse("82.5").ok());
+    // How long it stands, as the message spelled it: what `1` names is the
+    // dictionary's to say.
+    assert_eq!(held.get_tif(), Some("1"));
+
+    // What the market said about trading it, read off the status it stated:
+    // `ReadyToTrade` trades.
+    assert_eq!(held.get_tradable(), Some(true));
+    assert_eq!(
+        held.by_tag(super::TRADABLE_TAG_NAME.0).unwrap(),
+        Scalar::from(true)
+    );
+    // And the ticker, off `Symbol`.
+    assert_eq!(held.get_symbolticker(), Some("BRN"));
+
+    // A halt says the opposite, and a status that is about something else
+    // says nothing either way.
+    for (status, expected) in [("2", Some(false)), ("21", Some(false)), ("7", None)] {
+        let line = format!("8=FIX.4.4|35=8|55=BRN|326={status}|10=0|");
+        let held = codec
+            .parse_fix_line(line.as_bytes())
+            .expect("a readable report");
+        assert_eq!(held.get_tradable(), expected, "{status}");
+    }
+    // The session answers where the security says nothing, and the listing
+    // behind it.
+    let held = codec
+        .parse_fix_line(b"8=FIX.4.4|35=8|55=BRN|340=3|965=1|10=0|")
+        .expect("a readable report");
+    assert_eq!(held.get_tradable(), Some(false), "a closed session");
+    let held = codec
+        .parse_fix_line(b"8=FIX.4.4|35=8|55=BRN|965=5|10=0|")
+        .expect("a readable report");
+    assert_eq!(held.get_tradable(), Some(false), "delisted");
+
+    // FIX's one non-answer is not a ticker: `[N/A]` says the instrument has
+    // none and is named by its `SecurityID` instead, so the column says so
+    // too rather than repeating the convention.
+    let held = codec
+        .parse_fix_line(b"8=FIX.4.4|35=8|55=[N/A]|48=US0378331005|22=4|10=0|")
+        .expect("a readable report");
+    assert_eq!(held.get_symbolticker(), None);
+    // A message carrying no `Symbol` at all still names one where the
+    // exchange's own identifier is the ticker: that is what `Symbol`
+    // derives to, and this column is what it settled on.
+    let held = codec
+        .parse_fix_line(b"8=FIX.4.4|35=8|48=IBM|22=8|10=0|")
+        .expect("a readable report");
+    assert_eq!(held.get_symbolticker(), Some("IBM"));
 }
 
 #[test]
@@ -4392,7 +4482,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 73, "{names:?}");
+    assert_eq!(names.len(), 74, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -4458,7 +4548,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
     // The edit reads a column another rule already read, so the working
     // schema is no wider.
-    assert_eq!(names.len(), 73, "the edit reads a column another rule read");
+    assert_eq!(names.len(), 74, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -4483,10 +4573,10 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
             super::BLOOMBERGCODE_TAG_NAME.0,
             super::CUSIPCODE_TAG_NAME.0,
             super::SEDOLCODE_TAG_NAME.0,
-            super::PX_TAG_NAME.0,
-            super::QTY_TAG_NAME.0,
             super::UNIT_TAG_NAME.0,
             super::PREVPX_TAG_NAME.0,
+            super::TRADABLE_TAG_NAME.0,
+            super::SYMBOLTICKER_TAG_NAME.0,
         ]
     );
     // A stated crate column is never overwritten and never re-derived, and

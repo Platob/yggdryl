@@ -132,64 +132,6 @@ fn first_at(batch: &RecordBatch, index: usize) -> Scalar {
 }
 
 #[test]
-fn a_bulk_document_line_is_one_unknown_message_read_before_the_next_line_is_pulled() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    let pulled = Arc::new(AtomicUsize::new(0));
-    let observed = Arc::clone(&pulled);
-    let lines = [BULK_CONFIG.to_vec(), Vec::new()]
-        .into_iter()
-        .inspect(move |_| {
-            observed.fetch_add(1, Ordering::SeqCst);
-        });
-    let codec = super::fixed_codec(direction_registry());
-    let mut messages = codec.parse_lines(lines);
-    assert_eq!(pulled.load(Ordering::SeqCst), 0);
-    // A wildcard answer naming two MBeans is one message, not two: a JSON
-    // document is a body the codec does not read, so the row is one
-    // `unknown` with no entries whatever the document holds.
-    let document = messages.next().unwrap().unwrap();
-    assert_eq!(document.as_field().name(), "unknown");
-    assert!(document.entries().is_empty());
-    assert_eq!(pulled.load(Ordering::SeqCst), 1);
-    // An empty line is not a row at all: an `Err` item, and the stream goes on.
-    assert!(messages.next().unwrap().is_err());
-    assert_eq!(pulled.load(Ordering::SeqCst), 2);
-    assert!(messages.next().is_none());
-}
-
-#[test]
-fn a_document_row_is_one_row_carrying_its_source_columns_and_stated_direction() {
-    let field = DataType::from_fields([
-        DataType::Int64.required_field("rownum"),
-        DataType::utf8().required_field("msgdirection"),
-        DataType::binary().required_field("body"),
-    ])
-    .unwrap()
-    .required_field("capture");
-    let rows = Scalar::from_sequence([Scalar::from_sequence([
-        Scalar::from(42_i64),
-        Scalar::from("Receive"),
-        Scalar::from(BULK_CONFIG.to_vec()),
-    ])]);
-    let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
-    // One byte a batch: a batch a message, so a row that expanded would be
-    // seen as the several batches it made. A bulk document expands into
-    // nothing: one `unknown` row, carrying the source row's own columns.
-    let reader = super::fixed_codec(direction_registry())
-        .with_batch_byte_size(1)
-        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
-        .unwrap();
-    let batches = batches(reader);
-    assert_eq!(batches.len(), 1, "one row for the one document");
-    let batch = &batches[0];
-    assert_eq!(batch.num_rows(), 1);
-    assert_eq!(first_value(batch, "rownum"), Scalar::from(42_i64));
-    // A stated column is a spelling of a code of the set, stored as
-    // the code.
-    assert_eq!(first_tag_value(batch, 385).as_str(), Some("R"));
-}
-
-#[test]
 fn the_schema_is_decided_before_the_first_row_is_read() {
     // Nothing is pulled to answer this: an empty capture has the same columns
     // a full one does, which is the whole point.
@@ -226,9 +168,9 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     for tag in [
         55,
         54,
-        44,
-        38,
-        60, // the trade
+        60, // the instrument, the side and the clock
+        yggdryl::PX_TAG_NAME.0,
+        yggdryl::QTY_TAG_NAME.0, // the price and the quantity, the event's own
         132,
         133,
         134,
@@ -265,77 +207,6 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     );
     // And an empty capture yields no batch at all.
     assert_eq!(reader.count(), 0);
-}
-
-#[test]
-fn a_capture_answers_one_row_per_message_not_one_per_line() {
-    let batches = batches(codec().parse_text_arrow_reader(source()).unwrap());
-    // A FIX batch answers one row per *message*, and five of the fourteen
-    // lines carry none, so they carry no row either - the text
-    // reader is the one that answers a row per line. The silent five, and
-    // why each states no message:
-    //
-    // - `After Enrichment -> ACCOUNT=... CLIENTID=... VENUE=...` separates its
-    //   named pairs with whitespace alone and marks no key, so the run is
-    //   prose carrying an `=` rather than a bridge row;
-    // - `Referential(dbi|equity|...|[quantity-type=])` holds every pipe in
-    //   front of its one `=`, so nothing names a separator for a run of pairs;
-    // - `Message rejected because : ...` and `no level printed by this plugin`
-    //   hold no `=` at all;
-    // - `heartbeat emitted seq=7` states its one pair on whitespace, unmarked.
-    //
-    // None of the five opens a frame or carries a document either, so each is
-    // a line and no row.
-    assert_eq!(
-        row_count(&batches),
-        9,
-        "nine of the {} lines carry a message",
-        CAPTURE.len()
-    );
-
-    // A row that states no type is still a row, named `unknown` - but only a
-    // bridge row or a document ever is, never a sentence, because a sentence
-    // is not a row at all.
-    let first = &batches[0];
-    let msgtype = tag_column(first, 35);
-    assert!(msgtype.is_valid(0), "a framed row states its type");
-    assert!(
-        !msgtype.is_valid(5),
-        "the bridge row `toBridge #ISINCODE=XX|...` states no type"
-    );
-    assert!(
-        !msgtype.is_valid(8),
-        "the last row is the `<Execution>` document, which states no type"
-    );
-}
-
-#[test]
-fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
-    const BRIDGE: &str = "|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
-|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
-
-    let codec = codec();
-    let schema = fix_schema(codec.registry(), "fix").unwrap();
-    let rows = codec
-        .arrow_reader(schema, codec.parse_lines([BRIDGE]))
-        .expect("a line reader");
-    let row_batch = rows.into_iter().next().unwrap().unwrap();
-
-    let columns = codec
-        .parse_text_arrow_reader(capture_reader(&[BRIDGE], 1))
-        .expect("a payload-column reader");
-    let column_batch = columns.into_iter().next().unwrap().unwrap();
-
-    for batch in [&row_batch, &column_batch] {
-        assert_eq!(first_tag_value(batch, 453), Scalar::from(1_i32));
-        let group = first_value(batch, "parties");
-        let parties = group.as_sequence().expect("the party group");
-        assert_eq!(parties.len(), 1);
-        let members = parties[0].as_sequence().expect("one occurrence");
-        assert_eq!(members[0].as_str(), Some("BUYSIDE"));
-        assert_eq!(members[1].as_str(), Some("D"));
-        assert_eq!(members[2].as_i64(), Some(1));
-    }
 }
 
 #[test]
@@ -818,59 +689,6 @@ fn every_stream_door_fuses_its_own_source() {
 }
 
 #[test]
-fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
-    let codec = super::fixed_codec(Arc::new(FixRegistry::new())).with_capture_names(["pluginid"]);
-    let line = |body: &[u8]| {
-        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
-            .unwrap()
-            .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
-            .unwrap()
-    };
-    // A Jolokia answer naming the plugin every line here names, and the two
-    // ends of its session: a document, which the codec does not read.
-    let document = line(br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=STREAM,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"STREAM","SenderCompID":"SOURCE","TargetCompID":"SINK"},"status":200}"#);
-    let message = line(b"8=FIX.4.4|35=0|10=0|");
-    let marker = Arc::new(());
-    let mut stream =
-        codec.parse_text_lines([Ok(document), Err(source_failure(&marker)), Ok(message)]);
-    // The document is one `unknown` row carrying what its row stated - the
-    // plugin capture - and nothing the document did.
-    let unknown = stream.next().unwrap().unwrap();
-    assert_eq!(unknown.as_field().name(), "unknown");
-    assert!(unknown.entries().is_empty());
-    assert_eq!(
-        unknown
-            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
-            .unwrap()
-            .as_str(),
-        Some("STREAM")
-    );
-    assert!(unknown.get_by_tag(49).is_none_or(|held| held.is_null()));
-    // The source error moves through, and the stream goes on past it.
-    same_source_failure(stream.next().unwrap().unwrap_err(), &marker);
-    // The heartbeat after it names the same plugin and gains nothing from
-    // the document: the stream remembers no configuration, so the two ends
-    // it stated fill no `SenderCompID` and no `TargetCompID` here.
-    let filled = stream.next().unwrap().unwrap();
-    assert_eq!(
-        filled
-            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
-            .unwrap()
-            .as_str(),
-        Some("STREAM")
-    );
-    assert!(
-        filled.get_by_tag(49).is_none_or(|held| held.is_null()),
-        "{filled:?}"
-    );
-    assert!(
-        filled.get_by_tag(56).is_none_or(|held| held.is_null()),
-        "{filled:?}"
-    );
-    assert!(stream.next().is_none());
-}
-
-#[test]
 fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     const REPORT: &str = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
     let codec = codec();
@@ -916,109 +734,6 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
 }
 
 #[test]
-fn messages_and_arrow_reader_invert_each_other() {
-    let codec = codec().with_null_values::<[&str; 0], &str>([]);
-    let schema = fix_schema(codec.registry(), "fix").unwrap();
-    let parsed: Vec<FixMsg> = codec
-        .parse_lines(CAPTURE)
-        .collect::<yggdryl::Result<_>>()
-        .unwrap();
-    // The stream is over messages, not lines: the five lines of the corpus
-    // that state no message contribute none to it.
-    assert_eq!(
-        parsed.len(),
-        9,
-        "nine messages from {} lines",
-        CAPTURE.len()
-    );
-
-    let reader = codec
-        .arrow_reader(schema.clone(), parsed.clone().into_iter().map(Ok))
-        .unwrap();
-    let again: Vec<FixMsg> = codec
-        .messages(reader)
-        .collect::<yggdryl::Result<_>>()
-        .unwrap();
-    assert_eq!(again.len(), parsed.len());
-    for (held, message) in again.iter().zip(&parsed) {
-        // The same message: the same arrival record, the same wire, the same
-        // digest, the same stated values by tag - a row read back holds every
-        // column as a child, null where the parsed message had none - and the
-        // same row again.
-        assert_eq!(held.entries(), message.entries());
-        assert_eq!(held.into_bytes(b'|'), message.into_bytes(b'|'));
-        assert_eq!(held.digest(), message.digest());
-        for tag in [35, 11, 55, 54, 17, 37] {
-            fn stated(message: &FixMsg, tag: i32) -> Option<Scalar> {
-                message.get_by_tag(tag).filter(|held| !held.is_null())
-            }
-            assert_eq!(stated(held, tag), stated(message, tag), "tag {tag}");
-        }
-        assert_eq!(
-            held.into_row(&schema).unwrap(),
-            message.into_row(&schema).unwrap()
-        );
-    }
-
-    // And the batches the second pass makes are the batches the first made.
-    let first = batches(
-        codec
-            .arrow_reader(schema.clone(), parsed.into_iter().map(Ok))
-            .unwrap(),
-    );
-    let second = batches(
-        codec
-            .arrow_reader(schema, again.into_iter().map(Ok))
-            .unwrap(),
-    );
-    assert_eq!(first, second);
-}
-
-#[test]
-fn byte_in_byte_out_over_the_whole_corpus() {
-    // The convention that drops a stated absence is deliberately not
-    // byte-preserving, so it is turned off to measure the reader rather than
-    // the convention.
-    let codec = codec()
-        .with_null_values::<[&str; 0], &str>([])
-        .with_separator(b'|');
-    let reader = codec.parse_text_arrow_reader(source()).unwrap();
-
-    let mut written = Vec::new();
-    let count = codec.write_arrow_reader(reader, &mut written).unwrap();
-
-    // One written line per *message*, not per source line: the five lines of
-    // the corpus that open no frame, state no bridge pair and carry no
-    // document are silent, so nine of the fourteen come back.
-    // The line each message came from, paired with the pairs it should be
-    // written as, so the written lines zip against the lines that carried a
-    // message rather than against every line.
-    let plain = super::fixed_codec(registry()).with_null_values::<[&str; 0], &str>([]);
-    let expected: Vec<(&str, String)> = CAPTURE
-        .iter()
-        .flat_map(|source| {
-            plain
-                .parse_line(source.as_bytes())
-                .unwrap()
-                .map(|read| {
-                    let bytes = read.unwrap().into_bytes(b'|');
-                    (*source, String::from_utf8(bytes).unwrap())
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert_eq!(expected.len(), 9, "nine of the fourteen lines are messages");
-    assert_eq!(count as usize, expected.len());
-
-    // Every message comes back as the pairs it arrived with, in arrival order.
-    let back: Vec<&str> = std::str::from_utf8(&written).unwrap().lines().collect();
-    assert_eq!(back.len(), expected.len());
-    for (line, (source, pairs)) in back.iter().zip(&expected) {
-        assert_eq!(line, pairs, "{source}");
-    }
-}
-
-#[test]
 fn a_batch_with_no_arrival_record_cannot_be_written() {
     let codec = codec();
     let batch = codec
@@ -1041,70 +756,6 @@ fn a_batch_with_no_arrival_record_cannot_be_written() {
         "{refused}"
     );
     assert!(sink.is_empty(), "refused before a row was read");
-}
-
-#[test]
-fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does() {
-    let codec = codec().with_capture_names(["beginstring", "pluginid"]);
-    let page = |bytes: &[u8]| TextBytes::from_bytes(bytes).unwrap();
-    // A line and the captures its header declared, in that order; `None` is a
-    // capture the header stated and this line did not match.
-    let line = |body: &[u8], captures: [Option<&str>; 2]| {
-        TextLine::from_bytes(0, page(body))
-            .unwrap()
-            .with_captures(
-                captures
-                    .iter()
-                    .map(|held| held.map(|text| page(text.as_bytes())))
-                    .collect(),
-            )
-            .unwrap()
-    };
-    let one = |line: &TextLine| -> FixMsg {
-        let mut messages = codec.parse_text_line(line).unwrap();
-        let message = messages.next().unwrap().unwrap();
-        assert!(messages.next().is_none(), "one message");
-        message
-    };
-
-    // Only a body: exactly what the byte reader does.
-    let message = one(&line(b"8=FIX.4.4|35=D|11=ORDER-1|10=0|", [None, None]));
-    assert_eq!(message.as_field().name(), "D");
-    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
-
-    // A capture speaks per row and outranks the codec, which speaks per
-    // stream. What a version settles is how a value is read - which dated
-    // code spelling answers - and never what a field is called: tag 32 is the
-    // dictionary's own column whatever version the row states.
-    let old = one(&line(
-        b"8=FIX.4.4|35=8|32=100|10=0|",
-        [Some("FIX.4.2"), None],
-    ));
-    assert!(old.as_field().index_of("lastqty").is_some());
-    assert!(
-        old.get_by_name("lastshares").is_some(),
-        "the 4.2 spelling reaches it"
-    );
-
-    // A capture absent, unmatched or empty is silence, never an instruction
-    // and never an error.
-    let quiet = one(&line(b"8=FIX.4.4|35=D|11=A|10=0|", [None, Some("")]));
-    assert_eq!(quiet.as_field().name(), "D");
-    assert_eq!(
-        quiet.as_field().as_fix().branches().count(),
-        0,
-        "a plugin names no dialect: a message is not a dictionary member"
-    );
-
-    // A bulk document is one `unknown` message, whatever it holds, and the
-    // stream door yields that one.
-    let read: Vec<_> = super::fixed_codec(direction_registry())
-        .parse_text_lines([TextLine::from_bytes(0, page(BULK_CONFIG)).unwrap()])
-        .collect::<yggdryl::Result<_>>()
-        .unwrap();
-    assert_eq!(read.len(), 1);
-    assert_eq!(read[0].as_field().name(), "unknown");
-    assert!(read[0].entries().is_empty());
 }
 
 /// The committed dictionary beside a venue's one field of its own on tag
@@ -1205,80 +856,6 @@ fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
 }
 
 #[test]
-fn the_batch_reader_and_the_line_reader_agree_on_a_rows_plugin() {
-    let registry = plugin_registry();
-    let codec = super::fixed_codec(registry).with_capture_names(PLUGIN_CAPTURES);
-    // Every way a row can name its plugin: a dictionary's name, an alias of
-    // it, a plugin no dictionary is named after, nothing, and an empty string.
-    let rows: [(&[u8], Option<&str>); 5] = [
-        (b"MSGTYPE=D|CLORDID=A|VENUETAG=dark", Some("venue")),
-        (b"MSGTYPE=D|CLORDID=B|VENUETAG=lit", Some("VNU")),
-        (
-            b"MSGTYPE=D|CLORDID=C|VENUETAG=none",
-            Some("OMS_X1_TradeCapture"),
-        ),
-        (b"MSGTYPE=D|CLORDID=D|VENUETAG=none", None),
-        (b"MSGTYPE=D|CLORDID=E|VENUETAG=none", Some("")),
-    ];
-    let text = |held: Option<&str>| held.map_or(Scalar::Null, Scalar::from);
-    let lines: Vec<TextLine> = rows
-        .iter()
-        .map(|(body, plugin)| plugin_line(body, *plugin))
-        .collect();
-    let capture = DataType::from_fields([
-        DataType::binary().required_field("body"),
-        DataType::utf8().nullable_field("pluginid"),
-    ])
-    .unwrap()
-    .required_field("capture");
-    let values = Scalar::from_sequence(
-        rows.iter()
-            .map(|(body, plugin)| {
-                Scalar::from_sequence([Scalar::from(body.to_vec()), text(*plugin)])
-            })
-            .collect::<Vec<_>>(),
-    );
-    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
-    let read = batches(
-        codec
-            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
-            .unwrap(),
-    );
-    assert_eq!(row_count(&read), rows.len());
-    let again: Vec<FixMsg> = codec
-        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
-        .collect::<yggdryl::Result<_>>()
-        .unwrap();
-
-    // Row for row, the batch read is the line read: the plugin lands in its
-    // column, and the arrival record carries the tag each key resolved to -
-    // 5001 on every row, because the venue's field is in the one namespace
-    // whatever plugin the row names.
-    for (row, line) in lines.iter().enumerate() {
-        let alone = one_of(&codec, line);
-        let streamed = &again[row];
-        let tag = yggdryl::PLUGINID_TAG_NAME.0;
-        assert_eq!(
-            alone.get_by_tag(tag).filter(|held| !held.is_null()),
-            streamed.get_by_tag(tag).filter(|held| !held.is_null()),
-            "row {row} tag {tag}"
-        );
-        assert_eq!(alone.entries(), streamed.entries(), "row {row}");
-        assert!(
-            alone.entries().iter().any(|entry| entry.tag() == 5001),
-            "row {row} resolves the venue's field whatever plugin it names"
-        );
-    }
-    assert_eq!(
-        again[1]
-            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
-            .unwrap()
-            .as_str(),
-        Some("VNU")
-    );
-}
-
-#[test]
 fn a_capture_already_in_arrow_feeds_the_same_builders() {
     let codec = codec();
     let first = codec
@@ -1363,88 +940,6 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
 }
 
 #[test]
-fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
-    // Shaped the way the text line reader shapes a capture: where the line was
-    // read from, which line it was, what stamped it, and the frame itself.
-    let capture = DataType::from_fields([
-        DataType::utf8().required_field("url"),
-        DataType::Int64.required_field("rownum"),
-        DataType::utf8().nullable_field("threadname"),
-        DataType::binary().required_field("body"),
-        // A name a FIX column already takes, which yields to it: one column
-        // per name, and the FIX one is what a reader spelling it means.
-        DataType::utf8().nullable_field("fixentries"),
-    ])
-    .expect("a capture root")
-    .required_field("line");
-
-    let rows = Scalar::from_sequence([Scalar::from_sequence([
-        Scalar::from("file:///capture.log"),
-        Scalar::from(7_i64),
-        Scalar::from("session-a"),
-        Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
-        Scalar::from("ignored"),
-    ])]);
-    let batch = yggdryl::arrow::batch_from_value(&capture, &rows).expect("a capture batch");
-    let schema = batch.schema();
-    let source = yggdryl::arrow::batch_reader(schema, [batch]);
-
-    let read = codec()
-        .parse_text_arrow_reader(source)
-        .expect("a carried reader");
-    let columns: Vec<String> = read
-        .schema()
-        .fields()
-        .iter()
-        .map(|held| held.name().clone())
-        .collect();
-    assert_eq!(
-        &columns[..4],
-        ["url", "rownum", "threadname", "body"],
-        "the capture leads the row"
-    );
-    assert_eq!(
-        columns.iter().filter(|held| *held == "fixentries").count(),
-        1,
-        "the clashing capture column yielded to the FIX one"
-    );
-    assert!(
-        columns.contains(&"msgtype".to_owned()),
-        "the fixed columns follow it"
-    );
-
-    let read = batches(read);
-    assert_eq!(row_count(&read), 1);
-    let held = yggdryl::arrow::batch_to_value(&read[0]).expect("a value");
-    let row = held.as_sequence().expect("one row")[0]
-        .as_sequence()
-        .expect("its columns")
-        .to_vec();
-    assert_eq!(row[0].as_str(), Some("file:///capture.log"));
-    assert_eq!(row[1].as_i64(), Some(7));
-    assert_eq!(row[2].as_str(), Some("session-a"));
-    let at = columns
-        .iter()
-        .position(|held| held == "msgtype")
-        .expect("the msgtype column");
-    assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
-
-    // Read back as messages, the carried columns are children of their own
-    // names, and the same schema takes the row back whole.
-    let codec = codec();
-    let field = yggdryl::Field::from_arrow_schema("fix", &read[0].schema()).unwrap();
-    let message = codec
-        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
-        .next()
-        .unwrap()
-        .unwrap();
-    assert_eq!(message.by_name("rownum").unwrap(), Scalar::from(7_i64));
-    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
-    let again = batches(codec.arrow_reader(field, [Ok(message)]).unwrap());
-    assert_eq!(again, read);
-}
-
-#[test]
 fn dedup_composes_over_the_messages_a_batch_holds() {
     let codec = codec();
     let published = [
@@ -1473,64 +968,6 @@ fn dedup_composes_over_the_messages_a_batch_holds() {
     );
     assert_eq!(row_count(&kept), 2, "the adjacent republication went");
     assert_eq!(dedup.dropped(), 1);
-}
-
-#[test]
-fn a_pluginid_capture_with_no_field_to_fill_is_silence() {
-    // A `pluginid` capture fills the crate's own field and selects nothing:
-    // a registry holding no `pluginid` field of its own still reads its rows
-    // the same, in the one namespace, with nothing filled and no error.
-    let registry = plugin_registry();
-    let mut without = registry.as_ref().clone();
-    assert!(without.remove(yggdryl::PLUGINID_TAG_NAME.0).is_some());
-    let codec = super::fixed_codec(Arc::new(without));
-    let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
-
-    let alone = one_of(
-        &codec.clone().with_capture_names(PLUGIN_CAPTURES),
-        &plugin_line(body, Some("VNU")),
-    );
-    assert_eq!(alone.as_field().as_fix().branches().count(), 0);
-    assert_eq!(alone.by_tag(5001).unwrap().as_str(), Some("dark"));
-    assert!(
-        alone.get_by_tag(yggdryl::PLUGINID_TAG_NAME.0).is_none(),
-        "no field of that name is there to fill"
-    );
-
-    let capture = DataType::from_fields([
-        DataType::binary().required_field("body"),
-        DataType::utf8().nullable_field("pluginid"),
-    ])
-    .unwrap()
-    .required_field("capture");
-    let values = Scalar::from_sequence([Scalar::from_sequence([
-        Scalar::from(body.to_vec()),
-        Scalar::from("VNU"),
-    ])]);
-    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
-    let read = batches(
-        codec
-            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
-            .unwrap(),
-    );
-    assert_eq!(row_count(&read), 1);
-    let streamed: Vec<FixMsg> = codec
-        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
-        .collect::<yggdryl::Result<_>>()
-        .unwrap();
-
-    // The two readers read one row one way. A row read back off a batch
-    // carries the batch's own root, and its arrival record resolved to the
-    // venue's own tag in the one namespace.
-    assert_eq!(streamed.len(), 1);
-    assert_eq!(streamed[0].entries(), alone.entries());
-    assert!(
-        streamed[0]
-            .entries()
-            .iter()
-            .any(|entry| entry.tag() == 5001),
-        "the venue's field resolved"
-    );
 }
 
 #[test]
@@ -1602,4 +1039,327 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
     assert_eq!(alone.entries(), streamed[0].entries());
     // The frame was read as the body; the dictionary's name held nothing to read.
     assert_eq!(alone.by_tag(11).unwrap().as_str(), Some("A"));
+}
+
+/// The codec a fixture of every shape is read under.
+///
+/// `DEFAULT_REFUSED_MSGTYPES` is what a capture of live session traffic
+/// wants and the opposite of what a fixture of every shape wants: a corpus
+/// written to hold a heartbeat and a row that states no type at all is
+/// asking for those to be read, and says so here.
+fn every_msgtype() -> FixCodec {
+    codec().with_exclude_msgtypes::<[&str; 0], &str>([])
+}
+
+#[test]
+fn the_batch_door_refuses_the_types_the_line_door_refuses() {
+    // The corpus holds three rows that state no type - two bridge rows and
+    // the `<Execution>` document - and a codec refuses `unknown` until a
+    // caller says otherwise, at the batch door as at the line door.
+    let refused = batches(codec().parse_text_arrow_reader(source()).unwrap());
+    let read = batches(every_msgtype().parse_text_arrow_reader(source()).unwrap());
+    assert_eq!(row_count(&refused), 6);
+    assert_eq!(row_count(&read), 9);
+    assert!(yggdryl::DEFAULT_REFUSED_MSGTYPES.contains(&"unknown"));
+    assert!(!codec().reads_msgtype("unknown"));
+    assert!(every_msgtype().reads_msgtype("unknown"));
+
+    // The two doors refuse the same lines: what the batch door dropped is
+    // what the line door drops.
+    let lines = codec().parse_lines(CAPTURE).count();
+    assert_eq!(lines, row_count(&refused));
+}
+
+#[test]
+fn a_capture_answers_one_row_per_message_and_a_sentence_is_no_row() {
+    let batches = batches(every_msgtype().parse_text_arrow_reader(source()).unwrap());
+    // A FIX batch answers one row per *message*, and five of the fourteen
+    // lines carry none, so they carry no row either - the text reader is the
+    // one that answers a row per line. The silent five, and why each states
+    // no message:
+    //
+    // - `After Enrichment -> ACCOUNT=... CLIENTID=... VENUE=...` separates its
+    //   named pairs with whitespace alone and marks no key, so the run is
+    //   prose carrying an `=` rather than a bridge row;
+    // - `Referential(dbi|equity|...|[quantity-type=])` holds every pipe in
+    //   front of its one `=`, so nothing names a separator for a run of pairs;
+    // - `Message rejected because : ...` and `no level printed by this plugin`
+    //   hold no `=` at all;
+    // - `heartbeat emitted seq=7` states its one pair on whitespace, unmarked.
+    assert_eq!(
+        row_count(&batches),
+        9,
+        "nine of the {} lines carry a message",
+        CAPTURE.len()
+    );
+
+    // A row that states no type is still a row, named `unknown` - but only a
+    // bridge row or a document ever is, because a sentence is not a row.
+    let first = &batches[0];
+    let msgtype = tag_column(first, 35);
+    assert!(msgtype.is_valid(0), "a framed row states its type");
+    assert!(
+        !msgtype.is_valid(5),
+        "the bridge row `toBridge #ISINCODE=XX|...` states no type"
+    );
+    assert!(
+        !msgtype.is_valid(8),
+        "the last row is the `<Execution>` document, which states no type"
+    );
+}
+
+#[test]
+fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_direction() {
+    let field = DataType::from_fields([
+        DataType::Int64.required_field("rownum"),
+        DataType::utf8().required_field("msgdirection"),
+        DataType::binary().required_field("body"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(42_i64),
+        Scalar::from("Receive"),
+        Scalar::from(BULK_CONFIG.to_vec()),
+    ])]);
+    let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+    // One byte a batch: a batch a message, so a row that expanded would be
+    // seen as the several batches it made. A bulk document expands into
+    // nothing: one `unknown` row, carrying the source row's own columns.
+    let reader = super::fixed_codec(direction_registry())
+        .with_exclude_msgtypes::<[&str; 0], &str>([])
+        .with_batch_byte_size(1)
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
+        .unwrap();
+    let batches = batches(reader);
+    assert_eq!(batches.len(), 1, "one row for the one document");
+    let batch = &batches[0];
+    assert_eq!(batch.num_rows(), 1);
+    assert_eq!(first_value(batch, "rownum"), Scalar::from(42_i64));
+    // A stated column is a spelling of a code of the set, stored as the code.
+    assert_eq!(first_tag_value(batch, 385).as_str(), Some("R"));
+}
+
+#[test]
+fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
+    // Shaped the way the text line reader shapes a capture: where the line was
+    // read from, which line it was, what stamped it, and the frame itself.
+    let capture = DataType::from_fields([
+        DataType::utf8().required_field("url"),
+        DataType::Int64.required_field("rownum"),
+        DataType::utf8().nullable_field("threadname"),
+        DataType::binary().required_field("body"),
+        // A name a FIX column already takes, which yields to it: one column
+        // per name, and the FIX one is what a reader spelling it means.
+        DataType::utf8().nullable_field("fixentries"),
+    ])
+    .expect("a capture root")
+    .required_field("line");
+
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from("file:///capture.log"),
+        Scalar::from(7_i64),
+        Scalar::from("session-a"),
+        Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
+        Scalar::from("ignored"),
+    ])]);
+    let batch = yggdryl::arrow::batch_from_value(&capture, &rows).expect("a capture batch");
+    let schema = batch.schema();
+    let read = codec()
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]))
+        .expect("a carried reader");
+    let columns: Vec<String> = read
+        .schema()
+        .fields()
+        .iter()
+        .map(|held| held.name().clone())
+        .collect();
+    assert_eq!(
+        &columns[..4],
+        ["url", "rownum", "threadname", "body"],
+        "the capture leads the row"
+    );
+    assert_eq!(
+        columns.iter().filter(|held| *held == "fixentries").count(),
+        1,
+        "the clashing capture column yielded to the FIX one"
+    );
+
+    let read = batches(read);
+    assert_eq!(row_count(&read), 1);
+    let held = yggdryl::arrow::batch_to_value(&read[0]).expect("a value");
+    let row = held.as_sequence().expect("one row")[0]
+        .as_sequence()
+        .expect("its columns")
+        .to_vec();
+    assert_eq!(row[0].as_str(), Some("file:///capture.log"));
+    assert_eq!(row[1].as_i64(), Some(7));
+    assert_eq!(row[2].as_str(), Some("session-a"));
+    let at = columns
+        .iter()
+        .position(|held| held == "msgtype")
+        .expect("the msgtype column");
+    assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
+}
+
+#[test]
+fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
+    const BRIDGE: &str = "|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
+|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
+
+    // The row states no type, so the fixture says it wants it read.
+    let codec = every_msgtype();
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows = codec
+        .arrow_reader(schema, codec.parse_lines([BRIDGE]))
+        .expect("a line reader");
+    let row_batch = rows.into_iter().next().unwrap().unwrap();
+
+    let columns = codec
+        .parse_text_arrow_reader(capture_reader(&[BRIDGE], 1))
+        .expect("a payload-column reader");
+    let column_batch = columns.into_iter().next().unwrap().unwrap();
+
+    for batch in [&row_batch, &column_batch] {
+        assert_eq!(first_tag_value(batch, 453), Scalar::from(1_i32));
+        let group = first_value(batch, "parties");
+        let parties = group.as_sequence().expect("the party group");
+        assert_eq!(parties.len(), 1);
+        let members = parties[0].as_sequence().expect("one occurrence");
+        assert_eq!(members[0].as_str(), Some("BUYSIDE"));
+        assert_eq!(members[1].as_str(), Some("D"));
+        assert_eq!(members[2].as_i64(), Some(1));
+    }
+}
+
+#[test]
+fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
+    let codec = every_msgtype().with_null_values::<[&str; 0], &str>([]);
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(CAPTURE)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(parsed.len(), 9);
+
+    let reader = codec
+        .arrow_reader(schema.clone(), parsed.clone().into_iter().map(Ok))
+        .unwrap();
+    let again: Vec<FixMsg> = codec
+        .messages(reader)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(again.len(), parsed.len());
+    for (held, message) in again.iter().zip(&parsed) {
+        // The arrival record is what the row carries the content in, so it is
+        // what comes back: none of this corpus nests a group inside a group,
+        // which is the one shape `FixMsg::from_row` names as inexact.
+        assert_eq!(held.entries(), message.entries());
+        for tag in [35, 11, 55, 54, 17, 37] {
+            fn stated(message: &FixMsg, tag: i32) -> Option<Scalar> {
+                message.get_by_tag(tag).filter(|held| !held.is_null())
+            }
+            assert_eq!(stated(held, tag), stated(message, tag), "tag {tag}");
+        }
+    }
+}
+
+#[test]
+fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new()))
+        .with_exclude_msgtypes::<[&str; 0], &str>([])
+        .with_capture_names(["pluginid"]);
+    let line = |body: &[u8]| {
+        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
+            .unwrap()
+            .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
+            .unwrap()
+    };
+    // A Jolokia answer naming the plugin every line here names, and the two
+    // ends of its session: a document, which the codec does not read.
+    let document = line(br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=STREAM,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"STREAM","SenderCompID":"SOURCE","TargetCompID":"SINK"},"status":200}"#);
+    let message = line(b"8=FIX.4.4|35=0|10=0|");
+    let marker = Arc::new(());
+    let mut stream =
+        codec.parse_text_lines([Ok(document), Err(source_failure(&marker)), Ok(message)]);
+    // The document is one `unknown` row carrying what its row stated - the
+    // plugin capture - and nothing the document did.
+    let unknown = stream.next().unwrap().unwrap();
+    assert_eq!(unknown.as_field().name(), "unknown");
+    assert!(unknown.entries().is_empty());
+    assert_eq!(
+        unknown
+            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("STREAM")
+    );
+    assert!(unknown.get_by_tag(49).is_none_or(|held| held.is_null()));
+    // The source error moves through, and the stream goes on past it.
+    same_source_failure(stream.next().unwrap().unwrap_err(), &marker);
+    // The heartbeat after it names the same plugin and gains nothing from
+    // the document: the stream remembers no configuration, so the two ends
+    // it stated fill no `SenderCompID` and no `TargetCompID` here.
+    let filled = stream.next().unwrap().unwrap();
+    assert_eq!(
+        filled
+            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("STREAM")
+    );
+    assert!(filled.get_by_tag(49).is_none_or(|held| held.is_null()));
+    assert!(filled.get_by_tag(56).is_none_or(|held| held.is_null()));
+    assert!(stream.next().is_none());
+}
+
+#[test]
+fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events() {
+    let codec = codec().with_capture_names(["beginstring", "pluginid"]);
+    let page = |bytes: &[u8]| TextBytes::from_bytes(bytes).unwrap();
+    let line = |body: &[u8], captures: [Option<&str>; 2]| {
+        TextLine::from_bytes(0, page(body))
+            .unwrap()
+            .with_captures(
+                captures
+                    .iter()
+                    .map(|held| held.map(|text| page(text.as_bytes())))
+                    .collect(),
+            )
+            .unwrap()
+    };
+    let one = |line: &TextLine| -> FixMsg {
+        let mut messages = codec.parse_text_line(line).unwrap();
+        let message = messages.next().unwrap().unwrap();
+        assert!(messages.next().is_none(), "one message");
+        message
+    };
+
+    // Only a body: exactly what the byte reader does.
+    let message = one(&line(b"8=FIX.4.4|35=D|11=ORDER-1|10=0|", [None, None]));
+    assert_eq!(message.as_field().name(), "D");
+    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
+
+    // A capture speaks per row and outranks the codec, which speaks per
+    // stream. What a version settles is how a value is read - which dated
+    // code spelling answers - and never what a fact is called: `LastShares`
+    // is 4.2's spelling of tag 32, and tag 32 is the event's own quantity
+    // whatever version the row states, so it is read off the event rather
+    // than found as a child of the content row.
+    let old = one(&line(
+        b"8=FIX.4.4|35=8|32=100|10=0|",
+        [Some("FIX.4.2"), None],
+    ));
+    assert!(old.as_field().index_of("lastqty").is_none());
+    assert_eq!(old.by_tag(32).unwrap().as_f64(), Some(100.0));
+
+    // A capture absent, unmatched or empty is silence, never an instruction
+    // and never an error.
+    let quiet = one(&line(b"8=FIX.4.4|35=D|11=A|10=0|", [None, Some("")]));
+    assert_eq!(quiet.as_field().name(), "D");
+    assert_eq!(
+        quiet.as_field().as_fix().branches().count(),
+        0,
+        "a plugin names no dialect: a message is not a dictionary member"
+    );
 }

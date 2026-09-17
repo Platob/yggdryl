@@ -18,7 +18,8 @@ use super::{
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, PARENTUUIDS_TAG_NAME,
     PLUGINID_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
     PX_TAG_NAME, QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME,
+    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME,
+    TRADABLE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME,
 };
 
 /// The standard header facts every message holds typed, beside its row.
@@ -281,9 +282,47 @@ impl FixCapture {
 /// `MDReqID(262)`.
 pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 
-/// FIX's own tags the event holds beside the crate's columns: the
-/// currency, the side, the classification and the four lane numbers.
-const OWN_EVENT_TAGS: [i32; 7] = [15, 54, super::cfi::CFICODE_TAG, 132, 133, 134, 135];
+/// FIX's own tags the event holds beside the crate's columns, in tag
+/// order: the price and the quantity a message is about, the trade and the
+/// progress it reports, how long it stands, the currency, the side, the
+/// classification and the four lane numbers.
+///
+/// Each is held *on* the event rather than beside it, so the row carries
+/// one column per fact instead of a crate column and the field it was
+/// lifted from, and this is the order the wire re-emits them in.
+pub(super) const OWN_EVENT_TAGS: [i32; 16] = [
+    AVGPX_TAG,
+    CUMQTY_TAG,
+    15,
+    LASTPX_TAG,
+    LASTQTY_TAG,
+    ORDERQTY_TAG,
+    PRICE_TAG,
+    QUANTITY_TAG,
+    54,
+    TIMEINFORCE_TAG,
+    132,
+    133,
+    134,
+    135,
+    LEAVESQTY_TAG,
+    super::cfi::CFICODE_TAG,
+];
+
+/// FIX's own fields for the market facts the event holds.
+///
+/// `Quantity(53)` is the newer spelling of `OrderQty(38)` and lands in the
+/// same fact; the wire re-emits it as `38`, which is the restatement this
+/// crate makes of every retired spelling.
+pub(super) const PRICE_TAG: i32 = 44;
+pub(super) const ORDERQTY_TAG: i32 = 38;
+pub(super) const QUANTITY_TAG: i32 = 53;
+pub(super) const LASTPX_TAG: i32 = 31;
+pub(super) const LASTQTY_TAG: i32 = 32;
+pub(super) const AVGPX_TAG: i32 = 6;
+pub(super) const CUMQTY_TAG: i32 = 14;
+pub(super) const LEAVESQTY_TAG: i32 = 151;
+pub(super) const TIMEINFORCE_TAG: i32 = 59;
 
 /// The standard header tags the header holds.
 const HEADER_TAGS: [i32; 8] = [8, 35, 49, 56, 34, 52, 43, MSGDIRECTION_TAG_NAME.0];
@@ -427,6 +466,10 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
         event.set_prevpx(decimal());
     } else if is(PREVQTY_TAG_NAME) {
         event.set_prevqty(decimal());
+    } else if is(TRADABLE_TAG_NAME) {
+        event.set_tradable(value.as_bool());
+    } else if is(SYMBOLTICKER_TAG_NAME) {
+        event.set_symbolticker(text().map(str::to_owned));
     } else if is(QTY_TAG_NAME) {
         event.set_qty(decimal().unwrap_or(Decimal::ZERO));
     } else if is(UNIT_TAG_NAME) {
@@ -459,6 +502,22 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
         );
     } else if tag == super::cfi::CFICODE_TAG {
         event.set_cficode(text().and_then(|held| Cfi::new(held).ok()));
+    } else if tag == PRICE_TAG {
+        event.set_px(decimal().unwrap_or(Decimal::ZERO));
+    } else if tag == ORDERQTY_TAG || tag == QUANTITY_TAG {
+        event.set_qty(decimal().unwrap_or(Decimal::ZERO));
+    } else if tag == LASTPX_TAG {
+        event.set_lastpx(decimal());
+    } else if tag == LASTQTY_TAG {
+        event.set_lastqty(decimal());
+    } else if tag == AVGPX_TAG {
+        event.set_avgpx(decimal());
+    } else if tag == CUMQTY_TAG {
+        event.set_cumqty(decimal());
+    } else if tag == LEAVESQTY_TAG {
+        event.set_leavesqty(decimal());
+    } else if tag == TIMEINFORCE_TAG {
+        event.set_tif(text().map(str::to_owned));
     } else if tag == 132 {
         event.set_bidpx(decimal());
     } else if tag == 133 {
@@ -530,6 +589,10 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
         event.get_prevpx().map(Scalar::from)
     } else if is(PREVQTY_TAG_NAME) {
         event.get_prevqty().map(Scalar::from)
+    } else if is(TRADABLE_TAG_NAME) {
+        event.get_tradable().map(Scalar::from)
+    } else if is(SYMBOLTICKER_TAG_NAME) {
+        event.get_symbolticker().and_then(text)
     } else if is(QTY_TAG_NAME) {
         number(event.get_qty())
     } else if is(UNIT_TAG_NAME) {
@@ -569,6 +632,25 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
         (event.get_side() != &Side::unknown()).then(|| Scalar::from(event.get_side().as_str()))
     } else if tag == super::cfi::CFICODE_TAG {
         event.get_cficode().map(|held| Scalar::from(held.as_str()))
+    } else if tag == PRICE_TAG {
+        number(event.get_px())
+    } else if tag == ORDERQTY_TAG {
+        number(event.get_qty())
+    } else if tag == QUANTITY_TAG {
+        // One fact, one tag on the wire: `OrderQty` answers for it above.
+        None
+    } else if tag == LASTPX_TAG {
+        event.get_lastpx().map(Scalar::from)
+    } else if tag == LASTQTY_TAG {
+        event.get_lastqty().map(Scalar::from)
+    } else if tag == AVGPX_TAG {
+        event.get_avgpx().map(Scalar::from)
+    } else if tag == CUMQTY_TAG {
+        event.get_cumqty().map(Scalar::from)
+    } else if tag == LEAVESQTY_TAG {
+        event.get_leavesqty().map(Scalar::from)
+    } else if tag == TIMEINFORCE_TAG {
+        event.get_tif().map(Scalar::from)
     } else if tag == 132 {
         event.get_bidpx().map(Scalar::from)
     } else if tag == 133 {

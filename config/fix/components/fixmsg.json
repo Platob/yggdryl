@@ -366,6 +366,17 @@
         }
       },
       {
+        "name": "symbolticker",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "symbolticker",
+          "fix:tag": "65054"
+        }
+      },
+      {
         "name": "securityid",
         "dtype": {
           "type": "null"
@@ -506,6 +517,50 @@
         "metadata": {
           "fix:field": "miccode",
           "fix:tag": "65014"
+        }
+      },
+      {
+        "name": "securitytradingstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitytradingstatus",
+          "fix:tag": "326"
+        }
+      },
+      {
+        "name": "tradsesstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradsesstatus",
+          "fix:tag": "340"
+        }
+      },
+      {
+        "name": "securitystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitystatus",
+          "fix:tag": "965"
+        }
+      },
+      {
+        "name": "tradable",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradable",
+          "fix:tag": "65053"
         }
       },
       {
@@ -663,6 +718,28 @@
         }
       },
       {
+        "name": "lastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastpx",
+          "fix:tag": "31"
+        }
+      },
+      {
+        "name": "avgpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "avgpx",
+          "fix:tag": "6"
+        }
+      },
+      {
         "name": "qty",
         "dtype": {
           "type": "null"
@@ -685,61 +762,6 @@
         }
       },
       {
-        "name": "unit",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "unit",
-          "fix:tag": "65045"
-        }
-      },
-      {
-        "name": "currency",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
-        }
-      },
-      {
-        "name": "price",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "price",
-          "fix:tag": "44"
-        }
-      },
-      {
-        "name": "orderqty",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "orderqty",
-          "fix:tag": "38"
-        }
-      },
-      {
-        "name": "lastpx",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "lastpx",
-          "fix:tag": "31"
-        }
-      },
-      {
         "name": "lastqty",
         "dtype": {
           "type": "null"
@@ -748,17 +770,6 @@
         "metadata": {
           "fix:field": "lastqty",
           "fix:tag": "32"
-        }
-      },
-      {
-        "name": "avgpx",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "avgpx",
-          "fix:tag": "6"
         }
       },
       {
@@ -784,25 +795,36 @@
         }
       },
       {
-        "name": "ordtype",
+        "name": "unit",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype",
-          "fix:tag": "40"
+          "fix:field": "unit",
+          "fix:tag": "65045"
         }
       },
       {
-        "name": "quantity",
+        "name": "currency",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quantity",
-          "fix:tag": "53"
+          "fix:field": "currency",
+          "fix:tag": "15"
+        }
+      },
+      {
+        "name": "settlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlcurrency",
+          "fix:tag": "120"
         }
       },
       {
@@ -817,14 +839,25 @@
         }
       },
       {
-        "name": "settlcurrency",
+        "name": "ordtype",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrency",
-          "fix:tag": "120"
+          "fix:field": "ordtype",
+          "fix:tag": "40"
+        }
+      },
+      {
+        "name": "timeinforce",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "timeinforce",
+          "fix:tag": "59"
         }
       },
       {

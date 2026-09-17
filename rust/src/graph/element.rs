@@ -1200,6 +1200,60 @@ pub trait MarketElement: Element {
     /// Records the quantity the element last traded; `None` states none.
     fn set_lastqty(&mut self, qty: Option<Decimal>);
 
+    /// How long the element stands, where it says: FIX's `TimeInForce`, as
+    /// the element states it. A market fact rather than a protocol one - it
+    /// is what a resting order and a fill-or-kill differ by - and free text
+    /// here, because what the code `1` names is the dictionary's to say and
+    /// not this trait's: a caller that wants `GoodTillCancel` reads the
+    /// code set the registry holds for the tag.
+    fn get_tif(&self) -> Option<&str>;
+
+    /// Records how long the element stands; `None` states nothing.
+    fn set_tif(&mut self, tif: Option<String>);
+
+    /// Whether the element can be traded right now, where the market says.
+    ///
+    /// A fact about the instrument and its session rather than about the
+    /// element: a halt, a closed session, a delisting. `None` states the
+    /// market said nothing either way, which is not the same as a `false`
+    /// - a status a venue spells `Unknown or Invalid` closes nothing.
+    fn get_tradable(&self) -> Option<bool>;
+
+    /// Records whether the element can be traded right now; `None` states
+    /// the market said nothing either way.
+    fn set_tradable(&mut self, tradable: Option<bool>);
+
+    /// The ticker the element's instrument is known by, where it is known
+    /// by one: the human-readable name a screen shows it under, free text
+    /// rather than a code, because a venue's ticker answers to no standard
+    /// the way an ISIN or a MIC does.
+    ///
+    /// Beside the instrument codes rather than among them: the codes name
+    /// the instrument to a system, and this names it to a person.
+    fn get_symbolticker(&self) -> Option<&str>;
+
+    /// Records the ticker the element's instrument is known by; `None`
+    /// states it is known by none.
+    fn set_symbolticker(&mut self, ticker: Option<String>);
+
+    /// The volume-weighted price the element averaged, where it states one.
+    fn get_avgpx(&self) -> Option<Decimal>;
+
+    /// Records the price the element averaged; `None` states none.
+    fn set_avgpx(&mut self, px: Option<Decimal>);
+
+    /// How much of the element's quantity is done, where it states it.
+    fn get_cumqty(&self) -> Option<Decimal>;
+
+    /// Records how much of it is done; `None` states none.
+    fn set_cumqty(&mut self, qty: Option<Decimal>);
+
+    /// How much of it is still open, where it states it.
+    fn get_leavesqty(&self) -> Option<Decimal>;
+
+    /// Records how much of it is still open; `None` states none.
+    fn set_leavesqty(&mut self, qty: Option<Decimal>);
+
     /// The price stated before this element, where one was.
     ///
     /// What the element itself says about the price before its own - a
@@ -1288,9 +1342,13 @@ pub trait MarketElement: Element {
     /// unstated:
     ///
     /// 1. The price is what the element is about, else what it last traded,
-    ///    else what its own side's lane quotes - a report stating only
-    ///    `LastPx` is about that price, and a quote stating only its bid is
-    ///    about that bid. The quantity follows the same three.
+    ///    else what it averaged, else what its own side's lane quotes - a
+    ///    report stating only `LastPx` is about that price, and a quote
+    ///    stating only its bid is about that bid. The quantity reads the
+    ///    same way: what it orders, else what it last traded, else the
+    ///    lane's size. How much is done and how much is left are not on
+    ///    that ladder, because together they *are* the quantity ordered and
+    ///    the dictionary already says so - one rule, in one place.
     /// 2. The currency and the unit are the element's own, else the ones the
     ///    side's lane states: a lane priced in a currency prices the element
     ///    in it.
@@ -1344,7 +1402,7 @@ pub trait MarketElement: Element {
             None
         };
         if self.get_px() == Decimal::ZERO {
-            if let Some(px) = self.get_lastpx().or(lane_px) {
+            if let Some(px) = self.get_lastpx().or_else(|| self.get_avgpx()).or(lane_px) {
                 self.set_px(px);
             }
         }
@@ -1527,8 +1585,11 @@ pub trait MarketEvent: Event + MarketElement {
     /// Provided, so an implementor's [`Element::merge_with`] has a default
     /// to delegate to.
     /// This market event stated as the one after `previous`: the timed
-    /// reading, and then the price and the quantity that statement settled
-    /// on, where this one states none of its own.
+    /// reading, then the price and the quantity that statement settled on
+    /// as the step before this one, and what the chain is about - the
+    /// instrument's names, its market, the currency, the unit, the side,
+    /// the time in force and whether it can trade - where this event
+    /// states none of it.
     ///
     /// Provided, and what an implementor's [`Element::with_previous`]
     /// delegates to where following means carrying the step before along.
@@ -1573,12 +1634,25 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
     feed(state, "px", &this.get_px().units().to_le_bytes());
     feed(state, "currency", this.get_currency().as_str().as_bytes());
     feed(state, "qty", &this.get_qty().units().to_le_bytes());
-    // What the element last traded is its own statement and part of what it
-    // says; what came before it is not, so the previous price and quantity
-    // are left out exactly as the predecessor's instant and identity are.
+    // What the element traded and how far it has got are its own statements
+    // and part of what it says; what came before it is not, so the previous
+    // price and quantity are left out exactly as the predecessor's instant
+    // and identity are.
+    if let Some(tif) = this.get_tif() {
+        feed(state, "tif", tif.as_bytes());
+    }
+    if let Some(tradable) = this.get_tradable() {
+        feed(state, "tradable", &[u8::from(tradable)]);
+    }
+    if let Some(ticker) = this.get_symbolticker() {
+        feed(state, "symbolticker", ticker.as_bytes());
+    }
     for (name, held) in [
         ("lastpx", this.get_lastpx()),
         ("lastqty", this.get_lastqty()),
+        ("avgpx", this.get_avgpx()),
+        ("cumqty", this.get_cumqty()),
+        ("leavesqty", this.get_leavesqty()),
     ] {
         if let Some(held) = held {
             feed(state, name, &held.units().to_le_bytes());
@@ -1625,8 +1699,9 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
 /// code the better of the two; whether any moved. `later` says whether
 /// `other` is the later statement.
 /// The market facts an event takes from the statement it follows: the price
-/// and the quantity that statement settled on, where this one states none of
-/// its own.
+/// and the quantity that statement settled on as the step before this one,
+/// and what the chain itself is about where this statement says nothing of
+/// it.
 ///
 /// A chain is what a price moved along, and a message states where it is
 /// rather than where it was, so the move is only readable with the step
@@ -1642,6 +1717,123 @@ pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &
         let qty = Some(previous.get_qty()).filter(|qty| *qty != Decimal::ZERO);
         changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
     }
+    changed | chain_market(this, previous)
+}
+
+/// The market facts a restatement takes from the live element it is another
+/// reading of: the step before it, which is the place in the chain and not
+/// something a second reading of one message sees for itself, and what the
+/// chain is about. A twin that says nothing of either is about what the
+/// live statement was about.
+pub(super) fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
+    let mut changed = moved(
+        this.get_prevpx(),
+        stated(this.get_prevpx(), live.get_prevpx(), false),
+        |px| this.set_prevpx(px),
+    );
+    changed |= moved(
+        this.get_prevqty(),
+        stated(this.get_prevqty(), live.get_prevqty(), false),
+        |qty| this.set_prevqty(qty),
+    );
+    changed | chain_market(this, live)
+}
+
+/// What the chain an element stands in is about, taken from another
+/// statement of that chain where this one says nothing of it; whether any
+/// moved.
+///
+/// A chain follows one instrument in one session: the names it goes by, the
+/// market it trades on, what it is quoted in and counted in, the side it
+/// takes, how long it stands and whether it can trade at all are the
+/// chain's, so a report that names none of them is about the ones the
+/// statement beside it named. This statement always leads - a code it
+/// spells better is never replaced by a weaker one - and nothing here is
+/// about a step: the price and the quantity a predecessor settled on reach
+/// an element as `prevpx` and `prevqty`, never as its own.
+fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
+    let mut changed = moved(
+        this.get_currency().clone(),
+        better(this.get_currency().clone(), previous.get_currency(), false),
+        |currency| this.set_currency(currency),
+    );
+    changed |= moved(
+        this.get_side().clone(),
+        better(this.get_side().clone(), previous.get_side(), false),
+        |side| this.set_side(side),
+    );
+    if this.get_unit().is_empty() {
+        changed |= moved(
+            this.get_unit().to_owned(),
+            previous.get_unit().to_owned(),
+            |unit| this.set_unit(unit),
+        );
+    }
+    changed |= moved(
+        this.get_tif().map(str::to_owned),
+        stated(
+            this.get_tif().map(str::to_owned),
+            previous.get_tif().map(str::to_owned),
+            false,
+        ),
+        |tif| this.set_tif(tif),
+    );
+    changed |= moved(
+        this.get_tradable(),
+        stated(this.get_tradable(), previous.get_tradable(), false),
+        |tradable| this.set_tradable(tradable),
+    );
+    changed |= moved(
+        this.get_symbolticker().map(str::to_owned),
+        stated(
+            this.get_symbolticker().map(str::to_owned),
+            previous.get_symbolticker().map(str::to_owned),
+            false,
+        ),
+        |ticker| this.set_symbolticker(ticker),
+    );
+    changed |= moved(
+        this.get_isincode().cloned(),
+        better_stated(this.get_isincode().cloned(), previous.get_isincode(), false),
+        |code| this.set_isincode(code),
+    );
+    changed |= moved(
+        this.get_cusipcode().cloned(),
+        better_stated(
+            this.get_cusipcode().cloned(),
+            previous.get_cusipcode(),
+            false,
+        ),
+        |code| this.set_cusipcode(code),
+    );
+    changed |= moved(
+        this.get_sedolcode().cloned(),
+        better_stated(
+            this.get_sedolcode().cloned(),
+            previous.get_sedolcode(),
+            false,
+        ),
+        |code| this.set_sedolcode(code),
+    );
+    changed |= moved(
+        this.get_bloombergcode().cloned(),
+        better_stated(
+            this.get_bloombergcode().cloned(),
+            previous.get_bloombergcode(),
+            false,
+        ),
+        |code| this.set_bloombergcode(code),
+    );
+    changed |= moved(
+        this.get_cficode().cloned(),
+        better_stated(this.get_cficode().cloned(), previous.get_cficode(), false),
+        |code| this.set_cficode(code),
+    );
+    changed |= moved(
+        this.get_miccode().cloned(),
+        better_stated(this.get_miccode().cloned(), previous.get_miccode(), false),
+        |code| this.set_miccode(code),
+    );
     changed
 }
 
@@ -1656,8 +1848,10 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
             |unit| this.set_unit(unit),
         );
     }
-    // The last trade and the step before it fold as a lane folds: the
-    // statement that has one keeps it, and the later one leads where both do.
+    // What the element traded, how far it has got, how long it stands,
+    // whether it can trade at all, and the step before it all fold as a
+    // lane folds: the statement that has one keeps it, and the later one
+    // leads where both do.
     changed |= moved(
         this.get_lastpx(),
         stated(this.get_lastpx(), other.get_lastpx(), later),
@@ -1667,6 +1861,44 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
         this.get_lastqty(),
         stated(this.get_lastqty(), other.get_lastqty(), later),
         |qty| this.set_lastqty(qty),
+    );
+    changed |= moved(
+        this.get_avgpx(),
+        stated(this.get_avgpx(), other.get_avgpx(), later),
+        |px| this.set_avgpx(px),
+    );
+    changed |= moved(
+        this.get_cumqty(),
+        stated(this.get_cumqty(), other.get_cumqty(), later),
+        |qty| this.set_cumqty(qty),
+    );
+    changed |= moved(
+        this.get_leavesqty(),
+        stated(this.get_leavesqty(), other.get_leavesqty(), later),
+        |qty| this.set_leavesqty(qty),
+    );
+    changed |= moved(
+        this.get_tif().map(str::to_owned),
+        stated(
+            this.get_tif().map(str::to_owned),
+            other.get_tif().map(str::to_owned),
+            later,
+        ),
+        |tif| this.set_tif(tif),
+    );
+    changed |= moved(
+        this.get_tradable(),
+        stated(this.get_tradable(), other.get_tradable(), later),
+        |tradable| this.set_tradable(tradable),
+    );
+    changed |= moved(
+        this.get_symbolticker().map(str::to_owned),
+        stated(
+            this.get_symbolticker().map(str::to_owned),
+            other.get_symbolticker().map(str::to_owned),
+            later,
+        ),
+        |ticker| this.set_symbolticker(ticker),
     );
     changed |= moved(
         this.get_prevpx(),

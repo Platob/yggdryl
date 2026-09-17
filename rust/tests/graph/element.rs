@@ -243,14 +243,22 @@ fn crosshash(crosscode: &str) -> u64 {
 }
 
 /// One trade as the crate holds it: a buy of a thousand barrels at 82.5
-/// dollars, finalized so its identity is what it states and when.
-fn trade(ms: i64) -> MarketEventData {
+/// dollars, stated and not yet finalized, so the lanes it implies are still
+/// empty and a case about filling them starts from nothing.
+fn stated(ms: i64) -> MarketEventData {
     let mut trade = MarketEventData::at(at(ms));
     trade.set_px(Decimal::parse("82.5").expect("a decimal"));
     trade.set_currency(Currency::new("USD").expect("a currency"));
     trade.set_qty(Decimal::from_int(1_000));
     trade.set_unit("bbl".to_owned());
     trade.set_side(Side::read("Buy").expect("a side"));
+    trade
+}
+
+/// The same trade, finalized: its identity is what it states and when, and
+/// the lane its side implies is filled, because finalizing fills.
+fn trade(ms: i64) -> MarketEventData {
+    let mut trade = stated(ms);
     trade.finalize();
     trade
 }
@@ -1134,7 +1142,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     assert!(buy.get_askcurrency().is_none() && buy.get_askunit().is_none());
 
     // A sell short is an ask, and what the lane already states stands.
-    let mut sell = trade(20);
+    let mut sell = stated(20);
     sell.set_side(Side::read("SellShort").expect("a side"));
     sell.set_askpx(Some(Decimal::from_int(90)));
     sell.fill_lanes();
@@ -1145,7 +1153,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
 
     // A cross takes neither lane, and a side stated as none neither.
     for spelling in ["Cross", "Opposite", "UNKNOWN"] {
-        let mut neither = trade(30);
+        let mut neither = stated(30);
         neither.set_side(Side::read(spelling).expect("a side"));
         neither.fill_lanes();
         assert_eq!(
@@ -1356,4 +1364,170 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     let mut expected = element.clone();
     expected.finalize();
     assert_eq!(again.get_curruuid(), expected.get_curruuid());
+}
+
+#[test]
+fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
+    // What a report says about a trade and nothing about an order: the
+    // price it is about is the price it traded at, and the quantity the
+    // quantity it traded.
+    let mut fill = MarketEventData::at(at(10));
+    fill.set_side(Side::read("Buy").expect("a side"));
+    fill.set_lastpx(Some(Decimal::parse("82.5").expect("a decimal")));
+    fill.set_lastqty(Some(Decimal::from_int(300)));
+    fill.set_avgpx(Some(Decimal::parse("82.25").expect("a decimal")));
+    fill.fill_market();
+    assert_eq!(fill.get_px(), Decimal::parse("82.5").expect("a decimal"));
+    assert_eq!(fill.get_qty(), Decimal::from_int(300));
+    // And what it settled on reaches the lane its side implies.
+    assert_eq!(fill.get_bidpx(), Some(Decimal::parse("82.5").unwrap()));
+    assert_eq!(fill.get_bidqty(), Some(Decimal::from_int(300)));
+
+    // The average stands in where nothing traded under this message.
+    let mut averaged = MarketEventData::at(at(20));
+    averaged.set_avgpx(Some(Decimal::from_int(99)));
+    averaged.fill_market();
+    assert_eq!(averaged.get_px(), Decimal::from_int(99));
+
+    // How much is done and how much is left are not on the quantity's
+    // ladder: together they are the quantity ordered, which is a rule the
+    // dictionary states and this never restates.
+    let mut working = MarketEventData::at(at(30));
+    working.set_cumqty(Some(Decimal::from_int(40)));
+    working.set_leavesqty(Some(Decimal::from_int(60)));
+    working.fill_market();
+    assert_eq!(working.get_qty(), Decimal::ZERO);
+
+    // A quote states only its lanes, and the side says which one it is
+    // about. Nothing is invented for a side that takes neither.
+    let mut quote = MarketEventData::at(at(40));
+    quote.set_side(Side::read("Sell").expect("a side"));
+    quote.set_askpx(Some(Decimal::from_int(85)));
+    quote.set_askqty(Some(Decimal::from_int(7)));
+    quote.set_askcurrency(Some(Currency::new("EUR").expect("a currency")));
+    quote.set_askunit(Some("mt".to_owned()));
+    quote.fill_market();
+    assert_eq!(quote.get_px(), Decimal::from_int(85));
+    assert_eq!(quote.get_qty(), Decimal::from_int(7));
+    assert_eq!(quote.get_currency().as_str(), "EUR");
+    assert_eq!(quote.get_unit(), "mt");
+
+    // Filling twice changes nothing the first run did not, and a fact the
+    // element stated is never overwritten.
+    let mut once = trade(50);
+    once.set_lastpx(Some(Decimal::from_int(1)));
+    once.fill_market();
+    let twice = {
+        let mut held = once.clone();
+        held.fill_market();
+        held
+    };
+    assert_eq!(once.get_px(), Decimal::parse("82.5").expect("a decimal"));
+    assert_eq!(once, twice);
+}
+
+#[test]
+fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
+    // An order naming its instrument, how long it stands and what the
+    // market says about trading it.
+    let mut order = trade(10);
+    order.set_crosscode("O-100".to_owned());
+    order.set_tif(Some("GoodTillCancel".to_owned()));
+    order.set_tradable(Some(true));
+    order.set_symbolticker(Some("BRN".to_owned()));
+    order.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
+    order.set_miccode(Some(Mic::new("XLON").expect("a MIC")));
+    order.finalize();
+
+    // The report that answers it names none of that, and states a price and
+    // a quantity of its own.
+    let mut report = MarketEventData::at(at(20));
+    report.set_crosscode("O-100".to_owned());
+    report.set_px(Decimal::from_int(83));
+    report.set_qty(Decimal::from_int(400));
+    report.finalize();
+
+    let followed = report.with_previous(&order).expect("the step after");
+    // The step before, as the step before: a price beside the price it
+    // moved from.
+    assert_eq!(
+        followed.get_prevpx(),
+        Some(Decimal::parse("82.5").expect("a decimal"))
+    );
+    assert_eq!(followed.get_prevqty(), Some(Decimal::from_int(1_000)));
+    // And what the chain is about, where this report said nothing.
+    assert_eq!(followed.get_tif(), Some("GoodTillCancel"));
+    assert_eq!(followed.get_tradable(), Some(true));
+    assert_eq!(followed.get_symbolticker(), Some("BRN"));
+    assert_eq!(followed.get_currency().as_str(), "USD");
+    assert_eq!(followed.get_unit(), "bbl");
+    assert_eq!(followed.get_side().as_str(), "BUY");
+    assert_eq!(
+        followed.get_isincode().map(Isin::as_str),
+        Some("US0378331005")
+    );
+    assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
+    // What this report does say is its own: the price it states is not the
+    // one it followed.
+    assert_eq!(followed.get_px(), Decimal::from_int(83));
+    assert_eq!(followed.get_qty(), Decimal::from_int(400));
+    assert_eq!(followed.get_seqnum(), 1);
+
+    // A statement of its own never gives way to the chain's.
+    let mut own = MarketEventData::at(at(20));
+    own.set_crosscode("O-100".to_owned());
+    own.set_tif(Some("ImmediateOrCancel".to_owned()));
+    own.set_tradable(Some(false));
+    own.set_symbolticker(Some("WTI".to_owned()));
+    own.set_prevpx(Some(Decimal::from_int(1)));
+    own.finalize();
+    let followed = own.with_previous(&order).expect("the step after");
+    assert_eq!(followed.get_tif(), Some("ImmediateOrCancel"));
+    assert_eq!(followed.get_tradable(), Some(false));
+    assert_eq!(followed.get_symbolticker(), Some("WTI"));
+    assert_eq!(followed.get_prevpx(), Some(Decimal::from_int(1)));
+
+    // Merging folds the same facts the other way: two statements of one
+    // event, the later leading where both state one and the other filling
+    // what it leaves out.
+    let mut first = trade(30);
+    first.set_lastpx(Some(Decimal::from_int(80)));
+    first.set_cumqty(Some(Decimal::from_int(100)));
+    first.set_tif(Some("Day".to_owned()));
+    first.finalize();
+    let mut later = first.clone();
+    later.set_unix(at(40));
+    later.set_lastpx(Some(Decimal::from_int(81)));
+    later.set_cumqty(None);
+    later.set_leavesqty(Some(Decimal::from_int(900)));
+    later.set_avgpx(Some(Decimal::parse("80.5").expect("a decimal")));
+    later.set_tif(None);
+    later.set_tradable(Some(true));
+    later.set_symbolticker(Some("BRN".to_owned()));
+    let merged = first.merge_with(&later).expect("the same event");
+    assert_eq!(merged.get_lastpx(), Some(Decimal::from_int(81)));
+    assert_eq!(merged.get_cumqty(), Some(Decimal::from_int(100)));
+    assert_eq!(merged.get_leavesqty(), Some(Decimal::from_int(900)));
+    assert_eq!(
+        merged.get_avgpx(),
+        Some(Decimal::parse("80.5").expect("a decimal"))
+    );
+    assert_eq!(merged.get_tif(), Some("Day"));
+    assert_eq!(merged.get_tradable(), Some(true));
+    assert_eq!(merged.get_symbolticker(), Some("BRN"));
+    assert_eq!(merged.get_unix(), at(40));
+
+    // Every one of them is part of what the event is, so two events that
+    // differ only there answer to different codes.
+    let mut halted = trade(50);
+    halted.set_tradable(Some(false));
+    halted.finalize();
+    let mut trading = trade(50);
+    trading.set_tradable(Some(true));
+    trading.finalize();
+    assert_ne!(halted.get_hashcode(), trading.get_hashcode());
+    let mut named = trade(50);
+    named.set_symbolticker(Some("BRN".to_owned()));
+    named.finalize();
+    assert_ne!(named.get_hashcode(), trade(50).get_hashcode());
 }

@@ -41,6 +41,8 @@ mod map_groups;
 mod merge;
 #[path = "fix/message.rs"]
 mod message;
+#[path = "fix/probe.rs"]
+mod probe;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
 #[path = "fix/schema.rs"]

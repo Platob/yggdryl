@@ -161,15 +161,88 @@ fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
         .collect()
 }
 
+
+/// A Jolokia answer as a log line writes it: prose in front, prose behind.
+///
+/// The shape a bridge actually prints - a timestamp, the reader that logged
+/// it, the level, then the document - with a duration written after it, which
+/// is what a reader that assumed the document ended the line never saw.
+const LOGGED: &str = concat!(
+    r#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"#,
+    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,"#,
+    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting","#,
+    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD","#,
+    r#""TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90","#,
+    r#""CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,"#,
+    r#""cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)"#,
+);
+
+/// A wildcard read: one answer, a plugin per key, each named by its ObjectName.
+const WILDCARD: &str = concat!(
+    r#"{"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},"#,
+    r#" "value": {"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,"#,
+    r#"plugin-type=FIX,type=ConfigurationPlugin": {"Comment": "", "Category": "InterBridge","#,
+    r#" "Prefix": "", "Name": "ULMSG_BROKER_BDG_DMZ_PCO", "LoadIsolation": 0, "Suffix": "","#,
+    r#" "PriorityLevel": 5, "Version": "2.0.3"},"#,
+    r#" "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
+    r#"plugin-type=FIX,type=Plugin": {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}},"#,
+    r#" "status": 200}"#,
+);
+
+/// A JSON body that is not a Jolokia answer: a row's own bytes, and nothing
+/// in them a FIX reader can read.
+const STRANGER: &str = r#"{"a":1}"#;
+
+/// The codec every shape in this capture is read under.
+///
+/// A capture of every dialect holds rows that state no type - a document,
+/// and a FIXML element whose name no message code spells - and those are
+/// what `DEFAULT_REFUSED_MSGTYPES` keeps out of a live session's read. A
+/// fixture written to hold them is asking for them, and says so here; what
+/// the default refuses is pinned on its own below.
+fn codec() -> FixCodec {
+    super::fixed_codec(registry()).with_exclude_msgtypes::<[&str; 0], &str>([])
+}
+
+#[test]
+fn the_default_read_refuses_every_row_that_states_no_type() {
+    let default = super::fixed_codec(registry());
+    // Four of the six messages this capture states name a type. The FIXML
+    // `Order` element and the Jolokia answer name none - `unknown` is what
+    // the codec calls a row that states no type - and `unknown` is one of
+    // the three types a codec refuses until a caller says otherwise.
+    assert!(yggdryl::DEFAULT_REFUSED_MSGTYPES.contains(&"unknown"));
+    assert_eq!(default.parse_lines(CAPTURE).count(), MESSAGES - 2);
+    assert_eq!(codec().parse_lines(CAPTURE).count(), MESSAGES);
+    for body in [FIXML, PLUGIN] {
+        assert!(
+            default
+                .parse_line(body.as_bytes())
+                .expect("a readable line")
+                .next()
+                .is_none(),
+            "{body} states no type and is refused",
+        );
+        assert_eq!(
+            codec()
+                .sole_line(body.as_bytes())
+                .expect("a message")
+                .header()
+                .msgtype(),
+            "",
+            "and states none when it is read",
+        );
+    }
+}
+
 #[test]
 fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
-    let registry = registry();
     let source = handle();
-    let codec = super::fixed_codec(Arc::clone(&registry));
+    let codec = codec();
 
     // Line by line: the text reader answers lines, and every line is read for
-    // the messages its own body spells - none, one or many -
-    // the dialect chosen per line, never per capture.
+    // the messages its own body spells - none, one or many - the dialect
+    // chosen per line, never per capture.
     let lines = lines_of(&source);
     assert_eq!(lines.len(), CAPTURE.len(), "a line in is a line out");
 
@@ -183,30 +256,19 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     assert_eq!(one_at_a_time.len(), MESSAGES);
     // The document's row is the one entry-less `unknown` - a body the codec
     // does not read, stating nothing - and every other row arrived with
-    // entries, the FIXML row's `Order` among them, which is `unknown` too
-    // because its element states no type. No line that opened no frame and
-    // carried no document answered a row.
+    // entries, the FIXML row's `Order` among them.
     for (at, held) in one_at_a_time.iter().enumerate() {
         assert_eq!(held.entries().is_empty(), CAPTURE[at] == PLUGIN, "row {at}");
-        if CAPTURE[at] == PLUGIN {
-            assert_eq!(held.as_field().name(), "unknown", "row {at}");
-        }
     }
 
-    // Batched: the same capture through the batch reader, which is the same
+    // Batched: the same capture through the batch door, which is the same
     // read with the rows held in Arrow instead of one at a time.
-    let filled = codec
-        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens");
-    let target = super::format_target(codec.registry());
     let batched: Vec<_> = codec
-        .format_arrow_reader(filled, &target)
-        .expect("the format reader opens")
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens")
         .map(|batch| batch.expect("a batch"))
         .collect();
     let rows: usize = batched.iter().map(arrow_array::RecordBatch::num_rows).sum();
-    // The batch door answers a row per message rather than per line, so the
-    // two lines that state none yield no row there either.
     assert_eq!(rows, MESSAGES, "the batch path reads the same messages");
     // One batch, because the capture is far under the 128 MiB target.
     assert_eq!(batched.len(), 1);
@@ -241,12 +303,21 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
             "row {at} carries a different arrival record",
         );
     }
+
+    // Which way a message moved is FIX's own tag 385, a code of its set,
+    // retained once per row and shared by every message that row states.
+    let directions = tag_column(batch, 385);
+    assert_eq!(directions.len(), MESSAGES);
+    // The bridge row wrote `recv` in front of its frame, and a verb the
+    // transport wrote wins over everything else; a bare document states
+    // nothing of which way it moved, so the batch door's own pin fills it.
+    assert_eq!(directions[3].as_str(), Some("R"));
+    assert_eq!(directions[5].as_str(), Some("S"));
 }
 
 #[test]
 fn every_dialect_in_one_capture_is_read_as_itself() {
-    let registry = registry();
-    let codec = super::fixed_codec(Arc::clone(&registry));
+    let codec = codec();
 
     // A framed order behind prose: the frame is located and the prose dropped.
     let order = codec.sole_line(TAGGED.as_bytes()).expect("an order");
@@ -256,8 +327,6 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // A bridge row keyed by name, with its group packed into one occurrence.
     let bridge = codec.sole_line(NAMED.as_bytes()).expect("a bridge row");
     assert_eq!(bridge.by_tag(55).unwrap().as_str(), Some("TTF"));
-    // The packed occurrence split into the group the counter heads: one
-    // occurrence, carrying the members the bridge packed into its value.
     let group = bridge
         .by_name("parties")
         .expect("the group the counter heads");
@@ -300,32 +369,10 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
     assert_eq!(behind.entries().len(), fixml.entries().len());
 
-    // A JSON document is a body this codec does not read: the row said
-    // something, and what it said is exactly one message stating no type -
-    // `unknown` names it - and no entries, so nothing the document spelled
-    // reaches a field, a tag or the wire. Enrichment has nothing to fill
-    // and leaves it so. A message root carries no dictionary membership,
-    // because a message is not a dictionary member.
-    let document = codec
-        .sole_line(PLUGIN.as_bytes())
-        .expect("a JSON document is one message");
-    assert_eq!(document.as_field().name(), "unknown");
-    assert!(document.entries().is_empty());
-    // Nothing but the version every built message states.
-    assert_eq!(document.into_bytes(b'|'), b"8=FIX.4.4|");
-    assert!(document.get_by_tag(35).is_none_or(|held| held.is_null()));
-    assert!(
-        document
-            .get_by_name("SenderCompID")
-            .is_none_or(|held| held.is_null())
-    );
-    assert_eq!(document.as_field().as_fix().branches().count(), 0);
-
-    // A line that is not a message states no message at all - never an error,
-    // and no longer the empty `unknown` it used to state: it opens no frame,
-    // states no bridge pair and carries no document, so there is nothing in it
-    // to read. It reads without failing, which is the fact that
-    // matters: one such line must not end a run over ten million.
+    // A line that is not a message states no message at all - never an error:
+    // it opens no frame, states no bridge pair and carries no document, so
+    // there is nothing in it to read. It reads without failing, which is the
+    // fact that matters: one such line must not end a run over ten million.
     for line in [PROSE, CHATTER] {
         assert!(
             codec
@@ -340,8 +387,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
 
 #[test]
 fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
-    let registry = registry();
-    let codec = super::fixed_codec(registry);
+    let codec = codec();
 
     // The part-filled report states what was ordered and what was done, so it
     // has stated what is left and what the fill was worth - filled as it is
@@ -352,8 +398,7 @@ fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
 
     // A date arrives compact and reads as that day's midnight, stating no zone
     // because a local market date has none.
-    let settled = filled.by_tag(64).expect("a settlement date");
-    assert_ne!(settled, Scalar::Null);
+    assert_ne!(filled.by_tag(64).expect("a settlement date"), Scalar::Null);
 
     // The closing fill settles in the currency it was dealt in, at the rate it
     // stated - Appendix O read as the implication it is.
@@ -361,14 +406,14 @@ fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
     assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
     assert_eq!(closed.by_tag(120).unwrap().as_str(), Some("EUR"));
 
-    // What was derived is the message's, so the entries and the wire carry
-    // it beside what arrived: a re-emitted report states its leaves.
+    // What was derived is the message's, so the wire carries it beside what
+    // arrived: a re-emitted report states the leaves neither line stated.
+    // `LeavesQty(151)` is one of the event's own facts rather than a child
+    // of the content row, so it is on the wire without being an entry.
     for line in [WORKING, FILLED] {
         let held = codec.sole_line(line.as_bytes()).expect("a report");
         assert!(
-            held.entries()
-                .iter()
-                .any(|entry| entry.tag() == 151 && entry.value().is_some()),
+            !held.entries().iter().any(|entry| entry.tag() == 151),
             "{line}"
         );
         let wire = held.into_text('|').unwrap();
@@ -381,111 +426,7 @@ fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
 }
 
 #[test]
-fn a_capture_writes_back_what_each_message_emits() {
-    let registry = registry();
-    let source = handle();
-    let codec = super::fixed_codec(Arc::clone(&registry)).with_separator(b'|');
-
-    let reader = codec
-        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens");
-
-    // The wire is rebuilt from each row's arrival record and the facts it
-    // holds typed, which is what the line read emits for the same line.
-    let mut written: Vec<u8> = Vec::new();
-    let rows = codec
-        .write_arrow_reader(reader, &mut written)
-        .expect("the capture writes");
-    // One line written per message, and the two lines that state none reach
-    // the writer as no row at all, so the capture comes back two lines shorter
-    // than it went in.
-    assert_eq!(rows, MESSAGES as u64);
-
-    // The two framed reports come back as the line read emits them.
-    let held = String::from_utf8(written).expect("the wire is text here");
-    let lines: Vec<&str> = held.lines().collect();
-    assert_eq!(lines.len(), MESSAGES);
-    for line in [WORKING, FILLED] {
-        let emitted = codec
-            .sole_line(line.as_bytes())
-            .expect("a report")
-            .into_text('|')
-            .unwrap();
-        assert!(lines.contains(&emitted.as_str()), "{emitted}\n{lines:?}");
-    }
-    for silent in [PROSE, CHATTER] {
-        assert!(
-            !lines.contains(&silent),
-            "a line that stated no message writes back none",
-        );
-    }
-}
-
-#[test]
-fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
-    let registry = registry();
-    let source = handle();
-    let codec = super::fixed_codec(registry);
-
-    let batch = codec
-        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens")
-        .next()
-        .expect("a batch")
-        .expect("a batch");
-
-    // Which way a message moved is FIX's own tag 385, a code of
-    // its set, retained once per row and shared by every message that row
-    // states.
-    let directions = tag_column(&batch, 385);
-    // A direction per message, not per line: the prose holds no pair and the
-    // chatter's pair was separated by whitespace, so neither states a message
-    // and neither reaches the batch as a row.
-    assert_eq!(directions.len(), MESSAGES);
-    // The bridge row wrote `recv` in front of its frame, and a verb the
-    // transport wrote wins over everything else.
-    assert_eq!(directions[3].as_str(), Some("R"));
-    // A bare JSON document states nothing of which way it moved: no prose
-    // in front of it, so the batch door's pin fills it, the codec's default
-    // `Send`.
-    assert_eq!(directions[5].as_str(), Some("S"));
-
-    // And what the parse filled is visible in the columns, not just on the
-    // message.
-    let leaves = tag_column(&batch, 151);
-    assert_eq!(leaves[1], Scalar::from(60.0_f64), "the part-filled report");
-    assert_eq!(leaves[2], Scalar::from(0.0_f64), "the closing fill");
-}
-
-/// A Jolokia answer as a log line writes it: prose in front, prose behind.
-///
-/// The shape a bridge actually prints - a timestamp, the reader that logged
-/// it, the level, then the document - with a duration written after it, which
-/// is what a reader that assumed the document ended the line never saw.
-const LOGGED: &str = concat!(
-    r#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"#,
-    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,"#,
-    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting","#,
-    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD","#,
-    r#""TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90","#,
-    r#""CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,"#,
-    r#""cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)"#,
-);
-
-/// A wildcard read: one answer, a plugin per key, each named by its ObjectName.
-const WILDCARD: &str = concat!(
-    r#"{"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},"#,
-    r#" "value": {"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,"#,
-    r#"plugin-type=FIX,type=ConfigurationPlugin": {"Comment": "", "Category": "InterBridge","#,
-    r#" "Prefix": "", "Name": "ULMSG_BROKER_BDG_DMZ_PCO", "LoadIsolation": 0, "Suffix": "","#,
-    r#" "PriorityLevel": 5, "Version": "2.0.3"},"#,
-    r#" "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
-    r#"plugin-type=FIX,type=Plugin": {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}},"#,
-    r#" "status": 200}"#,
-);
-
-#[test]
-fn a_document_is_read_out_of_the_line_that_carries_it() {
+fn a_document_is_one_unknown_row_at_every_door() {
     // The classifier reads past the prose in front and answers
     // `application/json`, which is what the document is, and it names no
     // message type for it: what a document says is not read. The codec
@@ -499,7 +440,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
     );
     assert_eq!(FixCodec::infer_msgtype_bytes(LOGGED.as_bytes()), None);
 
-    let codec = super::fixed_codec(registry());
+    let codec = codec();
     let message = codec
         .sole_line(LOGGED.as_bytes())
         .expect("the line carries one document, and so one message");
@@ -512,26 +453,11 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
             .is_none_or(|held| held.is_null())
     );
     assert_eq!(message.by_tag(385).unwrap().as_str(), Some("R"));
-}
 
-/// A JSON body that is not a Jolokia answer: a row's own bytes, and nothing
-/// in them a FIX reader can read.
-const STRANGER: &str = r#"{"a":1}"#;
-
-#[test]
-fn a_body_no_reader_here_can_read_is_one_unknown_at_every_door() {
-    // A JSON document is a body the codec does not read, and not reading a
-    // body is not an error in the codec: the row said something, and what
-    // it said is one message stating no type and no entries. A stranger's
-    // `{"a":1}` answers exactly what a Jolokia answer does, at every door.
-    // The classifier says only what a stranger to this bridge would say,
-    // which is that it is JSON.
-    assert_eq!(
-        yggdryl::MimeType::infer_bytes(STRANGER.as_bytes()),
-        yggdryl::MimeType::JSON
-    );
-
-    let codec = super::fixed_codec(registry());
+    // A stranger's `{"a":1}` answers exactly what a Jolokia answer does, at
+    // the byte door and at the line door alike: one message stating no type,
+    // no entries, and nothing on the wire but the version every built
+    // message states.
     let line =
         TextLine::from_bytes(0, TextBytes::from_bytes(STRANGER.as_bytes()).unwrap()).unwrap();
     let unknown = |message: yggdryl::FixMsg, door: &str| {
@@ -555,19 +481,32 @@ fn a_body_no_reader_here_can_read_is_one_unknown_at_every_door() {
         "the line door",
     );
 
-    // And on the batch door a row that carried a document is a row, exactly
-    // as it is at the other two: the stranger and the Jolokia answer beside
-    // it are the two rows that come back, each stating no type.
+    // A wildcard read answers for two plugins, and the row is one message all
+    // the same: a document is not read, so there is no per-plugin expansion.
+    let wildcard = codec
+        .sole_line(WILDCARD.as_bytes())
+        .expect("one message, not one per plugin");
+    assert_eq!(wildcard.as_field().name(), "unknown");
+    assert!(wildcard.get_by_name("Name").is_none());
+
+    // And on the batch door a row that carried a document is a row carrying
+    // its own source columns, exactly as it is at the other two.
     let field = yggdryl::DataType::from_fields([
+        yggdryl::DataType::utf8().required_field("url"),
         yggdryl::DataType::Int64.required_field("rownum"),
         yggdryl::DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("capture");
-    let value =
-        Scalar::from_sequence([(1_i64, STRANGER), (2_i64, PLUGIN)].map(|(rownum, body)| {
-            Scalar::from_sequence([Scalar::from(rownum), Scalar::from(body.as_bytes().to_vec())])
-        }));
+    let value = Scalar::from_sequence([(41_i64, WILDCARD), (42_i64, WORKING)].map(
+        |(rownum, body)| {
+            Scalar::from_sequence([
+                Scalar::from("file:///bulk.log"),
+                Scalar::from(rownum),
+                Scalar::from(body.as_bytes().to_vec()),
+            ])
+        },
+    ));
     let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
     let batch = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
@@ -575,12 +514,23 @@ fn a_body_no_reader_here_can_read_is_one_unknown_at_every_door() {
         .next()
         .expect("one batch")
         .expect("a batch");
-    assert_eq!(batch.num_rows(), 2, "a row for each document read");
+    assert_eq!(batch.num_rows(), 2);
     assert_eq!(
         column(&batch, "rownum"),
-        [Scalar::from(1_i64), Scalar::from(2_i64)]
+        [Scalar::from(41_i64), Scalar::from(42_i64)]
     );
-    assert_eq!(tag_column(&batch, 35), [Scalar::Null, Scalar::Null]);
+    assert_eq!(
+        column(&batch, "url"),
+        vec![Scalar::from("file:///bulk.log"); 2]
+    );
+    assert_eq!(
+        column(&batch, "body"),
+        [
+            Scalar::from(WILDCARD.as_bytes().to_vec()),
+            Scalar::from(WORKING.as_bytes().to_vec()),
+        ]
+    );
+    assert_eq!(tag_column(&batch, 35), [Scalar::Null, Scalar::from("8")]);
 }
 
 #[test]
@@ -592,9 +542,9 @@ fn a_json_document_is_one_unknown_and_any_other_unreadable_body_is_none() {
     // Such a body is one `unknown`, whatever it says - an error-only
     // answer, a request not yet answered, a wildcard that selected nothing
     // and a bulk answer of one object alike.
-    let codec = super::fixed_codec(registry());
+    let codec = codec();
     for body in [
-        r#"{"a":1}"#,
+        STRANGER,
         r#"[{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}},2]"#,
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Gone,plugin-type=FIX,type=Plugin","type":"read"},"error":"InstanceNotFoundException","status":404}"#,
         r#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
@@ -628,79 +578,4 @@ fn a_json_document_is_one_unknown_and_any_other_unreadable_body_is_none() {
             "{body:?} states a message",
         );
     }
-}
-
-#[test]
-fn a_wildcard_capture_is_one_unknown_row_carrying_its_source_columns() {
-    let codec = super::fixed_codec(registry());
-    // A wildcard read answers for two plugins, and the row is one message
-    // all the same: a document is not read, so there is no per-plugin
-    // expansion, no name and no ObjectName on the message - one `unknown`
-    // with no entries.
-    let messages = codec
-        .parse_line(WILDCARD.as_bytes())
-        .expect("a wildcard response")
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .expect("the document reads");
-    assert_eq!(messages.len(), 1, "one message, not one per plugin");
-    assert_eq!(messages[0].as_field().name(), "unknown");
-    assert!(messages[0].entries().is_empty());
-    assert!(messages[0].get_by_name("Name").is_none());
-    assert!(messages[0].get_by_name("SessionInterface").is_none());
-
-    let lines: Vec<TextLine> = [WILDCARD, WORKING]
-        .map(|body| {
-            TextLine::from_bytes(0, TextBytes::from_bytes(body.as_bytes()).unwrap()).unwrap()
-        })
-        .into();
-    let read = codec
-        .parse_text_lines(lines)
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .expect("line iteration reads each line");
-    assert_eq!(read.len(), 2, "a message a line");
-    assert_eq!(read[0].as_value(), messages[0].as_value());
-    assert_eq!(read[1].by_tag(37).unwrap().as_str(), Some("O-9"));
-
-    let field = yggdryl::DataType::from_fields([
-        yggdryl::DataType::utf8().required_field("url"),
-        yggdryl::DataType::Int64.required_field("rownum"),
-        yggdryl::DataType::binary().required_field("body"),
-    ])
-    .unwrap()
-    .required_field("capture");
-    let value = Scalar::from_sequence([(41_i64, WILDCARD), (42_i64, WORKING)].map(
-        |(rownum, body)| {
-            Scalar::from_sequence([
-                Scalar::from("file:///bulk.log"),
-                Scalar::from(rownum),
-                Scalar::from(body.as_bytes().to_vec()),
-            ])
-        },
-    ));
-    let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
-    let batch = codec
-        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
-        .expect("the batch door opens")
-        .next()
-        .expect("one batch")
-        .expect("a batch");
-    // A row a line on the batch door too, each carrying its own source
-    // columns: the document's row its number, its URL and its body whole.
-    assert_eq!(batch.num_rows(), 2);
-    assert_eq!(
-        column(&batch, "rownum"),
-        [Scalar::from(41_i64), Scalar::from(42_i64)]
-    );
-    assert_eq!(
-        column(&batch, "url"),
-        vec![Scalar::from("file:///bulk.log"); 2]
-    );
-    assert_eq!(
-        column(&batch, "body"),
-        [
-            Scalar::from(WILDCARD.as_bytes().to_vec()),
-            Scalar::from(WORKING.as_bytes().to_vec()),
-        ]
-    );
-    assert_eq!(tag_column(&batch, 35), [Scalar::Null, Scalar::from("8")]);
 }

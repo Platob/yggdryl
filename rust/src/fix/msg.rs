@@ -272,11 +272,6 @@ fn group_positions(field: &Field) -> Vec<(i32, usize)> {
 /// The header tags a wire carries, in the standard header's order.
 const WIRE_HEADER_TAGS: [i32; 7] = [8, 35, 49, 56, 34, 43, 52];
 
-/// FIX's own fields for the last trade, which this crate lifts rather than
-/// restates: `LastPx` and `LastQty`.
-const LASTPX_TAG: i32 = 31;
-const LASTQTY_TAG: i32 = 32;
-
 impl FixMsg {
     /// The deterministic hash of this message's schema and row.
     /// Uses one allocation for the shared XXH3 state, independent of message size.
@@ -446,7 +441,6 @@ impl FixMsg {
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
         };
-        message.lift_market_steps();
         message.settle();
         Ok(message)
     }
@@ -512,7 +506,15 @@ impl FixMsg {
         )
     }
 
-    /// What the message states under one typed tag.
+    /// What the message states under one typed tag, as the tag's own field
+    /// types it.
+    ///
+    /// The crate holds a price and a quantity exact, and FIX types its own
+    /// `Price` and `Qty` fields as floats, so a fact the event holds under
+    /// one of FIX's own tags - `LastPx(31)`, `AvgPx(6)`, `LeavesQty(151)` -
+    /// is narrowed to the column that names it, exactly as a filled lane is:
+    /// one tag answers one type whether it is read here, off the row, or out
+    /// of an Arrow column.
     fn typed_fact(&self, tag: i32) -> Option<Scalar> {
         if tag == identity::TEXT_TAG {
             return self.text.as_deref().map(Scalar::from);
@@ -528,12 +530,16 @@ impl FixMsg {
             )
             .ok();
         }
-        Typed {
+        let fact = Typed {
             event: &self.event,
             header: &self.header,
             capture: &self.capture,
         }
-        .fact(tag)
+        .fact(tag)?;
+        Some(match self.registry.get_field_by_tag(tag) {
+            Some(field) => super::schema::narrowed(field, fact),
+            None => fact,
+        })
     }
 
     /// Settles the identity from what the message states: the cross code
@@ -601,27 +607,6 @@ impl FixMsg {
         state.as_u64()
     }
 
-    /// Lifts the last trade the message states onto the event it is.
-    ///
-    /// `LastPx` and `LastQty` are FIX's own fields and stay where they are:
-    /// the row holds them under the dictionary's own columns, and this reads
-    /// them back through the registry, so a venue spelling either as an
-    /// alias of its tag is lifted too and a dictionary that moves the tag
-    /// moves the lift with it. What [`MarketElement::get_px`] settles on is
-    /// the price the message is *about*; this is the last trade alone, so a
-    /// fill and the order it fills are told apart without asking which field
-    /// each settled from.
-    ///
-    /// Read where a message is assembled rather than where one is parsed, so
-    /// a message read back out of a row carries what its row states.
-    fn lift_market_steps(&mut self) {
-        let stated = |tag: i32| self.get_by_tag(tag).as_ref().and_then(Decimal::from_scalar);
-        let lastpx = self.event.get_lastpx().or_else(|| stated(LASTPX_TAG));
-        let lastqty = self.event.get_lastqty().or_else(|| stated(LASTQTY_TAG));
-        self.event.set_lastpx(lastpx);
-        self.event.set_lastqty(lastqty);
-    }
-
     /// The event this message is: every fact the three graph traits answer,
     /// held as fields.
     #[must_use]
@@ -685,15 +670,10 @@ impl FixMsg {
                 |field| SmolStr::new(field.name()),
             )
         };
-        for tag in WIRE_HEADER_TAGS.into_iter().chain([
-            15,
-            54,
-            super::cfi::CFICODE_TAG,
-            132,
-            133,
-            134,
-            135,
-        ]) {
+        for tag in WIRE_HEADER_TAGS
+            .into_iter()
+            .chain(identity::OWN_EVENT_TAGS)
+        {
             if tag == 52 && !self.header.stated_sendingtime() {
                 continue;
             }
@@ -1994,6 +1974,54 @@ impl MarketElement for FixMsg {
 
     fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.event.set_lastqty(qty);
+    }
+
+    fn get_tif(&self) -> Option<&str> {
+        self.event.get_tif()
+    }
+
+    fn set_tif(&mut self, tif: Option<String>) {
+        self.event.set_tif(tif);
+    }
+
+    fn get_tradable(&self) -> Option<bool> {
+        self.event.get_tradable()
+    }
+
+    fn set_tradable(&mut self, tradable: Option<bool>) {
+        self.event.set_tradable(tradable);
+    }
+
+    fn get_symbolticker(&self) -> Option<&str> {
+        self.event.get_symbolticker()
+    }
+
+    fn set_symbolticker(&mut self, ticker: Option<String>) {
+        self.event.set_symbolticker(ticker);
+    }
+
+    fn get_avgpx(&self) -> Option<Decimal> {
+        self.event.get_avgpx()
+    }
+
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
+        self.event.set_avgpx(px);
+    }
+
+    fn get_cumqty(&self) -> Option<Decimal> {
+        self.event.get_cumqty()
+    }
+
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_cumqty(qty);
+    }
+
+    fn get_leavesqty(&self) -> Option<Decimal> {
+        self.event.get_leavesqty()
+    }
+
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_leavesqty(qty);
     }
 
     fn get_prevpx(&self) -> Option<Decimal> {
