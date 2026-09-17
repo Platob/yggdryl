@@ -4,9 +4,9 @@
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
+use yggdryl::graph::{Element, Event};
 use yggdryl::{
-    DataType, Field, FieldPath, FixCategory, FixCode, FixCodeValue, FixCodec, FixId, FixKey,
-    MimeType,
+    DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, MimeType,
 };
 
 use super::{DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_dialects, venue};
@@ -15,12 +15,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
-        registry
-            .definition(FixCategory::Groups, "Parties")
-            .unwrap()
-            .dtype(),
+        registry.field_by_name("Parties").unwrap().dtype(),
         DataType::List(_)
     ));
+    assert_eq!(
+        registry.field_by_counter(453).unwrap(),
+        registry.field_by_name("Parties").unwrap()
+    );
     assert_eq!(
         registry.field("LastShares").unwrap(),
         registry.field(32).unwrap()
@@ -56,14 +57,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
             }
         });
     });
-    group.bench_function("settled_identity_borrows", |bencher| {
+    // The settled identity, read through the graph traits: four copies.
+    group.bench_function("settled_identity_reads", |bencher| {
         bencher.iter(|| {
             let held = black_box(&identifier_message);
             black_box((
-                held.updatedat(),
-                held.createdat(),
-                held.msghash(),
-                held.msgphash(),
+                held.get_unix(),
+                held.get_creatunix(),
+                held.get_hashcode(),
+                held.get_crosshashcode(),
             ))
         });
     });
@@ -80,9 +82,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(453)));
     });
     group.bench_function("group_name_hit", |bencher| {
-        bencher.iter(|| {
-            black_box(&registry).get_definition(FixCategory::Groups, black_box("Parties"))
-        });
+        bencher.iter(|| black_box(&registry).get_field_by_name(black_box("Parties")));
+    });
+    group.bench_function("group_counter_hit", |bencher| {
+        bencher.iter(|| black_box(&registry).get_field_by_counter(black_box(453)));
     });
     group.bench_function("alternate_tag_hit", |bencher| {
         bencher.iter(|| black_box(&alternate).get_field_by_tag(black_box(9_001)));
@@ -265,18 +268,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .as_fix_mut()
             .set_counter(i32::try_from(5_000 + index).unwrap())
             .unwrap();
-        realistic
-            .insert_definition(yggdryl::FixCategory::Groups, field)
-            .unwrap();
+        realistic.insert(field).unwrap();
     }
     group.bench_function(format!("field_tag_hit_{LARGE_FIELDS}"), |bencher| {
         bencher.iter(|| black_box(&realistic).get_field_by_tag(black_box(5_001)));
     });
     group.bench_function(format!("group_name_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| {
-            black_box(&realistic)
-                .get_definition(yggdryl::FixCategory::Groups, black_box("Group00000"))
-        });
+        bencher.iter(|| black_box(&realistic).get_field_by_name(black_box("Group00000")));
     });
     group.finish();
 

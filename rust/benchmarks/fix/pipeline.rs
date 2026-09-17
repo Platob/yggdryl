@@ -17,9 +17,10 @@
 //! same bodies with each row naming the plugin that logged it - so the
 //! `pluginid` capture's fill is measured on its own - and then what a message
 //! costs after it is built - its row, the batch the rows land in, the one
-//! enriching pass that restates it at the dictionary's newest version and
-//! fills what it implies, the stamp that joins it to its order's life, and
-//! its digest.
+//! walk that joins it to its order's life, and its digest. A parse settles
+//! everything a message derives about itself - the dictionary's latest
+//! names, the derivations, the identifiers, the lanes, the identity - so
+//! there is no pass after it but the walk.
 //!
 //! The registry is the shipped dictionary: the framed FIX lands on FIX's own
 //! tags, and a JSON document the bridge wrote is one `unknown` row carrying
@@ -29,6 +30,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
+use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
@@ -130,17 +132,32 @@ pub fn benchmarks(criterion: &mut Criterion) {
         unreachable!("the capture uses text options")
     };
     let composed = codec.clone().with_capture_names(options.capture_names());
+    // The decoded line stream, read straight into messages, and then the
+    // same stream walked: each message stated as the one after the live
+    // message of its chain.
     let read_composed = || {
         composed
-            .enrich_messages(composed.parse_text_lines(
-                read_text_lines(&source, &options).expect("a decoded line stream"),
-            ))
-            .try_fold(0_usize, |read, message| message.map(|_| read + 1))
-            .expect("an enriched message")
+            .parse_text_lines(read_text_lines(&source, &options).expect("a decoded line stream"))
+            .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                message.map(|_| read + 1)
+            })
+            .expect("a parsed message")
     };
     assert_eq!(read_composed(), 94 * REPEATS);
-    group.bench_function("decoded_lines_enrich", |bencher| {
+    group.bench_function("decoded_lines", |bencher| {
         bencher.iter(|| black_box(read_composed()));
+    });
+    group.bench_function("decoded_lines_lifecycle", |bencher| {
+        bencher.iter(|| {
+            composed
+                .lifecycle(composed.parse_text_lines(
+                    read_text_lines(&source, &options).expect("a decoded line stream"),
+                ))
+                .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                    message.map(|_| read + 1)
+                })
+                .expect("a walked message")
+        });
     });
 
     // The codec alone, over the framed bodies: what a message costs to
@@ -211,18 +228,27 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    let enriched = codec
-        .enrich_messages(messages.clone())
+    // The parse settled the identifiers a message goes by; the walk states
+    // each message's place in its chain, and the rows carry both.
+    assert!(
+        messages
+            .iter()
+            .any(|message| !message.get_identifiers().is_empty()),
+        "the parse fills the identifiers"
+    );
+    let walked = codec
+        .lifecycle(messages.clone())
         .collect::<yggdryl::Result<Vec<_>>>()
-        .expect("the capture enriches");
-    assert!(enriched.iter().any(|message| {
-        message
-            .get_by_tag(yggdryl::ALTIDS_TAG_NAME.0)
-            .is_some_and(|value| value.as_mapping().is_some_and(|pairs| !pairs.is_empty()))
-    }));
+        .expect("the capture walks");
+    assert!(
+        walked
+            .iter()
+            .any(|message| message.get_prevuuid().is_some()),
+        "the walk chains the capture"
+    );
     for (name, rows) in [
         ("arrow_reader", &messages),
-        ("arrow_reader_altids", &enriched),
+        ("arrow_reader_walked", &walked),
     ] {
         group.bench_function(name, |bencher| {
             bencher.iter_batched(
@@ -238,54 +264,39 @@ pub fn benchmarks(criterion: &mut Criterion) {
             );
         });
     }
-    group.bench_function("enrich_messages", |bencher| {
+    group.bench_function("lifecycle", |bencher| {
         bencher.iter_batched(
             || messages.clone(),
             |held| {
                 codec
-                    .enrich_messages(held)
-                    .map(|message| message.expect("enriched").entries().len())
+                    .lifecycle(held)
+                    .map(|message| message.expect("walked").entries().len())
                     .sum::<usize>()
             },
             BatchSize::LargeInput,
         );
     });
-    // The same pass over one shape a thousand times: the corpus above is
-    // every shape a bridge writes, this is the stream a venue writes, and
-    // the two cost the same per message because nothing is bound or kept
-    // per shape.
+    // The same message a thousand times: the corpus above is every shape a
+    // bridge writes, this is one report logged at every hop it passed, and
+    // the walk reads each repeat as a restatement of the live one.
     let report = messages
         .iter()
-        .find(|message| message.as_field().name() == "executionreport")
+        .find(|message| message.header().msgtype() == "8")
         .expect("the corpus carries an execution report")
         .clone();
     let same_shape: Vec<FixMsg> = std::iter::repeat_n(report, 1_000).collect();
-    group.bench_function("enrich_messages_same_shape", |bencher| {
+    group.bench_function("lifecycle_same_shape", |bencher| {
         bencher.iter_batched(
             || same_shape.clone(),
             |held| {
                 codec
-                    .enrich_messages(held)
-                    .map(|message| message.expect("enriched").entries().len())
+                    .lifecycle(held)
+                    .map(|message| message.expect("walked").entries().len())
                     .sum::<usize>()
             },
             BatchSize::LargeInput,
         );
     });
-    for (name, rows) in [("lifecycle", &messages), ("lifecycle_altids", &enriched)] {
-        group.bench_function(name, |bencher| {
-            bencher.iter_batched(
-                || rows.clone(),
-                |held| {
-                    codec
-                        .lifecycle(held)
-                        .map(|message| message.expect("stamped").entries().len())
-                        .sum::<usize>()
-                },
-                BatchSize::LargeInput,
-            );
-        });
-    }
     group.bench_function("digest", |bencher| {
         bencher.iter_batched(
             || messages.clone(),

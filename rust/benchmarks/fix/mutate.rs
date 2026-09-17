@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, FixCategory, FixCode, FixRegistry};
+use yggdryl::{DataType, Field, FixCode, FixRegistry};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -40,8 +40,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
 
-    // Building a whole dictionary, which is what a load costs above I/O.
-    let fields: Vec<_> = large.iter().cloned().collect();
+    // Building a whole dictionary, which is what a load costs above I/O:
+    // the scalar fields, because a registry's iteration lists definitions
+    // after the scalars in name order, and a message inserted before the
+    // component it references is refused.
+    let fields: Vec<_> = large
+        .iter()
+        .filter(|field| !field.dtype().is_nested())
+        .cloned()
+        .collect();
     group.bench_function(format!("from_fields_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
             || fields.clone(),
@@ -111,24 +118,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
     seeded.add_field(venue_symbol).unwrap();
     let mut member = seeded.field(9_010).unwrap().clone();
     member.as_fix_mut().set_field_ref("VenueSymbol").unwrap();
-    let mut instrument = seeded
-        .definition(FixCategory::Components, "Instrument")
-        .unwrap()
-        .clone();
+    let mut instrument = seeded.field_by_name("Instrument").unwrap().clone();
     instrument
         .set_dtype(
             DataType::from_fields(instrument.fields().iter().cloned().chain([member])).unwrap(),
         )
         .unwrap();
-    group.bench_function("add_definition_extends_component", |bencher| {
+    group.bench_function("add_field_extends_component", |bencher| {
         bencher.iter_batched(
             || (seeded.clone(), instrument.clone()),
             |(mut registry, field)| {
-                black_box(
-                    registry
-                        .add_definition(FixCategory::Components, field)
-                        .unwrap(),
-                );
+                black_box(registry.add_field(field).unwrap());
                 registry
             },
             BatchSize::SmallInput,
@@ -277,28 +277,19 @@ fn coded_catalog() -> FixRegistry {
     let component = DataType::from_fields([party])
         .unwrap()
         .required_field("Party");
-    registry
-        .create_definition(FixCategory::Components, component.clone())
-        .unwrap();
+    registry.insert(component.clone()).unwrap();
     let mut group = DataType::list(component).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group.as_fix_mut().set_component("Party").unwrap();
-    registry
-        .create_definition(FixCategory::Groups, group)
-        .unwrap();
-    let mut group = registry
-        .definition(FixCategory::Groups, "Parties")
-        .unwrap()
-        .clone();
+    registry.insert(group).unwrap();
+    let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
     let mut message = DataType::from_fields([counter, group])
         .unwrap()
         .required_field("Order");
     message.as_fix_mut().set_msgtype("D").unwrap();
-    registry
-        .create_definition(FixCategory::Components, message)
-        .unwrap();
+    registry.insert(message).unwrap();
     registry
 }
 

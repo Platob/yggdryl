@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, FixCategory, FixId, FixRegistry, IOBase};
+use yggdryl::{DataType, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
 ///
@@ -135,7 +135,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     );
     assert!(
         registry
-            .definition(FixCategory::Groups, "VendorEntries")
+            .field_by_name("VendorEntries")
             .unwrap()
             .as_fix()
             .has_branch(dialect)

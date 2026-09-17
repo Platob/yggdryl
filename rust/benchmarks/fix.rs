@@ -9,12 +9,11 @@ mod fix_benches;
 criterion_group!(
     fix,
     fix_benches::resolve::benchmarks,
-    fix_benches::lift::benchmarks,
     fix_benches::cblock::benchmarks,
     fix_benches::mutate::benchmarks,
-    fix_benches::lifecycle::benchmarks,
     fix_benches::pipeline::benchmarks,
     fix_benches::pipeline::line_benchmarks,
+    fix_benches::ulbridge::benchmarks,
     fix_benches::store::benchmarks,
 );
 criterion_main!(fix);

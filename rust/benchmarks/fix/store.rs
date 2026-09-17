@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixCategory, FixRegistry, Url};
+use yggdryl::{DataType, FixRegistry, Url};
 
 use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects};
 
@@ -124,17 +124,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(catalog.stable_hash()));
     });
     group.throughput(Throughput::Elements(1));
-    group.bench_function("definition_group", |bencher| {
-        bencher.iter(|| {
-            black_box(
-                catalog
-                    .definition(FixCategory::Groups, black_box("Parties"))
-                    .unwrap(),
-            )
-        });
+    // A group by its own name, and by the counter that opens it: the two
+    // doors a definition is reached through now that it is a field.
+    group.bench_function("group_by_name", |bencher| {
+        bencher.iter(|| black_box(catalog.field_by_name(black_box("Parties")).unwrap()));
     });
-    group.bench_function("definitions_components_first", |bencher| {
-        bencher.iter(|| black_box(catalog.definitions(FixCategory::Components).next()));
+    group.bench_function("group_by_counter", |bencher| {
+        bencher.iter(|| black_box(catalog.field_by_counter(black_box(453)).unwrap()));
     });
     group.bench_function("field_code_resolve", |bencher| {
         let field = catalog.field(54).unwrap();
