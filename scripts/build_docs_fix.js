@@ -154,8 +154,16 @@ function sealed(line) {
   return `${prefix}${framed}10=${sum}${SOH}`.replaceAll(SOH, '|')
 }
 
-/** The columns the frame view leads with, whether or not a frame filled them. */
-const SHOWN = [35, 49, 56, 34, 55, 48, 22, 207, 54, 38, 44, 31, 32, 132, 133, 39, 150, 60]
+/** The columns the frame view leads with, whether or not a frame filled them.
+ *
+ * The price and the quantity are the crate's own `px`(65043) and `qty`(65044),
+ * not `Price`(44) and `OrderQty`(38): the fixed row reads and writes every
+ * price through one column and every quantity through another, so 38 and 44
+ * are dictionary fields that no column carries. They resolved to a field and
+ * then to no column here, which `frameCase` read as a frame that did not fill
+ * them - the page lost both columns from every frame that states one.
+ */
+const SHOWN = [35, 49, 56, 34, 55, 48, 22, 207, 54, 65_044, 65_043, 31, 32, 132, 133, 39, 150, 60]
 
 /** Two spaces, LF, and a trailing newline. */
 const rendered = (value) => `${JSON.stringify(value, null, 2)}\n`
@@ -391,8 +399,13 @@ function frameCase(registry, reader, schema, key, label, line) {
     // A capture column is named by the field the tag holds; the schema is
     // indexed by that name, so the registry answers the tag first.
     const named = registry.getFieldByTag(tag)
-    const at = named === null ? null : schema.indexOf(named.name)
-    const value = at === null ? null : row[at]
+    if (named === null) throw new Error(`no field holds tag ${tag}`)
+    // A field the row carries no column for is this list going stale, not a
+    // frame leaving one empty, so it is refused here rather than read as an
+    // unfilled column the way a null value below is.
+    const at = schema.indexOf(named.name)
+    if (at === null) throw new Error(`tag ${tag} (${named.name}) is not a column of the fixed row`)
+    const value = row[at]
     if (value === null || value === undefined) return null
     const field = schema.fieldAt(at)
     return {
@@ -443,14 +456,22 @@ function frameCase(registry, reader, schema, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
+    call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}'), excludeMsgtypes: [] }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
 
 /** Build the native catalog and recorded result manifest. */
 function manifest() {
   const registry = dictionary()
-  const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date(SENDING) })
+  // Nothing is refused: three of the frames below are what a codec on its
+  // defaults holds back - the heartbeat, the bridge row and the keyvalue
+  // row state a type `DEFAULT_REFUSED_MSGTYPES` names or no type at all -
+  // and this page exists to show them. A default codec answers no message
+  // for the three, which `frameCase` refuses rather than quietly drops.
+  const reader = new fix.FixCodec(registry, {
+    defaultSendingTime: new Date(SENDING),
+    excludeMsgtypes: [],
+  })
   const schema = fix.schema(registry, 'FixMessage')
   const catalog = liveCatalog(registry)
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
@@ -487,7 +508,7 @@ function manifest() {
     ),
     calls: {
       registry: "const registry = fix.FixRegistry.fromHandle('config/fix')",
-      reader: `const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') })`,
+      reader: `const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}'), excludeMsgtypes: [] })`,
     },
   }
   return index

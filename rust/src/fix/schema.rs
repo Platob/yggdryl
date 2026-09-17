@@ -1180,7 +1180,7 @@ impl super::FixMsg {
     /// reaches a parsed one. A column no tag and no counter names is the
     /// capture's own - the body the line was read from, its place in the
     /// object, the bridge's row header - and it is kept so the row returns
-    /// to its schema whole, but it is not content: [`FixMsg::entries`] skips
+    /// to its schema whole, but it is not content: [`Self::entries`] skips
     /// it, so it reaches no digest and no wire and a message rebuilt from a
     /// capture row never carries `body=` to a counterparty. Nothing is
     /// parsed again: this is
