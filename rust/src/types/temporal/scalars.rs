@@ -23,12 +23,12 @@ use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::decimal::scalars::exact_value_parts;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, TimeUnit,
+    DataType, Error, Result, Scalar, Value, TimeUnit,
     Timezone, i256,
 };
 
 /// Operations shared by every temporal representation.
-pub trait TemporalValue: crate::ScalarValue {
+pub trait TemporalValue: crate::Value {
     /// The semantic temporal family.
     const FAMILY: TemporalFamily;
     /// The physical count width in bits.
@@ -239,10 +239,7 @@ impl fmt::Display for Interval {
 macro_rules! temporal_value {
     ($leaf:ident, $id:ident) => {
 
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$id;
-            const KIND: DataTypeKind = DataTypeKind::Temporal;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$id(*self).dtype()
@@ -847,6 +844,7 @@ pub(crate) fn validate_time(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DataTypeId;
 
     #[test]
     fn constructors_reject_illegal_width_unit_combinations() {
@@ -1010,24 +1008,24 @@ mod tests {
     #[test]
     fn a_temporal_leaf_is_its_own_family() {
         let value = Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
-        let leaf = <DateTime64 as ScalarValue>::from_scalar(&value)
+        let leaf = <DateTime64 as Value>::from_scalar(&value)
             .copied()
             .unwrap();
         assert_eq!(
-            <DateTime64 as ScalarValue>::ID,
+            leaf.dtype().unwrap().id(),
             DataTypeId::DateTime64
         );
-        assert_eq!(<DateTime64 as ScalarValue>::into_scalar(leaf), value);
-        assert!(<Date32 as ScalarValue>::from_scalar(&value).is_none());
+        assert_eq!(<DateTime64 as Value>::into_scalar(leaf), value);
+        assert!(<Date32 as Value>::from_scalar(&value).is_none());
 
         let interval = Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap();
-        let held = <Interval as ScalarValue>::into_scalar(interval);
+        let held = <Interval as Value>::into_scalar(interval);
         assert_eq!(
-            <Interval as ScalarValue>::from_scalar(&held),
+            <Interval as Value>::from_scalar(&held),
             Some(&interval)
         );
         assert_eq!(
-            <Interval as ScalarValue>::ID,
+            interval.dtype().unwrap().id(),
             DataTypeId::Interval
         );
     }

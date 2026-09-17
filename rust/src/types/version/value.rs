@@ -8,7 +8,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue};
+use crate::{DataType, Error, Result, Scalar, Value};
 
 /// Three numeric version components in four bytes.
 ///
@@ -279,10 +279,7 @@ impl<'de> Deserialize<'de> for Version {
     }
 }
 
-impl ScalarValue for Version {
-
-    const ID: DataTypeId = DataTypeId::Version;
-    const KIND: DataTypeKind = DataTypeKind::Text;
+impl Value for Version {
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Version)

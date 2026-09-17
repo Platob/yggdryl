@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::Scalar;
-use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarValue};
+use crate::{DataType, Result, Value};
 
 /// Borrowing access shared by every nested value shape.
-pub trait NestedValue: crate::ScalarValue {
+pub trait NestedValue: crate::Value {
     /// Return the number of direct children.
     fn len(&self) -> usize;
     /// Return whether this value has no direct children.
@@ -162,10 +162,7 @@ impl std::iter::FusedIterator for Children<'_> {}
 // A nested shape is its own scalar family, exactly as `Boolean` is.
 macro_rules! nested_value {
     ($leaf:ident, $variant:ident, $id:ident) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$id;
-            const KIND: DataTypeKind = DataTypeKind::Nested;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$variant(self.clone()).dtype()

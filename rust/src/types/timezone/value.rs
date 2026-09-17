@@ -10,9 +10,9 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-use crate::types::scalar::{ScalarValue, text_scalar_value};
+use crate::types::scalar::{Value, text_scalar_value};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, hashing::stable_hash_display,
+    DataType, Error, Result, Scalar, hashing::stable_hash_display,
 };
 
 use super::registry::{self, Basis, Edge, Zone};

@@ -15,10 +15,10 @@ use super::codes::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
     SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
-use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarValue, types};
+use crate::{DataType, DataTypeId, Result, Scalar, Value, types};
 
 /// Borrowing access shared by every code representation.
-pub trait CodeValue: crate::ScalarValue {
+pub trait CodeValue: crate::Value {
     /// The fixed storage width, in bytes.
     const WIDTH: usize;
 
@@ -1196,10 +1196,7 @@ impl fmt::Display for Code {
 
 macro_rules! code_value {
     ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)?) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$id;
-            const KIND: DataTypeKind = DataTypeKind::Code;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(DataType::$id)
@@ -1254,7 +1251,6 @@ code_value!(Sedol, Sedol, SEDOL_WIDTH);
 code_value!(Side, Side, SIDE_WIDTH, merge = Side::merged);
 code_value!(State, State, STATE_WIDTH, merge = State::merged);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
-
 
 impl From<Code> for Scalar {
     fn from(value: Code) -> Self {

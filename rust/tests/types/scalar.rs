@@ -13,7 +13,7 @@ use std::sync::Arc;
 use yggdryl::types::floating::FloatingValue;
 use yggdryl::types::{Float16, Float32, Float64, Scalar};
 use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, ScalarValue, TimeUnit, Timezone, i256,
+    DataType, DataTypeId, DataTypeKind, Value, TimeUnit, Timezone, i256,
 };
 
 fn order() -> Scalar {
@@ -458,13 +458,12 @@ fn time_construction_refuses_zones_its_datatype_cannot_preserve() {
 #[test]
 fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     let leaf = Float32::from_f32(1.25);
-    let scalar = ScalarValue::into_scalar(leaf);
+    let scalar = Value::into_scalar(leaf);
 
-    assert_eq!(<Float32 as ScalarValue>::ID, DataTypeId::Float32);
-    assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
-    assert_eq!(ScalarValue::dtype(&leaf).unwrap(), DataType::Float32);
-    assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
-    assert_eq!(ScalarValue::into_scalar(leaf), scalar);
+    assert_eq!(Value::dtype(&leaf).unwrap().id(), DataTypeId::Float32);
+    assert_eq!(Value::dtype(&leaf).unwrap(), DataType::Float32);
+    assert_eq!(<Float32 as Value>::from_scalar(&scalar), Some(&leaf));
+    assert_eq!(Value::into_scalar(leaf), scalar);
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
@@ -480,7 +479,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(IntegerValue::as_i128(&integer), None);
     assert_eq!(IntegerValue::as_u128(&integer), Some(u128::MAX));
     assert_eq!(
-        ScalarValue::dtype(&integer).unwrap().id(),
+        Value::dtype(&integer).unwrap().id(),
         DataTypeId::Decimal256
     );
 
@@ -503,18 +502,18 @@ fn every_scalar_family_exposes_its_leaf_contract() {
         ))
         .unwrap();
     assert_eq!(text.as_str(), "AAPL");
-    assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::large_utf8());
+    assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
 
     let bytes = bytes::Bytes::new([1, 2, 3])
         .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
         .unwrap();
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
-    assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::binary_view());
+    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
 
     let currency = string::Currency::new("USD").unwrap();
     assert_eq!(<string::Currency as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
-    assert_eq!(ScalarValue::dtype(&currency).unwrap(), DataType::Currency);
+    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
 
     let geometry = geospatial::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap();
     assert_eq!(
@@ -522,7 +521,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
         POINT_EMPTY_WKB.as_slice()
     );
     assert_eq!(
-        ScalarValue::dtype(&geometry).unwrap().id(),
+        Value::dtype(&geometry).unwrap().id(),
         DataTypeId::Geometry
     );
 
@@ -530,14 +529,14 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
     assert_eq!(
-        ScalarValue::dtype(&sequence).unwrap().id(),
+        Value::dtype(&sequence).unwrap().id(),
         DataTypeId::List
     );
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(ScalarValue::dtype(&uuid).unwrap(), DataType::Uuid);
+    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
 
-    let scalar = ScalarValue::into_scalar(text);
+    let scalar = Value::into_scalar(text);
     assert_eq!(scalar.id(), DataTypeId::LargeString);
     assert_eq!(scalar.family(), DataTypeKind::Text);
 }

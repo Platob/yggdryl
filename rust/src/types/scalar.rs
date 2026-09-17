@@ -70,15 +70,9 @@ use super::version::Version;
 /// Narrowing an existing scalar only projects a reference; validation remains
 /// owned by [`DataType::scalar`](crate::DataType::scalar) and
 /// [`Field::scalar`](crate::Field::scalar).
-pub trait ScalarValue:
+pub trait Value:
     Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
 {
-
-    /// The exact representation identifier.
-    const ID: DataTypeId;
-    /// The representation's datatype family.
-    const KIND: DataTypeKind;
-
     /// Return the datatype this value materializes into.
     ///
     /// Values whose physical parameters cannot be represented by a valid
@@ -90,7 +84,6 @@ pub trait ScalarValue:
     fn from_scalar(value: &Scalar) -> Option<&Self>;
 }
 
-
 /// Make one canonical text value a scalar leaf of its own.
 ///
 /// A value that parses, canonicalizes and renders itself - a version, a time
@@ -101,10 +94,7 @@ pub trait ScalarValue:
 macro_rules! text_scalar_value {
     ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
 
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = $id;
-            const KIND: DataTypeKind = DataTypeKind::Text;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Ok($dtype)

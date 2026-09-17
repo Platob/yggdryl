@@ -2291,7 +2291,7 @@ pub struct Text<H: IOBase>
 pub use fields::{UrlField, UrlType};
   pub type UrlField = TypedField<UrlType>;
   pub struct UrlType
-  impl ScalarValue for Url
+  impl Value for Url
   impl From<Url> for Scalar
 
 ### yggdryl::media::text::leading  [rust\src\media\text\leading.rs]
@@ -2915,7 +2915,7 @@ impl DataType
 
 ### yggdryl::types::bytes::scalars  [rust\src\types\bytes\scalars.rs]
 pub const INLINE_BYTES: usize = 30;
-pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence, or {layout, fixed?, bytes} when not default; ScalarValue (ID = DataTypeId::Binary); Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Bytes)
+pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence, or {layout, fixed?, bytes} when not default; Value; Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Bytes)
   pub const fn new_static(payload: &'static [u8]) -> Self
   pub fn new(payload: impl AsRef<[u8]>) -> Self
   pub fn from_shared(payload: Arc<[u8]>) -> Self
@@ -3268,7 +3268,7 @@ pub struct i256([u64; 4]);  (signed two's complement; ZERO; from_i128, from_u128
   pub const fn unsigned_abs(self) -> u256
 
 ### yggdryl::types::geospatial  [rust\src\types\geospatial\scalars.rs]
-pub trait GeospatialValue: ScalarValue
+pub trait GeospatialValue: Value
   pub fn as_bytes(&self) -> &[u8]
   pub fn storage(&self) -> &Arc<[u8]>
   pub struct Geometry  // and Geography
@@ -3285,7 +3285,7 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal256(precision: u8, scale: i8) -> Result<Self>
 
 ### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
-pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarValue)
+pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; Value)
   pub const fn new(value: u128) -> Self
   pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
   pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
@@ -3294,7 +3294,7 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub const fn into_bytes(self) -> [u8; 16]
 
 ### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
-pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarValue)
+pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; Value)
   pub const TEXT_LEN: usize = 36;
   pub const fn new(value: u128) -> Self
   pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
@@ -3591,7 +3591,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::types::scalar  [rust\src\types\scalar.rs]
-pub trait ScalarValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (no Family associated type, no into_family/from_family: a leaf widens through into_scalar)
+pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (no associated consts: a leaf's identity is its dtype; no Family type - a leaf widens through into_scalar)
   fn dtype(&self) -> Result<DataType>
   fn into_family(self) -> Self::Family
   fn from_family(family: &Self::Family) -> Option<&Self>
@@ -3773,7 +3773,7 @@ impl DataType
 
 ### yggdryl::types::string::scalars  [rust\src\types\string\scalars.rs]
 pub const INLINE_CAPACITY: usize = 23;
-pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, charset, fixed?, text} when not default; ScalarValue (ID = DataTypeId::String); Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
+pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, charset, fixed?, text} when not default; Value; Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
   pub const fn new_static(text: &'static str) -> Self
   pub fn new(text: impl AsRef<str>) -> Self
   pub fn from_bytes(bytes: &[u8], parameters: StringParameters) -> Result<Self>  (UTF-8 and US-ASCII decode strictly, every other charset transcribes; a fixed layout trims trailing NUL)
@@ -3792,7 +3792,7 @@ pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<
   pub fn dtype(&self) -> Result<DataType>
 
 ### yggdryl::types::string::code  [rust\src\types\string\code.rs]
-pub trait CodeValue: ScalarValue
+pub trait CodeValue: Value
   const WIDTH: usize;
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr

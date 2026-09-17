@@ -72,7 +72,7 @@ pub use mime_type::{MimeTypeField, MimeTypeType};
 pub use nested::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
-pub use scalar::{Scalar, ScalarValue};
+pub use scalar::{Scalar, Value};
 pub use string::*;
 #[cfg(feature = "arrow")]
 pub(crate) use string::{

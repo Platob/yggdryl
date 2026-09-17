@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarValue};
+use crate::{DataType, Result, Scalar, Value};
 
 /// Borrowing access shared by geometry and geography values.
-pub trait GeospatialValue: ScalarValue {
+pub trait GeospatialValue: Value {
     /// Borrow the validated Well-Known Binary payload.
     fn as_bytes(&self) -> &[u8];
     /// Borrow the shared storage behind the payload.
@@ -73,10 +73,7 @@ const _: () = assert!(std::mem::size_of::<Geography>() == 16);
 // the bytes, so rewriting one as the other shares the storage handle.
 macro_rules! geospatial_value {
     ($leaf:ident, $dtype:expr) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$leaf;
-            const KIND: DataTypeKind = DataTypeKind::Geospatial;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 $dtype

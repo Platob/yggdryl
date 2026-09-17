@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, types,
+    DataType, Error, Result, Scalar, Value, types,
 };
 
 /// One RFC 9562 identifier stored as its big-endian 128-bit value.
@@ -137,10 +137,7 @@ impl fmt::Display for Uuid {
     }
 }
 
-impl ScalarValue for Uuid {
-
-    const ID: DataTypeId = DataTypeId::Uuid;
-    const KIND: DataTypeKind = DataTypeKind::Uuid;
+impl Value for Uuid {
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Uuid)

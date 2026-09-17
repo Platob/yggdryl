@@ -11,10 +11,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue};
+use crate::{DataType, Error, Result, Scalar, Value};
 
 /// Operations shared by every IEEE floating-point representation.
-pub trait FloatingValue: ScalarValue {
+pub trait FloatingValue: Value {
     /// The physical width in bits.
     const BIT_WIDTH: u8;
 
@@ -543,10 +543,7 @@ impl<'de> Deserialize<'de> for Float32 {
 // the leaf directly, so there is no grouping enum to widen into.
 macro_rules! floating_value {
     ($leaf:ident, $bits:literal) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$leaf;
-            const KIND: DataTypeKind = DataTypeKind::Floating;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(DataType::$leaf)

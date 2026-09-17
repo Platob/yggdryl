@@ -23,11 +23,11 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, i256,
+    DataType, Error, Result, Scalar, Value, i256,
 };
 
 /// Operations shared by every exact-decimal representation.
-pub trait DecimalValue: crate::ScalarValue {
+pub trait DecimalValue: crate::Value {
     /// Return the coefficient widened to 256 bits.
     fn coefficient(&self) -> i256;
     /// Return the decimal scale.
@@ -114,10 +114,7 @@ decimal_leaf!(Decimal256, i256);
 // writes that by hand below.
 macro_rules! decimal_value {
     ($leaf:ident) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$leaf;
-            const KIND: DataTypeKind = DataTypeKind::Decimal;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$leaf(*self).dtype()

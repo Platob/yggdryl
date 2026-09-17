@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::types::Scalar;
-use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarValue};
+use crate::{DataType, Result, Value};
 
 /// The one null value.
 #[derive(
@@ -69,10 +69,7 @@ impl From<bool> for Scalar {
     }
 }
 
-impl ScalarValue for Null {
-
-    const ID: DataTypeId = DataTypeId::Null;
-    const KIND: DataTypeKind = DataTypeKind::Null;
+impl Value for Null {
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Null)
@@ -88,10 +85,7 @@ impl ScalarValue for Null {
     }
 }
 
-impl ScalarValue for Boolean {
-
-    const ID: DataTypeId = DataTypeId::Boolean;
-    const KIND: DataTypeKind = DataTypeKind::Boolean;
+impl Value for Boolean {
 
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Boolean)

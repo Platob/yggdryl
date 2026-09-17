@@ -9,11 +9,11 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarValue, TimeUnit,
+    DataType, Error, Result, Scalar, Value, TimeUnit,
 };
 
 /// Operations shared by every signed and unsigned integer representation.
-pub trait IntegerValue: crate::ScalarValue {
+pub trait IntegerValue: crate::Value {
     /// Whether this representation is signed.
     const SIGNED: bool;
     /// The physical width in bits.
@@ -207,10 +207,7 @@ pub(crate) fn validate_integer_tuple(
 // the leaf directly, so there is no grouping enum to widen into.
 macro_rules! integer_scalar_value {
     ($leaf:ident, $dtype:expr) => {
-        impl ScalarValue for $leaf {
-
-            const ID: DataTypeId = DataTypeId::$leaf;
-            const KIND: DataTypeKind = DataTypeKind::Integer;
+        impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
                 Ok(($dtype)(self))

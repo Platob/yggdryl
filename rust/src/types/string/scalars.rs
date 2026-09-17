@@ -30,7 +30,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::{StringLayout, StringParameters, trim_padding};
 use crate::types::Scalar;
 use crate::{
-    Charset, DataType, DataTypeId, DataTypeKind, Error, Result, ScalarValue,
+    Charset, DataType, Error, Result, Value,
 };
 
 /// How many bytes of text a [`Str`] holds without reaching the heap.
@@ -622,12 +622,10 @@ impl<'de> Deserialize<'de> for Str {
     }
 }
 
-impl ScalarValue for Str {
+impl Value for Str {
 
     /// The family's default layout; [`Code::id`] answers the exact
     /// layout a value is stored in.
-    const ID: DataTypeId = DataTypeId::String;
-    const KIND: DataTypeKind = DataTypeKind::Text;
 
     fn dtype(&self) -> Result<DataType> {
         Self::dtype(self)
