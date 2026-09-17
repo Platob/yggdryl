@@ -644,7 +644,7 @@ impl FixRegistry {
     }
 
     /// Resolves one category's folded name.
-    pub(super) fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field> {
+    pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field> {
         if category == FixCategory::Fields {
             return self.get_scalar_by_name(name);
         }
@@ -653,13 +653,13 @@ impl FixRegistry {
     }
 
     /// Resolves a category name, reporting absence with its category.
-    pub(super) fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
+    pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
         self.get_definition(category, name)
             .ok_or_else(|| Error::absent(category.as_str(), name))
     }
 
     /// Iterates one category deterministically without collecting definitions.
-    pub(super) fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
+    pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
         self.scalars()
             .take(if category == FixCategory::Fields {
                 usize::MAX
@@ -671,7 +671,7 @@ impl FixRegistry {
 
     /// Inserts or replaces a category definition, validating references before mutation.
     /// Case-insensitive input names retain the stored canonical spelling.
-    pub(super) fn insert_definition(
+    pub fn insert_definition(
         &mut self,
         category: FixCategory,
         mut field: Field,
@@ -755,7 +755,7 @@ impl FixRegistry {
     }
 
     /// Creates a definition, refusing an existing name or wire identity atomically.
-    pub(super) fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
+    pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
         let existing = if category == FixCategory::Fields {
             // Creation reserves canonical identities only. Another field's
             // alias may name this spelling until its canonical owner arrives.
@@ -781,11 +781,7 @@ impl FixRegistry {
     }
 
     /// Replaces an existing definition and returns its previous value.
-    pub(super) fn update_definition(
-        &mut self,
-        category: FixCategory,
-        field: Field,
-    ) -> Result<Field> {
+    pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field> {
         let stored = self.definition(category, field.name())?;
         if category == FixCategory::Fields && stored.as_fix().id()? != field.as_fix().id()? {
             return Err(Error::conflict(
@@ -1077,7 +1073,7 @@ impl FixRegistry {
     }
 
     /// Removes a definition only when every remaining reference stays valid.
-    pub(super) fn remove_definition(
+    pub fn remove_definition(
         &mut self,
         category: FixCategory,
         name: &str,

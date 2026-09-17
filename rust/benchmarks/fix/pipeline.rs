@@ -48,6 +48,16 @@ const LOG: &[u8] = include_bytes!(concat!(
 /// How many times the capture is repeated in one measured run.
 const REPEATS: usize = crate::bench_profile::corpus(64, 1);
 
+/// How many messages one copy of the capture carries.
+///
+/// Every codec below refuses nothing, so this is the whole capture and not
+/// the 79 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
+/// keepalives and the rows that state no type, and those are shapes this
+/// corpus exists to measure. `rust/tests/fix/dataset.rs` pins both numbers
+/// against each other; every other reader of this capture - the integration
+/// suite, the pages, the two bindings' suites - reads it the same way.
+const MESSAGES: usize = 94;
+
 /// The log, as the bytes a `.log` file holds.
 fn corpus() -> Vec<u8> {
     LOG.repeat(REPEATS)
@@ -96,7 +106,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let bytes = corpus();
     let source = handle(&bytes);
     let registry = Arc::new(seed());
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = FixCodec::new(Arc::clone(&registry)).with_exclude_msgtypes::<[&str; 0], &str>([]);
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
 
     let mut group = criterion.benchmark_group("fix/pipeline");
@@ -143,7 +153,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             })
             .expect("a parsed message")
     };
-    assert_eq!(read_composed(), 94 * REPEATS);
+    assert_eq!(read_composed(), MESSAGES * REPEATS);
     group.bench_function("decoded_lines", |bencher| {
         bencher.iter(|| black_box(read_composed()));
     });
@@ -177,7 +187,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // that logged it: the capture fills the crate's `pluginid` field and
     // selects nothing, so this is what a row costs to read with one more
     // captured column in front of its tags.
-    let plugin_codec = FixCodec::new(Arc::clone(&registry)).with_capture_names(["pluginid"]);
+    let plugin_codec = FixCodec::new(Arc::clone(&registry))
+        .with_capture_names(["pluginid"])
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let lines: Vec<TextLine> = held
         .iter()
         .enumerate()
@@ -345,7 +357,11 @@ fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
 /// change to the codec is attributed to the shape it moved.
 pub fn line_benchmarks(criterion: &mut Criterion) {
     let registry = Arc::new(seed());
-    let codec = FixCodec::new(Arc::clone(&registry));
+    // Nothing is refused: two of the six shapes below are the session's own
+    // - a Heartbeat and a TestRequest - and a codec on its defaults answers
+    // no message for either, so those two rows would time an empty parse
+    // while still reporting a throughput per byte of the line they skipped.
+    let codec = FixCodec::new(Arc::clone(&registry)).with_exclude_msgtypes::<[&str; 0], &str>([]);
     let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
     let frame_soh: Vec<u8> = frame_pipe
         .iter()

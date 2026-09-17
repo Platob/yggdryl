@@ -576,6 +576,21 @@ fn a_datatype_is_named_the_same_by_both_documents() {
     }
 }
 
+/// The sixteen bytes an identity column holds, refusing every other value.
+///
+/// Only the lake round trip below reads a column this way - everywhere else
+/// an identity is compared as the scalar it is - so the helper is gated with
+/// its one caller rather than sitting unused in every other lane.
+#[cfg(feature = "iceberg")]
+#[track_caller]
+fn identity_bytes(held: &Scalar) -> [u8; 16] {
+    let Scalar::Bytes(bytes) = held else {
+        panic!("a sixteen-byte identity, got {held:?}");
+    };
+    assert_eq!(bytes.fixed(), Some(16), "{held:?}");
+    <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
+}
+
 /// The three identity columns cross a lake as `fixed[16]`, byte for byte.
 ///
 /// This is the whole reason they are bytes: an Iceberg table maps
@@ -621,7 +636,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
                 .iter()
                 .map(|(tag, _)| {
                     let value = at(&row, &fixed, *tag);
-                    (!value.is_null()).then(|| super::identity_bytes(value))
+                    (!value.is_null()).then(|| identity_bytes(value))
                 })
                 .collect()
         })

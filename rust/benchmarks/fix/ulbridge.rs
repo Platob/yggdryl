@@ -39,6 +39,11 @@ const LOG: &[u8] = include_bytes!(concat!(
 const REPEATS: usize = crate::bench_profile::corpus(8, 1);
 
 /// How many messages one copy of the capture carries.
+///
+/// The codec below refuses nothing, so this is the whole capture and not the
+/// 79 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
+/// keepalives and the rows that state no type, and those are shapes this
+/// corpus exists to measure.
 const MESSAGES: usize = 94;
 
 /// The text options a bridge log is read under: the bridge's own row
@@ -70,7 +75,9 @@ fn lines(options: &TextOptions) -> Vec<TextLine> {
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = Arc::new(seed());
     let options = options();
-    let codec = FixCodec::new(Arc::clone(&registry)).with_capture_names(options.capture_names());
+    let codec = FixCodec::new(Arc::clone(&registry))
+        .with_capture_names(options.capture_names())
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let lines = lines(&options);
 

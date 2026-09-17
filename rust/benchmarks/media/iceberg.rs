@@ -1545,8 +1545,11 @@ mod s3 {
             bencher.iter(|| scan_rows(black_box(&scanned), black_box(&pruned)));
         });
 
-        // The bridge's log as one object: read as text records, then parsed,
-        // enriched and written back as FIX rows into a table on the store.
+        // The bridge's log as one object: read as text records, then parsed
+        // and written back as FIX rows into a table on the store. There is no
+        // pass between the parse and the commit: a parse settles everything a
+        // message derives about itself, so the reader it answers is the one
+        // the table takes.
         let mut log = log_object(&store);
         let corpus = LOG.repeat(LOG_REPEATS);
         log.write_all_bytes(&corpus).expect("the log uploads");
@@ -1617,10 +1620,7 @@ mod s3 {
             let parsed = codec
                 .parse_text_arrow_reader(read)
                 .expect("the lines parse");
-            let enriched = codec
-                .enrich_messages_arrow_reader(parsed)
-                .expect("the messages enrich");
-            table.commit_append(enriched).expect("the FIX rows commit");
+            table.commit_append(parsed).expect("the FIX rows commit");
         };
         probe(
             &store,
