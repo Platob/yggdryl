@@ -183,13 +183,6 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
         assert!(state.as_fix().codes().count() > 5, "tag {tag}");
     }
     assert_eq!(
-        registry
-            .field_by_tag(yggdryl::STATE_TAG_NAME.0)
-            .unwrap()
-            .dtype(),
-        &DataType::State
-    );
-    assert_eq!(
         registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
         Some("PartiallyFilled")
     );
@@ -430,7 +423,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
                     .is_some_and(yggdryl::is_crate_tag)
         })
         .count();
-    assert_eq!(crated, 6, "the crate's own clocks");
+    assert_eq!(crated, 5, "the crate's own clocks");
     assert_eq!(utc, 68 + crated, "instants stated in UTC");
 }
 
@@ -530,11 +523,17 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// became an exact number: 478 fields are `decimal128(38, 18)` where they
 /// were `float64`, a percentage and FIX's own `float` stay floating, and
 /// the seven derivations that multiply or add across the two state each
-/// operand's exact scale.
+/// operand's exact scale. It last moved when the crate stopped owning a
+/// market column: eighteen of its thirty-eight definitions are gone - the
+/// price, the quantity, the unit, the instrument's codes, the market, the
+/// state, the lanes' currencies and units, what a price moved from, whether
+/// it could trade and the ticker - because every one of them restated a FIX
+/// field the traits now read, and the two rules that read `isincode` read
+/// `SecurityID(48)` under its source and the `SecurityAltID` group instead.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_335_167_131_022_069_334);
+    assert_eq!(registry.stable_hash(), 16_003_086_087_026_197_915);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

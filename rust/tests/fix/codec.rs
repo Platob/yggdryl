@@ -94,9 +94,9 @@ fn every_capture_row_states_its_messages_and_none_is_skipped() {
     // without a frame no longer answers.
     let typeless = reader.sole_line(b"8=FIX.4.4|49=S|56=T|10=0|").unwrap();
     assert_eq!(typeless.as_field().name(), "unknown");
-    // The version and the two comp ids are the header's, so the checksum is
-    // the whole of what the row holds.
-    assert_eq!(typeless.entries().len(), 1);
+    // The version and the two comp ids are the frame's, and so is the
+    // checksum, so the row holds nothing at all.
+    assert_eq!(typeless.entries().len(), 0);
 }
 
 #[test]
@@ -123,11 +123,11 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
     let framed = reader
         .sole_line(b"sending >> 8=FIX.4.2|9=176|35=D|10=203| << queued seq=1092")
         .unwrap();
-    // The entries are the content the frame carried: the version and the
-    // type are the header's, so what is left is the body length, the
-    // checksum and the dictionary's own derivation for an order.
+    // The entries are the content the frame carried: the version, the type
+    // and the checksum are the frame's, so what is left is the body length
+    // and the dictionary's own derivation for an order.
     let keys: Vec<&str> = framed.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["bodylength", "checksum"], "{keys:?}");
+    assert_eq!(keys, ["bodylength", "timeinforce"], "{keys:?}");
     assert_eq!(framed.header().beginstring(), "FIX.4.2");
     assert_eq!(framed.header().msgtype(), "D");
 }
@@ -204,11 +204,11 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
         "members stay inside the component"
     );
     // The order's `TimeInForce` is the dictionary's own derivation for a
-    // `D`, and it is one of the event's facts rather than a child of the
-    // content row, so it re-emits in the event's band ahead of the entries.
+    // `D`, and it is an ordinary child of the content row, so it re-emits
+    // where the row carries it and the trailer still closes the frame.
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|59=0|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|"
+        "8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|59=0|10=0|"
     );
 
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
@@ -252,7 +252,7 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
         assert_eq!(message.by_tag(453).unwrap(), Scalar::from(held), "{wire}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
-            format!("8=FIX.4.4|35=D|59=0|453={held}|{members}55=AAPL|10=0|"),
+            format!("8=FIX.4.4|35=D|453={held}|{members}55=AAPL|59=0|10=0|"),
             "{wire}"
         );
     }
@@ -278,12 +278,12 @@ fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
             .iter()
             .map(FixEntry::tag)
             .collect::<Vec<_>>(),
-        [453, 0, 447, 55, 10]
+        [453, 0, 447, 55, 59]
     );
     assert_eq!(message.entries()[0].entries()[0].entries()[0].tag(), 448);
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|59=0|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|"
+        "8=FIX.4.4|35=D|453=1|448=A|9999=outside|447=D|55=AAPL|59=0|10=0|"
     );
 }
 
@@ -320,10 +320,10 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
     // The row holds the translated code and the typed number.
     assert_eq!(message.by_name("side").unwrap().as_str(), Some("BUY"));
     assert_eq!(message.by_name("orderqty").unwrap(), super::decimal("100"));
-    // The side is one of the event's own facts, so it is no entry of the
-    // row: the wire spells it back under its own tag as the code the set
-    // holds, never as the name the column reads it by.
-    assert!(!message.entries().iter().any(|entry| entry.tag() == 54));
+    // The side is an ordinary child of the row, so it is one of its
+    // entries: the wire spells it back under its own tag as the code the
+    // set holds, never as the name the column reads it by.
+    assert!(message.entries().iter().any(|entry| entry.tag() == 54));
     assert!(
         String::from_utf8(message.into_bytes(b'|'))
             .unwrap()
@@ -533,9 +533,10 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
         );
         assert!(message.by_name("#orderid").is_err(), "{spelled}");
         // The row is what remains, and the entries are that row: the
-        // dictionary's own column and the day order it derives.
+        // identifier is a fact the message lifted, so the day order the
+        // dictionary derives is the whole of it.
         let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-        assert_eq!(keys, ["orderid"], "{spelled}");
+        assert_eq!(keys, ["timeinforce"], "{spelled}");
 
         // Re-reading the emitted line answers the same message: the twin
         // judgment is idempotent.
@@ -569,10 +570,10 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
         );
         assert!(message.by_name("#orderid").is_err(), "{spelled}");
         let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-        assert_eq!(keys, ["orderid"], "{spelled}");
+        assert_eq!(keys, ["timeinforce"], "{spelled}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
-            "8=FIX.4.4|35=D|59=0|37=123|",
+            "8=FIX.4.4|35=D|37=123|59=0|",
             "{spelled}"
         );
     }
@@ -593,7 +594,7 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
     assert_eq!(framed.by_tag(55).unwrap().as_str(), Some("TTF"));
     assert_eq!(framed.by_tag(54).unwrap().as_str(), Some("BUY"));
     let keys: Vec<&str> = framed.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["symbol", "checksum"]);
+    assert_eq!(keys, ["symbol", "side"]);
     for line in [
         b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|".as_slice(),
         b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|".as_slice(),
@@ -658,7 +659,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.sole_line(row).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["parties"], "{keys:?}");
+    assert_eq!(keys, ["parties", "timeinforce"], "{keys:?}");
     assert_eq!(
         super::sequence(message.by_name("parties").unwrap()).len(),
         1
@@ -698,7 +699,11 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         let mut columns: Vec<&str> =
             message.as_field().fields().iter().map(Field::name).collect();
         columns.sort_unstable();
-        assert_eq!(columns, ["nopartyids", "parties"], "{spelled}");
+        assert_eq!(
+            columns,
+            ["nopartyids", "parties", "timeinforce"],
+            "{spelled}"
+        );
     }
 
     // A marked group restating the bare group pair for pair goes pair for
@@ -795,7 +800,8 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
             "partysubidtype",
             "venueseq",
             "partyid",
-            "partyrole"
+            "partyrole",
+            "timeinforce"
         ]
     );
     let venue = message
@@ -873,7 +879,11 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let mut arrived = Vec::new();
     keys(message.entries(), &mut arrived);
     assert_eq!(&arrived[..3], ["parties", "party", "ptyssubgrp"]);
-    assert_eq!(arrived.last().map(String::as_str), Some("ptyssubgrp"));
+    assert_eq!(
+        arrived.iter().rev().find(|name| *name == "ptyssubgrp"),
+        Some(&"ptyssubgrp".to_owned()),
+        "the sub-group is the deepest thing the row nests"
+    );
     assert_eq!(
         arrived.iter().filter(|name| *name == "ptyssubgrp").count(),
         65,
@@ -982,7 +992,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
     assert_eq!(
         keys,
-        ["xmldatalen", "xmldata", "symbol", "orderid", "checksum"]
+        ["xmldatalen", "xmldata", "symbol", "side", "timeinforce"]
     );
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
     assert_eq!(message.by_tag(37).unwrap().as_str(), Some("9"));
@@ -1000,7 +1010,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         .iter()
         .map(|entry| entry.name())
         .collect();
-    assert_eq!(keys, ["orderid"]);
+    assert_eq!(keys, ["timeinforce"]);
     let beside = reader
         .sole_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345")
         .unwrap();
@@ -1011,7 +1021,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         .iter()
         .map(|f| f.name())
         .collect();
-    assert_eq!(columns, ["orderid"]);
+    assert_eq!(columns, ["timeinforce"]);
     let alone = reader.sole_line(b"MSGTYPE=D|##ORDERID=345").unwrap();
     assert!(alone.get_by_tag(37).is_none());
     let at = alone
@@ -1096,11 +1106,11 @@ fn a_frame_reader_takes_the_frame_and_leaves_the_transports_own_pairs() {
     let line: &[u8] = b"ts=12|thread=7|8=FIX.4.4|35=D|11=A1|10=000|";
     let message = reader.parse_fix_line(line).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["clordid", "checksum"]);
+    assert_eq!(keys, ["timeinforce"]);
     assert!(message.get_by_name("ts").is_none());
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|59=0|11=A1|10=000|"
+        "8=FIX.4.4|35=D|11=A1|59=0|10=000|"
     );
 
     // A body that opens at its own first pair is bounded at zero, so nothing
@@ -1261,9 +1271,9 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
         .map(yggdryl::Field::name)
         .collect();
     // The row holds the content alone, in header/body/trailer order: the
-    // version and the type are the header's, held typed beside it, and the
-    // dictionary's own derivation closes the order.
-    assert_eq!(names, ["bodylength", "symbol", "checksum"], "{names:?}");
+    // version, the type and the checksum are the frame's, held typed beside
+    // it, and the dictionary's own derivation closes the order.
+    assert_eq!(names, ["bodylength", "symbol", "timeinforce"], "{names:?}");
     assert_eq!(message.header().beginstring(), "FIX.4.4");
     assert_eq!(message.header().msgtype(), "D");
 }
@@ -1275,10 +1285,11 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     let message = reader.sole_line(row.as_bytes()).unwrap();
 
     // The wire is the message as the crate holds it, not the line it came
-    // from: the header's tags lead, then the event's own, then the row -
-    // the lane a buy of a hundred filled and the day order the dictionary
-    // derives among them - each coded fact spelled as the wire spells it.
-    let emitted = "8=FIX.4.4|35=D|38=100|54=1|59=0|134=100|11=ORDER-1|55=AAPL|10=000|";
+    // from: the frame leads, then the fields it lifted in tag order, then
+    // the row - the side, the symbol and the day order the dictionary
+    // derives - and the trailer closes it. The bid lane a buy of a hundred
+    // implies is derived and so emitted nowhere.
+    let emitted = "8=FIX.4.4|35=D|11=ORDER-1|38=100|55=AAPL|54=1|59=0|10=000|";
     let bytes = message.into_bytes(b'|');
     assert_eq!(String::from_utf8(bytes.clone()).unwrap(), emitted);
     assert_eq!(message.into_text('|').unwrap(), emitted);
@@ -1488,10 +1499,7 @@ fn a_state_code_is_the_letter_the_wire_wrote_and_the_crates_state_ranks_it() {
     assert_eq!(bidding.by_tag(39).unwrap().as_str(), Some("D"));
     let ranked = State::from_spelling("AcceptedForBidding").unwrap();
     for held in [&restated, &bidding] {
-        assert_eq!(
-            held.by_tag(yggdryl::STATE_TAG_NAME.0).unwrap().as_str(),
-            Some(ranked.as_str())
-        );
+        assert_eq!(held.get_state(), &ranked);
     }
     // A code both sets spell alike reads alike, whichever field carries it.
     let new = reader
@@ -1526,7 +1534,7 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
             .collect();
         assert_eq!(
             columns,
-            ["nopartyids", "parties"],
+            ["nopartyids", "parties", "timeinforce"],
             "one counter, one group and the day order the dictionary derives"
         );
         assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
@@ -1558,7 +1566,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     // count, each one the declared component states nothing in.
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|59=0|453=2|"
+        "8=FIX.4.4|35=D|453=2|59=0|"
     );
 }
 
@@ -2148,17 +2156,17 @@ fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
     // re-emits the message as the crate holds it: the frame's pairs, the
     // document among them, and the fields the document filled beside them.
     assert_eq!(message.by_tag(213).unwrap().as_bytes(), Some(&document[..]));
-    // The trade the document reported is the event's own fact, and a
-    // message that reports a trade and states no price or quantity of its
-    // own settles on the trade's, so the event band carries four numbers
-    // where the document spelled two.
+    // The trade the document reported is what the message lifted, so the
+    // lifted band carries exactly the two numbers the document spelled and
+    // the two identifiers beside them; what the message settles *on* - the
+    // price and the quantity it is about - is derived and emitted nowhere.
     let mut emitted = Vec::new();
-    emitted.extend_from_slice(b"8=FIX.4.2|35=n|31=83.08|32=21|38=21|44=83.08|9=0|212=");
+    emitted.extend_from_slice(b"8=FIX.4.2|35=n|11=ORDER-1|17=E1|31=83.08|32=21|9=0|212=");
     emitted.extend_from_slice(document.len().to_string().as_bytes());
     emitted.push(b'|');
     emitted.extend_from_slice(b"213=");
     emitted.extend_from_slice(document);
-    emitted.extend_from_slice(b"|v=5.0 SP2|17=E1|11=ORDER-1|55=HOLN|10=0|");
+    emitted.extend_from_slice(b"|v=5.0 SP2|55=HOLN|10=0|");
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
         String::from_utf8(emitted).unwrap()

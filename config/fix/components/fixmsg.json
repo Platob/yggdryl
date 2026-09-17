@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "expirunix",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "expirunix",
-          "fix:tag": "65029"
-        }
-      },
-      {
         "name": "snapunix",
         "dtype": {
           "type": "null"
@@ -133,6 +122,28 @@
         "metadata": {
           "fix:field": "expiretime",
           "fix:tag": "126"
+        }
+      },
+      {
+        "name": "validuntiltime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "validuntiltime",
+          "fix:tag": "62"
+        }
+      },
+      {
+        "name": "expiredate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expiredate",
+          "fix:tag": "432"
         }
       },
       {
@@ -366,17 +377,6 @@
         }
       },
       {
-        "name": "symbolticker",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "symbolticker",
-          "fix:tag": "65054"
-        }
-      },
-      {
         "name": "securityid",
         "dtype": {
           "type": "null"
@@ -432,6 +432,28 @@
         }
       },
       {
+        "name": "exdestination",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exdestination",
+          "fix:tag": "100"
+        }
+      },
+      {
+        "name": "lastmkt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastmkt",
+          "fix:tag": "30"
+        }
+      },
+      {
         "name": "cficode",
         "dtype": {
           "type": "null"
@@ -465,61 +487,6 @@
         }
       },
       {
-        "name": "isincode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "isincode",
-          "fix:tag": "65013"
-        }
-      },
-      {
-        "name": "cusipcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "cusipcode",
-          "fix:tag": "65034"
-        }
-      },
-      {
-        "name": "sedolcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "sedolcode",
-          "fix:tag": "65035"
-        }
-      },
-      {
-        "name": "bloombergcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "bloombergcode",
-          "fix:tag": "65033"
-        }
-      },
-      {
-        "name": "miccode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "miccode",
-          "fix:tag": "65014"
-        }
-      },
-      {
         "name": "securitytradingstatus",
         "dtype": {
           "type": "null"
@@ -550,17 +517,6 @@
         "metadata": {
           "fix:field": "securitystatus",
           "fix:tag": "965"
-        }
-      },
-      {
-        "name": "tradable",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "tradable",
-          "fix:tag": "65053"
         }
       },
       {
@@ -674,6 +630,17 @@
         }
       },
       {
+        "name": "mdreqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdreqid",
+          "fix:tag": "262"
+        }
+      },
+      {
         "name": "quoterespid",
         "dtype": {
           "type": "null"
@@ -696,25 +663,25 @@
         }
       },
       {
-        "name": "px",
+        "name": "price",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "px",
-          "fix:tag": "65043"
+          "fix:field": "price",
+          "fix:tag": "44"
         }
       },
       {
-        "name": "prevpx",
+        "name": "prevclosepx",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "prevpx",
-          "fix:tag": "65051"
+          "fix:field": "prevclosepx",
+          "fix:tag": "140"
         }
       },
       {
@@ -740,25 +707,25 @@
         }
       },
       {
-        "name": "qty",
+        "name": "orderqty",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "qty",
-          "fix:tag": "65044"
+          "fix:field": "orderqty",
+          "fix:tag": "38"
         }
       },
       {
-        "name": "prevqty",
+        "name": "quantity",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "prevqty",
-          "fix:tag": "65052"
+          "fix:field": "quantity",
+          "fix:tag": "53"
         }
       },
       {
@@ -795,14 +762,14 @@
         }
       },
       {
-        "name": "unit",
+        "name": "unitofmeasure",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "unit",
-          "fix:tag": "65045"
+          "fix:field": "unitofmeasure",
+          "fix:tag": "996"
         }
       },
       {
@@ -872,28 +839,6 @@
         }
       },
       {
-        "name": "bidcurrency",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "bidcurrency",
-          "fix:tag": "65030"
-        }
-      },
-      {
-        "name": "bidunit",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "bidunit",
-          "fix:tag": "65046"
-        }
-      },
-      {
         "name": "bidsize",
         "dtype": {
           "type": "null"
@@ -916,28 +861,6 @@
         }
       },
       {
-        "name": "askcurrency",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "askcurrency",
-          "fix:tag": "65031"
-        }
-      },
-      {
-        "name": "askunit",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "askunit",
-          "fix:tag": "65047"
-        }
-      },
-      {
         "name": "offersize",
         "dtype": {
           "type": "null"
@@ -946,17 +869,6 @@
         "metadata": {
           "fix:field": "offersize",
           "fix:tag": "135"
-        }
-      },
-      {
-        "name": "state",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "fix:field": "state",
-          "fix:tag": "65015"
         }
       },
       {

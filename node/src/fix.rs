@@ -941,6 +941,17 @@ pub struct FixHeaderView {
     /// the line or the caller stated which way the message moved.
     #[napi(ts_type = "string | null")]
     pub msgdirection: Either<String, Null>,
+    /// `SignatureLength(93)`: how many bytes the signature runs to, where
+    /// the frame carried one.
+    #[napi(ts_type = "number | null")]
+    pub signaturelength: Either<f64, Null>,
+    /// `Signature(89)`: the bytes the frame was signed with, where it was.
+    #[napi(ts_type = "Buffer | null")]
+    pub signature: Either<Buffer, Null>,
+    /// `CheckSum(10)` as the wire spelled it. Always a frame's last pair,
+    /// and the last one `intoBytes` emits.
+    #[napi(ts_type = "string | null")]
+    pub checksum: Either<String, Null>,
 }
 
 fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
@@ -958,6 +969,11 @@ fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
         sendingtime: instant(header.sendingtime()),
         possdupflag: or_null(header.possdupflag()),
         msgdirection: or_null(header.msgdirection().map(ToOwned::to_owned)),
+        // Every `i32` is a JavaScript number exactly, so a length needs no
+        // width check the way a sequence number does.
+        signaturelength: or_null(header.signaturelength().map(f64::from)),
+        signature: or_null(header.signature().map(Buffer::from)),
+        checksum: or_null(header.checksum().map(ToOwned::to_owned)),
     })
 }
 
@@ -1037,9 +1053,9 @@ impl JsFixMsg {
     ///
     /// The loader widens `value`: anything `Scalar.fromJs` reads becomes the
     /// native value first, and the core alone validates and canonicalizes it
-    /// against `field`. A child stating a typed fact - a header tag, a
-    /// crate column, one of the event's own tags, `Text(58)` - fills the
-    /// holder that owns it and leaves the row. `SendingTime` reads UTC now
+    /// against `field`. A child stating a typed fact - a header or trailer
+    /// tag, a crate column, one of the FIX fields a message lifts,
+    /// `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
     /// when the value states none; the event's instant is `TransactTime(60)`
     /// where it states one with a clock, else the sending time; the creation
     /// instant is `OrigSendingTime(122)` else that instant. The identity is
@@ -1311,6 +1327,57 @@ impl JsFixMsg {
         self.inner.get_symbolticker().map(ToOwned::to_owned)
     }
 
+    /// The instrument's ISIN, read off `SecurityID(48)` under its source or
+    /// the `SecurityAltID` group, or `null` where no check digit closes one.
+    #[napi(getter)]
+    pub fn isincode(&self) -> Option<String> {
+        self.inner
+            .get_isincode()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The instrument's CUSIP, read the same way, or `null`.
+    #[napi(getter)]
+    pub fn cusipcode(&self) -> Option<String> {
+        self.inner
+            .get_cusipcode()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The instrument's SEDOL, read the same way, or `null`.
+    #[napi(getter)]
+    pub fn sedolcode(&self) -> Option<String> {
+        self.inner
+            .get_sedolcode()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The instrument's Bloomberg identifier, read the same way, or `null`.
+    #[napi(getter)]
+    pub fn bloombergcode(&self) -> Option<String> {
+        self.inner
+            .get_bloombergcode()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The instrument's classification, read off `CFICode(461)` and what the
+    /// message says about the security, or `null` where nothing does.
+    #[napi(getter)]
+    pub fn cficode(&self) -> Option<String> {
+        self.inner
+            .get_cficode()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The market, read off `SecurityExchange(207)`, `ExDestination(100)` or
+    /// `LastMkt(30)`, the first that names an ISO 10383 MIC.
+    #[napi(getter)]
+    pub fn miccode(&self) -> Option<String> {
+        self.inner
+            .get_miccode()
+            .map(|held| held.as_str().to_owned())
+    }
+
     /// The value the root child an identifier names, or `null`.
     ///
     /// An identifier is exact and does not fold: `id` is the number
@@ -1334,11 +1401,12 @@ impl JsFixMsg {
 
     /// The value a tag names, or `null`.
     ///
-    /// A tag the typed holders own - a header tag, a crate column, one of
-    /// the event's own tags, `Text(58)` - answers the fact the holder states
-    /// as the `Scalar` its column types: `byTag(35)` is the type's text,
-    /// `byTag(52)` the sending clock as `datetime64(ns, UTC)`, `byTag(54)`
-    /// the side as `BUY` or `SELL`, a crate tag its column's own type - a
+    /// A tag the typed holders own - a header or trailer tag, a crate
+    /// column, one of the FIX fields a message lifts, `Text(58)` - answers
+    /// the fact the holder states as the `Scalar` its column types:
+    /// `byTag(35)` is the type's text, `byTag(52)` the sending clock as
+    /// `datetime64(ns, UTC)`, `byTag(44)` an exact price, a crate tag its
+    /// column's own type - a
     /// `uuid`, a `uint64`, a `decimal128(38, 18)`. Any other tag reaches
     /// the row through the dictionary: the canonical holder first, then an
     /// alternate, then a child spelled by the tag's decimal.
@@ -1467,7 +1535,8 @@ impl JsFixMsg {
     /// Derived on the first ask and kept until a write. The typed facts are
     /// not entries: the header, the event and the capture are the holders'
     /// to answer, and the wire `intoBytes` emits puts the header and the
-    /// event's own tags in front of these. The loader wires
+    /// lifted FIX fields in front of these and the trailer behind them. The
+    /// loader wires
     /// `Symbol.iterator` over this.
     #[napi]
     pub fn entries(&self) -> Vec<FixEntryView> {
@@ -2447,16 +2516,18 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// The definitions this crate owns, in tag order, above every tag FIX or a
 /// venue publishes.
 ///
-/// The event's instant `currunix` and the chain's `creatunix`, `expirunix`,
-/// `prevunix` and `snapunix`; the identities `currhashcode`, `crosshashcode`,
+/// The event's instant `currunix` and the chain's `creatunix`, `prevunix`
+/// and `snapunix`; the identities `currhashcode`, `crosshashcode`,
 /// `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
-/// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
-/// the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
-/// the instrument's ISIN, MIC, Bloomberg, CUSIP and SEDOL codes; what a
-/// bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`; the
-/// capture's own columns, `sourceurl` and `recordedat`, which whoever read
-/// the line states on the row and no message holds; and the `nofixentries`
-/// that counts the content record. `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+/// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
+/// groups; what a bridge's capture states - `msgctxid`, `pluginid`,
+/// `msgsessionid`; the capture's own columns, `sourceurl` and `recordedat`,
+/// which whoever read the line states on the row and no message holds; and
+/// the `nofixentries` that counts the content record. Nothing about the
+/// market is here: every market fact is FIX's own field, and the graph
+/// traits answer it off those.
+///
+/// `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null. Every registry already holds them, so this is
 /// the listing a schema or a document walks rather than something a caller
 /// registers.

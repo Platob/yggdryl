@@ -38,7 +38,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert_eq!(message.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?.as_str(), Some("BROKER"));
     // The message re-emits what it now states: what arrived, and the day
     // order its dictionary derived from an order stating no TimeInForce.
-    assert_eq!(message.into_text('|')?, "8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|");
+    assert_eq!(message.into_text('|')?, "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|");
     ```
 
 === "Python"
@@ -54,7 +54,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
     # The message re-emits what it now states: what arrived, and the day order
     # its dictionary derived from an order stating no TimeInForce.
-    assert message.into_text("|") == "8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|"
+    assert message.into_text("|") == "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|"
     ```
 
 === "JavaScript"
@@ -71,7 +71,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     // The message re-emits what it now states: what arrived, and the day order
     // its dictionary derived from an order stating no TimeInForce.
-    assert.equal(message.intoText('|'), '8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|')
+    assert.equal(message.intoText('|'), '8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|')
     ```
 
 ## A line yields none, one or many messages
@@ -179,8 +179,8 @@ a line that stated no frame.
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(read.len(), 2);
     // Each re-emits its own bytes, and the day order its dictionary derived.
-    assert_eq!(read[0], b"8=FIX.4.4|35=D|59=0|11=A|10=001|");
-    assert_eq!(read[1], b"8=FIX.4.4|35=8|59=0|37=O1|10=002|");
+    assert_eq!(read[0], b"8=FIX.4.4|35=D|11=A|59=0|10=001|");
+    assert_eq!(read[1], b"8=FIX.4.4|35=8|37=O1|59=0|10=002|");
 
     // A sentence states no message, whatever `=` it happens to hold.
     assert!(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")?.next().is_none());
@@ -212,8 +212,8 @@ a line that stated no frame.
     both = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|"
     # Each re-emits its own bytes, and the day order its dictionary derived.
     assert [message.into_text("|") for message in codec.parse_line(both)] == [
-        "8=FIX.4.4|35=D|59=0|11=A|10=001|",
-        "8=FIX.4.4|35=8|59=0|37=O1|10=002|",
+        "8=FIX.4.4|35=D|11=A|59=0|10=001|",
+        "8=FIX.4.4|35=8|37=O1|59=0|10=002|",
     ]
     # A sentence states no message, whatever `=` it happens to hold.
     assert list(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")) == []
@@ -241,7 +241,7 @@ a line that stated no frame.
     const both = Buffer.from('8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|')
     // Each re-emits its own bytes, and the day order its dictionary derived.
     const read = [...codec.parseLine(both)].map((message) => message.intoText('|'))
-    assert.deepEqual(read, ['8=FIX.4.4|35=D|59=0|11=A|10=001|', '8=FIX.4.4|35=8|59=0|37=O1|10=002|'])
+    assert.deepEqual(read, ['8=FIX.4.4|35=D|11=A|59=0|10=001|', '8=FIX.4.4|35=8|37=O1|59=0|10=002|'])
     // A sentence states no message, whatever `=` it happens to hold.
     assert.equal([...codec.parseLine(Buffer.from('After Enrichment -> ACCOUNT=A1 SIDE=1'))].length, 0)
     // The same pairs behind a separator the line named are a bridge row, and a

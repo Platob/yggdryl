@@ -10,6 +10,7 @@ class of its own and every refusal is the native one.
 
 from __future__ import annotations
 
+import decimal
 import copy
 import datetime as dt
 import json
@@ -46,13 +47,15 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # What the crate itself adds beside the specification: its own columns in tag
-# order from 65003 and the two Map groups.
-CRATED = 38
+# order from 65003 and the two Map groups. Nothing about the market is here -
+# every market fact is FIX's own field, and the graph traits answer it off
+# those.
+CRATED = 20
 # What ``FixRegistry()`` holds: the crate's own scalar fields, the two seeded
 # standard clocks SendingTime (52) and TransactTime (60), and the two Map
 # groups. ``len`` counts the groups; iteration walks the scalars alone.
-SEEDED = 40
-SEEDED_SCALARS = 38
+SEEDED = 22
+SEEDED_SCALARS = 20
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -73,13 +76,8 @@ NOFIXENTRIES_TAG = 65027
 CURRUUID_TAG = 65039
 CROSSUUID_TAG = 65040
 SEQNUM_TAG = 65042
-PX_TAG = 65043
 CROSSCODE_TAG = 65048
 METADATA_TAG = 65049
-PREVPX_TAG = 65051
-PREVQTY_TAG = 65052
-TRADABLE_TAG = 65053
-SYMBOLTICKER_TAG = 65054
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -409,7 +407,25 @@ def test_a_new_registry_holds_the_crate_and_the_two_seeded_clocks() -> None:
         assert registry.get_field_by_tag(tag) is None, name
 
     # The retired spellings reach nothing.
-    for retired in ("updatedat", "createdat", "msghash", "msgphash", "altids", "code", "version"):
+    # `state`, `px`, `qty` and the instrument codes went the same way: what
+    # a message says about its market is FIX's own field, and the traits read
+    # it there.
+    for retired in (
+        "updatedat",
+        "createdat",
+        "msghash",
+        "msgphash",
+        "altids",
+        "code",
+        "version",
+        "state",
+        "px",
+        "qty",
+        "isincode",
+        "miccode",
+        "tradable",
+        "symbolticker",
+    ):
         assert registry.get_field_by_name(retired) is None, retired
 
 
@@ -418,15 +434,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
     # In tag order, one block from 65003, above every tag FIX or a venue
-    # publishes: the event's clocks, its identities, the facts a row derives
-    # from what the message said, what a capture stated, and the two Maps.
+    # publishes: the event's clocks, its identities, the chain, what a
+    # capture stated, and the two Maps. Nothing about the market is here -
+    # the price, the quantity, the instrument's codes, the state and the
+    # lanes are FIX's own fields, and the graph traits answer them off
+    # those.
     assert list(fields) == [
         "currunix",
         "msgctxid",
         "pluginid",
-        "isincode",
-        "miccode",
-        "state",
         "currhashcode",
         "crosshashcode",
         "identifiers",
@@ -437,32 +453,17 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "sourceurl",
         "nofixentries",
         "recordedat",
-        "expirunix",
-        "bidcurrency",
-        "askcurrency",
         "msgsessionid",
-        "bloombergcode",
-        "cusipcode",
-        "sedolcode",
         "curruuid",
         "crossuuid",
         "parentuuids",
         "seqnum",
-        "px",
-        "qty",
-        "unit",
-        "bidunit",
-        "askunit",
         "crosscode",
         "metadata",
-        "prevpx",
-        "prevqty",
-        "tradable",
-        "symbolticker",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == SYMBOLTICKER_TAG
+    assert tags[0] == UNIX_TAG and tags[-1] == METADATA_TAG
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -480,15 +481,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creatunix", "snapunix", "recordedat", "expirunix"):
+    for name in ("currunix", "prevunix", "creatunix", "snapunix", "recordedat"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     for name in ("curruuid", "crossuuid", "prevuuid"):
         assert fields[name].dtype == DataType("uuid"), name
     for name in ("currhashcode", "crosshashcode", "seqnum"):
         assert fields[name].dtype == DataType("uint64"), name
-    assert fields["isincode"].dtype == DataType("isin")
-    assert fields["miccode"].dtype == DataType("mic")
-    assert fields["state"].dtype == DataType("state")
     assert fields["sourceurl"].dtype == DataType("url")
     assert fields["crosscode"].dtype == DataType("utf8")
     assert fields["nofixentries"].dtype == DataType("int32")
@@ -741,7 +739,7 @@ def _order(seed: FixRegistry) -> Field:
 
 ORDER_VALUE: dict[str, Any] = {
     "symbol": "AAPL",
-    "orderqty": 100.0,
+    "orderqty": decimal.Decimal("100"),
     "nopartyids": 1,
     "parties": [{"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}],
     "9999": "custom",
@@ -861,7 +859,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert event.seqnum == 0
     assert event.prevuuid is None and event.prevunix is None and event.snapunix is None
     assert event.state.as_py() == "00UNKNOWN"
-    assert event.isincode is None
+    assert message.isincode is None
     assert event == message.event()
     assert hash(event) == hash(message.event())
 
@@ -910,12 +908,14 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(CROSSCODE_TAG).as_py() == "A1"
     assert message.by_name("crosscode").as_py() == "A1"
     assert message.get_by_tag(SNAPUNIX_TAG) is None
-    # None of them is a row child: the content row holds the rest.
+    # None of them is a row child: the content row holds the rest, the side
+    # and the currency among it, and the day order the dictionary derived.
     assert [child.name for child in message.field] == [
-        "clordid",
         "symbol",
+        "side",
+        "currency",
         "transacttime",
-        "checksum",
+        "timeinforce",
         "settlcurrency",
         "currencycodesource",
     ]
@@ -980,20 +980,21 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
     assert message.by_tag(1).as_py() == "ACC-1"
     assert [child.name for child in message.field][-1] == "account"
 
-    # A typed key writes its holder and never the row. `OrderQty` is one:
-    # the quantity the message is about, which the crate's `qty` owns.
+    # A typed key writes its holder and never the row. `OrderQty(38)` and
+    # `Price(44)` are two: the numbers the message lifted, and what it is
+    # *about* is read off them.
     before = len(message)
-    message.set(38, 100.0)
+    message.set(38, decimal.Decimal("100"))
     assert message.qty.as_py() == 100
-    assert message.by_tag(38).as_py() == 100.0
+    assert message.by_tag(38).as_py() == decimal.Decimal("100")
     assert len(message) == before
+    message.set(44, "12.5")
+    assert message.px.as_py() == decimal.Decimal("12.5")
+    assert len(message) == before
+    # The side is an ordinary child, so writing it grows the row once.
     message.set(54, "2")
     assert message.side.as_py() == "SELL"
     assert message.by_tag(54).as_py() == "SELL"
-    assert len(message) == before
-    message.set(PX_TAG, "12.5")
-    assert message.px.as_py() == 12.5
-    assert len(message) == before
     message.set(58, "note")
     assert message.text == "note"
     message.set("metadata", {"tech.clientid": "A"})
@@ -1046,7 +1047,6 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
     message = codec.parse_fix_line(wire)
 
     assert message.entries() == [
-        (11, "clordid", "A1", []),
         (55, "symbol", "AAPL", []),
         (
             453,
@@ -1066,18 +1066,20 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
             ],
         ),
         (0, "9999", "x", []),
-        (10, "checksum", "0", []),
+        (59, "timeinforce", "0", []),
     ]
     # The group's counter is the group entry's own value, so the counter
     # child beside it states nothing the entries do not already.
     assert [tag for tag, _, _, _ in message.entries()].count(453) == 1
-    # A typed fact is not an entry: the holders answer those.
-    assert all(tag not in (8, 35, 52, 54) for tag, _, _, _ in message.entries())
+    # A typed fact is not an entry: the holders answer those, the lifted
+    # `ClOrdID(11)` and the trailer's own `CheckSum(10)` included.
+    assert all(tag not in (8, 10, 11, 35, 52) for tag, _, _, _ in message.entries())
 
-    # The wire puts the header and the event's own tags in front of them, and
-    # a derived value the dictionary licensed rides with the row.
+    # The wire puts the header and the lifted fields in front of them, the
+    # trailer behind, and a derived value the dictionary licensed rides with
+    # the row.
     assert message.into_bytes(124) == (
-        b"8=FIX.4.4|35=D|59=0|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|10=0|"
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BRK|447=D|452=1|9999=x|59=0|10=0|"
     )
     assert message.into_text("|") == message.into_bytes(124).decode()
     assert len(message.digest()) == 16
@@ -1284,25 +1286,26 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     reader = _fixed(seed)
 
     # A `SecurityID` an ISIN's check digit closes has stated its source, and
-    # under that source the crate's `isincode` fact and the country.
+    # under that source the ISIN the trait answers and the country.
     line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
     filled = next(reader.parse_line(line))
     assert filled.by_tag(22).as_py() == "4"
-    assert filled.event().isincode is not None
-    assert filled.event().isincode.as_py() == "US0378331005"
+    assert filled.isincode is not None
+    assert filled.isincode.as_py() == "US0378331005"
     assert filled.by_tag(470).as_py() == "US"
     # An order stating no time in force is a day order.
     assert filled.by_tag(59).as_py() == "0"
-    # The wire is the message as it now stands: what the line carried, then
-    # the pairs the dictionary derived from it.
+    # The wire is the message as it now stands: the header, the lifted
+    # `ClOrdID`, what the line carried with the pairs the dictionary derived
+    # from it, then the trailer.
     assert filled.into_bytes(ord("|")) == (
-        b"8=FIX.4.4|35=D|59=0|11=A|48=US0378331005|10=0|22=4|470=US|"
+        b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|59=0|470=US|10=0|"
     )
 
     # A value no standard closes answers nothing rather than a guess.
     opaque = next(reader.parse_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|"))
     assert opaque.get_by_tag(22) is None
-    assert opaque.event().isincode is None
+    assert opaque.isincode is None
 
     # The message component's identifiers fill the event's own map.
     report = reader.parse_fix_line(b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|")
@@ -1456,9 +1459,8 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "beginstring",
     }
     # The facts a row derives are typed as the thing they hold.
-    assert schema[schema.index_of("isincode")].dtype == DataType("isin")
-    assert schema[schema.index_of("miccode")].dtype == DataType("mic")
-    assert schema[schema.index_of("state")].dtype == DataType("state")
+    assert schema[schema.index_of("securityexchange")].dtype == DataType("mic")
+    assert schema[schema.index_of("price")].dtype == DataType("decimal128(38, 18)")
     assert schema[schema.index_of("curruuid")].dtype == DataType("uuid")
     assert schema[schema.index_of("identifiers")].fix.counter == IDENTIFIERS_TAG
 
@@ -1484,7 +1486,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # A read is not a snapshot, and a fact the message gave nothing for is
     # null rather than a shift.
     assert row[schema.index_of("snapunix")] is None
-    assert row[schema.index_of("state")] is None
+    assert row[schema.index_of("ordstatus")] is None
     assert row[schema.index_of("prevunix")] is None
     assert row[schema.index_of("msgsessionid")] is None
     assert row[schema.index_of("nofixentries")] == len(message.entries())
@@ -1493,8 +1495,10 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # dictionary explained under tag 0 and its own name.
     # A row cell is the ordered sequence its Struct declares: the tag, the
     # canonical name, the value, and the entries nested under it.
+    # `ClOrdID(11)` is a fact the message lifts and `CheckSum(10)` the
+    # trailer's, so neither is an entry; the derived `TimeInForce(59)` is.
     arrived = row[schema.index_of("fixentries")]
-    assert [entry[0] for entry in arrived] == [11, 0, 0, 10]
+    assert [entry[0] for entry in arrived] == [0, 0, 59]
     assert [entry[1] for entry in arrived if entry[0] == 0] == ["9999", "venueownthing"]
     assert arrived == [list(entry) for entry in message.entries()]
 
@@ -1519,8 +1523,10 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
     assert row[0] is None
     assert row[carried.index_of("msgtype")] == "D"
 
-    # A required capture column the message cannot fill refuses the
-    # projection rather than publishing a null into it.
+    # A capture column is led nullable however the carrier declared it,
+    # because only a pass holding the source row can say where a line came
+    # from: a required one is carried as nullable and the projection answers
+    # null there rather than refusing.
     strict = fix_schema_carrying(
         Field(
             "line",
@@ -1529,8 +1535,8 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
         ),
         plain,
     )
-    with pytest.raises(ValueError, match=r"\$\.url"):
-        message.into_row(strict)
+    assert strict[0].nullable
+    assert message.into_row(strict).as_py()[0] is None
 
     # A capture column whose folded name a FIX column takes is not carried in
     # front: `msgSessionId` and `msgsessionid` are one name.
@@ -1595,10 +1601,11 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     # A column spelled for a field fills it where the frame stated none.
     assert parsed.column("msgsessionid").to_pylist() == ["e7254b22", None]
     assert parsed.column("msgseqnum").to_pylist() == [4507, 696]
-    # Row-only: what the row filled is never an entry.
+    # Row-only: what the row filled is never an entry, and neither is the
+    # trailer's own checksum; the derived `TimeInForce(59)` is.
     assert [[entry["tag"] for entry in row] for row in parsed.column("fixentries").to_pylist()] == [
-        [55, 10],
-        [10],
+        [55, 59],
+        [],
     ]
 
 
@@ -1621,7 +1628,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) 
     # The plugin selects nothing: the venue's key maps to its field on every
     # row, so no arrival is left unresolved.
     for row in parsed.column("fixentries").to_pylist():
-        assert [entry["tag"] for entry in row] == [11, 5001]
+        assert [entry["tag"] for entry in row] == [5001, 59]
 
     # One line read alone answers exactly what the batch did, and the plugin
     # is a fact about the capture rather than an entry.

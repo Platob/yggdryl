@@ -2732,7 +2732,7 @@
     "metadata": {
       "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
       "display": "SecurityID",
-      "fix:derivation": "isincode",
+      "fix:derivation": "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)",
       "fix:tag": "48"
     }
   },

@@ -157,7 +157,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["body", "currunix", "creatunix", "prevunix", "expirunix"].windows(2) {
+    for pair in ["body", "currunix", "creatunix", "prevunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert_eq!(names.last(), Some(&"fixentries"));
@@ -169,8 +169,8 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         55,
         54,
         60, // the instrument, the side and the clock
-        yggdryl::PX_TAG_NAME.0,
-        yggdryl::QTY_TAG_NAME.0, // the price and the quantity, the event's own
+        44,
+        38, // the price and the quantity, FIX's own fields
         132,
         133,
         134,
@@ -351,8 +351,10 @@ fn messages_to_batches_close_on_the_arrival_records_raw_bytes() {
     assert_eq!(one[0].num_rows(), 200);
 
     // A bound of about ten lines of pairs cuts the stream into batches of
-    // about ten, and every row survives the cut.
-    let bounded = codec.clone().with_batch_byte_size(10 * 115);
+    // about ten, and every row survives the cut. A line is measured by the
+    // record it arrived as, which is smaller than it was: the frame and the
+    // fields a message lifts are held rather than recorded.
+    let bounded = codec.clone().with_batch_byte_size(10 * 46);
     let many = batches(
         bounded
             .arrow_reader(schema.clone(), codec.parse_lines(lines.clone()))

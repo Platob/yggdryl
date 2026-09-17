@@ -964,13 +964,12 @@ def attach_replacements(
 # chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
 # the fields fall. A term reads fields by their canonical folded names, a
 # group by its name (`secaltidgrp[securityaltidsource = '4'][0].securityaltid`
-# is the alternate identifier whose source says ISIN), and the crate's own
-# columns by theirs. An absent input is a null the term answers null over, so
-# a rule states only what makes its answer certain. The three crate columns
-# (`isincode`, `miccode`, `state`) declare theirs in `rust/src/fix/crated.rs`.
-
-# The crate's own columns a rule may read.
-CRATE_COLUMNS = ("isincode", "miccode", "state")
+# is the alternate identifier whose source says ISIN). An absent input is a
+# null the term answers null over, so a rule states only what makes its
+# answer certain. Every name a rule reads is FIX's own: the crate owns no
+# derived column, because a fact a message implies about its market is what
+# the traits answer off the fields it lifted and not a second column beside
+# them.
 
 # The message types that report an order's state, and the ones that carry a
 # `TimeInForce`: an order, a replace and the report on either.
@@ -1133,12 +1132,26 @@ def crate_countries() -> tuple[str, ...]:
     return codes
 
 
+# The alternate identifier whose source says ISO 6166, which is where a
+# message that names an ISIN without stating it as its primary identifier
+# states it. The cast is the validation: ISO 6166 closes a number with a
+# check digit, so a value the `isin` datatype refuses never answers.
+ALTERNATE_ISIN = "try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)"
+
+# The ISIN a message states, wherever it states it: the primary identifier
+# under source `4`, else that alternate.
+ISIN_EXPRESSION = (
+    "coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, "
+    f"{ALTERNATE_ISIN})"
+)
+
+
 def country_case() -> str:
     """`CountryOfIssue` off the ISIN prefix: ISO 6166 opens a number with the
     ISO 3166 code of the country whose agency numbered it, and only a prefix
     the crate's registry lists as a country answers - `XS`, `EU` and every
     unassigned pair are silence."""
-    prefix = "substring(isincode, 1, 2)"
+    prefix = f"substring({ISIN_EXPRESSION}, 1, 2)"
     return case([(f"{prefix} in {quoted_list(crate_countries())}", prefix)])
 
 
@@ -1195,7 +1208,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # A message stating its ISIN and no `SecurityID` - a bridge row's
     # `ISINCODE`, or an alternate identifier alone - has stated its primary
     # identifier, whose validation then states the source.
-    (48, "isincode"),
+    (48, ALTERNATE_ISIN),
     # A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
     # and so is the `SecurityAltID` an exchange gave.
     (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)"),
@@ -1272,14 +1285,12 @@ def attach_derivations(
 
     A derivation is read at intake and evaluated on every message, so every
     reference it makes is proven here: the target tag is a field, and every
-    column the expression names is a field, a group or a crate column of the
-    dictionary. The crate parses and types the text once more when it loads
+    column the expression names is a field or a group of the dictionary. The crate parses and types the text once more when it loads
     the dictionary. Answers the text written per target tag.
     """
     by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
     names = {field["name"] for field in catalog["fields"]}
     names.update(field["name"] for field in catalog["groups"])
-    names.update(CRATE_COLUMNS)
     rules = list(DERIVATION_RULES)
     rules.append((460, product_case(code_records[167])))
     written: dict[int, str] = {}
@@ -1290,7 +1301,7 @@ def attach_derivations(
             raise ValueError(f"derivation for unknown tag {tag}")
         for column in expression_columns(text):
             if column not in names:
-                raise ValueError(f"tag {tag}: {column!r} is not a field, a group or a crate column")
+                raise ValueError(f"tag {tag}: {column!r} is not a field or a group")
         metadata = by_tag[tag]["metadata"]
         metadata["fix:derivation"] = text
         by_tag[tag]["metadata"] = dict(sorted(metadata.items()))

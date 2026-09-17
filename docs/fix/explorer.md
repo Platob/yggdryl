@@ -18,12 +18,12 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,277 |
+| Scalar fields | 6,241 | 6,259 |
 | Groups | 580 | 582 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 
-The live additions are the crate's 36 fields - `parentuuids` among them, a list of the identities a message descends from, which is one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 123 columns.
+The live additions are the crate's 18 fields - `parentuuids` among them, a list of the identities a message descends from, which is one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 115 columns.
 
 === "Rust"
 
@@ -35,9 +35,9 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_787);
+    assert_eq!(registry.len(), 7_769);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_787);
+    assert_eq!(registry.iter().count(), 7_769);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -66,8 +66,8 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_787
-    assert sum(1 for _ in registry) == 6_277
+    assert len(registry) == 7_769
+    assert sum(1 for _ in registry) == 6_259
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -95,7 +95,7 @@ The live additions are the crate's 36 fields - `parentuuids` among them, a list 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7787)
+    assert.equal(registry.size, 7769)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')

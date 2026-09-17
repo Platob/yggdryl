@@ -108,6 +108,11 @@ function column(table, name) {
   return table.getChild(name).toJSON()
 }
 
+/** One exact column, as the unscaled coefficients Arrow JS renders it. */
+function exactColumn(table, name) {
+  return column(table, name).map((held) => (held === null ? null : BigInt(JSON.parse(held))))
+}
+
 function mapColumn(table, name) {
   return Array.from(table.getChild(name), (value) => {
     if (value === null) return null
@@ -377,9 +382,11 @@ test('a parse fills what the dictionary derives, through both doors', () => {
   const [message] = codec.parseLines([REPORT])
   // There is no enriching pass: what a message implies is filled where it
   // is parsed, so the row a capture lands in states it already.
-  assert.deepEqual(column(rows, 'leavesqty'), [60])
+  // An exact column crosses as its unscaled coefficient at the one scale
+  // this crate keeps a number at.
+  assert.deepEqual(exactColumn(rows, 'leavesqty'), [60n * 10n ** 18n])
   assert.ok(message.byTag(151).equals(Scalar.decimal(60n)))
-  assert.deepEqual(column(rows, 'avgpx'), [10.5])
+  assert.deepEqual(exactColumn(rows, 'avgpx'), [105n * 10n ** 17n])
   assert.ok(message.byTag(6).equals(Scalar.decimal(105n, 1)))
   // A derived tag the fixed row does not carry is filled on the message and
   // has no column to appear in: the row is a projection of the message.
@@ -572,11 +579,11 @@ test('a set value is typed by the registry field and appended when absent', () =
   assert.equal(message.byName('Account').asJs(), 'ACC-1', 'reached by name through the registry')
 
   // A header tag is a typed fact: it fills the holder and the row is
-  // exactly as long as it was. So is `Price(44)`, which the crate's own
-  // `px` is what a message holds it as.
+  // exactly as long as it was. So is `Price(44)`, which the message lifts
+  // and holds exact, so it takes an exact value and not a float.
   const held = message.size
   message.set(34, 7)
-  message.set(44, 10.5)
+  message.set(44, '10.5')
   assert.equal(message.size, held)
   assert.equal(message.header().msgseqnum, 7)
   assert.equal(message.byTag(34).asJs(), 7)
@@ -615,12 +622,14 @@ test('a set leaves the entries, the wire and the digest untouched', () => {
   const message = parsed.clone()
   message.set(55, 'MSFT')
   message.set(1, 'ACC-1')
+  // The written `Account(1)` is an entry and the removed `Side(54)` was
+  // one, so the two cancel out: the side is an ordinary child now.
   assert.notEqual(message.remove(54), null)
-  assert.deepEqual(message.entries().length, parsed.entries().length + 1, 'the written child is an entry')
-  // `OrderQty(38)` is the quantity the event is about, so writing it moves
-  // no child and adds no entry.
-  message.set(38, Scalar.float(100))
-  assert.deepEqual(message.entries().length, parsed.entries().length + 1)
+  assert.deepEqual(message.entries().length, parsed.entries().length, 'the written child is an entry')
+  // `OrderQty(38)` is a fact the message lifts, so writing it moves no
+  // child and adds no entry.
+  message.set(38, '100')
+  assert.deepEqual(message.entries().length, parsed.entries().length)
   assert.equal(message.qty, '100')
   assert.ok(message.byTag(38).equals(Scalar.decimal(100n)))
   // A null is stored as a stated null.
@@ -711,13 +720,13 @@ test('a row is refused where it cannot state the settled identity', () => {
     assert.throws(() => fix.FixMsg.fromRow(schema, cells, registry), new RegExp(name), name)
   }
 
-  // A typed fact clears on its holder rather than refusing, and the row is
-  // untouched by it.
+  // Removing the side takes its child out of the row, and the trait falls
+  // back to the unknown it reads off a message that states none.
   const message = parsed.clone()
   const size = message.size
   assert.notEqual(message.remove(54), null)
   assert.equal(message.side, 'UNKNOWN')
-  assert.equal(message.size, size)
+  assert.equal(message.size, size - 1)
   // An ordinary child leaves, and the content identity follows it.
   const identity = message.currhashcode
   assert.equal(message.remove('VenueThing').asJs(), '7')
@@ -814,12 +823,16 @@ test('a row without the entries column has no entries', () => {
   assert.deepEqual(held.entries(), [])
   // The typed facts survive the column that holds each; the content does
   // not, because the record is what it was rebuilt from, so the wire is the
-  // header and the event's own tags with nothing behind them.
+  // header, the fields the message lifted and the trailer, with nothing
+  // between them.
   const emitted = held.intoBytes(PIPE).toString()
-  assert.equal(emitted, '8=FIX.4.4|35=D|54=1|59=0|')
+  assert.equal(emitted, '8=FIX.4.4|35=D|11=A1|10=0|')
   assert.equal(held.header().msgtype, parsed.header().msgtype)
-  assert.equal(held.side, parsed.side)
   assert.equal(held.crosscode, parsed.crosscode)
+  // The side does not survive: it is an ordinary child, and a row read back
+  // without the record has no content for the trait to read it off.
+  assert.equal(parsed.side, 'BUY')
+  assert.equal(held.side, 'UNKNOWN')
   assert.equal(held.size, 0)
   assert.equal(held.getByTag(55), null)
   // The row it makes states the facts it kept and nothing of the content it

@@ -1215,12 +1215,6 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
 /// documents it needs - the schema, the value, and the dictionary's fields.
 type MsgPickle = (Py<PyAny>, (String, String, String));
 
-/// The tags a message holds typed beside the crate's own: the standard
-/// header, the event's own FIX tags, and `Text(58)`.
-const TYPED_TAGS: [i32; 16] = [
-    8, 35, 49, 56, 34, 52, 43, 385, 15, 54, 461, 132, 133, 134, 135, 58,
-];
-
 /// A FIX message: a typed market event with a content row, against the
 /// registry that types it.
 ///
@@ -1284,7 +1278,10 @@ impl PyFixMsg {
         let registry = self.inner.registry();
         let mut fields = Vec::new();
         let mut values = Vec::new();
-        let tags = TYPED_TAGS
+        // The core publishes what a message holds typed, so this walk never
+        // keeps a list of its own: a tag lifted or retired there would
+        // otherwise drop out of a pickle without a word.
+        let tags = yggdryl::FIX_TYPED_TAGS
             .into_iter()
             .chain(yggdryl::CRATE_TAG_MIN..yggdryl::CRATE_TAG_MAX);
         for tag in tags {
@@ -1318,9 +1315,9 @@ impl PyFixMsg {
     /// `value` is anything the `Scalar` boundary reads - a native `Scalar`, a
     /// mapping of names, a sequence in the root's own order - and is
     /// validated and canonicalized against `field` by the core. A child
-    /// stating a typed fact - a header tag, a crate column, one of the
-    /// event's own tags, `Text(58)` - fills the holder that owns it and
-    /// leaves the row. The clocks settle: `SendingTime` is the stated one,
+    /// stating a typed fact - a header or trailer tag, a crate column, one
+    /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
+    /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
     /// one; the instant `currunix` is the stated one, else `TransactTime`, else
     /// `SendingTime`; the creation is the stated one, else
@@ -1425,11 +1422,11 @@ impl PyFixMsg {
 
     /// The value a tag names, or `None`.
     ///
-    /// A tag the typed holders own - a header tag, a crate column, one of
-    /// the event's own tags, `Text(58)` - answers the fact the holder
-    /// states, typed as its column is: `by_tag(35)` is the type as text,
-    /// `by_tag(52)` the sending clock as a nanosecond UTC `datetime64`,
-    /// `by_tag(54)` the side as its explicit value, a crate identity a
+    /// A tag the typed holders own - a header or trailer tag, a crate
+    /// column, one of the FIX fields a message lifts, `Text(58)` - answers
+    /// the fact the holder states, typed as its column is: `by_tag(35)` is
+    /// the type as text, `by_tag(52)` the sending clock as a nanosecond UTC
+    /// `datetime64`, `by_tag(44)` an exact price, a crate identity a
     /// `uuid`. Any other tag reaches the row: the canonical holder of the
     /// tag answers first, then the child named as the dictionary names the
     /// tag, then the child named by the tag's decimal spelling.
@@ -1508,9 +1505,9 @@ impl PyFixMsg {
     /// resolves to.
     ///
     /// `key` is a tag or a name, resolved as a lookup resolves one through
-    /// the dictionary. A key reaching a typed fact - a header tag, a crate
-    /// column, one of the event's own tags - records it on the holder that
-    /// owns it, and `None` clears it. A key reaching one of the capture's
+    /// the dictionary. A key reaching a typed fact - a header or trailer
+    /// tag, a crate column, one of the FIX fields a message lifts - records
+    /// it on the holder that owns it, and `None` clears it. A key reaching one of the capture's
     /// own columns - `sourceurl` (65026), `recordedat` (65028), by tag or by
     /// name - is a located `ValueError`: a message holds no fact for one,
     /// and a row child would put it on the wire. Any other key lands in
@@ -1850,6 +1847,46 @@ impl PyFixMsg {
     #[getter]
     fn symbolticker(&self) -> Option<&str> {
         self.inner.get_symbolticker()
+    }
+
+    /// The instrument's ISIN, read off `SecurityID(48)` under its source or
+    /// the `SecurityAltID` group; `None` where no check digit closes one.
+    #[getter]
+    fn isincode(&self) -> Option<PyScalar> {
+        self.inner.get_isincode().map(code_scalar)
+    }
+
+    /// The instrument's CUSIP, read the same way; `None` where none closes.
+    #[getter]
+    fn cusipcode(&self) -> Option<PyScalar> {
+        self.inner.get_cusipcode().map(code_scalar)
+    }
+
+    /// The instrument's SEDOL, read the same way; `None` where none closes.
+    #[getter]
+    fn sedolcode(&self) -> Option<PyScalar> {
+        self.inner.get_sedolcode().map(code_scalar)
+    }
+
+    /// The instrument's Bloomberg identifier, read the same way; `None`
+    /// where the message names none.
+    #[getter]
+    fn bloombergcode(&self) -> Option<PyScalar> {
+        self.inner.get_bloombergcode().map(code_scalar)
+    }
+
+    /// The instrument's classification, read off `CFICode(461)` and what
+    /// the message says about the security; `None` where nothing does.
+    #[getter]
+    fn cficode(&self) -> Option<PyScalar> {
+        self.inner.get_cficode().map(code_scalar)
+    }
+
+    /// The market, read off `SecurityExchange(207)`, `ExDestination(100)`
+    /// or `LastMkt(30)`, the first that names an ISO 10383 MIC.
+    #[getter]
+    fn miccode(&self) -> Option<PyScalar> {
+        self.inner.get_miccode().map(code_scalar)
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.
@@ -2559,20 +2596,16 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `currunix`, `creatunix`, `expirunix`, `prevunix`,
-/// `snapunix`, the `recordedat` a capture stamped - its identities -
-/// `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`,
-/// `parentuuids`, the `crosscode` they derive from - the facts a row
-/// derives from what the message said - the instrument's `isincode`,
-/// `cusipcode`, `sedolcode`, `bloombergcode`, its `miccode` and the order's
-/// `state`, its `px`, `qty` and `unit`, the two lanes' currencies and
-/// units, its `seqnum` - what a bridge's own log states about a line - the
-/// `pluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl` a line
-/// was read from, the `nofixentries` that counts its content, and the two
-/// Map groups `identifiers` and `metadata`. Every registry holds these
-/// definitions from construction beside the seeded `SendingTime` and
-/// `TransactTime`; a store writes them like every other and reads a stored
-/// copy past.
+/// The event's clocks - `currunix`, `creatunix`, `prevunix`, `snapunix`, the
+/// `recordedat` a capture stamped - its identities - `currhashcode`,
+/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the
+/// `crosscode` they derive from, its `seqnum` - what a bridge's own log
+/// states about a line - the `pluginid`, the `msgctxid`, the
+/// `msgsessionid` - the `sourceurl` a line was read from, the
+/// `nofixentries` that counts its content, and the two Map groups
+/// `identifiers` and `metadata`. Twenty in all, and every one a fact no
+/// dictionary publishes: what a message says about its *market* is FIX's
+/// own field, and the graph traits answer it off those.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -2739,6 +2772,26 @@ impl PyFixHeader {
     #[getter]
     fn msgdirection(&self) -> Option<&str> {
         self.inner.msgdirection()
+    }
+
+    /// `SignatureLength(93)`: how many bytes the signature runs to, or
+    /// `None` where the frame carried none.
+    #[getter]
+    fn signaturelength(&self) -> Option<i32> {
+        self.inner.signaturelength()
+    }
+
+    /// `Signature(89)`: the bytes the frame was signed with, or `None`.
+    #[getter]
+    fn signature(&self) -> Option<&[u8]> {
+        self.inner.signature()
+    }
+
+    /// `CheckSum(10)`: the frame's own checksum as the wire spelled it, or
+    /// `None`. Always the last pair of a frame, and the last the wire emits.
+    #[getter]
+    fn checksum(&self) -> Option<&str> {
+        self.inner.checksum()
     }
 
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {

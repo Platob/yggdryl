@@ -22,12 +22,22 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
     assert_eq!(one.stable_hash(), one.clone().stable_hash());
 
     // Order carries meaning inside a repeating group, so it is never sorted
-    // away: the same pairs in another order are another message.
+    // away: the same pairs in another order are another message. The pairs
+    // have to be the row's own - `ClOrdID(11)` is a fact the message lifts
+    // and holds, and a held fact has no place in the row to have moved.
+    let ordered = reader
+        .sole_line(b"8=FIX.4.4|35=D|1=ACCT|55=AAPL|10=0|")
+        .unwrap();
     let reordered = reader
+        .sole_line(b"8=FIX.4.4|35=D|55=AAPL|1=ACCT|10=0|")
+        .unwrap();
+    assert_ne!(ordered.digest(), reordered.digest());
+    assert_ne!(ordered.stable_hash(), reordered.stable_hash());
+    // And a lifted fact is held, so where the line put it changes nothing.
+    let moved = reader
         .sole_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|")
         .unwrap();
-    assert_ne!(one.digest(), reordered.digest());
-    assert_ne!(one.stable_hash(), reordered.stable_hash());
+    assert_eq!(one.digest(), moved.digest());
 
     // Two calls are the same walk twice, because nothing was stored.
     assert_eq!(one.digest(), one.digest());
@@ -215,15 +225,18 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
+    // Twenty definitions, and every one a fact no dictionary publishes: the
+    // instants, the identities and the codes, the chain, what a bridge's own
+    // log said, and what the reader said about the line. Nothing about the
+    // *market* is here - the price, the quantity, the instrument's codes,
+    // the state and the lanes are FIX's own fields, and the traits answer
+    // them off those.
     assert_eq!(
         names,
         [
             "currunix",
             "msgctxid",
             "pluginid",
-            "isincode",
-            "miccode",
-            "state",
             "currhashcode",
             "crosshashcode",
             "identifiers",
@@ -234,29 +247,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "sourceurl",
             "nofixentries",
             "recordedat",
-            "expirunix",
-            "bidcurrency",
-            "askcurrency",
             "msgsessionid",
-            "bloombergcode",
-            "cusipcode",
-            "sedolcode",
             "curruuid",
             "crossuuid",
             "parentuuids",
             "seqnum",
-            "px",
-            "qty",
-            "unit",
-            "bidunit",
-            "askunit",
             "crosscode",
             "metadata",
-            "prevpx",
-            "prevqty",
-            "tradable",
-            "symbolticker",
-        ],
+        ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
     assert_eq!(
@@ -265,9 +263,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("CurrUnix"),
             Some("MsgCtxId"),
             Some("PluginId"),
-            Some("ISINCode"),
-            Some("MICCode"),
-            Some("State"),
             Some("CurrHashCode"),
             Some("CrossHashCode"),
             Some("Identifiers"),
@@ -278,31 +273,15 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("SourceUrl"),
             Some("NoFixEntries"),
             Some("RecordedAt"),
-            Some("ExpirUnix"),
-            Some("BidCurrency"),
-            Some("AskCurrency"),
             Some("MsgSessionId"),
-            Some("BloombergCode"),
-            Some("CUSIPCode"),
-            Some("SEDOLCode"),
             Some("CurrUuid"),
             Some("CrossUuid"),
             Some("ParentUuids"),
             Some("SeqNum"),
-            Some("Px"),
-            Some("Qty"),
-            Some("Unit"),
-            Some("BidUnit"),
-            Some("AskUnit"),
             Some("CrossCode"),
             Some("Metadata"),
-            Some("PrevPx"),
-            Some("PrevQty"),
-            Some("Tradable"),
-            Some("SymbolTicker"),
         ],
     );
-
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in: the codes are
     // sixty-four-bit digests, the identities UUIDs, the clocks one instant.
@@ -316,9 +295,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         unit: yggdryl::TimeUnit::Nanosecond,
         timezone: yggdryl::Timezone::UTC,
     };
-    assert_eq!(typed("isincode"), &DataType::Isin);
-    assert_eq!(typed("miccode"), &DataType::Mic);
-    assert_eq!(typed("state"), &DataType::State);
     for name in ["currhashcode", "crosshashcode", "seqnum"] {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }
@@ -332,7 +308,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "expirunix", "recordedat"] {
+    for name in ["prevunix", "snapunix", "recordedat"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -394,7 +370,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
+    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
     assert_eq!(
         [
             yggdryl::CURRHASHCODE_TAG_NAME,

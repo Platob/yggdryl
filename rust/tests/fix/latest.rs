@@ -482,9 +482,10 @@ fn a_multiple_value_field_matches_by_token() {
 #[test]
 fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
     let reader = reader();
-    // OrderID on an OrderMassActionReport is the MassActionReportID.
+    // ClearingBusinessDate inside an allocation instruction is scoped to
+    // the group and never applies at the root.
     let report = restated(&reader, b"8=FIX.5.0|35=r|37=O1|1373=1|10=0|");
-    assert_eq!(text(&report, 1369).as_deref(), Some("O1"));
+    assert_eq!(text(&report, 37).as_deref(), Some("O1"));
     let execution = restated(&reader, b"8=FIX.5.0|35=8|37=O1|10=0|");
     assert_eq!(execution.get_by_tag(1369), None);
 
@@ -632,9 +633,9 @@ fn a_rule_stops_where_the_message_already_stated_one_of_its_targets() {
     assert_eq!(text(&filled, 40).as_deref(), Some("1"));
     assert_eq!(text(&filled, 59).as_deref(), Some("7"));
 
-    // `TimeInForce` is one of the facts the event holds, so what blocks the
-    // rule is the holder and not a column: the row carries no `timeinforce`
-    // child either way.
-    assert!(!names(&held).contains(&"timeinforce"));
-    assert!(!names(&filled).contains(&"timeinforce"));
+    // `TimeInForce` is an ordinary child of the row, so the rule's answer
+    // and the message's own statement land in the same column - and the
+    // column is there either way.
+    assert!(names(&held).contains(&"timeinforce"));
+    assert!(names(&filled).contains(&"timeinforce"));
 }

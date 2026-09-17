@@ -529,26 +529,20 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // The fill's body: symbol, side, quantities and prices, typed.
     assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
     assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("BUY"));
-    // `OrderQty(38)` and `Price(44)` are the event's own facts and have no
-    // column of their own; the crate's `qty` and `px` are where the row
-    // carries them, at the scale a crate column declares.
+    // `OrderQty(38)` and `Price(44)` are columns of their own, exact at the
+    // one width this crate keeps a number at.
     assert_eq!(
-        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[FILL_ROW].as_decimal(),
+        tag_column(&read, 38)[FILL_ROW].as_decimal(),
         Some((yggdryl::i256::from_i128(982_000_000_000_000_000_000), 18))
     );
     assert_eq!(
-        tag_column(&read, yggdryl::PX_TAG_NAME.0)[FILL_ROW].as_decimal(),
+        tag_column(&read, 44)[FILL_ROW].as_decimal(),
         Some((yggdryl::i256::from_i128(547_771_791_547_861_000_000), 18))
     );
     assert_eq!(tag_column(&read, 151)[FILL_ROW], super::decimal("0"));
-    // The dictionary's own column holds the code the wire wrote; the crate's
-    // `state` is the one column that ranks it, and `2` is a filled order,
-    // which sorts after every live state.
+    // The row carries the code the wire wrote, and the ranked state the
+    // traits answer is read off it rather than columned beside it.
     assert_eq!(tag_text(&read, 39)[FILL_ROW].as_deref(), Some("2"));
-    assert_eq!(
-        tag_text(&read, yggdryl::STATE_TAG_NAME.0)[FILL_ROW].as_deref(),
-        Some("80FILLED")
-    );
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
@@ -561,8 +555,8 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         Some("20260814_TP1_CLIENT_1003")
     );
     assert_eq!(
-        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[ROUTED_ROW],
-        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[FILL_ROW]
+        tag_column(&read, 38)[ROUTED_ROW],
+        tag_column(&read, 38)[FILL_ROW]
     );
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW], super::decimal("547.77"));
 

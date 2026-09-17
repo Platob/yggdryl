@@ -79,12 +79,12 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 /// rather than by tag number, so a row reads the way the message it came
 /// from reads.
 ///
-/// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not among them, and
-/// that is the one omission worth naming: a message holds what those tags
-/// state as [`get_px`](crate::graph::MarketElement::get_px) and
-/// [`get_qty`](crate::graph::MarketElement::get_qty), so the crate's own
-/// `px` and `qty` are the columns they are read and written through, and a
-/// row carrying both would carry one fact twice.
+/// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
+/// like the rest, each exact and stated once. What a message is *about* is
+/// what [`get_px`](crate::graph::MarketElement::get_px) and
+/// [`get_qty`](crate::graph::MarketElement::get_qty) read off them, and no
+/// column of this crate's restates either, because a row carrying both
+/// would carry one fact twice.
 pub const BODY_TAGS: [i32; 50] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
@@ -160,22 +160,16 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        ASKCURRENCY_TAG_NAME as ASKCURRENCY, ASKUNIT_TAG_NAME as ASKUNIT,
-        BIDCURRENCY_TAG_NAME as BIDCURRENCY, BIDUNIT_TAG_NAME as BIDUNIT,
-        BLOOMBERGCODE_TAG_NAME as BLOOMBERG, CREATUNIX_TAG_NAME as CREATUNIX,
-        CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
-        CROSSUUID_TAG_NAME as CROSSUUID, CURRHASHCODE_TAG_NAME as HASHCODE,
-        CURRUNIX_TAG_NAME as UNIX, CURRUUID_TAG_NAME as CURRUUID, CUSIPCODE_TAG_NAME as CUSIP,
-        EXPIRUNIX_TAG_NAME as EXPIRUNIX, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
-        ISINCODE_TAG_NAME as ISIN, METADATA_TAG_NAME as METADATA, MICCODE_TAG_NAME as MIC,
-        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
-        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
-        PLUGINID_TAG_NAME as PLUGINID, PREVPX_TAG_NAME as PREVPX, PREVQTY_TAG_NAME as PREVQTY,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX,
-        QTY_TAG_NAME as QTY, RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL,
-        SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
-        STATE_TAG_NAME as STATE, SYMBOLTICKER_TAG_NAME as SYMBOLTICKER,
-        TRADABLE_TAG_NAME as TRADABLE, UNIT_TAG_NAME as UNIT,
+        CREATUNIX_TAG_NAME as CREATUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
+        CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
+        CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
+        CURRUUID_TAG_NAME as CURRUUID, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
+        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
+        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
+        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PLUGINID_TAG_NAME as PLUGINID,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
+        RECORDEDAT_TAG_NAME as RECORDEDAT, SEQNUM_TAG_NAME as SEQNUM,
+        SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -198,7 +192,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             UNIX.0,
             CREATUNIX.0,
             PREVUNIX.0,
-            EXPIRUNIX.0,
             SNAPUNIX.0,
             RECORDEDAT.0,
             52,
@@ -207,6 +200,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
             64,
             75,
             126,
+            62,
+            432,
         ],
     );
     // Which event: its own identity, the chain it stands in and what it
@@ -249,31 +244,13 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(
         &mut tags,
         &[
-            55,
-            SYMBOLTICKER.0,
-            48,
-            22,
-            167,
-            762,
-            207,
-            461,
-            541,
-            460,
-            ISIN.0,
-            CUSIP.0,
-            SEDOL.0,
-            BLOOMBERG.0,
-            MIC.0,
-            326,
-            340,
-            965,
-            TRADABLE.0,
+            55, 48, 22, 167, 762, 207, 100, 30, 461, 541, 460, 326, 340, 965,
         ],
     );
     // Which order: the chain of identifiers a message and its answers share.
     band(
         &mut tags,
-        &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693],
+        &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 262, 693],
     );
     // What it states: the side it takes, then one ladder of prices and one
     // of quantities, each from the number the message is about down through
@@ -281,41 +258,20 @@ pub fn fix_schema_tags() -> Vec<i32> {
     // where it has got to - then what those are counted and denominated in,
     // how the order was written, and last the quote's two lanes.
     //
-    // `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not columns: `px`
-    // and `qty` are what a message holds them as, so the row states each
-    // number once.
+    // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
+    // and `Quantity(53)` are columns like the rest of the ladder, and what a
+    // message is *about* is what [`MarketElement::get_px`] reads off them
+    // rather than a column restating one of them.
     band(
         &mut tags,
         &[
-            54,
-            PX.0,
-            PREVPX.0,
-            31,
-            6,
-            QTY.0,
-            PREVQTY.0,
-            32,
-            14,
-            151,
-            UNIT.0,
-            15,
-            120,
-            854,
-            40,
-            59,
-            132,
-            BIDCURRENCY.0,
-            BIDUNIT.0,
-            134,
-            133,
-            ASKCURRENCY.0,
-            ASKUNIT.0,
-            135,
+            54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
         ],
     );
-    // How it went: the state this crate ranked it at, the protocol's own
-    // statuses and reasons, and whatever the venue said in words.
-    band(&mut tags, &[STATE.0, 39, 150, 297, 301, 368, 103, 102, 58]);
+    // How it went: the protocol's own statuses and reasons, and whatever the
+    // venue said in words. The ranked state the traits answer is read off
+    // `OrdStatus` and `ExecType` and is no column of its own.
+    band(&mut tags, &[39, 150, 297, 301, 368, 103, 102, 58]);
     // The groups kept whole, which no scalar column can hold.
     band(&mut tags, &GROUP_TAGS);
     // The frame: every standard header, body and trailer field no band above
@@ -1264,7 +1220,14 @@ impl super::FixMsg {
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
     /// assert_eq!(held.entries(), order.entries());
     /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
-    /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|59=0|11=A1|55=AAPL|"));
+    /// // The emission is the standard header, then the facts the message
+    /// // lifts and holds - `ClOrdID(11)` here - then what arrived in the
+    /// // order it arrived, the derived `TimeInForce(59)` among it, then the
+    /// // trailer.
+    /// assert_eq!(
+    ///     held.into_text('|')?,
+    ///     "8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|54=1|55=AAPL|9999=x|59=0|10=0|",
+    /// );
     /// assert_eq!(held.get_currhashcode(), order.get_currhashcode());
     /// // And the row it came from is the row it makes.
     /// assert_eq!(held.into_row(&schema)?, row);

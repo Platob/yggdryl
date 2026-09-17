@@ -6,16 +6,16 @@
 
 | item | contract |
 | --- | --- |
-| Holders | `event() -> &MarketEventData`, what the four [graph traits](../graph.md) answer - the identities, the codes, the instants, the state, the place in the chain, the price, the quantity, the side, the lanes and the instrument codes; `header() -> &FixHeader`, tags 8, 35, 49, 56, 34, 52, 43 and 385 typed; `capture() -> &FixCapture`, `pluginid`, `msgctxid` and `msgsessionid` - what a bridge's own row header stated, read off the line's own bytes, and never what a *reader* said about the line; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
+| Holders | `event() -> &MarketEventData`, what the four [graph traits](../graph.md) answer - the identities, the codes, the instants, the place in the chain, and the market reading *derived* from the FIX fields the message stated: the price, the quantity, the state, the side, the lanes and the instrument codes; `lifted() -> &FixLifted`, the FIX numbers and identifiers the message lifted out of its row, exactly as it stated them - a fact the traits answer but this holder lacks is derived, and a derived fact reaches neither the wire, the entries nor the code; `header() -> &FixHeader`, the frame: tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10 typed; `capture() -> &FixCapture`, `pluginid`, `msgctxid` and `msgsessionid` - what a bridge's own row header stated, read off the line's own bytes, and never what a *reader* said about the line; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
 | Row | `as_field()` and `as_value()`: a root Struct [`Field`](../types/field.md) and the `Scalar::Sequence` it declares, holding only what no holder owns - the dictionary's fields, a group as a List of Struct occurrences beside its `int32` counter, a component as a Struct, a key no dictionary explains under its own spelling; a [typed tag](#typed-tags) is never in it |
 | Entries | `entries() -> &[FixEntry]`, the row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, each carrying the tag the dictionary resolved - `0` for a key it does not explain - the canonical name and the value as the wire spells it; a group is one entry under its counter valued the count, with one valueless entry per occurrence heading the members; a component a valueless entry heading its members; the typed facts are not entries |
-| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit the message as it now stands, derived values included: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the event's own tags in tag order - 6, 14, 15, 31, 32, 38, 44, 54, 59, 132, 133, 134, 135, 151 and 461, `Quantity(53)` answering nothing because `OrderQty` answers for it - then 58, then the entries pre-order; a coded fact spells as its wire code, `54=1`, and a lane number at the decimal's full scale. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator, and is what [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) keys on |
+| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit what the message *stated*: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the fields it lifted in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003 - then 58, then the entries pre-order, then the trailer 93, 89 and 10, which closes the frame whatever the body's tags are. A fact the message *derived* - the price it is about, the state it reached, a lane it never quoted - is emitted nowhere. A coded fact spells as its wire code, `54=1`, and a lane number at the decimal's full scale. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator, and is what [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) keys on |
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; a key reaching one of [the capture's own columns](#a-row-is-a-message-again) - `sourceurl`, `recordedat` - is refused, naming the column, because a message holds no fact for one; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
 | Settled | `currunix` is a stated `currunix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`; `SendingTime` is the message's own, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creatunix` is a stated one, else `OrigSendingTime(122)`, else `currunix`; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states*: the event's facts, the text, the metadata, the header fields it stated, then the entry tree, so two readings that lay one message out differently answer one code |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
-| Graph | `FixMsg` implements `Element`, `Event` and `MarketElement` - so `MarketEvent` - through its event: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`; import the traits to call them |
+| Graph | `FixMsg` implements `Element`, `Event` and `MarketElement` - so `MarketEvent` - through its event: `is_after` is the instant, `finalize` settles the identity again, which re-derives every market fact from the FIX fields the message states unless a caller or a walk wrote one through the traits, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`; import the traits to call them |
 | Serialization | inherited: `as_field().clone().into_json()` renders the row's schema, [`into_json_scalar`](../media/json/index.md) its value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root; `into_row` is the whole message as one fixed row |
 | Equality | over the holders, the row and the registry - the same `Arc`, or registries holding the same fields; `Hash` over the hashcode, the row's schema and its value |
 | Bindings | Rust, Python, JavaScript |
@@ -69,17 +69,19 @@
     let msg = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 
     // The typed facts left the row for their holders: the type is the
-    // header's, the side and the quantity the event's, and the row holds
-    // the four others.
+    // header's and the quantity the message lifts. The side is an ordinary
+    // child, so it stays in the row beside the four others.
     assert_eq!(msg.header().msgtype(), "D");
     assert_eq!(msg.get_side().as_str(), "BUY");
     let children: Vec<&str> = msg.as_field().fields().iter().map(yggdryl::Field::name).collect();
-    assert_eq!(children, ["Symbol", "NoPartyIDs", "Parties", "9999"]);
+    assert_eq!(children, ["Side", "Symbol", "NoPartyIDs", "Parties", "9999"]);
     // A lookup answers the holder for a typed tag and the row for the rest.
-    // `OrderQty` is the quantity the event is about, so it answers exact.
+    // `OrderQty` is the quantity the message lifts, so it answers exact;
+    // `Side(54)` is a row child, so it answers the code the row holds and
+    // `get_side` reads the side off it.
     let hundred = Scalar::from(yggdryl::types::Decimal::from_int(100));
     assert_eq!(msg.by_tag(35)?, Scalar::from("D"));
-    assert_eq!(msg.by_tag(54)?, Scalar::from("BUY"));
+    assert_eq!(msg.by_tag(54)?, Scalar::from("1"));
     assert_eq!(msg.by_tag(38)?, hundred);
     assert_eq!(msg.get_qty(), yggdryl::types::Decimal::from_int(100));
     assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
@@ -170,13 +172,13 @@
     # the side and the quantity the event's, and the row holds the four others.
     assert message.header().msgtype == "D"
     assert message.side.as_py() == "BUY"
-    assert [name for name, _ in message] == ["Symbol", "NoPartyIDs", "Parties", "9999"]
-    assert len(message) == 4
+    assert [name for name, _ in message] == ["Side", "Symbol", "NoPartyIDs", "Parties", "9999"]
+    assert len(message) == 5
 
     # A lookup answers the holder for a typed tag and the row for the rest.
     # `OrderQty` is the quantity the event is about, so it answers exact.
     assert message.by_tag(35).as_py() == "D"
-    assert message.by_tag(54).as_py() == "BUY"
+    assert message.by_tag(54).as_py() == "1"
     assert message.by_tag(38).as_py() == Decimal(100)
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
@@ -188,6 +190,7 @@
     # The entries are the row read as a tree: the group is its counter valued
     # the count, over one valueless entry per occurrence.
     assert message.entries() == [
+        (54, "Side", "1", []),
         (55, "Symbol", "AAPL", []),
         (453, "Parties", "1", [(0, "Party", None, [(448, "PartyID", "BROKER", [])])]),
         (0, "9999", "custom", []),
@@ -265,16 +268,19 @@
     )
 
     // The typed facts left the row for their holders: the type is the header's,
-    // the side and the quantity the event's, and the row holds the four others.
+    // and the quantity the message lifts. The side is an ordinary child, so it
+    // stays in the row beside the four others.
     assert.equal(message.header().msgtype, 'D')
     assert.equal(message.side, 'BUY')
-    assert.equal(message.size, 4)
+    assert.equal(message.size, 5)
 
     // A lookup answers the holder for a typed tag and the row for the rest.
-    // `OrderQty` is the quantity the event is about, so it answers exact -
-    // a decimal at the crate's own scale, which `qty` renders as a number.
+    // `OrderQty` is the quantity the message lifts, so it answers exact - a
+    // decimal at the crate's own scale, which `qty` renders as a number;
+    // `Side(54)` is a row child, so it answers the code the row holds and
+    // `side` reads the side off it.
     assert.equal(message.byTag(35).asJs(), 'D')
-    assert.equal(message.byTag(54).asJs(), 'BUY')
+    assert.equal(message.byTag(54).asJs(), '1')
     assert.equal(message.qty, '100')
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
@@ -286,9 +292,10 @@
     // its counter valued the count over one valueless entry per occurrence.
     assert.deepEqual(
       [...message].map(entry => [entry.tag, entry.name, entry.value]),
-      [[55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
+      [[54, 'Side', '1'], [55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
     )
-    const [occurrence] = message.entries()[1].entries
+    const group = message.entries().find(entry => entry.tag === 453)
+    const [occurrence] = group.entries
     assert.deepEqual([occurrence.tag, occurrence.name, occurrence.value], [0, 'Party', null])
     assert.equal(occurrence.entries[0].name, 'PartyID')
 
@@ -311,7 +318,8 @@
     // and a message rebuilt from them holds the same content; its typed facts
     // are its own to state again.
     const document = message.toJSON()
-    assert.equal(document.field.dtype.fields[0].metadata['fix:tag'], '55')
+    const tags = document.field.dtype.fields.map((field) => field.metadata['fix:tag'])
+    assert.ok(tags.includes('55'), 'every row field carries its own tag')
     const again = new fix.FixMsg(message.field, message.value, registry)
     assert.deepEqual(again.entries(), message.entries())
     assert.equal(again.header().msgtype, '', 'the type was the header\'s, not the row\'s')
@@ -323,10 +331,12 @@ A message holds each fact once. The tags below are the holders' and are never in
 
 | tags | holder | facts |
 | --- | --- | --- |
-| 8, 35, 49, 56, 34, 52, 43, 385 | `header()` | `beginstring`, `msgtype`, `sendercompid`, `targetcompid`, `msgseqnum`, `sendingtime` with `stated_sendingtime`, `possdupflag`, `msgdirection` |
-| 15, 54, 461, 132, 133, 134, 135 | `event()` | the currency, the side, the CFI classification, and the bid and ask lanes' prices and sizes - FIX's own spellings of what a [`MarketElement`](../graph.md) states |
-| every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) and `recordedat` (65028) | `event()` and `capture()` | the identities, the codes, the instants, the state, the place in the chain, the price, the quantity, the unit, the lane currencies and units, the instrument codes and the market on the event; `pluginid`, `msgctxid` and `msgsessionid` on the capture; `identifiers` and `metadata` are the event's names and the bridge's namespaced keys. The two exceptions are [the capture's own columns](#a-row-is-a-message-again): no holder answers them, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
+| 8, 35, 49, 56, 34, 52, 43, 385, 93, 89, 10 | `header()` | the frame: `beginstring`, `msgtype`, `sendercompid`, `targetcompid`, `msgseqnum`, `sendingtime` with `stated_sendingtime`, `possdupflag`, `msgdirection`, and the trailer `signaturelength`, `signature`, `checksum` |
+| 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262, 1003 | `lifted()` | the numbers a consumer reads first and the identifiers one message of a chain shares with the next: `Price`, `OrderQty`, `Quantity`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `ClOrdID`, `OrigClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `QuoteID`, `QuoteReqID`, `MDReqID`, `TradeID` - each exactly as the message stated it |
+| every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) and `recordedat` (65028) | `event()` and `capture()` | the identities, the codes, the instants and the place in the chain on the event; `pluginid`, `msgctxid` and `msgsessionid` on the capture; `identifiers` and `metadata` are the event's names and the bridge's namespaced keys. The two exceptions are [the capture's own columns](#a-row-is-a-message-again): no holder answers them, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
 | 58 | `text()` | the free text |
+
+Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source, the market and the state are ordinary children of the row, and what a [`MarketElement`](../graph.md) getter answers is derived from them and from the lifted numbers - `get_px` is `Price(44)`, else `LastPx(31)`, else `AvgPx(6)`, else the price its own side's lane quotes. A derived fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to.
 
 A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(IDENTIFIERS_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a state of `00UNKNOWN`, a place of zero in no chain - answers nothing.
 
@@ -425,7 +435,7 @@ A written child keeps its position, so every reader already holding the row addr
     // then the row, the written pairs where they landed.
     assert_eq!(
         message.into_text('|')?,
-        "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|",
+        "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|59=0|7777=custom|10=0|",
     );
 
     // The written message is a fixed row, and the row a message again:
@@ -492,7 +502,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     # The wire is the message as it now stands: the header from its holder, then
     # the row, the written pairs where they landed.
-    assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|"
+    assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|59=0|7777=custom|10=0|"
 
     # The written message is a fixed row, and the row a message again: the same
     # entries, the same code, re-emitting the same wire.
@@ -558,7 +568,7 @@ A written child keeps its position, so every reader already holding the row addr
     // the row, the written pairs where they landed.
     assert.equal(
       message.intoText('|'),
-      '8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|59=0|11=A1|55=MSFT|9999=x|10=0|7777=custom|',
+      '8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|59=0|7777=custom|10=0|',
     )
 
     // The written message is a fixed row, and the row a message again: the same
@@ -642,7 +652,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     // how long it stands - and the restated row follows them.
     assert_eq!(latest.header().beginstring(), "FIX.4.2");
     let wire = latest.into_text('|')?;
-    assert!(wire.starts_with("8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|"), "{wire}");
+    assert!(wire.starts_with("8=FIX.4.2|35=8|6=10.5|14=100|17=E1|31=10.5|32=100|37=O1|"), "{wire}");
     assert!(wire.contains("|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|"), "{wire}");
     ```
 
@@ -687,7 +697,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     # how long it stands - and the restated row follows them.
     assert latest.header().beginstring == "FIX.4.2"
     wire = latest.into_text("|")
-    assert wire.startswith("8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|")
+    assert wire.startswith("8=FIX.4.2|35=8|6=10.5|14=100|17=E1|31=10.5|32=100|37=O1|")
     assert "|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|" in wire
     ```
 
@@ -731,7 +741,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     // how long it stands - and the restated row follows them.
     assert.equal(latest.header().beginstring, 'FIX.4.2')
     const wire = latest.intoText('|')
-    assert.ok(wire.startsWith('8=FIX.4.2|35=8|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|'), wire)
+    assert.ok(wire.startsWith('8=FIX.4.2|35=8|6=10.5|14=100|17=E1|31=10.5|32=100|37=O1|'), wire)
     assert.ok(wire.includes('|528=A|453=2|448=BRKR|452=1|448=CLIENT1|452=3|'), wire)
     ```
 
@@ -758,7 +768,7 @@ A value written into a target is re-typed for the target's field through the cod
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - A typed tag stated null at construction, or a holder stating nothing -> the lookup answers nothing: `get_by_tag(54)` on a report stating no side is `None`, `get_by_tag(SEQNUM_TAG_NAME.0)` on a message in no chain is `None`, and `get_by_tag(STATE_TAG_NAME.0)` on an order that reached no state is `None`.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
-- `set` on a typed tag with a value its type refuses - text into `OrderQty`'s twin `qty`, a spelling outside the side's set - is silence: the holder keeps what it held. `set` with a `Null` on a row child -> a stated null, the child kept and made nullable; on a typed tag -> the fact cleared. `remove` -> the child gone or the fact cleared and its value answered, `None` for a key that reaches nothing; a cleared `crosscode` keeps the settled one, because the identity is re-settled from what the message states and the code, once named, stands.
+- `set` on a typed tag with a value its type refuses - text into `OrderQty(38)`, a spelling outside the side's set - is silence: the holder keeps what it held. `set` with a `Null` on a row child -> a stated null, the child kept and made nullable; on a typed tag -> the fact cleared. `remove` -> the child gone or the fact cleared and its value answered, `None` for a key that reaches nothing; a cleared `crosscode` keeps the settled one, because the identity is re-settled from what the message states and the code, once named, stands.
 - `FixMsg::new` / `with_registry` on a root stating `SendingTime(52)` -> the header's clock, marked stated; on one stating none -> one UTC-now read, marked not stated, so the wire omits it; a stated clock that is not an instant -> a located refusal.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
 - `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its members, a negative tag, a name or value that is not text - or a leaf the JSON reader cannot decode -> refused at the arrival path; on a schema without the column -> a message with the typed facts, no content and a wire of the header alone; on a row leaving `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` or `crossuuid` null -> the schema's refusal, since the fixed row declares them required.

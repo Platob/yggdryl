@@ -8,7 +8,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | --- | --- |
 | Owns | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`, `FixCodec::DEFAULT_BATCH_BYTE_SIZE`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader`, JavaScript a `BatchReader` |
-| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `cargo run --example fix_schema --features arrow` prints the fixed row's 123 columns as that Arrow schema, one a line |
+| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given. `cargo run --example fix_schema --features arrow` prints the fixed row's 115 columns as that Arrow schema, one a line |
 | Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
@@ -448,7 +448,7 @@ A source row is read for every message it carries, so a capture answers one row 
     assert_eq!(codec.write_arrow_reader(codec.arrow_reader(schema, again)?, &mut written)?, 2);
     assert_eq!(
         String::from_utf8(written)?,
-        "8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|\n8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|\n",
+        "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|\n8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|\n",
     );
     ```
 
@@ -482,8 +482,8 @@ A source row is read for every message it carries, so a capture answers one row 
     sink = io.BytesIO()
     assert codec.write_arrow_reader(codec.arrow_reader(schema, again), sink) == 2
     assert sink.getvalue().decode().splitlines() == [
-        "8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|",
-        "8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|",
+        "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|",
+        "8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|",
     ]
     ```
 
@@ -517,8 +517,8 @@ A source row is read for every message it carries, so a capture answers one row 
     const chunks = []
     assert.equal(codec.writeArrowReader(codec.arrowReader(schema, again), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
     assert.deepEqual(Buffer.concat(chunks).toString().split('\n').slice(0, 2), [
-      '8=FIX.4.4|35=D|54=1|59=0|11=ORDER-1|55=AAPL|9999=x|10=0|',
-      '8=FIX.4.4|35=8|31=12.75|32=50|38=50|44=12.75|59=0|17=E1|37=O9|10=0|381=637.5|',
+      '8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|',
+      '8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|',
     ])
     ```
 
@@ -642,7 +642,7 @@ What a message costs after it is built, each pass over fresh clones of the 6,080
 | `lifecycle`, the stamp that joins a message to its order's life | 311 ms | 51.1 us |
 | `digest`, the arrival record's hash | 21 ms | 3.5 us |
 
-A row pays `into_row` and its share of the batch; it pays for the walk only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call), and for the fill inside the parse that built it. Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection, and the three crate columns a message does not state - `isincode`, `miccode`, `state` - each one evaluation of its own compiled derivation over the columns it reads; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. The fill inside a parse is every child resolved against the dictionary once and the replacements its fields carry read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived) - compiled and bound once per registry, gathered into one working row per message by tag, swept to a fixpoint, most answers null on a message that stated everything, and one rebuild landing what derived; the walk is a chain lookup, one statement of the predecessor's identity, instant and place, and the identity settled again. The digest is a hash over the arrival record and nothing else.
+A row pays `into_row` and its share of the batch; it pays for the walk only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call), and for the fill inside the parse that built it. Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection, and a FIX column a message implied rather than stated one evaluation of the dictionary's own compiled derivation over the columns it reads; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. The fill inside a parse is every child resolved against the dictionary once and the replacements its fields carry read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived) - compiled and bound once per registry, gathered into one working row per message by tag, swept to a fixpoint, most answers null on a message that stated everything, and one rebuild landing what derived; the walk is a chain lookup, one statement of the predecessor's identity, instant and place, and the identity settled again. The digest is a hash over the arrival record and nothing else.
 
 Regenerate with:
 

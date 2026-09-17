@@ -111,7 +111,14 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
     message.set(1, Scalar::from("A-1")).unwrap();
-    assert_eq!(message.remove(54).unwrap(), Some(Scalar::from("BUY")));
+    assert_eq!(
+        message
+            .remove(54)
+            .unwrap()
+            .as_ref()
+            .and_then(Scalar::as_str),
+        Some("BUY")
+    );
     let symbol = message
         .entries()
         .iter()
@@ -128,7 +135,7 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     );
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|59=0|11=A1|55=MSFT|venuething=7|9999=x|10=0|1=A-1|"
+        b"8=FIX.4.4|35=D|11=A1|55=MSFT|venuething=7|9999=x|59=0|1=A-1|10=0|"
     );
     assert_ne!(message.digest(), parsed.digest());
     assert_ne!(message.entries(), parsed.entries());
@@ -267,7 +274,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     // the dictionary derived for the order stays.
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|54=1|59=0|11=A1|10=0|"
+        b"8=FIX.4.4|35=D|11=A1|54=1|59=0|10=0|"
     );
 }
 
@@ -387,13 +394,13 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
         .find(|entry| entry.tag() == 96)
         .expect("the data field");
     assert_eq!(arrived.value(), Some("\u{ff}\u{fe} A"));
-    // `TimeInForce` is the dictionary's derivation for an order and one of
-    // the event's own facts, so it re-emits in the event's band rather than
-    // behind the entries.
+    // `TimeInForce` is the dictionary's derivation for an order and an
+    // ordinary child of the row, so it re-emits where the row carries it -
+    // appended behind the content the line stated, in front of the trailer.
     assert_eq!(
         parsed.into_bytes(1),
         line.body()
-            .replace("35=D\u{1}", "35=D\u{1}59=0\u{1}")
+            .replace("\u{1}10=", "\u{1}59=0\u{1}10=")
             .as_bytes()
     );
     assert_ne!(parsed.into_bytes(1), wire);
@@ -523,12 +530,13 @@ fn a_row_without_the_entries_group_has_no_entries() {
 
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &row).unwrap();
     assert!(held.entries().is_empty());
-    // The typed facts are the holders' and still on the wire; the content
-    // is gone with the record.
+    // The typed facts are the holders' and still on the wire - the frame
+    // and the identifier the message lifted - and the content is gone with
+    // the record, the side and the symbol among it.
     let wire = String::from_utf8(held.into_bytes(b'|')).unwrap();
     assert!(wire.starts_with("8=FIX.4.4|35=D|"), "{wire}");
-    assert!(wire.contains("|54=1|"), "{wire}");
-    assert!(!wire.contains("11=") && !wire.contains("55="), "{wire}");
+    assert!(wire.contains("|11=A1|"), "{wire}");
+    assert!(!wire.contains("54=") && !wire.contains("55="), "{wire}");
     // A row that dropped the record cannot give the content back, so the
     // row it makes is the one a message of typed facts alone fills - and
     // that row is its own fixed point.

@@ -731,9 +731,6 @@ pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the last; the retired slots be
 pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`)
 pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");  (the message context a bridge handled the line in; a capture fact, held by `FixCapture`)
 pub const PLUGINID_TAG_NAME: (i32, &str) = (65_009, "pluginid");  (display `PluginId`: the plugin that logged the line, stated by a row's own `pluginid` capture or column and never derived; selects nothing)
-pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");  (nullable isin, derived: SecurityID under source `4`, else the SecurityAltID whose source is)
-pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");  (nullable mic, derived: SecurityExchange(207), else ExDestination(100), else LastMkt(30))
-pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");  (the ranked `state` code, derived `coalesce(ordstatus, exectype)`; `00UNKNOWN` answers as absent)
 pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the header and the named content of the row)
 pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");  (non-null uint64: the XXH3-64 of the cross code, zero where the message names none)
 pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_020, "identifiers");  (nullable sorted `map<utf8, utf8>` group, self-countered: the names the message goes by, each under the canonical field that stated it - the message component's fix:identifiers)
@@ -744,38 +741,24 @@ pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable cloc
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column: stated on the row by whoever read the line and restated by whoever writes the row back, held by no message, so outside the currhashcode, the entries and the wire)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter, closing the fixed row; outside the currhashcode)
 pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");  (nullable clock: when the capture wrote the line down, as whoever read the line states it - the text read's mtime column reaches it by that alias; the capture's own column like sourceurl, held by no message, deriving nothing, outside the currhashcode, and null where nobody stated one)
-pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_029, "expirunix");  (nullable clock: when the message stops being good)
-pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");  (nullable currency: the bid lane's)
-pub const ASKCURRENCY_TAG_NAME: (i32, &str) = (65_031, "askcurrency");  (nullable currency: the ask lane's)
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");  (display `MsgSessionId`: the session instance a bridge handled a line on, as its own row header brackets it and never what the message states; a capture fact)
-pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_033, "bloombergcode");  (nullable bloomberg, derived: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg (`A`) or FIGI (`S`))
-pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_034, "cusipcode");  (nullable cusip, source `1`)
-pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_035, "sedolcode");  (nullable sedol, source `2`)
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");  (non-null uuid: the message's identity, the UUIDv7 its `currunix` and `currhashcode` derive)
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_040, "crossuuid");  (non-null uuid: the identity every message of one lifecycle shares, the UUIDv8 of `crosshashcode`, or `curruuid` where the message names no cross code)
 pub const PARENTUUIDS_TAG_NAME: (i32, &str) = (65_041, "parentuuids");  (nullable `list<uuid>`: the identities of the messages this one descends from, in the order it states them; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
 pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");  (nullable uint64: the message's place in its chain, how many came before it; zero answers as absent)
-pub const PX_TAG_NAME: (i32, &str) = (65_043, "px");  (`decimal128(38, 18)`: the price the message is about, which is what `Price(44)` is read and written through; `MarketElement::fill_market` settles it - Price, else LastPx, else AvgPx, else the price its own side's lane quotes)
-pub const PREVPX_TAG_NAME: (i32, &str) = (65_051, "prevpx");  (`decimal128(38, 18)`, derived from PrevClosePx where the message states one, else the price the statement it follows settled on, filled by the walk)
-pub const PREVQTY_TAG_NAME: (i32, &str) = (65_052, "prevqty");  (`decimal128(38, 18)`, the quantity that statement settled on; the last trade has no crate column, because FIX names it at LastPx(31) and LastQty(32))
-pub const TRADABLE_TAG_NAME: (i32, &str) = (65_053, "tradable");  (nullable `boolean`, derived: whether the instrument could be traded when the message was sent - SecurityTradingStatus, else TradSesStatus, else SecurityStatus, each naming the codes that trade and the codes that do not; null where none of them says)
-pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_054, "symbolticker");  (nullable `utf8`, derived: the ticker the instrument is known by - what Symbol(55) settles on, minus the `[N/A]` a message writes to say it has none)
-pub const QTY_TAG_NAME: (i32, &str) = (65_044, "qty");  (`decimal128(38, 18)`: the quantity the message is about, which is what `OrderQty(38)` and the retired `Quantity(53)` are read and written through; settled by `fill_market` - OrderQty, else LastQty, else the size its own side's lane quotes, with CumQty and LeavesQty left to the dictionary that sums them)
-pub const UNIT_TAG_NAME: (i32, &str) = (65_045, "unit");  (utf8, derived: UnitOfMeasure)
-pub const BIDUNIT_TAG_NAME: (i32, &str) = (65_046, "bidunit");  (nullable utf8: the unit the bid lane's size is counted in)
-pub const ASKUNIT_TAG_NAME: (i32, &str) = (65_047, "askunit");  (nullable utf8: the unit the ask lane's size is counted in)
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_048, "crosscode");  (utf8: the identifier every message of one lifecycle shares, as the message spells it - the first stated of OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131), MDReqID(262) - and what `crosshashcode` and `crossuuid` derive from)
 pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.*`, `ullink.*` - each under the key as the bridge spelled it, folded)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `write_into`, passed over on read)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");  (FIX's own tag and name, never a second tag)
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const fn is_crate_tag(tag: i32) -> bool
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; the 38 definitions in tag order - 36 scalar fields, with `parentuuids` among them, and the `identifiers` and `metadata` Map groups; every registry holds all but `parentuuids` from construction, so an empty one lists 35 crate scalars beside the two seeded clocks and the two groups; a store writes them and reads a stored copy past)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; the 20 definitions in tag order - 18 scalar fields, with `parentuuids` among them, and the `identifiers` and `metadata` Map groups; every registry holds all of them from construction, so an empty one lists 18 crate scalars beside the two seeded clocks and the two groups, 22 in all; a store writes them and reads a stored copy past)
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 
 ### yggdryl::fix::identity  [rust\src\fix\identity.rs]
-pub struct FixHeader  (the standard header facts a message holds typed, beside its row - tags 8, 35, 49, 56, 34, 52, 43 and 385; re-exported at the crate root beside FixCapture; no public constructor)
+pub const FIX_TYPED_TAGS: [i32; 29]  (re-exported at the crate root; every tag a message holds typed outside the crate's own block, in the order the wire states them - the header 8, 35, 49, 56, 34, 43, 52 and 385, the seventeen lifted 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003, the trailer 93, 89 and 10, then Text(58); a caller walking a message's typed facts reads this rather than a list of its own, which drifts silently the moment a tag is lifted or retired. The crate's own tags are the contiguous block CRATE_TAG_MIN..CRATE_TAG_MAX, minus the sourceurl and recordedat no message holds)
+pub struct FixHeader  (the standard header and trailer facts a message holds typed, beside its row - tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10; the frame is the one band the wire emits out of tag order, the header first and the trailer last; re-exported at the crate root beside FixCapture; no public constructor)
   pub fn beginstring(&self) -> &str  (empty where the message stated none)
   pub fn msgtype(&self) -> &str
   pub fn sendercompid(&self) -> Option<&str>
@@ -785,26 +768,49 @@ pub struct FixHeader  (the standard header facts a message holds typed, beside i
   pub const fn stated_sendingtime(&self) -> bool  (whether the message stated it; only a stated one goes back on the wire)
   pub const fn possdupflag(&self) -> Option<bool>
   pub fn msgdirection(&self) -> Option<&str>  (a code of tag 385's set)
+  pub const fn signaturelength(&self) -> Option<i32>  (`SignatureLength(93)`, where the message was signed)
+  pub fn signature(&self) -> Option<&[u8]>  (`Signature(89)`)
+  pub fn checksum(&self) -> Option<&str>  (`CheckSum(10)` exactly as the line spelled it, three digits and all: a re-emission states what was read rather than a sum of bytes nobody sent)
   impl Clone, Debug, PartialEq, Eq for FixHeader
 pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, the message context, the session instance: facts about the capture and not the message, outside the currhashcode; what a reader said about the line is held nowhere on a message, being the capture's own columns; no public constructor)
   pub fn pluginid(&self) -> Option<&str>
   pub fn msgctxid(&self) -> Option<&str>
   pub fn msgsessionid(&self) -> Option<&str>
   impl Clone, Debug, Default, PartialEq, Eq for FixCapture
+pub struct FixLifted  (the FIX fields a message lifted out of its row and holds typed: eight exact numbers - Price(44), OrderQty(38), Quantity(53), LastPx(31), LastQty(32), AvgPx(6), CumQty(14), LeavesQty(151) - and nine identifiers - ClOrdID(11), OrigClOrdID(41), OrderID(37), SecondaryOrderID(198), ExecID(17), QuoteID(117), QuoteReqID(131), MDReqID(262), TradeID(1003). Every slot is an Option, and absent means the message never said: nothing writes here but a tag, so a slot's presence is the whole test of whether the fact reaches the wire, the arrival record or the code the message digests to. What the message *implies* about its market is the MarketElement getters' to answer off these and off the row, and reaches none of the three; re-exported at the crate root; no public constructor)
+  pub const fn price(&self) -> Option<Decimal>
+  pub const fn orderqty(&self) -> Option<Decimal>
+  pub const fn quantity(&self) -> Option<Decimal>  (its own slot rather than a second name for OrderQty: a line that said `53=` re-emits `53=`, and a row keeps one column per tag)
+  pub const fn lastpx(&self) -> Option<Decimal>
+  pub const fn lastqty(&self) -> Option<Decimal>
+  pub const fn avgpx(&self) -> Option<Decimal>
+  pub const fn cumqty(&self) -> Option<Decimal>
+  pub const fn leavesqty(&self) -> Option<Decimal>
+  pub fn clordid(&self) -> Option<&str>
+  pub fn origclordid(&self) -> Option<&str>
+  pub fn orderid(&self) -> Option<&str>
+  pub fn secondaryorderid(&self) -> Option<&str>
+  pub fn execid(&self) -> Option<&str>
+  pub fn quoteid(&self) -> Option<&str>
+  pub fn quotereqid(&self) -> Option<&str>
+  pub fn mdreqid(&self) -> Option<&str>
+  pub fn tradeid(&self) -> Option<&str>
+  impl Clone, Debug, Default, PartialEq, Eq for FixLifted
 
 ### yggdryl::fix::msg  [rust\src\fix\msg.rs]
-pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventData` the graph traits answer, the typed `FixHeader`, the typed `FixCapture` holding the line's own bridge row header, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once)
+pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventData` the graph traits answer, the typed `FixHeader` carrying the frame, the typed `FixLifted` carrying the FIX numbers and identifiers the message lifted, the typed `FixCapture` holding the line's own bridge row header, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once. Every market fact the traits answer is *derived* from the lifted facts and the row, so it reaches neither the wire, the arrival record nor the code the message digests to - only what the message stated does)
   impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
   pub fn new(field: Field, value: Scalar) -> Result<Self>  (links `FixRegistry::global()`)
-  pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>  (the value canonicalized under the root; a child stating a typed fact - a header tag, a crate column, one of the event's own tags 15, 54, 461, 132-135, or 58 - fills its holder and leaves the row; a child named under a namespace, `TECH.CLIENTID`, lands in the metadata; the clocks are settled and the identity derived; runs no derivation)
+  pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>  (the value canonicalized under the root; a child stating a typed fact - one of `FIX_TYPED_TAGS` or a crate column - fills its holder and leaves the row; a child named under a namespace, `TECH.CLIENTID`, lands in the metadata; the clocks are settled and the identity derived; runs no derivation)
   pub const fn event(&self) -> &MarketEventData
-  pub const fn header(&self) -> &FixHeader
+  pub const fn header(&self) -> &FixHeader  (the standard header and trailer)
   pub const fn capture(&self) -> &FixCapture
+  pub const fn lifted(&self) -> &FixLifted  (the FIX fields the message lifted, exactly as it stated them; a fact the MarketElement getters answer but this holder lacks is derived, which is why it reaches neither the wire nor the code)
   pub fn text(&self) -> Option<&str>  (`Text(58)`)
   pub const fn metadata(&self) -> &BTreeMap<SmolStr, SmolStr>  (a bridge's namespaced keys, folded, in sorted order; empty where it stated none)
   pub fn entries(&self) -> &[FixEntry]  (the content row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, a group as one entry under its counter valued the count with one valueless entry per occurrence heading the members, a component as a valueless entry heading its members; the counter scalar beside a group is no entry of its own at any level, so a nested group states its count once; the typed facts are not entries)
-  pub fn into_bytes(&self, separator: u8) -> Vec<u8>  (the message as it now stands, derived values included: header tags 8, 35, 49, 56, 34, 43 and 52 where stated, then the event's own tags 15, 54, 461, 132, 133, 134, 135, then 58, then the entries pre-order; a coded fact spells as its wire code - `54=1` - and a lane number at the decimal's scale)
+  pub fn into_bytes(&self, separator: u8) -> Vec<u8>  (the message as it now stands: header tags 8, 35, 49, 56, 34, 43 and 52 where stated, then the lifted facts in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262, 1003 - then the entries pre-order, then the trailer 93, 89, 10, which closes the frame whatever the body says. A coded fact spells as its wire code - `54=1`. A fact the message derived rather than stated is emitted nowhere)
   pub fn into_text(&self, separator: char) -> Result<String>  (InvalidRecord when a value holds a control byte)
   pub fn digest(&self) -> u128  (the XXH3-128 of what `into_bytes` emits, pre-order, whatever separator either message was read with; what `FixDedup` keys on. The identity's own code, `Element::get_currhashcode`, is the other digest: over what the message states - the event's facts, the text, the metadata, the header fields it stated, then the entry tree - and never over the columns a row lays them out in)
   pub const fn registry(&self) -> &Arc<FixRegistry>
@@ -930,8 +936,8 @@ pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 50]
 pub const GROUP_TAGS: [i32; 3]
 pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tag/name/value/fixentries, three levels materialized and the rest folded into a JSON utf8 leaf)
-pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event it is, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the three groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the arrival record's counter: 119 tags. Price(44), OrderQty(38) and Quantity(53) are not among them: `px` and `qty` are the columns they are read and written through)
-pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 123 columns with the shipped dictionary; `beginstring`, `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
+pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event it is, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the three groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the arrival record's counter: 111 tags. Price(44), OrderQty(38) and Quantity(53) are among them, each exact and stated once; what a message is about is what `MarketElement::get_px` and `get_qty` read off them, and no column of this crate's restates either)
+pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 115 columns with the shipped dictionary; `beginstring`, `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a capture's own columns in front of the fixed ones, less any whose folded name a FIX column takes; each carried column is made nullable whatever the capture declared, because only a pass holding the source row can state one)
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own fix:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)

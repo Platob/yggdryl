@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -355,25 +356,24 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
     assert_eq!(fill.by_tag(381).unwrap(), super::decimal("1744.68"));
     assert_eq!(fill.by_tag(120).unwrap().as_str(), Some("CHF"));
     assert_eq!(
-        fill.by_tag(yggdryl::PX_TAG_NAME.0).unwrap().as_decimal(),
+        fill.by_tag(44).unwrap().as_decimal(),
         Some((yggdryl::i256::from_i128(83_080_000_000_000_000_000), 18)),
-        "the price the message is about, at the crate column's own scale"
+        "the price the line stated, exact"
     );
     assert_eq!(
-        fill.by_tag(yggdryl::ISINCODE_TAG_NAME.0).unwrap().as_str(),
+        fill.get_px().to_string(),
+        "83.08",
+        "and the price the message is about, read off it"
+    );
+    assert_eq!(
+        fill.get_isincode().map(|held| held.as_str()),
         Some("CH0012221716")
     );
     assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
     assert_eq!(fill.by_tag(460).unwrap().as_i128(), Some(5), "Product");
+    assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
     assert_eq!(
-        fill.by_tag(yggdryl::MICCODE_TAG_NAME.0).unwrap().as_str(),
-        Some("XSWX")
-    );
-    assert_eq!(
-        fill.by_tag(yggdryl::STATE_TAG_NAME.0)
-            .unwrap()
-            .as_str()
-            .and_then(yggdryl::types::State::from_spelling),
+        Some(fill.get_state().clone()),
         yggdryl::types::State::from_spelling("1"),
     );
     // A stated value is never a derived one: the line said 260 remain.
@@ -390,12 +390,11 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
                 == Some("XX0000000001".to_owned())
         })
         .expect("the anonymized line");
-    for tag in [yggdryl::ISINCODE_TAG_NAME.0, 470] {
-        assert!(
-            masked.get_by_tag(tag).is_none_or(|held| held.is_null()),
-            "tag {tag} off a masked ISIN"
-        );
-    }
+    assert_eq!(masked.get_isincode(), None, "no ISIN off a masked one");
+    assert!(
+        masked.get_by_tag(470).is_none_or(|held| held.is_null()),
+        "and no country either"
+    );
 }
 
 /// The rows whose parties nest a sub-group, which is the one shape
@@ -404,6 +403,15 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
 /// occurrences behind the parties rather than inside the one that stated
 /// them, so the wire moves `NoPartySubIDs(802)` and its members.
 const PARTIES_NESTING_A_SUBGROUP: [usize; 4] = [4, 6, 37, 64];
+
+/// The rows whose bridge spelled a coded value in its own words.
+///
+/// `TimeInForce(59)` is a coded field, and this capture's bridge writes
+/// `TIMEINFORCE=day` where FIX's code set says `0`. The column holds the
+/// code, the arrival record holds the word, and only the line door still
+/// has the word to re-emit - which is what a row round trip costs for a
+/// venue's own spelling of a code.
+const A_VENUES_OWN_WORD_FOR_A_CODE: [usize; 3] = [76, 77, 78];
 
 #[test]
 fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
@@ -443,6 +451,19 @@ fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
             // the two wires still hold the same bytes elsewhere.
             assert!(wire.contains("|802="), "row {at} nests a sub-group");
             assert_ne!(written[at], wire, "row {at}");
+            continue;
+        }
+        if A_VENUES_OWN_WORD_FOR_A_CODE.contains(&at) {
+            // The venue's own word for a coded value is what the arrival
+            // record keeps, and a row round trip types it: the line door
+            // re-emits `59=day` because that is what the bridge wrote, and
+            // the batch door re-emits `59=0` because the column it came
+            // back through holds the code. Everything else is byte for byte.
+            assert_eq!(
+                written[at].replace("|59=0|", "|59=day|"),
+                *wire,
+                "row {at} differs in more than the coded word"
+            );
             continue;
         }
         assert_eq!(written[at], wire, "row {at} re-emits its own wire");

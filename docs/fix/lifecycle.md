@@ -7,13 +7,13 @@ A message says what happened; it does not say which order's life it belongs to b
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixCodec::lifecycle`, `FixCodec::lifecycle_arrow_reader`; the walk itself is [`graph::EventIterator`](../graph.md), which a caller opens over messages directly for a grid |
-| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creatunix` (65023), `expirunix` (65029) and `state` (65015) are the lifecycle carried forward; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
+| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creatunix` (65023) is the lifecycle carried forward, and the expiry and the state the walk folds are the traits' to answer off FIX's own fields rather than columns of their own; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
 | Chain name | the cross code: the first the message states of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code shares one identity whatever else it says. A message naming none is a chain of one: its `crossuuid` is its own `curruuid` |
 | Joins | a message arriving under the identity a live message holds follows it; one arriving under no live identity, but going by a name a live message goes by - the same `(scheme, value)` in its [`identifiers`](capture.md#the-crates-own-columns), a report stating only the `ClOrdID` an order was placed under - follows that one, and takes the chain's cross code as its own |
-| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor adopted as a parent, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creatunix` the two know, the latest `expirunix`, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle); a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
+| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor adopted as a parent, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creatunix` the two know, the latest expiry, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the last two answered by the traits, because a fold is not a statement and reaches no column; a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
 | Twins | a message arriving under the identity the live one *arrived* under - the same instant and content, one message a bridge logged at every hop it passed - is another statement of it, not the one after it: it takes the live one's place, predecessor, position and lifecycle, and finalizes to the same `curruuid`, so the chain grows by nothing |
 | Order | collected and stably sorted by instant before the walk, because a capture's lines are in the order they were written and two messages of one chain routinely arrive out of their own order |
-| Ends | a terminal state - filled, done for day, cancelled, rejected, expired - or a message past its `expirunix` retires the chain once yielded, so a venue reusing a `ClOrdID` tomorrow starts a chain afresh under the same `crossuuid` |
+| Ends | a terminal state - filled, done for day, cancelled, rejected, expired - or a message past the expiry its fields state retires the chain once yielded, so a venue reusing a `ClOrdID` tomorrow starts a chain afresh under the same `crossuuid` |
 | Grid | `EventIterator::with_snapshot_ns(step)` reads one snapshot per step per chain: the first message to reach a step its chain has not consumed is stamped with the step's opening instant as `snapunix`, every later one in that step with none; `lifecycle` reads no grid |
 | Errors | move through in source order and never advance the walk; exhaustion is fused |
 | Entries | untouched: what the message stated stays what it stated, and the wire re-emits it with the chain's columns nowhere in it |
@@ -73,16 +73,16 @@ One order's life: the order under its client identifier, the acknowledgement und
     // starts one afresh.
     assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
     assert_eq!(again.get_crosscode(), "A1");
-    // The stamps are columns, reached like any typed fact. They never reach
-    // the wire; what does is what the message states once the walk has told
-    // it which chain it is in - this acknowledgement named no side, and the
-    // order it follows is a buy.
+    // The stamps are columns, reached like any typed fact. They never
+    // reach the wire, and neither does a fact the walk folded: this
+    // acknowledgement named no side, so the chain's buy is what the trait
+    // answers and not a byte the message emits.
     assert_eq!(ack.by_tag(SEQNUM_TAG_NAME.0)?.as_u64(), Some(1));
     assert_eq!(ack.by_tag(PREVUUID_TAG_NAME.0)?, yggdryl::Scalar::Uuid(order.get_curruuid()));
     assert_eq!(parsed[1].get_side().as_str(), "UNKNOWN");
     assert_eq!(ack.get_side().as_str(), "BUY");
     let wire = ack.into_text('|')?;
-    assert!(wire.starts_with("8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|"), "{wire}");
+    assert!(wire.starts_with("8=FIX.4.4|35=8|11=A1|37=O1|150=0|"), "{wire}");
     assert!(!wire.contains("65042="), "no stamp is a field");
 
     // A chained stream replayed answers the same messages.
@@ -138,16 +138,16 @@ One order's life: the order under its client identifier, the acknowledgement und
     # one afresh.
     assert (again.seqnum, again.prevuuid) == (0, None)
     assert again.crosscode == "A1"
-    # The stamps are columns, reached like any typed fact. They never reach
-    # the wire; what does is what the message states once the walk has told
-    # it which chain it is in - this acknowledgement named no side, and the
-    # order it follows is a buy.
+    # The stamps are columns, reached like any typed fact. They never
+    # reach the wire, and neither does a fact the walk folded: this
+    # acknowledgement named no side, so the chain's buy is what the trait
+    # answers and not a byte the message emits.
     assert ack.by_tag(SEQNUM).as_py() == 1
     assert ack.by_tag(PREVUUID) == order.curruuid
     assert parsed[1].side.as_py() == "UNKNOWN"
     assert ack.side.as_py() == "BUY"
     wire = ack.into_text("|")
-    assert wire.startswith("8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|")
+    assert wire.startswith("8=FIX.4.4|35=8|11=A1|37=O1|150=0|")
     assert "65042=" not in wire  # no stamp is a field
 
     # A chained stream replayed answers the same messages.
@@ -202,16 +202,16 @@ One order's life: the order under its client identifier, the acknowledgement und
     // one afresh.
     assert.deepEqual([again.seqnum, again.prevuuid], [0, null])
     assert.equal(again.crosscode, 'A1')
-    // The stamps are columns, reached like any typed fact. They never reach
-    // the wire; what does is what the message states once the walk has told
-    // it which chain it is in - this acknowledgement named no side, and the
-    // order it follows is a buy.
+    // The stamps are columns, reached like any typed fact. They never
+    // reach the wire, and neither does a fact the walk folded: this
+    // acknowledgement named no side, so the chain's buy is what the trait
+    // answers and not a byte the message emits.
     assert.equal(ack.byTag(SEQNUM).asJs(), 1)
     assert.equal(ack.byTag(PREVUUID).asJs(), order.curruuid)
     assert.equal(parsed[1].side, 'UNKNOWN')
     assert.equal(ack.side, 'BUY')
     const wire = ack.intoText('|')
-    assert.ok(wire.startsWith('8=FIX.4.4|35=8|54=1|59=0|11=A1|37=O1|'), wire)
+    assert.ok(wire.startsWith('8=FIX.4.4|35=8|11=A1|37=O1|150=0|'), wire)
     assert.ok(!wire.includes('65042='), 'no stamp is a field')
 
     // A chained stream replayed answers the same messages.
@@ -227,7 +227,7 @@ The walk keys the live chains on that identity, and where a message arrives unde
 
 ## A chain carries its creation and its history
 
-Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, adopts the predecessor as a parent - `parentuuids` is a message's own list, so a chain is also a lineage a caller walks backward - and puts the message one place after the predecessor's, `seqnum`. The lifecycle folds with it: `creatunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; `expirunix` the latest; the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
+Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, adopts the predecessor as a parent - `parentuuids` is a message's own list, so a chain is also a lineage a caller walks backward - and puts the message one place after the predecessor's, `seqnum`. The lifecycle folds with it: `creatunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; the expiry is the latest and the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along, each answered by the trait rather than stamped on a column. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
 
 ## A twin is not a successor
 
@@ -327,7 +327,7 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
 - A message that happened before the live one it would follow - out of order on a walk a caller opened as sorted - is yielded as it came and changes nothing; `lifecycle` sorts first, so nothing arrives out of order there.
 - A message the reading refuses - its own predecessor, one following changes nothing on - is yielded as it came and still stands as the live one.
 - A terminal state ends the chain once the message is yielded; a message arriving under the retired identity starts a chain afresh at `seqnum` 0, sharing the `crossuuid` and nothing else.
-- A message whose `expirunix` is at or before its `currunix` is not alive and opens no chain; one whose expiry is later stays alive until a message past it arrives.
+- A message whose expiry - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or the instrument's `MaturityDate(541)` - is at or before its `currunix` is not alive and opens no chain; one whose expiry is later stays alive until a message past it arrives.
 - The state is the furthest along the two know, as `CodeValue::merge_with` reads a state, so a chain never moves backward: a `New` after a `Filled` under a live chain would be yielded `Filled`; it is not, because the fill retired the chain first.
 - A cleared or absent cross code keeps a message in a chain of one; nothing derives one from the identifiers alone, and a message in no chain joins one only by a name a live message goes by.
 - `restating` is never refused: the walk gives the word only for an arrival under the identity the live message arrived under, which a later statement of the same instant and content has and a successor never does.
