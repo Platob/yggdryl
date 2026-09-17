@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6272,
+    "fields": 6273,
     "groups": 582,
     "enumFields": 2026,
     "codes": 27209,
@@ -107,7 +107,7 @@
     "columns": 118,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 25,
+    "datatypes": 26,
     "dtypes": [
       [
         "int32",
@@ -191,6 +191,10 @@
       ],
       [
         "isin",
+        1
+      ],
+      [
+        "list(field(\"parentuuid\",uuid,nullable=false,metadata={}))",
         1
       ],
       [
@@ -378395,6 +378399,27 @@
       },
       {
         "dtype": {
+          "field": {
+            "dtype": {
+              "type": "uuid"
+            },
+            "metadata": {},
+            "name": "parentuuid",
+            "nullable": false
+          },
+          "type": "list"
+        },
+        "metadata": {
+          "description": "The identities of the messages this one descends from, in the order it states them.",
+          "display": "ParentUuids",
+          "fix:tag": "65041",
+          "fix:transient": "false"
+        },
+        "name": "parentuuids",
+        "nullable": true
+      },
+      {
+        "dtype": {
           "type": "u_int64"
         },
         "metadata": {
@@ -393516,6 +393541,12 @@
           "v": "10.5"
         },
         {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
           "t": 60,
           "n": "TransactTime",
           "y": "datetime64(ns,\"UTC\")",
@@ -393523,10 +393554,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-41fb-7000-a121-215672ed226f",
+        "curruuid": "018d64aa-41fb-7000-9928-43f323a9f801",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
-        "hashcode": "11610597969516896879",
+        "hashcode": "6424459579998468097",
         "crosshashcode": "16375975223314930669",
         "identifiers": {
           "clordid": "ORDER-1"
@@ -393641,8 +393672,8 @@
           "entries": []
         }
       ],
-      "digest": "22e601c390d3cd66096444a98515910e",
-      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56|54=1|132=10.500000000000000000|134=100.000000000000000000|9=139|11=ORDER-1|55=AAPL|207=XNAS|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
+      "digest": "75eda80a85425d43efaf9cf1bba81217",
+      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56|54=1|132=10.5|134=100|9=139|11=ORDER-1|55=AAPL|207=XNAS|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))]"
     },
     {
@@ -393966,10 +393997,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-48ec-7000-b84c-d68c04ea6e10",
+        "curruuid": "018d64aa-48ec-7000-b7e5-87ffb8d16443",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "hashcode": "17891911316502375952",
+        "hashcode": "4027774974139917379",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "execid": "E-1",
@@ -394471,6 +394502,12 @@
           "v": "41.25"
         },
         {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "41.25"
+        },
+        {
           "t": 60,
           "n": "TransactTime",
           "y": "datetime64(ns,\"UTC\")",
@@ -394478,10 +394515,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-58f0-7000-848f-e6bac4a298b6",
+        "curruuid": "018d64aa-58f0-7000-988b-64e455f6b3b3",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
-        "hashcode": "4940421006086019254",
+        "hashcode": "6380304228957991859",
         "crosshashcode": "7987596581457795577",
         "identifiers": {
           "clordid": "ORDER-2"
@@ -394641,8 +394678,8 @@
           "entries": []
         }
       ],
-      "digest": "9690f059c89684e9fc3300bfb461680e",
-      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|54=1|132=41.250000000000000000|134=50.000000000000000000|9=141|11=ORDER-2|55=BRN|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02|10=055|59=0|",
+      "digest": "8143148e42d94e343e21b13bea13ad13",
+      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|54=1|132=41.25|134=50|9=141|11=ORDER-2|55=BRN|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02|10=055|59=0|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))]"
     },
     {
@@ -397564,10 +397601,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-a8f0-1075f82a1012",
-        "crossuuid": "018cc9ab-d1d0-7000-a8f0-1075f82a1012",
+        "curruuid": "018cc9ab-d1d0-7000-b959-6c29d0a7e484",
+        "crossuuid": "018cc9ab-d1d0-7000-b959-6c29d0a7e484",
         "crosscode": "",
-        "hashcode": "7561561873215787026",
+        "hashcode": "8744139078366651524",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -397789,6 +397826,18 @@
           "v": "BRN"
         },
         {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "41.2"
+        },
+        {
+          "t": 133,
+          "n": "OfferPx",
+          "y": "float64",
+          "v": "41.3"
+        },
+        {
           "t": 60,
           "n": "TransactTime",
           "y": "datetime64(ns,\"UTC\")",
@@ -397796,10 +397845,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5120-7000-8de8-e3fae5751bf1",
-        "crossuuid": "018d64aa-5120-7000-8de8-e3fae5751bf1",
+        "curruuid": "018d64aa-5120-7000-b4ca-f7f7a2e11eb6",
+        "crossuuid": "018d64aa-5120-7000-b4ca-f7f7a2e11eb6",
         "crosscode": "",
-        "hashcode": "5613987602248309745",
+        "hashcode": "3804125478229450422",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -397876,8 +397925,8 @@
           "entries": []
         }
       ],
-      "digest": "8ce9294317b747888c6710787695c1e4",
-      "emitted": "8=FIX.4.4|35=S|132=41.200000000000000000|133=41.300000000000000000|134=500.000000000000000000|135=500.000000000000000000|9=69|55=BRN|60=20240201-12:35:00|10=240|",
+      "digest": "4319f65d089d96d1bef8623c4299b97b",
+      "emitted": "8=FIX.4.4|35=S|132=41.2|133=41.3|134=500|135=500|9=69|55=BRN|60=20240201-12:35:00|10=240|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))]"
     },
     {
@@ -398009,10 +398058,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d648a-4600-7000-84c5-f057caa2a473",
-        "crossuuid": "018d648a-4600-7000-84c5-f057caa2a473",
+        "curruuid": "018d648a-4600-7000-a86c-8ddf371ea1e6",
+        "crossuuid": "018d648a-4600-7000-a86c-8ddf371ea1e6",
         "crosscode": "",
-        "hashcode": "343945206416188531",
+        "hashcode": "7524545067271234022",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -398179,10 +398228,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5508-7000-ba0d-cfb62513cae3",
-        "crossuuid": "018d64aa-5508-7000-ba0d-cfb62513cae3",
+        "curruuid": "018d64aa-5508-7000-8f45-fcf66a6e7429",
+        "crossuuid": "018d64aa-5508-7000-8f45-fcf66a6e7429",
         "crosscode": "",
-        "hashcode": "4183228010110110435",
+        "hashcode": "14935621874521895977",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -398379,10 +398428,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-899c-2129542319cb",
-        "crossuuid": "018cc9ab-d1d0-7000-899c-2129542319cb",
+        "curruuid": "018cc9ab-d1d0-7000-9802-a61c89d92943",
+        "crossuuid": "018cc9ab-d1d0-7000-9802-a61c89d92943",
         "crosscode": "",
-        "hashcode": "5304150922524563915",
+        "hashcode": "10953499885220473155",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -398692,6 +398741,12 @@
           "v": "10.75"
         },
         {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.75"
+        },
+        {
           "t": 60,
           "n": "TransactTime",
           "y": "datetime64(ns,\"UTC\")",
@@ -398699,10 +398754,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64ab-3b80-7000-97b4-b0cb88474e1f",
+        "curruuid": "018d64ab-3b80-7000-a7c9-bce961696298",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "hashcode": "6319870565318872607",
+        "hashcode": "2867030348345729688",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "clordid": "ORDER-3",
@@ -398825,8 +398880,8 @@
           "entries": []
         }
       ],
-      "digest": "c0e011af662f539adb4470c642a7df77",
-      "emitted": "8=FIX.4.4|35=G|49=BUYSIDE|56=VENUE|54=1|132=10.750000000000000000|134=150.000000000000000000|9=113|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|38=150|44=10.75|40=2|60=20240201-12:36:00|10=104|59=0|",
+      "digest": "dd8019095ac9c8a4287e1cf71bd830c1",
+      "emitted": "8=FIX.4.4|35=G|49=BUYSIDE|56=VENUE|54=1|132=10.75|134=150|9=113|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|38=150|44=10.75|40=2|60=20240201-12:36:00|10=104|59=0|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))]"
     },
     {
@@ -399047,13 +399102,19 @@
           "n": "Price",
           "y": "float64",
           "v": "10.5"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-bf49-664698799d1c",
-        "crossuuid": "018cc9ab-d1d0-7000-bf49-664698799d1c",
+        "curruuid": "018cc9ab-d1d0-7000-97ca-d1ba44305173",
+        "crossuuid": "018cc9ab-d1d0-7000-97ca-d1ba44305173",
         "crosscode": "",
-        "hashcode": "4560288551081188636",
+        "hashcode": "1714413206106034547",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399172,8 +399233,8 @@
           "entries": []
         }
       ],
-      "digest": "663648c40585f2dcad1a6a43d844cebe",
-      "emitted": "8=FIX.4.4|35=D|15=USD|54=1|132=10.500000000000000000|134=100.000000000000000000|9=62|48=US0378331005|22=4|207=XNAS|38=100|44=10.5|10=045|59=0|120=USD|2897=6|470=US|",
+      "digest": "cc8ec2ba648eb8607c7d3c9fba7b8d49",
+      "emitted": "8=FIX.4.4|35=D|15=USD|54=1|132=10.5|134=100|9=62|48=US0378331005|22=4|207=XNAS|38=100|44=10.5|10=045|59=0|120=USD|2897=6|470=US|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
     },
     {
@@ -399441,10 +399502,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-97d8-cc7a02486097",
-        "crossuuid": "018cc9ab-d1d0-7000-97d8-cc7a02486097",
+        "curruuid": "018cc9ab-d1d0-7000-b583-ffef5523a5a2",
+        "crossuuid": "018cc9ab-d1d0-7000-b583-ffef5523a5a2",
         "crosscode": "",
-        "hashcode": "1718348082238218391",
+        "hashcode": "8467893127777330594",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399756,10 +399817,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-bd5e-2da6fec1a9de",
-        "crossuuid": "018cc9ab-d1d0-7000-bd5e-2da6fec1a9de",
+        "curruuid": "018cc9ab-d1d0-7000-9808-9dc35652a275",
+        "crossuuid": "018cc9ab-d1d0-7000-9808-9dc35652a275",
         "crosscode": "",
-        "hashcode": "18257080134668495326",
+        "hashcode": "10955179555871171189",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399996,10 +400057,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-93ce-16cdddef5d07",
+        "curruuid": "018cc9ab-d1d0-7000-87fb-291ea1613da3",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
-        "hashcode": "1427103205370584327",
+        "hashcode": "9798470625807908259",
         "crosshashcode": "7366101611310237723",
         "identifiers": {
           "clordid": "ORDER-4"
@@ -400090,8 +400151,8 @@
           "entries": []
         }
       ],
-      "digest": "7b1ba09479fc476269441c83f2cbb959",
-      "emitted": "8=FIX.4.4|35=D|54=1|134=100.000000000000000000|9=48|11=ORDER-4|55=AAPL|38=100|10=122|59=0|",
+      "digest": "8cfcd89854b34f3da9c6bec8ec06f399",
+      "emitted": "8=FIX.4.4|35=D|54=1|134=100|9=48|11=ORDER-4|55=AAPL|38=100|10=122|59=0|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
     },
     {
@@ -400220,10 +400281,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b349-8d454b9c0317",
-        "crossuuid": "018cc9ab-d1d0-7000-b349-8d454b9c0317",
+        "curruuid": "018cc9ab-d1d0-7000-bbfa-710284aad964",
+        "crossuuid": "018cc9ab-d1d0-7000-bbfa-710284aad964",
         "crosscode": "",
-        "hashcode": "17530698353277141783",
+        "hashcode": "8933577066472462692",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400312,8 +400373,8 @@
           "entries": []
         }
       ],
-      "digest": "b397f0f4f951f3bbe2f4d36980ac4240",
-      "emitted": "8=FIX.4.4|35=D|54=1|134=100.000000000000000000|9=41|55=AAPL|38=100|9999=house-flag|10=204|59=0|",
+      "digest": "cb44b1105a6e6573b30e5c5873266608",
+      "emitted": "8=FIX.4.4|35=D|54=1|134=100|9=41|55=AAPL|38=100|9999=house-flag|10=204|59=0|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
     },
     {
@@ -400440,10 +400501,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9290-1b1ac5320dc9",
-        "crossuuid": "018cc9ab-d1d0-7000-9290-1b1ac5320dc9",
+        "curruuid": "018cc9ab-d1d0-7000-9a41-d13c5ed3bb24",
+        "crossuuid": "018cc9ab-d1d0-7000-9a41-d13c5ed3bb24",
         "crosscode": "",
-        "hashcode": "10560970927975304649",
+        "hashcode": "11115395412546272036",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400650,10 +400711,10 @@
       "size": 5,
       "columns": [],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-a4ac-f39f04fcb596",
-        "crossuuid": "018cc9ab-d1d0-7000-a4ac-f39f04fcb596",
+        "curruuid": "018cc9ab-d1d0-7000-8c87-9958afa7d386",
+        "crossuuid": "018cc9ab-d1d0-7000-8c87-9958afa7d386",
         "crosscode": "",
-        "hashcode": "11866126982523434390",
+        "hashcode": "5514544874921644934",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400887,13 +400948,19 @@
           "n": "Price",
           "y": "float64",
           "v": "10.5"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-ac07-c020840ad71a",
-        "crossuuid": "018cc9ab-d1d0-7000-ac07-c020840ad71a",
+        "curruuid": "018cc9ab-d1d0-7000-84d7-bf0f72b7d66c",
+        "crossuuid": "018cc9ab-d1d0-7000-84d7-bf0f72b7d66c",
         "crosscode": "",
-        "hashcode": "17007773763674756890",
+        "hashcode": "9572329606069343852",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400982,8 +401049,8 @@
           "entries": []
         }
       ],
-      "digest": "d1d7a09d1cbd39d447e13bfa1ef0d83b",
-      "emitted": "8=FIX.4.4|35=D|54=1|132=10.500000000000000000|134=100.000000000000000000|9=42|55=AAPL|38=100|44=10.5|10=999|59=0|",
+      "digest": "691e1781262df158f25921c307b6de7a",
+      "emitted": "8=FIX.4.4|35=D|54=1|132=10.5|134=100|9=42|55=AAPL|38=100|44=10.5|10=999|59=0|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
     }
   ],

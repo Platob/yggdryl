@@ -212,23 +212,33 @@ function storeDocument(field) {
 }
 
 /**
- * The category a definition is filed under, by the shape it has: a Struct is
- * a component, a List or a Map a group, anything else a scalar field.
+ * Every definition bucketed the way the registry files it.
+ *
+ * Which category a definition lands in is the core's answer rather than a
+ * shape read off the datatype - a list of UUIDs is a field, a Map is a
+ * group - so the snapshot's own three listings say where each one belongs,
+ * and the walk supplies them in the native order.
  */
-function categoryOf(field) {
-  if (field.dtype.id === 'struct') return 'components'
-  if (field.dtype.kind === 'nested') return 'groups'
-  return 'fields'
+function nativeCatalog(registry, snapshot) {
+  const owner = new Map()
+  for (const [category, documents] of Object.entries(snapshot)) {
+    for (const document of documents) owner.set(document.name, category)
+  }
+  const native = { fields: [], components: [], groups: [] }
+  for (const field of registry) {
+    const category = owner.get(field.name)
+    if (category === undefined) throw new Error(`no category for ${field.name}`)
+    native[category].push(field)
+  }
+  return native
 }
 
 /** Live definitions, retaining persisted references and native-only builtins. */
 function liveCatalog(registry) {
   const catalog = {}
-  // The registry walks its scalars first, then its components and groups,
-  // so one walk buckets every definition in the native order.
-  const native = { fields: [], components: [], groups: [] }
-  for (const field of registry) native[categoryOf(field)].push(field)
-  for (const [category, documents] of Object.entries(registry.toJSON())) {
+  const snapshot = registry.toJSON()
+  const native = nativeCatalog(registry, snapshot)
+  for (const [category, documents] of Object.entries(snapshot)) {
     const compact = new Map(documents.map((field) => [field.name, field]))
     if (compact.size !== documents.length) {
       throw new Error(`compact ${category} contain duplicate canonical names`)
@@ -270,8 +280,9 @@ function document(field, key) {
 /** Scalar summaries used to count the registry's metadata. */
 function fieldRecords(registry) {
   const records = []
+  const fields = new Set(registry.toJSON().fields.map((document) => document.name))
   for (const field of registry) {
-    if (categoryOf(field) !== 'fields') continue
+    if (!fields.has(field.name)) continue
     const view = field.fix
     const tag = view.tag
     if (tag === null) continue
