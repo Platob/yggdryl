@@ -585,17 +585,18 @@ impl FixMsg {
                 cells.push((name, fact));
             }
         }
-        if let Some(values) = self.value.as_sequence() {
-            for (child, value) in self.field.fields().iter().zip(values) {
-                if !value.is_null() && child.name() != super::schema::FIXENTRIES_COLUMN {
-                    cells.push((child.name(), value.clone()));
-                }
-            }
-        }
         cells.sort_by(|left, right| left.0.cmp(right.0));
         let borrowed: Vec<(&str, &Scalar)> =
             cells.iter().map(|(name, value)| (*name, value)).collect();
         xxhash::write_named_bytes(&mut state, borrowed.into_iter(), 0);
+        // Then the content, as the entries state it rather than as the row
+        // stores it. Two readings of one message lay its children out
+        // differently - a group one reading declares whole and another
+        // states member by member is one group, and a child stating null
+        // says nothing at all - so a code taken off the row's storage would
+        // make a message read back out of a row a different message. The
+        // entries are what the message says, and they are what this feeds.
+        feed_entries(&mut state, self.entries());
         state.as_u64()
     }
 
@@ -1492,6 +1493,23 @@ impl FixMsg {
             }
             _ => None,
         }
+    }
+}
+
+/// Feeds one level of the entry tree to a digest, in the order it stands:
+/// each entry's name, the value it states, and the entries under it.
+///
+/// Pre-order and framed by what each entry holds, so an entry heading
+/// others is never the same as one stating their text: an entry that
+/// states nothing feeds its name and no value, and its children follow.
+fn feed_entries(state: &mut crate::hashing::xxhash::Xxh3, entries: &[FixEntry]) {
+    for entry in entries {
+        state.write(entry.name().as_bytes());
+        if let Some(value) = entry.value() {
+            state.write(value.as_bytes());
+        }
+        state.write_usize(entry.entries().len());
+        feed_entries(state, entry.entries());
     }
 }
 

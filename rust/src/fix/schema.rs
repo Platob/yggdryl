@@ -964,6 +964,91 @@ fn declares(field: &Field, entry: &super::FixEntry) -> bool {
     crate::types::folds_equal(field.name(), entry.name())
 }
 
+/// One group entry as the list it states: an occurrence per entry under it,
+/// each holding the members that occurrence stated, laid out on the union of
+/// every occurrence's members in the order they were first met.
+///
+/// `item` is the occurrence the dictionary declares, where it declares one:
+/// a member it names types through its own field, and the list keeps the
+/// group's storage. A group no dictionary declares - what a bridge packs
+/// under a counter's own name - takes its occurrence name from the entries
+/// and lands as a plain `List`, which is what the builder made of it.
+fn group_from_entry(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+    known: &Field,
+    item: Option<&Field>,
+) -> Result<(Field, crate::Scalar)> {
+    let declared = item
+        .and_then(|item| item.dtype().as_fields())
+        .unwrap_or_default();
+    let mut union: Vec<Field> = Vec::new();
+    let mut stated: Vec<Vec<(SmolStr, crate::Scalar)>> = Vec::with_capacity(entry.entries().len());
+    for occurrence in entry.entries() {
+        let mut fields = Vec::with_capacity(occurrence.entries().len());
+        let mut values = Vec::with_capacity(occurrence.entries().len());
+        for member in occurrence.entries() {
+            let slot = declared.iter().find(|held| declares(held, member));
+            let (field, value) = child_from_entry(registry, member, slot)?;
+            push_child(registry, &mut fields, &mut values, field, value);
+        }
+        let mut members = Vec::with_capacity(fields.len());
+        for (field, value) in fields.into_iter().zip(values) {
+            match union
+                .iter_mut()
+                .find(|held| crate::types::folds_equal(held.name(), field.name()))
+            {
+                // Two occurrences state one member differently - a nested
+                // group one of them left out a level of - so the slot is
+                // what both fit in, which is what the members' own contract
+                // answers for the pair.
+                Some(slot) => {
+                    if slot.dtype() != field.dtype() {
+                        let mut widened = slot.merge_with(&field, true)?;
+                        widened.set_nullable(true);
+                        *slot = widened;
+                    }
+                }
+                None => {
+                    let mut slot = field.clone();
+                    slot.set_nullable(true);
+                    union.push(slot);
+                }
+            }
+            members.push((SmolStr::new(field.name()), value));
+        }
+        stated.push(members);
+    }
+    // Each occurrence is stated by name rather than by position, so the
+    // members land in the slots the union settled on whatever order the
+    // occurrence stated them in: the root's own contract places a record.
+    let rows: Vec<crate::Scalar> = stated
+        .into_iter()
+        .map(crate::Scalar::from_record)
+        .collect::<Result<Vec<_>>>()?;
+    let name = item.map_or_else(
+        || {
+            entry
+                .entries()
+                .first()
+                .map_or_else(|| known.name().to_owned(), |held| held.name().to_owned())
+        },
+        |item| item.name().to_owned(),
+    );
+    let occurrence = DataType::from_fields(union)?.required_field(name);
+    let dtype = match known.dtype() {
+        DataType::LargeList(_) => DataType::large_list(occurrence),
+        DataType::Map(map) => DataType::map(occurrence, map.keys_sorted())?,
+        _ => DataType::list(occurrence),
+    };
+    // A group the dictionary does not declare stands under the counter's own
+    // name and states no counter of its own: the builder left the count to
+    // the occurrences beside it, and a counter here would put a second child
+    // of that name in the row.
+    let field = Field::new_with_metadata(known.name(), dtype, true, known.metadata.clone());
+    Ok((field, crate::Scalar::from_sequence(rows)))
+}
+
 /// One entry as the child it states and the value under it.
 ///
 /// `declared` is the field the enclosing level declares for it - a
@@ -1008,63 +1093,25 @@ fn child_from_entry(
             .map_or(crate::Scalar::Null, crate::Scalar::from);
         return Ok((field, value));
     };
+    // A scalar the entries state occurrences under is a group no dictionary
+    // declares - a bridge packs `NOTRADINGSESSIONS[0]=...` under the
+    // counter's own name - and the entries are the only statement of its
+    // shape. It rebuilds as the list it is rather than as the scalar the
+    // name reaches, which would answer null and lose the occurrences.
+    if !known.dtype().is_nested()
+        && entry
+            .entries()
+            .iter()
+            .any(|occurrence| !occurrence.entries().is_empty())
+    {
+        return group_from_entry(registry, entry, known, None);
+    }
     match known.dtype() {
         DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
-            let declared = item.dtype().as_fields().unwrap_or_default();
-            let mut union: Vec<Field> = Vec::new();
-            let mut stated: Vec<Vec<(Field, crate::Scalar)>> =
-                Vec::with_capacity(entry.entries().len());
-            for occurrence in entry.entries() {
-                let mut members = Vec::with_capacity(occurrence.entries().len());
-                let mut fields = Vec::with_capacity(occurrence.entries().len());
-                let mut values = Vec::with_capacity(occurrence.entries().len());
-                for member in occurrence.entries() {
-                    let slot = declared.iter().find(|held| declares(held, member));
-                    let (field, value) = child_from_entry(registry, member, slot)?;
-                    push_child(registry, &mut fields, &mut values, field, value);
-                }
-                for (field, value) in fields.into_iter().zip(values) {
-                    if !union
-                        .iter()
-                        .any(|held| crate::types::folds_equal(held.name(), field.name()))
-                    {
-                        let mut field = field.clone();
-                        field.set_nullable(true);
-                        union.push(field);
-                    }
-                    members.push((field, value));
-                }
-                stated.push(members);
-            }
-            let rows: Vec<crate::Scalar> = stated
-                .into_iter()
-                .map(|members| {
-                    crate::Scalar::from_sequence(
-                        union
-                            .iter()
-                            .map(|slot| {
-                                members
-                                    .iter()
-                                    .find(|(field, _)| {
-                                        crate::types::folds_equal(field.name(), slot.name())
-                                    })
-                                    .map_or(crate::Scalar::Null, |(_, value)| value.clone())
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .collect();
-            let occurrence = DataType::from_fields(union)?.required_field(item.name());
-            let dtype = match known.dtype() {
-                DataType::LargeList(_) => DataType::large_list(occurrence),
-                DataType::Map(map) => DataType::map(occurrence, map.keys_sorted())?,
-                _ => DataType::list(occurrence),
-            };
-            let field = Field::new_with_metadata(known.name(), dtype, true, known.metadata.clone());
-            Ok((field, crate::Scalar::from_sequence(rows)))
+            group_from_entry(registry, entry, known, Some(item))
         }
         DataType::Struct(_) => {
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
@@ -1074,13 +1121,18 @@ fn child_from_entry(
                 let (field, value) = child_from_entry(registry, member, slot)?;
                 push_child(registry, &mut fields, &mut values, field, value);
             }
+            let named: Vec<(SmolStr, crate::Scalar)> = fields
+                .iter()
+                .map(|field| SmolStr::new(field.name()))
+                .zip(values)
+                .collect();
             let field = Field::new_with_metadata(
                 known.name(),
                 DataType::from_fields(fields)?,
                 false,
                 known.metadata.clone(),
             );
-            Ok((field, crate::Scalar::from_sequence(values)))
+            Ok((field, crate::Scalar::from_record(named)?))
         }
         _ => {
             let value = entry.value().map_or(crate::Scalar::Null, |text| {
@@ -1116,6 +1168,16 @@ impl super::FixMsg {
     /// the row spells a value as `utf8` because a column a reader can read
     /// is what a row is for, and a `data` field carrying bytes no text holds
     /// reaches that column as the decode of them.
+    ///
+    /// One shape is not exact yet, and it is worth naming rather than
+    /// discovering: a repeating group whose occurrences nest a second group
+    /// that only some of them state. The row holds each occurrence on the
+    /// union of the members any of them stated, and the entries state each
+    /// occurrence's own members, so rebuilding lays the nested level out in
+    /// the order the entries met it rather than the order the parse did.
+    /// Over `rust/tests/fix/ulbridge.log` - a bridge capture of 94 messages,
+    /// the hardest shapes this crate is tested against - 83 rebuild exactly
+    /// and the 11 that do not are all parties nesting `PtysSubGrp`.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -1430,6 +1492,15 @@ impl super::FixMsg {
         tag: i32,
         derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
     ) -> Result<crate::Scalar> {
+        // A sending clock the message never stated is intake's stand-in for
+        // one rather than a fact of the message: it is what the instant and
+        // the creation were settled from, and each of those has a column of
+        // its own. Stating it here would make the row read back as a message
+        // that stated a clock, and that message re-emits a `52=` its line
+        // never carried.
+        if tag == 52 && !self.header().stated_sendingtime() {
+            return Ok(crate::Scalar::Null);
+        }
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
