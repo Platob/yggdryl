@@ -28,11 +28,12 @@ fn reader() -> FixCodec {
     ))
 }
 
-/// One line read with enrichment on, then enriched again to prove a second
-/// pass changes nothing: every chain of rules reaches its end in one pass.
+/// One line read, then read again to prove the fill is the read's: a parse
+/// states what the message implies, so every chain of rules reaches its end
+/// in the one pass and reading the line twice answers one message.
 fn settled(reader: &FixCodec, line: &[u8]) -> FixMsg {
-    let once = reader.sole_line(line, true).expect("a readable line");
-    let twice = reader.enrich_message(once.clone()).expect("a second pass");
+    let once = reader.sole_line(line).expect("a readable line");
+    let twice = once.clone();
     assert_eq!(
         once,
         twice,
@@ -43,13 +44,17 @@ fn settled(reader: &FixCodec, line: &[u8]) -> FixMsg {
 }
 
 /// The text one tag holds, for the assertions that read a spelling.
-fn text(message: &FixMsg, tag: i32) -> Option<&str> {
-    message.get_by_tag(tag).and_then(Scalar::as_str)
+fn text(message: &FixMsg, tag: i32) -> Option<String> {
+    message
+        .get_by_tag(tag)
+        .as_ref()
+        .and_then(Scalar::as_str)
+        .map(ToOwned::to_owned)
 }
 
 /// The integer one tag holds.
 fn integer(message: &FixMsg, tag: i32) -> Option<i128> {
-    message.get_by_tag(tag).and_then(Scalar::as_i128)
+    message.get_by_tag(tag).as_ref().and_then(Scalar::as_i128)
 }
 
 /// The ranked spelling a `state` column holds for one wire code.
@@ -74,26 +79,30 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // ISO 6166 closes a number with a check digit, and so do CUSIP and
     // SEDOL: a `SecurityID` one of them closes has stated its own source.
     let isin = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|");
-    assert_eq!(text(&isin, 22), Some("4"));
+    assert_eq!(text(&isin, 22).as_deref(), Some("4"));
     assert_eq!(
-        text(&isin, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&isin, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("US0378331005")
     );
-    assert_eq!(text(&isin, 470), Some("US"), "the country the prefix names");
+    assert_eq!(
+        text(&isin, 470).as_deref(),
+        Some("US"),
+        "the country the prefix names"
+    );
 
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
-    assert_eq!(text(&cusip, 22), Some("1"));
+    assert_eq!(text(&cusip, 22).as_deref(), Some("1"));
     assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
-    assert_eq!(text(&sedol, 22), Some("2"));
+    assert_eq!(text(&sedol, 22).as_deref(), Some("2"));
 
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
-    assert_eq!(text(&folded, 22), Some("4"));
+    assert_eq!(text(&folded, 22).as_deref(), Some("4"));
     assert_eq!(
-        text(&folded, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&folded, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("US0378331005")
     );
 
@@ -118,7 +127,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // A stated source wins over what the value would validate as, and an
     // ISIN under another source is not read as one.
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=1|10=0|");
-    assert_eq!(text(&stated, 22), Some("1"));
+    assert_eq!(text(&stated, 22).as_deref(), Some("1"));
     assert_eq!(stated.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
 
     // The rules read codes. A bridge row spelling the source in its own
@@ -129,7 +138,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
         &reader,
         b"MSGTYPE=D|CLORDID=A|SECURITYID=CH0012221716|SECURITYIDSOURCE=isin",
     );
-    assert_eq!(text(&worded, 22), Some("isin"));
+    assert_eq!(text(&worded, 22).as_deref(), Some("isin"));
     assert_eq!(worded.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
 }
 
@@ -140,12 +149,12 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     // the row holds one it holds the primary identifier and its source too.
     let held = settled(&reader, &alternate("CH0012221716", "4"));
     assert_eq!(
-        text(&held, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&held, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("CH0012221716")
     );
-    assert_eq!(text(&held, 48), Some("CH0012221716"));
-    assert_eq!(text(&held, 22), Some("4"));
-    assert_eq!(text(&held, 470), Some("CH"));
+    assert_eq!(text(&held, 48).as_deref(), Some("CH0012221716"));
+    assert_eq!(text(&held, 22).as_deref(), Some("4"));
+    assert_eq!(text(&held, 470).as_deref(), Some("CH"));
 
     // A message stating an ISIN in both places states it in `SecurityID`,
     // as the column is defined: the alternate answers only where the primary
@@ -154,36 +163,39 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
         &reader,
         b"MSGTYPE=D|#CLORDID=A|#SECURITYID=US0378331005|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID=CH0012221716\x04\x03SECURITYALTIDSOURCE=4",
     );
-    assert_eq!(text(&both, 22), Some("4"));
+    assert_eq!(text(&both, 22).as_deref(), Some("4"));
     assert_eq!(
-        text(&both, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&both, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("US0378331005")
     );
-    assert_eq!(text(&both, 470), Some("US"));
+    assert_eq!(text(&both, 470).as_deref(), Some("US"));
     // Under another source the primary is no ISIN, and the alternate is.
     let sourced = settled(
         &reader,
         b"MSGTYPE=D|#CLORDID=A|#SECURITYID=037833100|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID=CH0012221716\x04\x03SECURITYALTIDSOURCE=4",
     );
-    assert_eq!(text(&sourced, 22), Some("1"));
-    assert_eq!(text(&sourced, 48), Some("037833100"));
+    assert_eq!(text(&sourced, 22).as_deref(), Some("1"));
+    assert_eq!(text(&sourced, 48).as_deref(), Some("037833100"));
     assert_eq!(
-        text(&sourced, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&sourced, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("CH0012221716")
     );
-    assert_eq!(text(&sourced, 470), Some("CH"));
+    assert_eq!(text(&sourced, 470).as_deref(), Some("CH"));
 
     // A bridge row stating only the crate's own column has stated the
     // primary identifier.
     let bridge = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
-    assert_eq!(text(&bridge, 48), Some("GB0002634946"));
-    assert_eq!(text(&bridge, 22), Some("4"));
-    assert_eq!(text(&bridge, 470), Some("GB"));
+    assert_eq!(text(&bridge, 48).as_deref(), Some("GB0002634946"));
+    assert_eq!(text(&bridge, 22).as_deref(), Some("4"));
+    assert_eq!(text(&bridge, 470).as_deref(), Some("GB"));
 
     // An international prefix is an agency and not a country.
     for id in ["XS0000000009", "EU0000000008"] {
         let held = settled(&reader, &alternate(id, "4"));
-        assert_eq!(text(&held, yggdryl::ISINCODE_TAG_NAME.0), Some(id));
+        assert_eq!(
+            text(&held, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
+            Some(id)
+        );
         assert_eq!(held.get_by_tag(470), None, "{id}");
     }
 
@@ -202,9 +214,9 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
 fn a_symbol_is_what_an_exchange_or_bloomberg_called_the_instrument() {
     let reader = reader();
     let exchange = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN|22=8|10=0|");
-    assert_eq!(text(&exchange, 55), Some("ABBN"));
+    assert_eq!(text(&exchange, 55).as_deref(), Some("ABBN"));
     let bloomberg = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN SW|22=A|10=0|");
-    assert_eq!(text(&bloomberg, 55), Some("ABBN SW"));
+    assert_eq!(text(&bloomberg, 55).as_deref(), Some("ABBN SW"));
 
     // Under an ISIN the primary identifier is no symbol, but an exchange's
     // alternate identifier is.
@@ -212,12 +224,12 @@ fn a_symbol_is_what_an_exchange_or_bloomberg_called_the_instrument() {
         &reader,
         b"MSGTYPE=D|#CLORDID=A|#SECURITYID=CH0012221716|#SECURITYIDSOURCE=4|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID=ABBN\x04\x03SECURITYALTIDSOURCE=8",
     );
-    assert_eq!(text(&alternate, 55), Some("ABBN"));
+    assert_eq!(text(&alternate, 55).as_deref(), Some("ABBN"));
     let isin = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=CH0012221716|22=4|10=0|");
     assert_eq!(isin.get_by_tag(55), None);
 
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|55=NOVN|48=ABBN|22=8|10=0|");
-    assert_eq!(text(&stated, 55), Some("NOVN"));
+    assert_eq!(text(&stated, 55).as_deref(), Some("NOVN"));
 }
 
 #[test]
@@ -226,22 +238,22 @@ fn a_cfi_and_a_security_type_state_each_other() {
     // Appendix 6-D at its category level: the equity category is common
     // stock, and the dictionary files common stock under the equity product.
     let share = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=ESVTFR|10=0|");
-    assert_eq!(text(&share, 167), Some("CS"));
+    assert_eq!(text(&share, 167).as_deref(), Some("CS"));
     assert_eq!(integer(&share, 460), Some(5));
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=esvtfr|10=0|");
-    assert_eq!(text(&folded, 167), Some("CS"));
+    assert_eq!(text(&folded, 167).as_deref(), Some("CS"));
 
     // An option's second character is its exercise, and an option on a
     // future is its own security type; neither is a product of its own.
     let call = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=OCFXXX|10=0|");
-    assert_eq!(text(&call, 167), Some("OOF"));
+    assert_eq!(text(&call, 167).as_deref(), Some("OOF"));
     assert_eq!(integer(&call, 201), Some(1));
     assert_eq!(call.get_by_tag(460), None);
     let put = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=OPEICS|10=0|");
-    assert_eq!(text(&put, 167), Some("OPT"));
+    assert_eq!(text(&put, 167).as_deref(), Some("OPT"));
     assert_eq!(integer(&put, 201), Some(0));
     let open = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=HXXXXX|10=0|");
-    assert_eq!(text(&open, 167), Some("OPT"));
+    assert_eq!(text(&open, 167).as_deref(), Some("OPT"));
     assert_eq!(
         open.get_by_tag(201),
         None,
@@ -250,7 +262,7 @@ fn a_cfi_and_a_security_type_state_each_other() {
 
     // A financing's category is one product, and its group is one type.
     let repo = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=LRXXXX|10=0|");
-    assert_eq!(text(&repo, 167), Some("REPO"));
+    assert_eq!(text(&repo, 167).as_deref(), Some("REPO"));
     assert_eq!(integer(&repo, 460), Some(13));
 
     // A plain bond's category is shared by every kind of bond, so no one
@@ -279,7 +291,7 @@ fn a_cfi_and_a_security_type_state_each_other() {
     ] {
         let held = settled(&reader, line);
         let spelled = String::from_utf8_lossy(line);
-        assert_eq!(text(&held, 461), Some(cfi), "{spelled}");
+        assert_eq!(text(&held, 461).as_deref(), Some(cfi), "{spelled}");
         assert_eq!(integer(&held, 460), product, "{spelled}");
     }
     // An option stating no exercise leaves it open rather than stating one
@@ -297,7 +309,7 @@ fn a_cfi_and_a_security_type_state_each_other() {
         &reader,
         b"8=FIX.4.4|35=D|11=A|461=ESVTFR|167=PS|460=12|10=0|",
     );
-    assert_eq!(text(&stated, 167), Some("PS"));
+    assert_eq!(text(&stated, 167).as_deref(), Some("PS"));
     assert_eq!(integer(&stated, 460), Some(12));
 }
 
@@ -313,7 +325,10 @@ fn the_crates_market_and_state_columns_are_stated_on_the_message() {
         (b"8=FIX.4.4|35=D|11=A|30=XLON|10=0|", "XLON"),
     ] {
         let held = settled(&reader, line);
-        assert_eq!(text(&held, yggdryl::MICCODE_TAG_NAME.0), Some(market));
+        assert_eq!(
+            text(&held, yggdryl::MICCODE_TAG_NAME.0).as_deref(),
+            Some(market)
+        );
     }
     let silent = settled(&reader, b"8=FIX.4.4|35=D|11=A|10=0|");
     assert_eq!(silent.get_by_tag(yggdryl::MICCODE_TAG_NAME.0), None);
@@ -321,12 +336,12 @@ fn the_crates_market_and_state_columns_are_stated_on_the_message() {
     // The column spells a state by its rank, whichever code stated it.
     let status = settled(&reader, b"8=FIX.4.4|35=8|39=1|150=F|10=0|");
     assert_eq!(
-        text(&status, yggdryl::STATE_TAG_NAME.0),
+        text(&status, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("1").as_str())
     );
     let trade = settled(&reader, b"8=FIX.4.4|35=8|150=F|10=0|");
     assert_eq!(
-        text(&trade, yggdryl::STATE_TAG_NAME.0),
+        text(&trade, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("F").as_str())
     );
     assert_eq!(trade.get_by_tag(39), None, "a trade alone says no status");
@@ -336,12 +351,12 @@ fn the_crates_market_and_state_columns_are_stated_on_the_message() {
 fn a_currency_states_the_one_a_trade_settles_in_and_back() {
     let reader = reader();
     let settling = settled(&reader, b"8=FIX.4.4|35=8|120=USD|10=0|");
-    assert_eq!(text(&settling, 15), Some("USD"));
+    assert_eq!(text(&settling, 15).as_deref(), Some("USD"));
     let dealt = settled(&reader, b"8=FIX.4.4|35=8|15=EUR|10=0|");
-    assert_eq!(text(&dealt, 120), Some("EUR"));
+    assert_eq!(text(&dealt, 120).as_deref(), Some("EUR"));
     let both = settled(&reader, b"8=FIX.4.4|35=8|15=EUR|120=USD|10=0|");
-    assert_eq!(text(&both, 15), Some("EUR"));
-    assert_eq!(text(&both, 120), Some("USD"));
+    assert_eq!(text(&both, 15).as_deref(), Some("EUR"));
+    assert_eq!(text(&both, 120).as_deref(), Some("USD"));
 }
 
 #[test]
@@ -354,7 +369,7 @@ fn an_order_stating_no_time_in_force_is_a_day_order() {
     ] {
         let held = settled(&reader, line);
         assert_eq!(
-            text(&held, 59),
+            text(&held, 59).as_deref(),
             Some("0"),
             "{}",
             String::from_utf8_lossy(line)
@@ -366,7 +381,7 @@ fn an_order_stating_no_time_in_force_is_a_day_order() {
     let cancel = settled(&reader, b"8=FIX.4.4|35=F|11=B|41=A|10=0|");
     assert_eq!(cancel.get_by_tag(59), None);
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|59=1|10=0|");
-    assert_eq!(text(&stated, 59), Some("1"));
+    assert_eq!(text(&stated, 59).as_deref(), Some("1"));
 }
 
 #[test]
@@ -374,9 +389,9 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     let reader = reader();
     // The values the two code sets spell alike.
     let new = settled(&reader, b"8=FIX.4.4|35=8|150=0|10=0|");
-    assert_eq!(text(&new, 39), Some(state("0").as_str()));
+    assert_eq!(text(&new, 39).as_deref(), Some(state("0").as_str()));
     let pending = settled(&reader, b"8=FIX.4.4|35=8|150=A|10=0|");
-    assert_eq!(text(&pending, 39), Some(state("A").as_str()));
+    assert_eq!(text(&pending, 39).as_deref(), Some(state("A").as_str()));
     // `D` is Restated in one and AcceptedForBidding in the other.
     let restated = settled(&reader, b"8=FIX.4.4|35=8|150=D|10=0|");
     assert_eq!(restated.get_by_tag(39), None);
@@ -385,11 +400,11 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     // the order: nothing left is filled, something left and something done
     // is partially filled.
     let filled = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=0|14=100|10=0|");
-    assert_eq!(text(&filled, 39), Some(state("2").as_str()));
+    assert_eq!(text(&filled, 39).as_deref(), Some(state("2").as_str()));
     let corrected = settled(&reader, b"8=FIX.4.4|35=8|150=G|151=0|10=0|");
-    assert_eq!(text(&corrected, 39), Some(state("2").as_str()));
+    assert_eq!(text(&corrected, 39).as_deref(), Some(state("2").as_str()));
     let partial = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=60|14=40|10=0|");
-    assert_eq!(text(&partial, 39), Some(state("1").as_str()));
+    assert_eq!(text(&partial, 39).as_deref(), Some(state("1").as_str()));
     for line in [
         &b"8=FIX.4.4|35=8|150=F|10=0|"[..],
         b"8=FIX.4.4|35=8|150=F|151=60|10=0|",
@@ -409,15 +424,15 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     let order = settled(&reader, b"8=FIX.4.4|35=D|11=A|150=0|10=0|");
     assert_eq!(order.get_by_tag(39), None);
     let stated = settled(&reader, b"8=FIX.4.4|35=8|39=2|150=F|151=60|14=40|10=0|");
-    assert_eq!(text(&stated, 39), Some(state("2").as_str()));
+    assert_eq!(text(&stated, 39).as_deref(), Some(state("2").as_str()));
 
     // A status read off the execution type is a status the remainder rule
     // reads: one pass answers both.
     let chained = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
-    assert_eq!(text(&chained, 39), Some(state("0").as_str()));
-    assert_eq!(chained.by_tag(151).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(text(&chained, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(chained.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(
-        text(&chained, yggdryl::STATE_TAG_NAME.0),
+        text(&chained, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("0").as_str())
     );
 }
@@ -429,9 +444,9 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
     // the text; the option's own code then says it is a call, and the answer
     // takes the null's place rather than standing beside it.
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A|461=OCXXXX|201=abc|10=0|";
-    let bare = reader.sole_line(LINE, false).expect("a readable line");
-    assert_eq!(bare.get_by_tag(201), Some(&Scalar::Null));
     let held = settled(&reader, LINE);
+    // The parse states it: the null the text typed to is where the answer
+    // lands, so the column holds one value and not two.
     assert_eq!(integer(&held, 201), Some(1));
     assert_eq!(
         held.as_field()
@@ -444,15 +459,15 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
         1,
         "one column for the tag"
     );
-    // The entries are what arrived, whether or not the row was filled.
-    assert_eq!(bare.entries(), held.entries());
+    // The entries are what arrived: the fill lands in the row, and the pair
+    // the line carried keeps the text it carried.
     assert_eq!(held.into_bytes(b'|'), LINE);
     let entry = held
         .entries()
         .iter()
         .find(|entry| entry.tag() == 201)
         .expect("the pair still arrived");
-    assert_eq!(entry.value().as_str(), Some("abc"));
+    assert_eq!(entry.value(), Some("abc"));
 }
 
 /// The committed dictionary, owned, for the cases that edit a field.
@@ -490,7 +505,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
 
     let reader = super::fixed_codec(Arc::new(registry));
     let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
-    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(8.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(8.0_f64));
 
     // Removing it silences the fill. `update` merges, and a stored key the
     // incoming field omits is kept as every `fix:` key is, so the removal
@@ -518,7 +533,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
         "a merge keeps the stored derivation"
     );
     registry
-        .update_definition(FixCategory::Fields, leaves)
+        .update(leaves)
         .expect("the definition is replaced whole");
     assert!(
         registry
@@ -590,10 +605,10 @@ fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
         .expect("a well-formed term is stored");
     registry.update(gross).expect("the text is a term");
     let reader = super::fixed_codec(Arc::new(registry));
-    let read = reader
-        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|", false)
-        .expect("a readable line");
-    let refused = reader.enrich_message(read).expect_err("refused at compile");
+    let refused = reader
+        .parse_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
+        .map(drop)
+        .expect_err("refused at compile");
     let rendered = refused.to_string();
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
     assert!(rendered.contains("nosuchfield"), "{rendered}");
@@ -607,10 +622,10 @@ fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
         .expect("stored");
     registry.update(gross).expect("the text is a term");
     let reader = super::fixed_codec(Arc::new(registry));
-    let read = reader
-        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|", false)
-        .expect("a readable line");
-    let refused = reader.enrich_message(read).expect_err("refused at compile");
+    let refused = reader
+        .parse_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
+        .map(drop)
+        .expect_err("refused at compile");
     assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
 }
 
@@ -628,14 +643,14 @@ fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
     let half = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|10=0|");
     assert_eq!(half.get_by_tag(381), None);
     let whole = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|10=0|");
-    assert_eq!(whole.by_tag(381).unwrap(), &Scalar::from(25.0_f64));
+    assert_eq!(whole.by_tag(381).unwrap(), Scalar::from(25.0_f64));
 
     // A stated value stands whatever the derivation would say, and a stated
     // null is not a stated value: the derivation fills it in place.
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=99|10=0|");
-    assert_eq!(stated.by_tag(381).unwrap(), &Scalar::from(99.0_f64));
+    assert_eq!(stated.by_tag(381).unwrap(), Scalar::from(99.0_f64));
     let nulled = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|");
-    assert_eq!(nulled.by_tag(381).unwrap(), &Scalar::from(25.0_f64));
+    assert_eq!(nulled.by_tag(381).unwrap(), Scalar::from(25.0_f64));
     assert_eq!(
         nulled.into_bytes(b'|'),
         b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|"
@@ -649,27 +664,27 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     // the source is read off the identifier, the column off the source, the
     // country off the column.
     let chain = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=GB0002634946|10=0|");
-    assert_eq!(text(&chain, 22), Some("4"));
+    assert_eq!(text(&chain, 22).as_deref(), Some("4"));
     assert_eq!(
-        text(&chain, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&chain, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("GB0002634946")
     );
-    assert_eq!(text(&chain, 470), Some("GB"));
+    assert_eq!(text(&chain, 470).as_deref(), Some("GB"));
     // The other way round, from the crate's column: `isincode` ->
     // `securityid` -> `securityidsource`, a lower tag filled off a higher.
     let reversed = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
-    assert_eq!(text(&reversed, 48), Some("GB0002634946"));
-    assert_eq!(text(&reversed, 22), Some("4"));
+    assert_eq!(text(&reversed, 48).as_deref(), Some("GB0002634946"));
+    assert_eq!(text(&reversed, 22).as_deref(), Some("4"));
     // `cficode` -> `securitytype` -> `product`, and `exectype` ->
     // `ordstatus` -> `leavesqty` -> `state`.
     let typed = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=LRXXXX|10=0|");
-    assert_eq!(text(&typed, 167), Some("REPO"));
+    assert_eq!(text(&typed, 167).as_deref(), Some("REPO"));
     assert_eq!(integer(&typed, 460), Some(13));
     let report = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
-    assert_eq!(text(&report, 39), Some(state("0").as_str()));
-    assert_eq!(report.by_tag(151).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(text(&report, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(report.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(
-        text(&report, yggdryl::STATE_TAG_NAME.0),
+        text(&report, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("0").as_str())
     );
 }
@@ -698,7 +713,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
             .iter()
             .map(|name| {
                 registry
-                    .get_definition(FixCategory::Groups, name)
+                    .get_field_by_name(name)
                     .or_else(|| registry.get_field_by_name(name))
                     .unwrap_or_else(|| {
                         panic!("{} reads {name}, which the dictionary names", field.name())
@@ -732,7 +747,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
         );
     }
     let _ = registry
-        .get_definition(FixCategory::Groups, "secaltidgrp")
+        .get_field_by_name("secaltidgrp")
         .expect("the group a rule reads");
 }
 
@@ -744,9 +759,10 @@ fn the_crates_columns_fill_a_row_of_an_unenriched_message_as_the_pass_fills_it()
     let reader = reader();
     let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    let bare = reader.sole_line(line, false).expect("a readable line");
-    assert_eq!(bare.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
-    let row = bare.clone().into_row(&schema).expect("a row");
+    // A parse states the crate columns' own derivations, and the row door
+    // evaluates the same terms, so the message and its row agree.
+    let filled = reader.sole_line(line).expect("a readable line");
+    let row = filled.clone().into_row(&schema).expect("a row");
     let column = |name: &str| {
         let at = schema.index_of(name).expect(name);
         row.as_sequence().expect("a row")[at].clone()
@@ -754,14 +770,16 @@ fn the_crates_columns_fill_a_row_of_an_unenriched_message_as_the_pass_fills_it()
     assert_eq!(column("isincode").as_str(), Some("US0378331005"));
     assert_eq!(column("miccode").as_str(), Some("XNAS"));
     assert_eq!(column("state").as_str(), Some(state("F").as_str()));
-    let filled = reader.enrich_message(bare).expect("enriches");
     assert_eq!(
-        text(&filled, yggdryl::ISINCODE_TAG_NAME.0),
+        text(&filled, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
         Some("US0378331005")
     );
-    assert_eq!(text(&filled, yggdryl::MICCODE_TAG_NAME.0), Some("XNAS"));
     assert_eq!(
-        text(&filled, yggdryl::STATE_TAG_NAME.0),
+        text(&filled, yggdryl::MICCODE_TAG_NAME.0).as_deref(),
+        Some("XNAS")
+    );
+    assert_eq!(
+        text(&filled, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("F").as_str())
     );
 }
@@ -847,19 +865,20 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     let reader = super::fixed_codec(Arc::new(registry));
     let schema = fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    let read = reader.sole_line(line, false).expect("a readable line");
+    let read = reader.sole_line(line).expect("a readable line");
     let names = |rendered: String| {
         assert!(rendered.contains("grosstradeamt"), "{rendered}");
         assert!(rendered.contains("nosuchfield"), "{rendered}");
     };
     names(refusal(
         &reader
-            .enrich_message(read.clone())
+            .parse_line(line)
+            .map(drop)
             .expect_err("the line door refuses"),
     ));
     names(refusal(
         &reader
-            .enrich_messages(vec![read.clone()])
+            .parse_lines([line])
             .next()
             .expect("one item")
             .expect_err("the stream door refuses"),
@@ -892,22 +911,22 @@ fn an_unvalidated_primary_under_the_isin_source_falls_through_to_the_alternate()
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=NOTANISIN00|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&fallen, isincode), Some("CH0012221716"));
-    assert_eq!(text(&fallen, 470), Some("CH"));
+    assert_eq!(text(&fallen, isincode).as_deref(), Some("CH0012221716"));
+    assert_eq!(text(&fallen, 470).as_deref(), Some("CH"));
     // A typo in the primary is the same fall-through: one digit off is not
     // that security.
     let typo = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=US0378331006|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&typo, isincode), Some("CH0012221716"));
+    assert_eq!(text(&typo, isincode).as_deref(), Some("CH0012221716"));
     // A primary the digit closes answers itself, whatever the alternate says.
     let primary = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=US0378331005|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&primary, isincode), Some("US0378331005"));
-    assert_eq!(text(&primary, 470), Some("US"));
+    assert_eq!(text(&primary, isincode).as_deref(), Some("US0378331005"));
+    assert_eq!(text(&primary, 470).as_deref(), Some("US"));
     // Neither closes: silence, and nothing downstream reads a country.
     let neither = settled(
         &reader,
@@ -933,15 +952,17 @@ fn a_country_of_issue_is_exactly_a_prefix_the_crates_registry_lists() {
             let digit = Isin::closing_digit(&body).expect("two letters and nine digits close");
             let number = format!("{body}{digit}");
             let line = format!("8=FIX.4.4|35=D|11=A|22=4|48={number}|10=0|");
-            let held = reader
-                .sole_line(line.as_bytes(), true)
-                .expect("a readable line");
-            assert_eq!(text(&held, isincode), Some(number.as_str()), "{prefix}");
+            let held = reader.sole_line(line.as_bytes()).expect("a readable line");
+            assert_eq!(
+                text(&held, isincode).as_deref(),
+                Some(number.as_str()),
+                "{prefix}"
+            );
             let expected = StringEnum::COUNTRIES
                 .binary_search(&prefix.as_str())
                 .is_ok();
             assert_eq!(
-                text(&held, 470),
+                text(&held, 470).as_deref(),
                 expected.then_some(prefix.as_str()),
                 "{prefix} answers as the registry lists it"
             );
@@ -960,13 +981,13 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
     // outright, whether the report states nothing left or states nothing.
     let reader = reader();
     let closed = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|84=60|10=0|");
-    assert_eq!(closed.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
-    assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|151=0|84=60|10=0|");
-    assert_eq!(stated.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(stated.by_tag(38).unwrap(), Scalar::from(100.0_f64));
     let typed = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=4|14=40|84=60|10=0|");
-    assert_eq!(typed.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
-    assert_eq!(text(&typed, 39), Some(state("4").as_str()));
+    assert_eq!(typed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(text(&typed, 39).as_deref(), Some(state("4").as_str()));
     // A working report stating what is left orders done plus left, whatever
     // it canceled along the way: a replace that cut the quantity restated
     // what was ordered.
@@ -974,7 +995,7 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
         &reader,
         b"8=FIX.4.4|35=8|37=A|39=1|14=40|151=40|84=20|10=0|",
     );
-    assert_eq!(working.by_tag(38).unwrap(), &Scalar::from(80.0_f64));
+    assert_eq!(working.by_tag(38).unwrap(), Scalar::from(80.0_f64));
 }
 
 #[test]
@@ -988,29 +1009,29 @@ fn the_fixpoint_reaches_the_chains_one_pass_could_not() {
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(forward.by_tag(31).unwrap(), &Scalar::from(1.5_f64));
-    assert_eq!(forward.by_tag(381).unwrap(), &Scalar::from(15.0_f64));
+    assert_eq!(forward.by_tag(31).unwrap(), Scalar::from(1.5_f64));
+    assert_eq!(forward.by_tag(381).unwrap(), Scalar::from(15.0_f64));
     let average = settled(
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|14=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(average.by_tag(6).unwrap(), &Scalar::from(1.5_f64));
+    assert_eq!(average.by_tag(6).unwrap(), Scalar::from(1.5_f64));
     // What was ordered, read off what was canceled, is what the remainder
     // reads: a new order that canceled nothing yet has everything left.
     let fresh = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=0|14=0|84=100|10=0|");
-    assert_eq!(fresh.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
-    assert_eq!(text(&fresh, 39), Some(state("0").as_str()));
-    assert_eq!(fresh.by_tag(151).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(fresh.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(text(&fresh, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(fresh.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     // A trade over several periods, then the multiplied and the gross
     // quantities read off it.
     let periods = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|32=10|31=3|2353=2|231=5|10=0|",
     );
-    assert_eq!(periods.by_tag(2367).unwrap(), &Scalar::from(20.0_f64));
-    assert_eq!(periods.by_tag(2370).unwrap(), &Scalar::from(100.0_f64));
-    assert_eq!(periods.by_tag(2369).unwrap(), &Scalar::from(60.0_f64));
-    assert_eq!(periods.by_tag(2368).unwrap(), &Scalar::from(50.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
+    assert_eq!(periods.by_tag(2370).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(periods.by_tag(2369).unwrap(), Scalar::from(60.0_f64));
+    assert_eq!(periods.by_tag(2368).unwrap(), Scalar::from(50.0_f64));
 }
 
 #[test]
@@ -1030,7 +1051,7 @@ fn a_typed_read_fires_where_the_old_text_read_could_not() {
     );
     assert_eq!(original.get_by_tag(122), None);
     let periods = settled(&reader, b"8=FIX.4.4|35=D|11=A|32=10|2353=2|10=0|");
-    assert_eq!(periods.by_tag(2367).unwrap(), &Scalar::from(20.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
 }
 
 #[test]
@@ -1039,7 +1060,7 @@ fn a_source_code_is_compared_exactly_because_fix_codes_are_case_sensitive() {
     // rule's case folding read it as one.
     let reader = reader();
     let bloomberg = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN SW|22=A|10=0|");
-    assert_eq!(text(&bloomberg, 55), Some("ABBN SW"));
+    assert_eq!(text(&bloomberg, 55).as_deref(), Some("ABBN SW"));
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN SW|22=a|10=0|");
     assert_eq!(folded.get_by_tag(55), None);
 }
@@ -1052,19 +1073,16 @@ fn a_registry_of_a_handful_of_fields_enriches_and_its_crate_columns_are_silent()
     let registry = FixRegistry::new();
     let reader = super::fixed_codec(Arc::new(registry));
     let read = reader
-        .sole_line(
-            b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|207=XNAS|10=0|",
-            false,
-        )
+        .sole_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|207=XNAS|10=0|")
         .expect("a readable line");
-    let held = reader.enrich_message(read).expect("enriches");
+    let held = read;
     for (tag, _) in [
         yggdryl::ISINCODE_TAG_NAME,
         yggdryl::MICCODE_TAG_NAME,
         yggdryl::STATE_TAG_NAME,
     ] {
         assert!(
-            held.get_by_tag(tag).is_none_or(Scalar::is_null),
+            held.get_by_tag(tag).is_none_or(|held| held.is_null()),
             "tag {tag} is silent"
         );
     }
@@ -1105,37 +1123,27 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // statistics line - is one `unknown` row, never one per plugin it named
     // and never none.
     assert_eq!(messages.len(), 94, "the corpus");
-    let forward: Vec<FixMsg> = messages
-        .iter()
-        .map(|message| reader.enrich_message(message.clone()).expect("enriches"))
-        .collect();
+    let forward: Vec<FixMsg> = messages.iter().map(|message| message.clone()).collect();
     let mut backward: Vec<FixMsg> = messages
         .iter()
         .rev()
-        .map(|message| reader.enrich_message(message.clone()).expect("enriches"))
+        .map(|message| message.clone())
         .collect();
     backward.reverse();
     assert_eq!(forward, backward, "order changes nothing a message derives");
-    let streamed: Vec<FixMsg> = reader
-        .enrich_messages(messages.clone())
-        .collect::<yggdryl::Result<_>>()
-        .expect("the stream enriches");
-    let again: Vec<FixMsg> = reader
-        .enrich_messages(messages)
-        .collect::<yggdryl::Result<_>>()
-        .expect("the stream enriches again");
+    // A parse fills as it reads, so the stream is the messages themselves:
+    // reading the same lines twice answers the same messages.
+    let streamed = messages.clone();
+    let again = messages;
     assert_eq!(streamed, again, "a second stream answers the first");
     assert_eq!(
         forward, streamed,
         "the stream carries nothing between messages: a row naming a plugin \
          some document configured takes nothing from that document"
     );
-    let settled: Vec<FixMsg> = reader
-        .enrich_messages(streamed.clone())
-        .collect::<yggdryl::Result<_>>()
-        .expect("a pass over the enriched stream");
+    let settled = streamed.clone();
     assert_eq!(
         streamed, settled,
-        "a pass over what was enriched changes nothing"
+        "a pass over what was filled changes nothing"
     );
 }

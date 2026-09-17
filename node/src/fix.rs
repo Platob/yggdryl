@@ -15,11 +15,19 @@
 //! spelled through the `ById` doors. A dictionary's membership is
 //! `fix:branches` on the field it contributed to, read on the protocol view;
 //! nothing here resolves through it.
+//!
+//! A message's typed facts - its event, its header, its capture, its text
+//! and its metadata - cross as plain values: a UUID as its text, a hash and
+//! an instant as a `bigint`, a price as its decimal text, a code as the text
+//! it is. The graph traits are what answer them, and the message's own
+//! `getBy*` doors keep answering a `Scalar`, so a reader that wants the
+//! native value of a typed fact asks by its tag.
 
 mod catalog;
 
-pub use catalog::{JsFixDefinitionIterator, JsMsgType, JsMsgTypeIterator};
+pub use catalog::JsMsgType;
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 
@@ -30,9 +38,11 @@ use napi::bindgen_prelude::{
     Generator, JsObjectValue as _, Null, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
+use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
+use yggdryl::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol};
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCategory,
-    FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
+    FixCodec as CoreFixCodec, FixEntry, FixHeader, FixId as CoreFixId, FixKey,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, TimeUnit, Timezone,
 };
 
@@ -41,7 +51,7 @@ use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
 use crate::text_line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::types::field::JsField;
-use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
+use crate::{exact_f64, exact_i32, exact_i64, napi_error, napi_type_error};
 
 /// The root a batch of FIX rows is named by, the core's own spelling.
 const ROOT_NAME: &str = "fix";
@@ -148,161 +158,62 @@ impl JsFixRegistry {
 #[allow(clippy::cast_possible_truncation)]
 #[napi]
 impl JsFixRegistry {
-    /// Look up a globally unique group by its scalar counter tag.
+    /// The repeating group a counter tag opens, or `null`.
+    ///
+    /// `tag` is the counter's, never the group's own: `getFieldByTag` answers
+    /// the counter itself off the same key, and the group it heads is a
+    /// definition of its own, reached here or by its name. Two groups on one
+    /// counter name nothing.
     #[napi]
-    pub fn get_group_by_tag(&self, tag: f64) -> Result<Option<JsField>> {
+    pub fn get_field_by_counter(&self, tag: f64) -> Result<Option<JsField>> {
         let tag = exact_i32(tag, "tag")?;
         Ok(self
             .inner
-            .get_group_by_tag(tag)
+            .get_field_by_counter(tag)
             .cloned()
             .map(JsField::from_core))
     }
 
-    /// Look up a globally unique group, failing when absent or ambiguous.
+    /// The repeating group a counter tag opens, failing when absent or
+    /// ambiguous.
     #[napi]
-    pub fn group_by_tag(&self, tag: f64) -> Result<JsField> {
+    pub fn field_by_counter(&self, tag: f64) -> Result<JsField> {
         let tag = exact_i32(tag, "tag")?;
         self.inner
-            .group_by_tag(tag)
+            .field_by_counter(tag)
             .cloned()
             .map(JsField::from_core)
             .map_err(napi_error)
     }
 
-    /// Look up a category definition, returning null when absent.
-    #[napi]
-    pub fn get_definition(&self, category: String, name: String) -> Result<Option<JsField>> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        Ok(self
-            .inner
-            .get_definition(category, &name)
-            .cloned()
-            .map(JsField::from_core))
-    }
-
-    /// Look up a category definition, failing when absent.
-    #[napi]
-    pub fn definition(&self, category: String, name: String) -> Result<JsField> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner
-            .definition(category, &name)
-            .map(|field| JsField::from_core(field.clone()))
-            .map_err(napi_error)
-    }
-
-    /// Definitions in native category order, retaining the registry while active.
-    #[napi]
-    pub fn definitions(&self, category: String) -> Result<JsFixDefinitionIterator> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        Ok(JsFixDefinitionIterator {
-            registry: Some(Arc::clone(&self.inner)),
-            category,
-            index: 0,
-        })
-    }
-
-    /// Fold a named definition into the one its name reaches.
-    ///
-    /// The lenient counterpart of `createDefinition`, which refuses a name it
-    /// holds, and of `insertDefinition`, which replaces one wholesale.
-    /// Answers `true` when the definition arrived and `false` when it merged;
-    /// `"fields"` redirects to `addField`.
-    ///
-    /// A merge keeps the stored definition's identity, name and every member
-    /// it declares, in its order, and appends the members it lacks - for a
-    /// group, to the occurrence inside the list, and to the component when
-    /// that occurrence is a component's. It is one level deep: a member both
-    /// sides declare stays the stored one, so a member whose datatype - or
-    /// whose restated reference - disagrees is refused. Every message and
-    /// component referencing the definition sees the appended members.
-    ///
-    /// One mutation: a refusal leaves the dictionary exactly as it was.
-    #[napi]
-    pub fn add_definition(&mut self, category: String, field: &JsField) -> Result<bool> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner_mut()?
-            .add_definition(category, field.inner.clone())
-            .map_err(napi_error)
-    }
-
-    /// Insert or replace a complete native category definition atomically.
-    #[napi]
-    pub fn insert_definition(
-        &mut self,
-        category: String,
-        field: &JsField,
-    ) -> Result<Option<JsField>> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner_mut()?
-            .insert_definition(category, field.inner.clone())
-            .map(|field| field.map(JsField::from_core))
-            .map_err(napi_error)
-    }
-
-    /// Create a definition, refusing an existing identity.
-    #[napi]
-    pub fn create_definition(&mut self, category: String, field: &JsField) -> Result<()> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner_mut()?
-            .create_definition(category, field.inner.clone())
-            .map_err(napi_error)
-    }
-
-    /// Replace an existing definition atomically, preserving identity.
-    #[napi]
-    pub fn update_definition(&mut self, category: String, field: &JsField) -> Result<JsField> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner_mut()?
-            .update_definition(category, field.inner.clone())
-            .map(JsField::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Remove a definition, refusing dangling references.
-    #[napi]
-    pub fn remove_definition(&mut self, category: String, name: String) -> Result<Option<JsField>> {
-        let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        self.inner_mut()?
-            .remove_definition(category, &name)
-            .map(|field| field.map(JsField::from_core))
-            .map_err(napi_error)
-    }
-
-    /// Borrow the message singleton named by wire code, canonical name, or alias.
+    /// The message definition a wire code, a canonical name or tag 35's
+    /// alias names, or `null`: a copy of the registry's own, so a later
+    /// mutation of the dictionary leaves it as it was answered.
     #[napi]
     pub fn get_msgtype(&self, spelling: String) -> Option<JsMsgType> {
         self.inner
             .get_msgtype(&spelling)
-            .map(|message| JsMsgType::from_borrowed(&self.inner, message))
+            .map(|message| JsMsgType::from_core(message.clone()))
     }
 
-    /// Borrow a message singleton, failing when absent.
+    /// The message definition a spelling names, failing when absent.
     #[napi]
     pub fn msgtype(&self, spelling: String) -> Result<JsMsgType> {
-        let message = self.inner.msgtype(&spelling).map_err(napi_error)?;
-        Ok(JsMsgType::from_borrowed(&self.inner, message))
-    }
-
-    /// Iterate native message singletons in canonical order.
-    #[napi]
-    pub fn msgtypes(&self) -> JsMsgTypeIterator {
-        JsMsgTypeIterator {
-            registry: Some(Arc::clone(&self.inner)),
-            index: 0,
-        }
+        self.inner
+            .msgtype(&spelling)
+            .map(|message| JsMsgType::from_core(message.clone()))
+            .map_err(napi_error)
     }
 
     /// A registry holding the built-in definitions.
     ///
-    /// Every registry holds the thirty-four scalar fields, the sorted
-    /// `altids` Map group and the `instids` Struct that `fixCrateFields`
-    /// lists. It also holds the standard
+    /// Every registry holds the crate's own definitions - the scalar columns
+    /// `fixCrateFields` lists, the `identifiers` and `metadata` Map groups
+    /// and the `fixmsg` component that is the fixed row - and the standard
     /// `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
     /// the dictionary defines no field of its own at those tags. A dictionary
-    /// loaded from a store, built from fields or left alone holds them alike;
-    /// scalar lookups and `size` exclude groups and components, so a new
-    /// registry's `size` is 36.
+    /// loaded from a store, built from fields or left alone holds them alike,
+    /// and `size` counts every one of them beside the dictionary's own.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -392,19 +303,23 @@ impl JsFixRegistry {
 
     /// Write every populated shard under `<location>/fields/<shard>.json` and
     /// every definition under `<location>/<category>/<name>.json`, removing
-    /// the shards and trees no field populates any more. The crate's own
-    /// definitions are written like every other - its tag block from 65000 is
-    /// one shard, and its `altids` and `instids` are two documents - so a
-    /// store states the whole row; a reader takes the
-    /// definition it holds from construction over the document it finds.
+    /// the shards and trees no field populates any more. A shard is named by
+    /// its tag block, nine digits with leading zeros: tag 55 lands in
+    /// `fields/000000000.json`, tag 5001 in `fields/000000050.json`. The
+    /// crate's own definitions are written like every other - its tag block
+    /// from 65000 is `fields/000000650.json`, its `identifiers` and
+    /// `metadata` Map groups two documents under `groups/`, and the fixed row
+    /// is `components/fixmsg.json` - so a store states the whole row; a
+    /// reader takes the definition it holds from construction over the
+    /// document it finds.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
         let mut holder = folder_from_input(location)?;
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many scalar fields are held, the crate's own thirty-four among
-    /// them, 36 for a new registry with its two seeded clocks.
+    /// How many fields are held: the scalar fields, then the components and
+    /// the groups, the crate's own and the two seeded clocks among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -564,6 +479,10 @@ impl JsFixRegistry {
     }
 
     /// Add a field, answering the one it replaced.
+    ///
+    /// A definition is filed by the shape it has: a Struct inserts as a
+    /// component - a message when it carries `fix:msgtype` - a List of
+    /// Structs or a Map as a group, and anything else as a scalar field.
     #[napi]
     pub fn insert(&mut self, field: &JsField) -> Result<Option<JsField>> {
         let field = field.inner.clone();
@@ -575,7 +494,8 @@ impl JsFixRegistry {
     }
 
     /// Merge a definition into the stored field with the same identity: the
-    /// same tag under the same folded name.
+    /// same tag under the same folded name, or the component or group of
+    /// the same folded name.
     #[napi]
     pub fn update(&mut self, field: &JsField) -> Result<()> {
         let field = field.inner.clone();
@@ -583,6 +503,10 @@ impl JsFixRegistry {
     }
 
     /// Remove the field a tag or a name reaches, answering it.
+    ///
+    /// A name no scalar answers to reaches a component or a group, so a
+    /// definition leaves through the same door; one another definition still
+    /// references stays, and `null` says so.
     #[napi(ts_args_type = "key: number | string")]
     pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsField>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -614,19 +538,22 @@ impl JsFixRegistry {
         self.inner.dialects()
     }
 
-    /// The fields in ascending identifier order, lazily.
+    /// Every field, lazily: the scalar fields in ascending identifier order,
+    /// then the components and the groups in the catalog's name order.
     ///
-    /// The order is the core's: tag-major, then by identifier. The iterator holds
-    /// the registry and the identifier it stopped at, so nothing is collected
-    /// crossing the boundary and the dictionary is never cloned to walk it.
-    /// Holding it is therefore sharing it: a mutation refuses until the walk
-    /// ends, which is what stops the fields moving under a cursor into them.
-    /// The loader wires `Symbol.iterator` over this.
+    /// The order is the core's: tag-major, then by identifier, the definitions
+    /// behind. The iterator holds the registry and the identifier it stopped
+    /// at, so nothing is collected crossing the boundary and the dictionary is
+    /// never cloned to walk it. Holding it is therefore sharing it: a mutation
+    /// refuses until the walk ends, which is what stops the fields moving
+    /// under a cursor into them. The loader wires `Symbol.iterator` over this.
     #[napi(ts_return_type = "Generator<Field>")]
     pub fn keys(&self) -> JsFixFieldIterator {
         JsFixFieldIterator {
             registry: Some(Arc::clone(&self.inner)),
             after: None,
+            scalars: 0,
+            definition: None,
         }
     }
 
@@ -654,7 +581,8 @@ impl JsFixRegistry {
         format!("FixRegistry({} fields)", self.inner.len())
     }
 
-    /// A complete native catalog snapshot: the three categories.
+    /// A complete native catalog snapshot: the fields, the components and
+    /// the groups.
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::from_str(&self.inner.into_json().map_err(napi_error)?).map_err(napi_error)
@@ -681,18 +609,41 @@ impl Default for JsFixRegistry {
     }
 }
 
-/// The fields of a registry, in ascending identifier order.
+/// The fields of a registry: the scalars in ascending identifier order, then
+/// the components and the groups.
 ///
-/// Answered by `keys()`. It advances with the core's own cursor - the registry
-/// plus the last `FixId` it answered - so taking one field from a dictionary of
-/// thousands costs one lookup, and a walk crosses every field in the one order
-/// the core iterates: tag-major, then identifier. It lets the registry go the moment the walk ends, because
-/// JavaScript collects at its own pace and a mutation must not wait for a
-/// drained iterator to be swept.
+/// Answered by `keys()`. The scalars advance with the core's own cursor - the
+/// registry plus the last `FixId` it answered - so taking one field from a
+/// dictionary of thousands costs one lookup, and a walk crosses every field in
+/// the one order the core iterates: tag-major, then identifier. The
+/// definitions follow, each reached by its position from the end of the
+/// core's own walk, because the catalog keeps them behind the scalars and
+/// answers no cursor into them. It lets the registry go the moment the walk
+/// ends, because JavaScript collects at its own pace and a mutation must not
+/// wait for a drained iterator to be swept.
 #[napi(iterator, js_name = "FixFieldIterator")]
 pub struct JsFixFieldIterator {
     registry: Option<Arc<CoreFixRegistry>>,
     after: Option<CoreFixId>,
+    /// How many scalars the cursor answered: where the definitions start in
+    /// the core's walk once the scalars are exhausted.
+    scalars: usize,
+    /// The next definition to answer, once the scalars are exhausted.
+    definition: Option<usize>,
+}
+
+impl JsFixFieldIterator {
+    /// The definition at `index` behind the scalars, reached from the back
+    /// of the core's walk so the scalars in front are never stepped over.
+    fn definition_at(
+        registry: &CoreFixRegistry,
+        scalars: usize,
+        index: usize,
+    ) -> Option<CoreField> {
+        let definitions = registry.iter().len().checked_sub(scalars)?;
+        let from_back = definitions.checked_sub(index + 1)?;
+        registry.iter().nth_back(from_back).cloned()
+    }
 }
 
 impl Generator for JsFixFieldIterator {
@@ -701,26 +652,35 @@ impl Generator for JsFixFieldIterator {
     type Return = ();
 
     fn next(&mut self, _value: Option<Self::Next>) -> Option<Self::Yield> {
-        let found = self.registry.as_ref().and_then(|registry| {
-            registry
-                .next_field_after(self.after)
-                .map(|field| (field.clone(), field.as_fix().id().ok().flatten()))
-        });
+        let registry = self.registry.as_ref()?;
+        if let Some(index) = self.definition {
+            let Some(field) = Self::definition_at(registry, self.scalars, index) else {
+                self.registry = None;
+                return None;
+            };
+            self.definition = Some(index + 1);
+            return Some(JsField::from_core(field));
+        }
+        let found = registry
+            .next_field_after(self.after)
+            .map(|field| (field.clone(), field.as_fix().id().ok().flatten()));
         match found {
             // The cursor is the canonical identifier every registered field
             // carries; a field without one cannot be advanced past, so the
-            // walk ends there rather than answering it forever.
+            // scalars end there and the definitions follow.
             Some((field, Some(id))) => {
                 self.after = Some(id);
+                self.scalars += 1;
                 Some(JsField::from_core(field))
             }
             Some((field, None)) => {
-                self.registry = None;
+                self.scalars += 1;
+                self.definition = Some(0);
                 Some(JsField::from_core(field))
             }
             None => {
-                self.registry = None;
-                None
+                self.definition = Some(0);
+                self.next(None)
             }
         }
     }
@@ -733,41 +693,332 @@ impl Generator for JsFixFieldIterator {
     }
 }
 
-/// Every arrival entry, pre-order, as the tuple JavaScript reads.
+/// One entry of a message, as the plain object JavaScript reads.
 ///
-/// The native record nests a group's members under the counter that heads
-/// them; a binding is a view, so it flattens rather than inventing a second
-/// shape. Order is the wire's.
-///
-/// A tag is an `i32` and every `i32` is an exact `f64`, so the number
-/// JavaScript reads is the tag rather than a rounding of it. A key the
-/// dictionary did not resolve - a name or a number alike - carries tag 0
-/// beside its raw key.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, String, String)>) {
-    for entry in entries {
-        out.push((
-            f64::from(entry.tag()),
-            entry.key().as_str().unwrap_or_default().to_owned(),
-            entry.value().as_str().unwrap_or_default().to_owned(),
-        ));
-        flatten_entries(entry.children(), out);
+/// The row read as a tree: a resolved field carries its canonical positive
+/// tag and name, a key no dictionary explains carries `0` and its own
+/// spelling, and an entry that heads others - a group under its counter, an
+/// occurrence, a component - nests them under `entries`. A group entry's
+/// value is its occurrence count; an occurrence and a component state no
+/// value of their own.
+#[napi(object, object_from_js = false)]
+pub struct FixEntryView {
+    /// The resolved canonical tag, or `0` for a key no dictionary explains.
+    pub tag: i32,
+    /// The dictionary's canonical name, else the key as it arrived.
+    pub name: String,
+    /// The value as the wire spells it, or `null` for an entry that only
+    /// heads others.
+    #[napi(ts_type = "string | null")]
+    pub value: Either<String, Null>,
+    /// The entries nested under this one, in their order.
+    pub entries: Vec<FixEntryView>,
+}
+
+/// One core entry and everything under it, as the object JavaScript reads.
+fn entry_view(entry: &FixEntry) -> FixEntryView {
+    FixEntryView {
+        tag: entry.tag(),
+        name: entry.name().to_owned(),
+        value: or_null(entry.value().map(ToOwned::to_owned)),
+        entries: entry.entries().iter().map(entry_view).collect(),
     }
 }
 
-/// A FIX message: a value plus the registry that types it.
+/// The event a message is: every fact the graph traits answer, as plain
+/// values.
 ///
-/// The schema is one non-null Struct `Field` - the only row schema - and the
-/// value the row it declares, so a plain object crosses as the record the core
-/// canonicalizes into that order exactly as every other row is. The row is
-/// written through `set` and `remove`; the entries never are, because they are
-/// what the wire carried. The message compares, hashes, renders and clones by
-/// the schema and the value it carries, against the registry it was resolved
-/// against.
+/// A UUID is its hyphenated text, a hash and an instant a `bigint` - the
+/// instants nanoseconds since the Unix epoch, UTC - a price or a quantity its
+/// decimal text, a currency, a side, a state and an instrument code the text
+/// each is. What the event does not state is `null` where the core holds
+/// nothing, and the core's own nothing where it holds a value that means
+/// none: a price or a quantity of `0`, the `XXX` currency, an empty unit or
+/// cross code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`.
+#[napi(object, object_from_js = false)]
+pub struct FixEventView {
+    /// This message's own identity: a time UUID over its instant and its
+    /// `hashcode`.
+    pub curruuid: String,
+    /// The identity of the chain the message belongs to: a version-8 UUID
+    /// over the `crosshashcode`, or `curruuid` when no cross code names a
+    /// chain.
+    pub crossuuid: String,
+    /// The code the chain is named by: the first stated of `OrderID(37)`,
+    /// `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
+    /// and `MDReqID(262)`, or empty.
+    pub crosscode: String,
+    /// The XXH3-64 of the event, the text, the metadata, the header and the
+    /// row.
+    pub hashcode: BigInt,
+    /// The XXH3-64 of the cross code, `0n` where there is none.
+    pub crosshashcode: BigInt,
+    /// The identifiers the message is known by, scheme to value, sorted.
+    #[napi(ts_type = "Record<string, string>")]
+    pub identifiers: BTreeMap<String, String>,
+    /// The UUIDs of the messages this one descends from.
+    pub parentuuids: Vec<String>,
+    /// When the event happened: `TransactTime(60)` where the message states
+    /// one with a clock, else its sending time.
+    pub unix: BigInt,
+    /// The order state the message reached, ranked: `20NEW`, `80FILLED`.
+    pub state: String,
+    /// The message's place in its chain, `0` until a lifecycle states it.
+    pub seqnum: f64,
+    /// When the chain was created, where stated.
+    #[napi(ts_type = "bigint | null")]
+    pub creatunix: Either<BigInt, Null>,
+    /// When the chain expires, where stated.
+    #[napi(ts_type = "bigint | null")]
+    pub expirunix: Either<BigInt, Null>,
+    /// The instant of the message this one follows, where a lifecycle
+    /// stated it.
+    #[napi(ts_type = "bigint | null")]
+    pub prevunix: Either<BigInt, Null>,
+    /// The identity of the message this one follows, where a lifecycle
+    /// stated it.
+    #[napi(ts_type = "string | null")]
+    pub prevuuid: Either<String, Null>,
+    /// The instant a snapshot was taken at, where one was.
+    #[napi(ts_type = "bigint | null")]
+    pub snapunix: Either<BigInt, Null>,
+    /// The price, as decimal text.
+    pub px: String,
+    /// The quantity, as decimal text.
+    pub qty: String,
+    /// The currency, `XXX` where none is stated.
+    pub currency: String,
+    /// The unit the quantity is counted in, empty where none is stated.
+    pub unit: String,
+    /// The side: `BUY`, `SELL`, or `UNKNOWN`.
+    pub side: String,
+    /// The instrument's ISIN, where stated.
+    #[napi(ts_type = "string | null")]
+    pub isincode: Either<String, Null>,
+    /// The instrument's CUSIP, where stated.
+    #[napi(ts_type = "string | null")]
+    pub cusipcode: Either<String, Null>,
+    /// The instrument's SEDOL, where stated.
+    #[napi(ts_type = "string | null")]
+    pub sedolcode: Either<String, Null>,
+    /// The instrument's Bloomberg code, where stated.
+    #[napi(ts_type = "string | null")]
+    pub bloombergcode: Either<String, Null>,
+    /// The instrument's CFI classification, where stated.
+    #[napi(ts_type = "string | null")]
+    pub cficode: Either<String, Null>,
+    /// The market the message names, where stated.
+    #[napi(ts_type = "string | null")]
+    pub miccode: Either<String, Null>,
+    /// The bid lane's price, where filled.
+    #[napi(ts_type = "string | null")]
+    pub bidpx: Either<String, Null>,
+    /// The bid lane's quantity, where filled.
+    #[napi(ts_type = "string | null")]
+    pub bidqty: Either<String, Null>,
+    /// The bid lane's currency, where filled.
+    #[napi(ts_type = "string | null")]
+    pub bidcurrency: Either<String, Null>,
+    /// The bid lane's unit, where filled.
+    #[napi(ts_type = "string | null")]
+    pub bidunit: Either<String, Null>,
+    /// The ask lane's price, where filled.
+    #[napi(ts_type = "string | null")]
+    pub askpx: Either<String, Null>,
+    /// The ask lane's quantity, where filled.
+    #[napi(ts_type = "string | null")]
+    pub askqty: Either<String, Null>,
+    /// The ask lane's currency, where filled.
+    #[napi(ts_type = "string | null")]
+    pub askcurrency: Either<String, Null>,
+    /// The ask lane's unit, where filled.
+    #[napi(ts_type = "string | null")]
+    pub askunit: Either<String, Null>,
+}
+
+/// One instant as JavaScript reads it: nanoseconds since the epoch.
+fn instant(unix: i64) -> BigInt {
+    BigInt::from(unix)
+}
+
+/// One fact answered, or `null` where the core holds nothing.
 ///
-/// Every message carries the settled replay fields, never null: `updatedat`,
-/// `createdat`, `msghash`, `msgphash`, `code`, `snapshotat` and `SendingTime` (52).
-/// The four the readers of the same names answer are held beside the row, so
-/// reading them costs no lookup.
+/// A plain object states every fact it declares: an absent one is `null`,
+/// as every absence at this boundary is, rather than a property left out.
+fn or_null<T>(value: Option<T>) -> Either<T, Null> {
+    value.map_or(Either::B(Null), Either::A)
+}
+
+/// The event's facts, read through the graph traits.
+fn event_view(event: &MarketEventData) -> Result<FixEventView> {
+    let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
+    let decimal = |held: Option<Decimal>| or_null(held.map(|value| value.to_string()));
+    Ok(FixEventView {
+        curruuid: event.get_curruuid().to_string(),
+        crossuuid: event.get_crossuuid().to_string(),
+        crosscode: event.get_crosscode().to_owned(),
+        hashcode: BigInt::from(event.get_hashcode()),
+        crosshashcode: BigInt::from(event.get_crosshashcode()),
+        identifiers: identifiers_view(event),
+        parentuuids: parents_view(event),
+        unix: instant(event.get_unix()),
+        state: event.get_state().as_str().to_owned(),
+        seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
+        creatunix: or_null(event.get_creatunix().map(instant)),
+        expirunix: or_null(event.get_expirunix().map(instant)),
+        prevunix: or_null(event.get_prevunix().map(instant)),
+        prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
+        snapunix: or_null(event.get_snapunix().map(instant)),
+        px: event.get_px().to_string(),
+        qty: event.get_qty().to_string(),
+        currency: event.get_currency().as_str().to_owned(),
+        unit: event.get_unit().to_owned(),
+        side: event.get_side().as_str().to_owned(),
+        isincode: text(event.get_isincode().map(Isin::as_str)),
+        cusipcode: text(event.get_cusipcode().map(Cusip::as_str)),
+        sedolcode: text(event.get_sedolcode().map(Sedol::as_str)),
+        bloombergcode: text(event.get_bloombergcode().map(Bloomberg::as_str)),
+        cficode: text(event.get_cficode().map(Cfi::as_str)),
+        miccode: text(event.get_miccode().map(Mic::as_str)),
+        bidpx: decimal(event.get_bidpx()),
+        bidqty: decimal(event.get_bidqty()),
+        bidcurrency: text(event.get_bidcurrency().map(Currency::as_str)),
+        bidunit: text(event.get_bidunit()),
+        askpx: decimal(event.get_askpx()),
+        askqty: decimal(event.get_askqty()),
+        askcurrency: text(event.get_askcurrency().map(Currency::as_str)),
+        askunit: text(event.get_askunit()),
+    })
+}
+
+/// The identifiers an event states, scheme to value, in the core's sorted
+/// order.
+fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
+    event
+        .get_identifiers()
+        .iter()
+        .map(|(scheme, value)| (scheme.clone(), value.clone()))
+        .collect()
+}
+
+/// The parents an event states, each as its text.
+fn parents_view(event: &MarketEventData) -> Vec<String> {
+    event
+        .get_parentuuids()
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// The standard header a message holds typed, as plain values.
+///
+/// What FIX puts in front of every message: the version it says it speaks,
+/// the type it is, who sent it to whom, its place in the session and when it
+/// was sent, plus which way it moved where the line or the caller said.
+#[napi(object, object_from_js = false)]
+pub struct FixHeaderView {
+    /// `BeginString(8)`: `FIX.4.4`; empty where the message states none.
+    pub beginstring: String,
+    /// `MsgType(35)`: the wire code, `D`; empty where the message states
+    /// none.
+    pub msgtype: String,
+    /// `SenderCompID(49)`, where stated.
+    #[napi(ts_type = "string | null")]
+    pub sendercompid: Either<String, Null>,
+    /// `TargetCompID(56)`, where stated.
+    #[napi(ts_type = "string | null")]
+    pub targetcompid: Either<String, Null>,
+    /// `MsgSeqNum(34)`, where stated.
+    #[napi(ts_type = "number | null")]
+    pub msgseqnum: Either<f64, Null>,
+    /// `SendingTime(52)` as nanoseconds since the Unix epoch, UTC: what the
+    /// message stated, else the clock the intake settled.
+    pub sendingtime: BigInt,
+    /// `PossDupFlag(43)`, where stated.
+    #[napi(ts_type = "boolean | null")]
+    pub possdupflag: Either<bool, Null>,
+    /// `MsgDirection(385)` as the code the dictionary's set spells it, where
+    /// the line or the caller stated which way the message moved.
+    #[napi(ts_type = "string | null")]
+    pub msgdirection: Either<String, Null>,
+}
+
+fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
+    Ok(FixHeaderView {
+        beginstring: header.beginstring().to_owned(),
+        msgtype: header.msgtype().to_owned(),
+        sendercompid: or_null(header.sendercompid().map(ToOwned::to_owned)),
+        targetcompid: or_null(header.targetcompid().map(ToOwned::to_owned)),
+        msgseqnum: or_null(
+            header
+                .msgseqnum()
+                .map(|held| exact_f64(held, "msgseqnum"))
+                .transpose()?,
+        ),
+        sendingtime: instant(header.sendingtime()),
+        possdupflag: or_null(header.possdupflag()),
+        msgdirection: or_null(header.msgdirection().map(ToOwned::to_owned)),
+    })
+}
+
+/// What the capture stated about the line a message was read from, as
+/// plain values.
+///
+/// Facts about the capture and not about the message: none of them is FIX,
+/// none is content, and none reaches the code the message digests to.
+#[napi(object, object_from_js = false)]
+pub struct FixCaptureView {
+    /// The URL of the object the line was read from, where the capture
+    /// named it.
+    #[napi(ts_type = "string | null")]
+    pub sourceurl: Either<String, Null>,
+    /// When the capture recorded the line, nanoseconds since the Unix
+    /// epoch, UTC, where it dated it.
+    #[napi(ts_type = "bigint | null")]
+    pub recordedat: Either<BigInt, Null>,
+    /// The plugin that logged the line inside a bridge, as the bridge names
+    /// it.
+    #[napi(ts_type = "string | null")]
+    pub pluginid: Either<String, Null>,
+    /// The message context a bridge handled the line in.
+    #[napi(ts_type = "string | null")]
+    pub msgctxid: Either<String, Null>,
+    /// The session instance a bridge handled the line on.
+    #[napi(ts_type = "string | null")]
+    pub msgsessionid: Either<String, Null>,
+}
+
+fn capture_view(capture: &FixCapture) -> FixCaptureView {
+    FixCaptureView {
+        sourceurl: or_null(capture.sourceurl().map(ToString::to_string)),
+        recordedat: or_null(capture.recordedat().map(instant)),
+        pluginid: or_null(capture.pluginid().map(ToOwned::to_owned)),
+        msgctxid: or_null(capture.msgctxid().map(ToOwned::to_owned)),
+        msgsessionid: or_null(capture.msgsessionid().map(ToOwned::to_owned)),
+    }
+}
+
+/// A FIX message: its typed facts, and the content row the registry types.
+///
+/// The typed facts live beside the row: the event the message is - the
+/// graph traits' facts - the standard header, what the capture said about
+/// the line, the `Text(58)` and the metadata a bridge spelled under its own
+/// namespaces. The row holds everything else the message states: the
+/// dictionary fields, groups as lists beside their counter, components as
+/// structs. The schema is one non-null Struct `Field` - the only row schema -
+/// and a plain object crosses as the record the core canonicalizes into that
+/// order exactly as every other row is; a child stating a typed fact fills
+/// the holder that owns it and leaves the row. The entries are the row read
+/// as a tree, derived on the first ask; the wire is the header, the event's
+/// own tags and the entries. The message compares, hashes, renders and clones
+/// by its facts and its row, against the registry it was resolved against.
+///
+/// Every message carries its identity settled: the cross code read off the
+/// first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
+/// over it, the `hashcode` over everything the message says, the `curruuid`
+/// over its instant and that hash, and the `crossuuid` over the cross hash -
+/// or the `curruuid` itself when no cross code names a chain. Every write
+/// settles it again.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
     inner: CoreFixMsg,
@@ -778,6 +1029,11 @@ impl JsFixMsg {
     pub(crate) const fn from_core(inner: CoreFixMsg) -> Self {
         Self { inner }
     }
+
+    /// Borrow the message the core built.
+    pub(crate) const fn as_core(&self) -> &CoreFixMsg {
+        &self.inner
+    }
 }
 
 #[napi]
@@ -786,11 +1042,13 @@ impl JsFixMsg {
     ///
     /// The loader widens `value`: anything `Scalar.fromJs` reads becomes the
     /// native value first, and the core alone validates and canonicalizes it
-    /// against `field`. A mandatory replay field the root lacks is appended:
-    /// `SendingTime` reads UTC now when the value states none, `snapshotat`
-    /// is `TransactTime` (60) else `SendingTime`, `updatedat` and `createdat`
-    /// default to that instant, `code` to the empty name, and `msghash` and
-    /// `msgphash` are computed. A stated identity must match what is computed.
+    /// against `field`. A child stating a typed fact - a header tag, a
+    /// crate column, one of the event's own tags, `Text(58)` - fills the
+    /// holder that owns it and leaves the row. `SendingTime` reads UTC now
+    /// when the value states none; the event's instant is `TransactTime(60)`
+    /// where it states one with a clock, else the sending time; the creation
+    /// instant is `OrigSendingTime(122)` else that instant. The identity is
+    /// then settled.
     #[napi(constructor)]
     pub fn new(
         field: &JsField,
@@ -808,15 +1066,13 @@ impl JsFixMsg {
     /// `schema` is the row's root - the one `fix.schema` or
     /// `fix.schemaCarrying` built, or a batch reader's `field` - and `row` the
     /// row under it, which the loader widens from whatever `Scalar.fromJs`
-    /// reads. The columns are the message's children under the schema's
-    /// names, reached by tag as a parsed message's are, and the entries are
-    /// rebuilt from the `fixentries` column, so `intoBytes` re-emits the
-    /// line the row was read from; a row without that column has no entries.
-    /// Nothing is parsed again and no clock is read: the row must carry the
-    /// seven non-null replay fields - `updatedat`, `createdat`, `msghash`,
-    /// `msgphash`, `code`, `snapshotat`, `SendingTime` - and its `msghash` and
-    /// `msgphash` must match what its content computes, or it throws the located
-    /// refusal. The process default is the registry when none is named.
+    /// reads. The typed facts are read off the columns that hold them, and
+    /// the content is rebuilt from the `fixentries` column, each entry typed
+    /// through the dictionary exactly as the builder types a pair, so
+    /// `intoBytes` re-emits the line the row was read from; a row without
+    /// that column has the typed facts and no content. A column no tag names
+    /// is a capture's own and stays a child. Nothing is parsed again and no
+    /// clock is read. The process default is the registry when none is named.
     #[napi(factory)]
     pub fn from_row(
         schema: &JsField,
@@ -835,87 +1091,220 @@ impl JsFixMsg {
         JsFixRegistry::from_arc(Arc::clone(self.inner.registry()))
     }
 
-    /// The root Struct field: the message's resolved schema.
+    /// The root Struct field: the content row's schema, holding every child
+    /// the message states beyond its typed facts.
     #[napi(getter)]
     pub fn field(&self) -> JsField {
         JsField::from_core(self.inner.as_field().clone())
     }
 
-    /// The ordered row value.
+    /// The ordered content row.
     #[napi(getter)]
     pub fn value(&self) -> JsScalar {
         JsScalar::from_core(self.inner.as_value().clone())
     }
 
-    /// How many values the root declares, which is what `entries` yields.
+    /// How many children the content row declares.
     ///
     /// Counts are JavaScript numbers, exact to 2^53, as everywhere else at
-    /// this boundary; Python spells the same answer `len(message)`.
+    /// this boundary.
     #[allow(clippy::cast_precision_loss)]
     #[napi(getter)]
     pub fn size(&self) -> f64 {
         self.inner.as_field().fields().len() as f64
     }
 
-    /// The value of the root child an identifier names, or `null`.
+    /// The event this message is: every fact the graph traits answer, as
+    /// one plain object read once.
+    #[napi]
+    pub fn event(&self) -> Result<FixEventView> {
+        event_view(self.inner.event())
+    }
+
+    /// The standard header, typed, as one plain object read once.
+    #[napi]
+    pub fn header(&self) -> Result<FixHeaderView> {
+        header_view(self.inner.header())
+    }
+
+    /// What the capture said about the line, as one plain object read once.
+    #[napi]
+    pub fn capture(&self) -> FixCaptureView {
+        capture_view(self.inner.capture())
+    }
+
+    /// `Text(58)`: the free text the message carries, or `null`.
+    #[napi(getter)]
+    pub fn text(&self) -> Option<String> {
+        self.inner.text().map(ToOwned::to_owned)
+    }
+
+    /// What a bridge stated under its own namespaces - a `TECH.CLIENTID`,
+    /// a `firm.*` key - each under the key as the bridge spelled it, folded,
+    /// in sorted order; empty where it stated none.
+    #[napi(getter, ts_return_type = "Record<string, string>")]
+    pub fn metadata(&self) -> BTreeMap<String, String> {
+        self.inner
+            .metadata()
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    /// This message's own identity, as its hyphenated text.
+    #[napi(getter)]
+    pub fn curruuid(&self) -> String {
+        self.inner.get_curruuid().to_string()
+    }
+
+    /// The identity of the chain this message belongs to, as its hyphenated
+    /// text: `curruuid` when no cross code names a chain.
+    #[napi(getter)]
+    pub fn crossuuid(&self) -> String {
+        self.inner.get_crossuuid().to_string()
+    }
+
+    /// The code the chain is named by, or empty.
+    #[napi(getter)]
+    pub fn crosscode(&self) -> String {
+        self.inner.get_crosscode().to_owned()
+    }
+
+    /// The XXH3-64 over everything this message says.
+    #[napi(getter)]
+    pub fn hashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_hashcode())
+    }
+
+    /// The XXH3-64 of the cross code, `0n` where there is none.
+    #[napi(getter)]
+    pub fn crosshashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_crosshashcode())
+    }
+
+    /// When the event happened, nanoseconds since the Unix epoch, UTC.
+    #[napi(getter)]
+    pub fn unix(&self) -> BigInt {
+        instant(self.inner.get_unix())
+    }
+
+    /// The order state the message reached, ranked: `00UNKNOWN` where it
+    /// states none.
+    #[napi(getter)]
+    pub fn state(&self) -> String {
+        self.inner.get_state().as_str().to_owned()
+    }
+
+    /// The message's place in its chain, `0` until a lifecycle states it.
+    #[napi(getter)]
+    pub fn seqnum(&self) -> Result<f64> {
+        exact_f64(self.inner.get_seqnum(), "seqnum")
+    }
+
+    /// The identity of the message this one follows, or `null`.
+    #[napi(getter)]
+    pub fn prevuuid(&self) -> Option<String> {
+        self.inner.get_prevuuid().map(|uuid| uuid.to_string())
+    }
+
+    /// The identities of the messages this one descends from.
+    #[napi(getter)]
+    pub fn parentuuids(&self) -> Vec<String> {
+        parents_view(self.inner.event())
+    }
+
+    /// The identifiers the message is known by, scheme to value, sorted.
+    #[napi(getter, ts_return_type = "Record<string, string>")]
+    pub fn identifiers(&self) -> BTreeMap<String, String> {
+        identifiers_view(self.inner.event())
+    }
+
+    /// The price, as decimal text; `0` where none is stated.
+    #[napi(getter)]
+    pub fn px(&self) -> String {
+        self.inner.get_px().to_string()
+    }
+
+    /// The quantity, as decimal text; `0` where none is stated.
+    #[napi(getter)]
+    pub fn qty(&self) -> String {
+        self.inner.get_qty().to_string()
+    }
+
+    /// The side: `BUY`, `SELL`, or `UNKNOWN`.
+    #[napi(getter)]
+    pub fn side(&self) -> String {
+        self.inner.get_side().as_str().to_owned()
+    }
+
+    /// The currency; `XXX` where none is stated.
+    #[napi(getter)]
+    pub fn currency(&self) -> String {
+        self.inner.get_currency().as_str().to_owned()
+    }
+
+    /// The value the root child an identifier names, or `null`.
     ///
     /// An identifier is exact and does not fold: `id` is the number
     /// `field.fix.id` answers, and a field the dictionary does not hold
-    /// under it simply misses.
+    /// under it simply misses. A typed fact answers from its holder.
     #[napi]
     pub fn get_by_id(&self, id: f64) -> Result<Option<JsScalar>> {
         let id = id_from_js(id)?;
-        Ok(self.inner.get_by_id(id).cloned().map(JsScalar::from_core))
+        Ok(self.inner.get_by_id(id).map(JsScalar::from_core))
     }
 
-    /// The value of the root child an identifier names.
+    /// The value the root child an identifier names.
     #[napi]
     pub fn by_id(&self, id: f64) -> Result<JsScalar> {
         let id = id_from_js(id)?;
         self.inner
             .by_id(id)
-            .map(|value| JsScalar::from_core(value.clone()))
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
-    /// The value of the root child a tag names, or `null`.
+    /// The value a tag names, or `null`.
     ///
-    /// The tag resolves through the dictionary: the canonical holder first,
-    /// then an alternate.
+    /// A tag the typed holders own - a header tag, a crate column, one of
+    /// the event's own tags, `Text(58)` - answers the fact the holder states
+    /// as the `Scalar` its column types: `byTag(35)` is the type's text,
+    /// `byTag(52)` the sending clock as `datetime64(ns, UTC)`, `byTag(54)`
+    /// the side as `BUY` or `SELL`, a crate tag its column's own type - a
+    /// `uuid`, a `uint64`, a `decimal128(38, 18)`. Any other tag reaches
+    /// the row through the dictionary: the canonical holder first, then an
+    /// alternate, then a child spelled by the tag's decimal.
     #[napi]
     pub fn get_by_tag(&self, tag: f64) -> Result<Option<JsScalar>> {
         let tag = exact_i32(tag, "tag")?;
-        Ok(self.inner.get_by_tag(tag).cloned().map(JsScalar::from_core))
+        Ok(self.inner.get_by_tag(tag).map(JsScalar::from_core))
     }
 
-    /// The value of the root child a tag names.
+    /// The value a tag names.
     #[napi]
     pub fn by_tag(&self, tag: f64) -> Result<JsScalar> {
         let tag = exact_i32(tag, "tag")?;
         self.inner
             .by_tag(tag)
-            .map(|value| JsScalar::from_core(value.clone()))
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
-    /// The value of the root child a name reaches, or `null`.
+    /// The value a name reaches, or `null`.
     ///
     /// The name folds through the dictionary: the canonical spelling first,
-    /// then an alias.
+    /// then an alias; a typed fact answers from its holder.
     #[napi]
     pub fn get_by_name(&self, name: String) -> Option<JsScalar> {
-        self.inner
-            .get_by_name(&name)
-            .cloned()
-            .map(JsScalar::from_core)
+        self.inner.get_by_name(&name).map(JsScalar::from_core)
     }
 
-    /// The value of the root child a name reaches.
+    /// The value a name reaches.
     #[napi]
     pub fn by_name(&self, name: String) -> Result<JsScalar> {
         self.inner
             .by_name(&name)
-            .map(|value| JsScalar::from_core(value.clone()))
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
@@ -923,11 +1312,7 @@ impl JsFixMsg {
     #[napi(ts_args_type = "path: string | FieldPath")]
     pub fn get_by_path(&self, path: Either<String, &JsFieldPath>) -> Result<Option<JsScalar>> {
         let path = path_from_input(path)?;
-        Ok(self
-            .inner
-            .get_by_path(&path)
-            .cloned()
-            .map(JsScalar::from_core))
+        Ok(self.inner.get_by_path(&path).map(JsScalar::from_core))
     }
 
     /// The value a path reaches.
@@ -939,7 +1324,7 @@ impl JsFixMsg {
         let path = path_from_input(path)?;
         self.inner
             .by_path(&path)
-            .map(|value| JsScalar::from_core(value.clone()))
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
@@ -947,38 +1332,37 @@ impl JsFixMsg {
     #[napi(ts_args_type = "key: number | string")]
     pub fn get(&self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
-        Ok(self
-            .inner
-            .get(key.as_key())
-            .cloned()
-            .map(JsScalar::from_core))
+        Ok(self.inner.get(key.as_key()).map(JsScalar::from_core))
     }
 
     /// The value a tag or a name reaches.
     ///
     /// The failing half of `get` is spelled `at` rather than the core's
-    /// `value`, because `value` is this class's property for the whole message
-    /// value.
+    /// `value`, because `value` is this class's property for the whole
+    /// content row.
     #[napi(ts_args_type = "key: number | string")]
     pub fn at(&self, env: Env, key: Unknown<'_>) -> Result<JsScalar> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
         self.inner
             .value(key.as_key())
-            .map(|value| JsScalar::from_core(value.clone()))
+            .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
-    /// Writes one value into the row, typed by the field the key resolves to.
+    /// Writes one value into the message, typed by the field the key
+    /// resolves to.
     ///
     /// `key` is a tag or a name, resolved as a lookup resolves one - through
     /// the dictionary, canonical before alternate or alias - and a name the
-    /// dictionary does not know still reaches a child spelled that way. `value` is whatever `Scalar.fromJs` reads, widened by the
-    /// loader; a known field types it through the core's value contract, and
-    /// `null` is stored as a stated null. An existing child is replaced where
-    /// it stands and an absent one appended; a bare tag no dictionary explains
-    /// appends a text child named by its decimal. Only the row changes: the
-    /// entries, the wire and the digest stay what they were, while `msghash` and
-    /// `msgphash` are recomputed from the new content. No clock is read.
+    /// dictionary does not know still reaches a child spelled that way.
+    /// `value` is whatever `Scalar.fromJs` reads, widened by the loader. A
+    /// key reaching a typed fact records it on the holder that owns it, and
+    /// `null` clears it; any other key lands in the row: a known field types
+    /// the value through the core's value contract, `null` is stored as a
+    /// stated null, an existing child is replaced where it stands and an
+    /// absent one appended, and a bare tag no dictionary explains appends a
+    /// text child named by its decimal. The entries and the wire follow the
+    /// row, and the identity is settled again. No clock is read.
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was.
@@ -990,14 +1374,11 @@ impl JsFixMsg {
             .map_err(napi_error)
     }
 
-    /// Removes the child a key reaches, answering its value, or `null`.
+    /// Removes what a key reaches, answering the value it held, or `null`.
     ///
-    /// The key resolves as `set` resolves one, and a key reaching nothing
-    /// answers `null` and changes nothing. The entries are untouched.
-    ///
-    /// A mandatory replay field - `updatedat`, `createdat`, `msghash`, `msgphash`,
-    /// `code`, `snapshotat` or `SendingTime` - refuses removal and throws,
-    /// leaving the message exactly as it was; so does any other refusal.
+    /// The key resolves as `set` resolves one: a typed fact is cleared on
+    /// its holder, a row child leaves the row, and a key reaching nothing
+    /// answers `null` and changes nothing. The identity is settled again.
     #[napi(ts_args_type = "key: number | string")]
     pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -1008,146 +1389,27 @@ impl JsFixMsg {
             .map(JsScalar::from_core))
     }
 
-    /// The `[name, value]` pairs of the root, in the order it declares.
+    /// The content row read as a tree: one entry per child it states, a
+    /// group's occurrences and a component's members nested under the entry
+    /// that heads them, nothing for a child stating null.
     ///
-    /// The loader wires `Symbol.iterator` over this.
-    #[napi(ts_return_type = "Generator<[string, Scalar]>")]
-    pub fn entries(&self) -> JsFixMsgEntries {
-        JsFixMsgEntries {
-            field: self.inner.as_field().clone(),
-            value: self.inner.as_value().clone(),
-            index: 0,
-        }
+    /// Derived on the first ask and kept until a write. The typed facts are
+    /// not entries: the header, the event and the capture are the holders'
+    /// to answer, and the wire `intoBytes` emits puts the header and the
+    /// event's own tags in front of these. The loader wires
+    /// `Symbol.iterator` over this.
+    #[napi]
+    pub fn entries(&self) -> Vec<FixEntryView> {
+        self.inner.entries().iter().map(entry_view).collect()
     }
 
-    /// The digest of what this message said, as sixteen bytes.
+    /// The digest of what this message emits on the wire, as sixteen bytes.
     ///
-    /// Over the arrival record with the envelope tags left out, so two
-    /// republications of one message digest alike however their sequence
-    /// numbers and sending times differ.
+    /// Over every entry of `intoBytes`, pre-order, so two messages that
+    /// re-emit alike digest alike whatever separator either was read with.
     #[napi]
     pub fn digest(&self) -> Buffer {
         Buffer::from(self.inner.digest().to_be_bytes().to_vec())
-    }
-
-    /// One instrument symbol that is the same across venues, or `null`.
-    #[napi]
-    pub fn symbol_ticker(&self) -> Option<JsScalar> {
-        answered(&self.inner.symbol_ticker())
-    }
-
-    /// The settled message instant, `DateTime64(ns, UTC)`, never null.
-    ///
-    /// Settled once, when the message is first built: a valid stated
-    /// `updatedat`, else the event instant `snapshotat` holds. A lifecycle
-    /// truncates it to its snapshot grid. Mutation and enrichment carry it
-    /// unless it is written explicitly; no clock is read after intake.
-    #[napi]
-    pub fn updatedat(&self) -> JsScalar {
-        JsScalar::from_core(self.inner.updatedat().clone())
-    }
-
-    /// The settled creation instant, `DateTime64(ns, UTC)`, never null.
-    ///
-    /// A valid stated `createdat`, else the event instant; a lifecycle
-    /// carries the first creation instant of the live chain a message joins.
-    #[napi]
-    pub fn createdat(&self) -> JsScalar {
-        JsScalar::from_core(self.inner.createdat().clone())
-    }
-
-    /// The message's time/content identity, never null.
-    ///
-    /// Sixteen `fixedbinary(16)` bytes - a `Buffer` in JavaScript:
-    /// `updatedat`'s signed nanoseconds with the sign bit flipped in bytes
-    /// 0..8, then all 64 bits of the canonical named content's XXH64;
-    /// `updatedat`, `createdat`, `msghash` itself and the arrival record are not
-    /// content. A stated `msghash` must match it.
-    #[napi]
-    pub fn msghash(&self) -> JsScalar {
-        JsScalar::from_core(self.inner.msghash().clone())
-    }
-
-    /// The event chain's identity, never null.
-    ///
-    /// The sixteen big-endian `fixedbinary(16)` bytes of the XXH3-128 of the
-    /// exact `code` bytes alone - a `Buffer` in JavaScript - so the empty
-    /// (unknown) code has one deterministic `msgphash` too. A stated `msgphash`
-    /// must match it.
-    #[napi]
-    pub fn msgphash(&self) -> JsScalar {
-        JsScalar::from_core(self.inner.msgphash().clone())
-    }
-
-    /// One lifted facet's value, or `null` where nothing carries it.
-    #[napi]
-    pub fn lifted(&self, facet: String) -> Option<JsScalar> {
-        self.inner.lifted(&facet).cloned().map(JsScalar::from_core)
-    }
-
-    /// The tag a lifted facet was read from, or `null`.
-    ///
-    /// A lift source is declared by tag, and the tag is the whole of what it
-    /// is; the field that tag names is the registry's to answer.
-    #[napi]
-    pub fn lift_source(&self, facet: String) -> Option<i32> {
-        self.inner.lift_source(&facet)
-    }
-
-    /// Every facet this message lifts, in the table's own order.
-    #[napi(ts_return_type = "Array<[string, Scalar]>")]
-    pub fn lift(&self) -> Vec<(String, JsScalar)> {
-        self.inner
-            .lift()
-            .map(|(facet, value)| (facet.to_owned(), JsScalar::from_core(value.clone())))
-            .collect()
-    }
-
-    /// One party by its role: identifier, source, role, qualifier.
-    #[napi(ts_return_type = "Array<Scalar | null> | null")]
-    pub fn party(&self, role: String) -> Option<Vec<Option<JsScalar>>> {
-        let held = self.inner.party(&role)?;
-        Some(vec![
-            held.id().cloned().map(JsScalar::from_core),
-            held.source().cloned().map(JsScalar::from_core),
-            held.role().cloned().map(JsScalar::from_core),
-            held.qualifier().cloned().map(JsScalar::from_core),
-        ])
-    }
-
-    /// One regulatory timestamp by its type, or `null`.
-    #[napi]
-    pub fn trd_reg_timestamp(&self, kind: String) -> Option<JsScalar> {
-        self.inner
-            .trd_reg_timestamp(&kind)
-            .cloned()
-            .map(JsScalar::from_core)
-    }
-
-    /// What this message says about itself that does not add up.
-    ///
-    /// Derived by comparing the row against the arrival record, so a caller
-    /// who never asks pays nothing.
-    #[napi]
-    pub fn anomalies(&self) -> Vec<String> {
-        self.inner
-            .anomalies()
-            .map(|held| held.to_string())
-            .collect()
-    }
-
-    /// What arrived, in arrival order, untranslated.
-    ///
-    /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the array reads the wire. Each entry
-    /// is `[tag, key, value]`; tag 0 marks a key the dictionary did not
-    /// resolve, whether it arrived as a name or as a number, and its raw key
-    /// is kept.
-    #[napi(ts_return_type = "Array<[number, string, string]>")]
-    pub fn arrivals(&self) -> Vec<(f64, String, String)> {
-        let mut held = Vec::new();
-        flatten_entries(self.inner.entries(), &mut held);
-        held
     }
 
     /// This message as the fixed row a table holds.
@@ -1155,13 +1417,15 @@ impl JsFixMsg {
     /// `schema` is the fixed root `fixSchema` builds: every column is filled by
     /// the tag its field carries - never by its spelling - so a message that
     /// carried nothing at a column answers null there rather than shifting its
-    /// neighbours. A column no tag names is the capture's: it takes the child
-    /// of that name where the message has one, else null. The arrival record
-    /// closes the row under `fixentries`, unresolved keys at tag 0.
+    /// neighbours. A typed fact fills its column from its holder, a group's
+    /// column from the message's own occurrences, and a column no tag names
+    /// is the capture's: it takes the child of that name where the message
+    /// has one, else null. The arrival record closes the row under
+    /// `fixentries`, unresolved keys at tag 0.
     ///
-    /// A replayable row keeps the seven replay fields; a schema missing or
-    /// mistyping one, or a cell its column cannot represent, throws the
-    /// located refusal. No clock is read.
+    /// A value a column will not hold is that column's null; a column that
+    /// cannot be null keeps the refusal, and throws it located. No clock is
+    /// read.
     #[napi]
     pub fn into_row(&self, schema: &JsField) -> Result<JsScalar> {
         self.inner
@@ -1170,26 +1434,40 @@ impl JsFixMsg {
             .map_err(napi_error)
     }
 
-    /// Re-emit this message on the wire, separated by `separator`.
+    /// Re-emit this message on the wire, separated by `separator`: the
+    /// standard header - `SendingTime` only when the message stated it - the
+    /// event's own FIX tags, then the content entries, derived values
+    /// included, coded facts as their wire code.
     #[napi]
     pub fn into_bytes(&self, separator: Option<f64>) -> Result<Buffer> {
         let separator = separator_byte(separator)?;
         Ok(Buffer::from(self.inner.into_bytes(separator)))
     }
 
-    /// Whether two messages carry the same schema, value and dictionary.
+    /// The same as `intoBytes`, as text, separated by one character - the
+    /// FIX `SOH` when unstated.
+    ///
+    /// A value holding a control byte throws the core's refusal.
+    #[napi]
+    pub fn into_text(&self, separator: Option<String>) -> Result<String> {
+        let separator = separator_char(separator)?;
+        self.inner.into_text(separator).map_err(napi_error)
+    }
+
+    /// Whether two messages carry the same facts, schema, row and
+    /// dictionary.
     #[napi]
     pub fn equals(&self, other: &JsFixMsg) -> bool {
         self.inner == other.inner
     }
 
-    /// Deterministic hash bits over the schema and the value.
+    /// Deterministic hash bits over the facts, the schema and the row.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
     }
 
-    /// A cheap clone: the schema and value are shared, the registry link kept.
+    /// A cheap clone: the schema and row are shared, the registry link kept.
     #[napi(js_name = "clone")]
     pub fn clone_js(&self) -> Self {
         Self {
@@ -1197,7 +1475,7 @@ impl JsFixMsg {
         }
     }
 
-    /// A one-line summary naming the root and how many values it holds.
+    /// A one-line summary naming the root and how many values the row holds.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         format!(
@@ -1207,7 +1485,7 @@ impl JsFixMsg {
         )
     }
 
-    /// The schema document and the value document, the two halves a message is.
+    /// The content row's schema document and value document.
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         let field = serde_json::to_value(self.inner.as_field()).map_err(napi_error)?;
@@ -1222,28 +1500,6 @@ impl JsFixMsg {
     }
 }
 
-/// The `[name, value]` pairs of one message's root, in declared order.
-#[napi(iterator, js_name = "FixMsgEntries")]
-pub struct JsFixMsgEntries {
-    field: CoreField,
-    value: Scalar,
-    index: usize,
-}
-
-impl Generator for JsFixMsgEntries {
-    type Yield = (String, JsScalar);
-    type Next = ();
-    type Return = ();
-
-    fn next(&mut self, _value: Option<Self::Next>) -> Option<Self::Yield> {
-        let child = self.field.fields().get(self.index)?;
-        let value = self.value.get(self.index)?.clone();
-        let name = child.name().to_owned();
-        self.index += 1;
-        Some((name, JsScalar::from_core(value)))
-    }
-}
-
 /// One separator byte, or the FIX default where none was named.
 ///
 /// A separator is one byte and a JavaScript number is not, so the narrowing is
@@ -1255,17 +1511,20 @@ fn separator_byte(separator: Option<f64>) -> Result<u8> {
     u8::try_from(exact_i64(held, "separator")?).map_err(|_| napi_error("a separator is one byte"))
 }
 
+/// One separator character, or the FIX default where none was named.
+fn separator_char(separator: Option<String>) -> Result<char> {
+    let Some(held) = separator else {
+        return Ok(char::from(SOH));
+    };
+    let mut characters = held.chars();
+    match (characters.next(), characters.next()) {
+        (Some(character), None) => Ok(character),
+        _ => Err(napi_error("a separator is one character")),
+    }
+}
+
 /// The separator FIX itself uses.
 const SOH: u8 = 0x01;
-
-/// One value answered, or nothing where it is null.
-///
-/// A derived fact that no message carries is absent rather than a null value:
-/// JavaScript already spells absence, and a `Scalar` holding null would make a
-/// caller ask the same question twice.
-fn answered(value: &Scalar) -> Option<JsScalar> {
-    (!value.is_null()).then(|| JsScalar::from_core(value.clone()))
-}
 
 /// Where a JavaScript source behind a stream failed, kept for the stream.
 ///
@@ -1486,15 +1745,15 @@ impl std::io::Write for JsSink<'_> {
 /// stream methods take any iterable and answer a lazy `FixMessages`, the
 /// Arrow methods take and answer a `BatchReader`, one batch at a time.
 ///
-/// Every message it builds opens with `beginstring` - the wire's own, else
-/// the version the message was read at - and carries the settled replay
-/// fields: `SendingTime` is the message's valid tag 52, else the carrier's,
-/// else `defaultSendingTime`, else UTC now read once for that new message;
-/// `snapshotat` is `TransactTime` (60) else `SendingTime`; `updatedat` and
-/// `createdat` default to that instant; `code`, `msghash` and `msgphash` follow.
-/// None of them is an entry unless the line carried it, so `intoBytes`
-/// re-emits the line byte for byte. Parsing undated bytes without a default
-/// sending time is deliberately not deterministic.
+/// Every message it builds is settled as it is parsed: the typed facts are
+/// lifted off the line, a nested `XmlData` is exploded into the message,
+/// deprecated fields are restated to their latest aliases, the dictionary's
+/// `fix:derivation` rules run, the identifiers and the order lanes fill, and
+/// the identity is derived. `SendingTime` is the message's valid tag 52,
+/// else the carrier's, else `defaultSendingTime`, else UTC now read once for
+/// that new message, and it goes back on the wire only when the message
+/// stated it. Parsing undated bytes without a default sending time is
+/// deliberately not deterministic.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
     inner: CoreFixCodec,
@@ -1752,65 +2011,19 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(parsed, ROOT_NAME))
     }
 
-    /// Fills what one message implies but did not carry.
+    /// A stream of batches of FIX rows walked through one lifecycle.
     ///
-    /// Restatement is the pass's first step rather than a door of its own:
-    /// every rule below it reads by tag, and a child stored under an alias
-    /// has no tag until the registry's field has canonicalized it, so the row
-    /// comes back at the dictionary's newest version.
-    ///
-    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
-    /// Only the row is filled: the arrival record is what the wire carried and
-    /// is left alone, so `intoBytes` re-emits the received line either way, and
-    /// a stated value is never replaced.
-    /// A known message also fills a sorted `altids` map from its direct
-    /// identifiers, without flattening groups or replacing a stated map,
-    /// including an empty one. Unknown types gain no map. A scalar identifier
-    /// that cannot convert to UTF-8 raises the native located refusal.
+    /// `lifecycle` over batches: each row is a message through
+    /// `FixMsg.fromRow`, stated as the one after the live message it follows,
+    /// and written back under the **same** schema, so a carried column
+    /// returns to its place. Nothing is parsed again. The source is consumed.
     #[napi]
-    pub fn enrich_message(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
-        self.inner
-            .enrich_message(message.inner.clone())
-            .map(JsFixMsg::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Fills a stream of messages, lazily.
-    ///
-    /// Each message crosses the pass `enrichMessage` runs, and nothing is
-    /// carried from one to the next: the iterator is the stream, so a
-    /// capture of ten million messages costs one at a time.
-    #[napi(js_name = "_enrichMessagesNative", skip_typescript)]
-    pub fn enrich_messages_native(
-        &self,
-        env: Env,
-        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
-    ) -> Result<JsFixMessages> {
-        let pulled = Pulled::new(env, pull)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(|message| message.inner.clone());
-        Ok(JsFixMessages::pulling(
-            self.inner.enrich_messages(messages),
-            failed,
-        ))
-    }
-
-    /// Fills a stream of batches of FIX rows with what each message implies.
-    ///
-    /// `enrichMessages` over batches: each row is a message through
-    /// `FixMsg.fromRow`, filled, and written back under the **same** schema,
-    /// so a carried column returns to its place and the arrival record is
-    /// untouched. Nothing is parsed again. The source is consumed.
-    #[napi]
-    pub fn enrich_messages_arrow_reader(
-        &self,
-        source: &mut JsBatchReader,
-    ) -> Result<JsBatchReader> {
-        let filled = self
+    pub fn lifecycle_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
+        let walked = self
             .inner
-            .enrich_messages_arrow_reader(source.take()?)
+            .lifecycle_arrow_reader(source.take()?)
             .map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(filled, ROOT_NAME))
+        Ok(JsBatchReader::from_core(walked, ROOT_NAME))
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -1857,7 +2070,7 @@ impl JsFixCodec {
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by: `parse*` turns a
-    /// capture into messages, `enrich*` fills what each implies, and this
+    /// capture into messages, `lifecycle` states what each follows, and this
     /// answers them under whatever field a consumer reads by - a venue's own
     /// message type, `fix.schema` itself, which keeps every column a capture
     /// lands in, or any Struct root a caller built for the table it is
@@ -1910,15 +2123,18 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(formatted, field.inner.name()))
     }
 
-    /// Fills a stream of messages through one lifecycle, in order, lazily.
+    /// Walks a stream of messages through one lifecycle, lazily.
     ///
-    /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
-    /// iterable, answering every message as `FixLifecycle.fill` does: its
-    /// chain `code`, `updatedat` truncated to the grid, the live chain's first
-    /// `createdat`, the previous message's `prevupdatedat` and `prevmsghash`,
-    /// then `msghash` and `msgphash` finalized; a terminal state closes the chain.
-    /// The iterable is pulled once, in order, so the chain a message joins
-    /// depends on the messages before it.
+    /// The one walk over events: the messages are collected, sorted by
+    /// instant, and each is stated as the one after the live message it
+    /// follows - the last message of its chain, under the cross identity its
+    /// cross code derives, still alive - so a chained message carries its
+    /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain,
+    /// the predecessor among its `parentuuids` and the chain's `creatunix`,
+    /// and is settled again around them. A message no live one precedes is
+    /// answered as it came. The loader turns the iterable into the pull
+    /// function this takes; a failure of the iterable throws and ends the
+    /// stream.
     #[napi(js_name = "_lifecycleNative", skip_typescript)]
     pub fn lifecycle_native(
         &self,
@@ -2018,219 +2234,19 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
     }
 }
 
-/// The state a stream of messages has reached, one chain per live event.
-///
-/// Built once per stream, over one dictionary or the process default, and fed
-/// every message in order. A nonempty `code` names its chain globally;
-/// otherwise the first identifier - stated `altids`, else the message type's
-/// declared identifiers - reaching a live chain under the instrument the
-/// message names supplies its code, and a new chain is named
-/// `<scope hex or ->/<first identifier>`; the instrument is a digest of what
-/// the message says it is and no column carries it. Occupied identifiers are never
-/// stolen, and an empty code opens no chain. `msgphash` hashes the settled code.
-///
-/// Every accepted message has `updatedat` truncated to its epoch grid bucket
-/// of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
-/// carries its first message's `createdat` and hands each later message the
-/// previous message's `prevupdatedat` and `prevmsghash`. A terminal state closes
-/// the chain; what is held is the live chains, their code, first creation
-/// instant, last clock and identity, and highest consumed bucket - never pending
-/// messages. `FixCodec.lifecycle` runs one at the default cadence over an
-/// iterable.
-#[napi(js_name = "FixLifecycle")]
-pub struct JsFixLifecycle {
-    /// The lifecycle, until `snapshots` takes it for the stream it answers.
-    inner: Option<CoreFixLifecycle>,
-}
-
-/// What a lifecycle throws once `snapshots` owns it.
-///
-/// The core's snapshot stream consumes its lifecycle, so the stream is the
-/// one owner of that state: a later call gets this rather than a fresh
-/// lifecycle that looks like one with no chain alive.
-fn owned_by_snapshots() -> napi::Error {
-    napi_error("this FixLifecycle is owned by the stream snapshots() answered; build a new one")
-}
-
-/// Read one interval exactly: a `bigint` as is, a number below 2^53.
-fn interval_from_js(value: Either<BigInt, f64>) -> Result<i64> {
-    match value {
-        Either::A(count) => {
-            let (count, lossless) = count.get_i64();
-            if !lossless {
-                return Err(napi_error("intervalNs must fit a signed 64-bit integer"));
-            }
-            Ok(count)
-        }
-        Either::B(count) => exact_i64(count, "intervalNs"),
-    }
-}
-
-impl JsFixLifecycle {
-    /// Borrow the lifecycle, refusing one a snapshot stream owns.
-    fn live(&self) -> Result<&CoreFixLifecycle> {
-        self.inner.as_ref().ok_or_else(owned_by_snapshots)
-    }
-
-    /// Borrow the lifecycle for a transition, refusing one a snapshot stream
-    /// owns.
-    fn live_mut(&mut self) -> Result<&mut CoreFixLifecycle> {
-        self.inner.as_mut().ok_or_else(owned_by_snapshots)
-    }
-}
-
-#[napi]
-impl JsFixLifecycle {
-    /// A stream with no event alive yet.
-    ///
-    /// `options.intervalNs` is the positive grid interval in nanoseconds,
-    /// `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) when unstated; a
-    /// nonpositive one throws the core's located refusal. The stamped columns
-    /// are the registry's own crate fields, which every registry holds.
-    #[napi(constructor)]
-    pub fn new(
-        registry: Option<ClassInstance<'_, JsFixRegistry>>,
-        options: Option<FixLifecycleOptions>,
-    ) -> Result<Self> {
-        let mut inner = CoreFixLifecycle::new(registry_or_global(registry)?);
-        if let Some(held) = options.and_then(|options| options.interval_ns) {
-            inner = inner
-                .try_with_interval_ns(interval_from_js(held)?)
-                .map_err(napi_error)?;
-        }
-        Ok(Self { inner: Some(inner) })
-    }
-
-    /// The epoch-grid interval in nanoseconds.
-    #[napi(getter)]
-    pub fn interval_ns(&self) -> Result<BigInt> {
-        Ok(BigInt::from(self.live()?.interval_ns()))
-    }
-
-    /// Selects a positive grid interval before any chain is live.
-    ///
-    /// Repeating the current interval is a no-op even while chains are live;
-    /// a nonpositive interval, or a change while a chain is live, throws and
-    /// changes nothing.
-    #[napi]
-    pub fn set_interval_ns(&mut self, interval_ns: Either<BigInt, f64>) -> Result<()> {
-        let interval_ns = interval_from_js(interval_ns)?;
-        self.live_mut()?
-            .set_interval_ns(interval_ns)
-            .map_err(napi_error)
-    }
-
-    /// Answers one message normalized to its grid and moves its chain along.
-    ///
-    /// The chain is selected by `code`, else by identifier; the message's
-    /// `updatedat` becomes its grid instant, it takes the live chain's first
-    /// `createdat`, each absent previous stamp comes from the chain's last
-    /// message while a stated one is kept, and `msghash` is finalized after
-    /// every stamp. A fresh or cleared lifecycle replaying the same stream
-    /// answers the same messages. Only the row is stamped: the arrival record
-    /// is what the wire carried, so `intoBytes` re-emits the received line.
-    /// A refusal throws and changes no chain, history, bucket or identifier.
-    #[napi]
-    pub fn fill(&mut self, message: &JsFixMsg) -> Result<JsFixMsg> {
-        self.live_mut()?
-            .fill(message.inner.clone())
-            .map(JsFixMsg::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Processes one message as `fill` does, answering it only as a new
-    /// snapshot, else `null`.
-    ///
-    /// A message emits only when it arrived off-grid in a bucket above its
-    /// live chain's highest consumed one. An already-aligned arrival consumes
-    /// its bucket without emitting; equal or older buckets and messages with
-    /// no chain name answer `null`. Suppressed messages still advance history
-    /// and a terminal one still closes its chain.
-    #[napi]
-    pub fn snapshot(&mut self, message: &JsFixMsg) -> Result<Option<JsFixMsg>> {
-        self.live_mut()?
-            .snapshot(message.inner.clone())
-            .map(|held| held.map(JsFixMsg::from_core))
-            .map_err(napi_error)
-    }
-
-    /// The snapshots a stream of messages emits, lazily; the loader publishes
-    /// it as `snapshots`.
-    ///
-    /// The stream owns this lifecycle, configured interval and live chains
-    /// alike, so every later call on this object throws. Only suppressed
-    /// messages disappear: a refused message throws where it is met without
-    /// advancing state and the stream continues, and a failure of the
-    /// iterable throws and ends it.
-    #[napi(js_name = "_snapshotsNative", skip_typescript)]
-    pub fn snapshots_native(
-        &mut self,
-        env: Env,
-        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
-    ) -> Result<JsFixMessages> {
-        let pulled = Pulled::new(env, pull)?;
-        let life = self.inner.take().ok_or_else(owned_by_snapshots)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(|message| Ok::<CoreFixMsg, CoreError>(message.inner.clone()));
-        Ok(JsFixMessages::pulling(life.snapshots(messages), failed))
-    }
-
-    /// How many events are alive: opened by a message and not yet closed by
-    /// a terminal state.
-    #[napi(getter)]
-    pub fn alive(&self) -> Result<u32> {
-        Ok(u32::try_from(self.live()?.alive()).unwrap_or(u32::MAX))
-    }
-
-    /// Forgets every chain's creation, history and bucket, as a new session
-    /// or a new day would, keeping the interval.
-    #[napi]
-    pub fn clear(&mut self) -> Result<()> {
-        self.live_mut()?.clear();
-        Ok(())
-    }
-
-    /// How this stream renders: the events alive in it.
-    #[napi(js_name = "toString")]
-    pub fn js_string(&self) -> String {
-        self.inner.as_ref().map_or_else(
-            || "FixLifecycle(owned by its snapshot stream)".to_owned(),
-            |inner| format!("FixLifecycle({} alive)", inner.alive()),
-        )
-    }
-}
-
-/// How a lifecycle is configured, where a caller configures it at all.
-#[napi(object, object_to_js = false)]
-pub struct FixLifecycleOptions {
-    /// The positive epoch-grid interval in nanoseconds;
-    /// `FixLifecycle.DEFAULT_INTERVAL_NS` when unstated.
-    pub interval_ns: Option<Either<BigInt, f64>>,
-}
-
-/// The lifecycle's default grid interval in nanoseconds: one second.
-///
-/// The loader publishes it as `FixLifecycle.DEFAULT_INTERVAL_NS`.
-// Discovered through NAPI's generated registration inventory rather than an
-// ordinary Rust call site, like the private natives in `hashing`.
-#[allow(dead_code)]
-#[napi(js_name = "_fixLifecycleDefaultIntervalNsNative", skip_typescript)]
-pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
-    BigInt::from(CoreFixLifecycle::DEFAULT_INTERVAL_NS)
-}
-
 /// The fixed root every message answers as, built from one dictionary.
 ///
-/// Header, the fields a consumer reads, the groups worth persisting whole, the
-/// trailer, this crate's own derived facts through tag 65025, `MsgDirection`
-/// (385), and the one list that closes every row: `fixentries`, the whole
-/// arrival record, unresolved keys at tag 0. Columns are spelled by the
-/// dictionary's folded canonical names - `msgtype`, never `35` - so a row
-/// reads the way a message reads; the tag stays each column's identity, on
-/// its `fix:tag`, and is what fills it. `beginstring` and
-/// the replay fields - `sendingtime`, `updatedat`, `createdat`, `msghash`,
-/// `msgphash`, `code` - are required; `snapshotat` is the one the bundle
-/// holds without requiring, because only a snapshot stamps it.
+/// The crate's own columns lead - its clocks, then its identities, then the
+/// rest it knows - then the header, the fields a consumer reads, the groups
+/// worth persisting whole, the trailer, `MsgDirection` (385), and the one
+/// list that closes every row: `fixentries`, the whole content record,
+/// unresolved keys at tag 0. Columns are spelled by the dictionary's folded
+/// canonical names - `msgtype`, never `35` - so a row reads the way a
+/// message reads; the tag stays each column's identity, on its `fix:tag`,
+/// and is what fills it. `beginstring` and the settled identity - `unix`,
+/// `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+/// required; every other column is nullable, because a message that carried
+/// nothing there must answer null rather than shift its neighbours.
 #[napi(js_name = "fixSchema")]
 pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2261,7 +2277,9 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
         .map_err(napi_error)
 }
 
-/// One row's columns, in order, as tags.
+/// One row's columns, in order, as tags: the crate's own, the header, the
+/// body, the groups, the trailer, `MsgDirection` and the counter of the
+/// content record.
 #[allow(clippy::cast_lossless)]
 #[napi(js_name = "fixSchemaTags")]
 pub fn fix_schema_tags() -> Vec<f64> {
@@ -2271,27 +2289,21 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The thirty-six definitions this crate owns, in tag order: thirty-four
-/// scalar fields at 65001 to 65003, 65005 to 65015, 65017 to 65019, 65021 to
-/// 65035 and 65037 to 65038, the sorted `altids` Map group at 65020 and the
-/// `instids` Struct at 65036. Tags 65000, 65004 and 65016 are retired and
-/// not reused.
+/// The definitions this crate owns, in tag order, above every tag FIX or a
+/// venue publishes.
 ///
-/// The version read at, the ticker, `updatedat` and its partition, the
-/// parent identifiers, the sessions the message states, the bridge's message
-/// context, the plugin that logged the line and the one it came through
-/// before that, the two session names the line spells, the ISIN, MIC and
-/// order state a row derives, the `msghash` and `msgphash` identities,
-/// the direct identifiers enrichment records in `altids`, the previous
-/// message's `prevupdatedat` and `prevmsghash`, `createdat`, `code` and
-/// `snapshotat`, the `sourceurl` a line was read from, the `nofixentries`
-/// that counts its arrival record, `recordedat` and `expiredat`, the two
-/// lane currencies, the bridge's own session instance, the instrument's
-/// Bloomberg, CUSIP and SEDOL codes with the `instids` Struct that joins
-/// them, and the two session message identifiers. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
-/// `snapshotat` are non-null. Every registry already holds them in their
-/// category, so this is the listing a schema or a document walks rather than
-/// something a caller registers.
+/// The event's instant `unix` and the chain's `creatunix`, `expirunix`,
+/// `prevunix` and `snapunix`; the identities `hashcode`, `crosshashcode`,
+/// `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
+/// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
+/// the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
+/// the instrument's ISIN, MIC, Bloomberg, CUSIP and SEDOL codes; what a
+/// bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`,
+/// `sourceurl`, `recordedat`; and the `nofixentries` that counts the content
+/// record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
+/// `crossuuid` are non-null. Every registry already holds them, so this is
+/// the listing a schema or a document walks rather than something a caller
+/// registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()

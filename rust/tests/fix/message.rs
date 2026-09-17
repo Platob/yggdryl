@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use yggdryl::fix::FIXENTRIES_COLUMN;
 
+use yggdryl::graph::{Element, Event};
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
     DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, fix_schema,
@@ -27,38 +28,44 @@ fn stated(message: &FixMsg) -> Vec<(i32, Scalar)> {
         .fields()
         .iter()
         .filter_map(|child| child.as_fix().tag().ok().flatten())
-        .map(|tag| (tag, message.by_tag(tag).expect("an indexed tag").clone()))
+        .map(|tag| (tag, message.by_tag(tag).expect("an indexed tag")))
         .collect()
 }
 
 #[test]
 fn a_set_value_is_typed_by_the_registry_field_and_appended_when_absent() {
     let (registry, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     let before = message.as_field().fields().len();
-    let declared = registry.get_field_by_tag(34).expect("MsgSeqNum");
+    let declared = registry.get_field_by_tag(38).expect("OrderQty");
 
-    message.set(34, Scalar::from(7_i32)).unwrap();
+    message.set(38, Scalar::from("7")).unwrap();
 
     let fields = message.as_field().fields();
     assert_eq!(fields.len(), before + 1, "appended, not inserted");
     let child = fields.last().unwrap();
     assert_eq!(child.name(), declared.name(), "the dictionary's spelling");
     assert_eq!(child.dtype(), declared.dtype(), "the dictionary's type");
-    assert_eq!(child.as_fix().tag().unwrap(), Some(34));
+    assert_eq!(child.as_fix().tag().unwrap(), Some(38));
     assert!(!child.is_nullable(), "a stated value is non-null");
-    assert_eq!(message.by_tag(34).unwrap().as_i128(), Some(7));
+    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(7.0));
     assert_eq!(
-        message.by_name("MsgSeqNum").unwrap().as_i128(),
-        Some(7),
+        message.by_name("OrderQty").unwrap().as_f64(),
+        Some(7.0),
         "reached by name through the registry"
     );
+
+    // A typed fact lands on its holder and never in the row.
+    message.set(34, Scalar::from(7_i64)).unwrap();
+    assert_eq!(message.as_field().fields().len(), before + 1);
+    assert_eq!(message.header().msgseqnum(), Some(7));
+    assert_eq!(message.by_tag(34).unwrap().as_u64(), Some(7));
 }
 
 #[test]
 fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     let before = stated(&message);
     let at = message
         .as_field()
@@ -78,65 +85,82 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         before.len() + 2,
         "two unknown children beside the tagged ones"
     );
-    assert_eq!(message.by_tag(55).unwrap(), &Scalar::from("MSFT"));
+    assert_eq!(message.by_tag(55).unwrap(), Scalar::from("MSFT"));
     assert_eq!(message.by_tag(54).unwrap().as_str(), Some("SELL"));
     // Content identity changes; every other tag still reaches its previous value.
     for (tag, value) in before {
         if tag == 55 || tag == 54 {
             continue;
         }
-        if tag == yggdryl::MSGHASH_TAG_NAME.0 {
-            assert_ne!(message.by_tag(tag).unwrap(), &value);
+        if tag == yggdryl::HASHCODE_TAG_NAME.0 {
+            assert_ne!(message.by_tag(tag).unwrap(), value);
             continue;
         }
-        assert_eq!(message.by_tag(tag).unwrap(), &value, "tag {tag}");
+        assert_eq!(message.by_tag(tag).unwrap(), value, "tag {tag}");
     }
 }
 
+/// The entries are the row read as a tree, so a write is what they and the
+/// wire re-emit: a replaced child spells its new value in place, an
+/// appended one closes the wire, and a typed fact removed from its holder
+/// leaves the wire.
 #[test]
-fn a_set_leaves_the_entries_and_the_wire_untouched() {
+fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     let (_, reader) = reader();
-    let parsed = reader.sole_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER).unwrap();
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
     message.set(38, Scalar::from(100.0_f64)).unwrap();
-    assert!(message.remove(54).unwrap().is_some());
-    assert_eq!(message.entries(), parsed.entries());
-    assert_eq!(message.into_bytes(b'|'), ORDER);
+    assert_eq!(message.remove(54).unwrap(), Some(Scalar::from("BUY")));
+    let symbol = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 55)
+        .expect("the symbol entry");
+    assert_eq!(symbol.name(), "symbol");
+    assert_eq!(symbol.value(), Some("MSFT"));
     assert_eq!(
-        message.digest(),
-        parsed.digest(),
-        "the digest is the arrival record's"
+        message
+            .entries()
+            .last()
+            .map(|entry| (entry.tag(), entry.value())),
+        Some((38, Some("100")))
     );
+    assert_eq!(
+        message.into_bytes(b'|'),
+        b"8=FIX.4.4|35=D|11=A1|55=MSFT|venuething=7|9999=x|10=0|59=0|38=100|"
+    );
+    assert_ne!(message.digest(), parsed.digest());
+    assert_ne!(message.entries(), parsed.entries());
 }
 
 #[test]
 fn a_null_is_stored_as_a_stated_null() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     message.set(55, Scalar::Null).unwrap();
     let at = message.as_field().index_of("symbol").unwrap();
     assert!(message.as_field().fields()[at].is_nullable());
-    assert_eq!(message.get_by_tag(55), Some(&Scalar::Null));
+    assert_eq!(message.get_by_tag(55), Some(Scalar::Null));
 }
 
 #[test]
 fn an_unknown_name_is_refused_and_the_message_stands() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     let before = message.clone();
     let refused = message.set("nosuchfield", Scalar::from("y")).unwrap_err();
     assert!(refused.to_string().contains("nosuchfield"), "{refused}");
     assert_eq!(message, before);
     // A value the field refuses is refused the same way.
-    assert!(message.set(34, Scalar::from("not a number")).is_err());
+    assert!(message.set(38, Scalar::from("not a number")).is_err());
     assert_eq!(message, before);
 }
 
 #[test]
 fn an_unknown_name_still_reaches_the_child_spelled_that_way() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     let at = message
         .as_field()
         .index_of("venuething")
@@ -145,56 +169,55 @@ fn an_unknown_name_still_reaches_the_child_spelled_that_way() {
     let child = &message.as_field().fields()[at];
     assert_eq!(child.name(), "venuething", "the child keeps its own field");
     assert_eq!(child.dtype(), &DataType::utf8());
-    assert_eq!(message.by_name("venuething").unwrap(), &Scalar::from("8"));
+    assert_eq!(message.by_name("venuething").unwrap(), Scalar::from("8"));
 }
 
 #[test]
 fn a_bare_unknown_tag_is_appended_under_its_decimal_spelling() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     message.set(7777, Scalar::from("custom")).unwrap();
     let child = message.as_field().fields().last().unwrap();
     assert_eq!(child.name(), "7777");
     assert_eq!(child.dtype(), &DataType::utf8());
     assert!(child.is_nullable());
-    assert_eq!(message.by_tag(7777).unwrap(), &Scalar::from("custom"));
+    assert_eq!(message.by_tag(7777).unwrap(), Scalar::from("custom"));
     // A second write reaches the same child rather than a second one.
     message.set(7777, Scalar::from("again")).unwrap();
-    assert_eq!(message.by_tag(7777).unwrap(), &Scalar::from("again"));
+    assert_eq!(message.by_tag(7777).unwrap(), Scalar::from("again"));
     assert_eq!(
         message.as_field().index_of("7777").map(|at| at + 1),
         Some(message.as_field().fields().len())
     );
     // The one the line already carried is replaced where it stands.
     message.set(9999, Scalar::from("y")).unwrap();
-    assert_eq!(message.by_tag(9999).unwrap(), &Scalar::from("y"));
+    assert_eq!(message.by_tag(9999).unwrap(), Scalar::from("y"));
 }
 
 #[test]
 fn several_values_land_with_one_rebuild_as_the_same_writes_would_one_at_a_time() {
     let (_, reader) = reader();
-    let mut many = reader.sole_line(ORDER, false).unwrap();
+    let mut many = reader.sole_line(ORDER).unwrap();
     let mut one = many.clone();
     let writes = [
         (55, Scalar::from("MSFT")),
-        (34, Scalar::from(7_i32)),
+        (38, Scalar::from("7")),
         (7777, Scalar::from("first")),
         (7777, Scalar::from("second")),
-        (34, Scalar::from(8_i32)),
+        (38, Scalar::from("8")),
     ];
     for (tag, value) in writes.clone() {
         one.set(tag, value).unwrap();
     }
     many.set_many(writes).unwrap();
     assert_eq!(many, one);
-    assert_eq!(many.by_tag(34).unwrap().as_i128(), Some(8));
-    assert_eq!(many.by_tag(7777).unwrap(), &Scalar::from("second"));
-    assert_eq!(many.into_bytes(b'|'), ORDER);
+    assert_eq!(many.by_tag(38).unwrap().as_f64(), Some(8.0));
+    assert_eq!(many.by_tag(7777).unwrap(), Scalar::from("second"));
 
     // One refused write refuses them all, and the message stands.
     let before = many.clone();
     assert!(
-        many.set_many([(55, Scalar::from("X")), (34, Scalar::from("not a number"))])
+        many.set_many([(55, Scalar::from("X")), (38, Scalar::from("not a number"))])
             .is_err()
     );
     assert_eq!(many, before);
@@ -205,7 +228,7 @@ fn several_values_land_with_one_rebuild_as_the_same_writes_would_one_at_a_time()
 #[test]
 fn the_consuming_twin_answers_what_the_setter_leaves() {
     let (_, reader) = reader();
-    let mut set = reader.sole_line(ORDER, false).unwrap();
+    let mut set = reader.sole_line(ORDER).unwrap();
     let with = set.clone().with_value(55, Scalar::from("MSFT")).unwrap();
     set.set(55, Scalar::from("MSFT")).unwrap();
     assert_eq!(with, set);
@@ -214,7 +237,7 @@ fn the_consuming_twin_answers_what_the_setter_leaves() {
 #[test]
 fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     let (_, reader) = reader();
-    let mut message = reader.sole_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER).unwrap();
     let before = stated(&message);
     let count = message.as_field().fields().len();
 
@@ -225,11 +248,11 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
         if *tag == 55 {
             continue;
         }
-        if *tag == yggdryl::MSGHASH_TAG_NAME.0 {
-            assert_ne!(message.by_tag(*tag).unwrap(), value);
+        if *tag == yggdryl::HASHCODE_TAG_NAME.0 {
+            assert_ne!(message.by_tag(*tag).unwrap(), *value);
             continue;
         }
-        assert_eq!(message.by_tag(*tag).unwrap(), value, "tag {tag}");
+        assert_eq!(message.by_tag(*tag).unwrap(), *value, "tag {tag}");
     }
     // By name, by decimal, and a miss.
     assert_eq!(
@@ -240,21 +263,40 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     assert_eq!(message.remove(55).unwrap(), None);
     assert_eq!(message.remove("nosuchfield").unwrap(), None);
     assert_eq!(message.as_field().fields().len(), count - 3);
-    assert_eq!(message.into_bytes(b'|'), ORDER, "the entries are untouched");
+    // The wire follows the row: what was removed is gone from it, and what
+    // the dictionary derived for the order stays.
+    assert_eq!(
+        message.into_bytes(b'|'),
+        b"8=FIX.4.4|35=D|54=1|11=A1|10=0|59=0|"
+    );
 }
 
 #[test]
 fn a_row_reads_back_into_the_message_that_made_it() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let parsed = reader.sole_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER).unwrap();
     let row = parsed.into_row(&schema).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
 
-    assert_eq!(held.as_field(), &schema, "the root is the schema");
+    // The root a row reads back is the content row, not the fixed schema:
+    // the typed facts are the holders' and never children of it.
+    assert_eq!(held.as_field().name(), schema.name());
+    assert_eq!(
+        held.as_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        parsed
+            .as_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(held.entries(), parsed.entries());
-    assert_eq!(held.into_bytes(b'|'), ORDER);
     assert_eq!(held.digest(), parsed.digest());
     for tag in [8, 35, 11, 55, 54] {
         assert_eq!(
@@ -263,67 +305,66 @@ fn a_row_reads_back_into_the_message_that_made_it() {
             "tag {tag}"
         );
     }
-    assert_eq!(held.version(), parsed.version());
     // And it makes the row it came from, whole.
     assert_eq!(held.into_row(&schema).unwrap(), row);
+    // The same message on the wire, and the code it digests to. The
+    // sending time is the one fact a row cannot give back: the line stated
+    // none, so it is intake's stand-in rather than something the message
+    // said, the row carries the instant under `unix` alone, and the message
+    // a row makes stands one in again.
+    assert!(!parsed.header().stated_sendingtime());
+    assert!(!held.header().stated_sendingtime());
+    assert_eq!(held.header().beginstring(), parsed.header().beginstring());
+    assert_eq!(held.header().msgtype(), parsed.header().msgtype());
+    assert_eq!(held.header().msgseqnum(), parsed.header().msgseqnum());
+    assert_eq!(held.get_unix(), parsed.get_unix());
+    assert_eq!(held.into_bytes(b'|'), parsed.into_bytes(b'|'));
+    assert_eq!(held.get_hashcode(), parsed.get_hashcode());
 }
 
 #[test]
-fn a_data_field_that_is_not_text_reaches_a_row_as_the_decode_a_row_can_hold() {
+fn a_data_field_that_is_not_text_is_held_as_the_decode_a_row_can_hold() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    // The one line a row cannot say what arrived on: `RawData(96)` carrying
+    // The one line no row can say what arrived on: `RawData(96)` carrying
     // bytes no text holds. Its length is stated, because that is what a data
     // field is for.
     let line: &[u8] = b"8=FIX.4.4\x0135=D\x0195=4\x0196=\xff\xfe A\x0110=000\x01";
     let parsed = reader.parse_fix_line(line).unwrap();
 
-    // The message read from the line holds the bytes and re-emits them.
+    // The row holds the bytes, typed as the data field is, and the entry
+    // spells them as the text a column can read: the decode, so the wire
+    // re-emits that rather than the bytes. That is the whole of what a row
+    // cannot carry.
+    assert_eq!(
+        parsed.by_tag(96).unwrap(),
+        Scalar::from(b"\xff\xfe A".to_vec())
+    );
     let arrived = parsed
         .entries()
         .iter()
         .find(|entry| entry.tag() == 96)
         .expect("the data field");
-    assert_eq!(arrived.value().as_bytes(), b"\xff\xfe A");
-    assert_eq!(parsed.into_bytes(1), line);
+    assert_eq!(arrived.value(), Some("\u{FFFD}\u{FFFD} A"));
+    assert_ne!(parsed.into_bytes(1), line);
 
-    // The row spells that value as text, because a column a reader can read
-    // is what a row is for, so the message the row makes re-emits the decode
-    // rather than the bytes. That is the whole of what a row cannot carry.
+    // And the row round trip holds what the message holds.
     let row = parsed.into_row(&schema).unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(
-        held.entries()
-            .iter()
-            .find(|entry| entry.tag() == 96)
-            .expect("the data field")
-            .value()
-            .as_bytes(),
-        "\u{FFFD}\u{FFFD} A".as_bytes(),
-    );
-    assert_ne!(held.into_bytes(1), line);
-
-    // And both say so, which is the point: an anomaly a caller can see beats
-    // a row that quietly differs from the line that made it.
-    let stated = |message: &FixMsg| -> Vec<String> {
-        message.anomalies().map(|held| held.to_string()).collect()
-    };
-    assert_eq!(
-        stated(&parsed),
-        ["96 (96) reaches the row as a lossy decode"]
-    );
-    assert_eq!(stated(&held), stated(&parsed));
+    assert_eq!(held.entries(), parsed.entries());
+    assert_eq!(held.digest(), parsed.digest());
+    assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
 #[test]
-fn the_same_line_read_as_text_is_the_decode_of_the_wire_and_says_nothing_of_it() {
+fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
     // A text line is text before the codec reads it. The bytes
     // that were not UTF-8 read as the Windows-1252 characters they are, so
     // the stated length - a count of wire bytes - reaches no boundary the
     // frame stated and is not honoured: the value stays what the frame cut,
-    // the message re-emits the line's text rather than the wire, and no
-    // `Lossy` is raised because nothing the message holds is not text. That
-    // the line was decoded is the line's fact, and the line counts it.
+    // and the message re-emits the line's text rather than the wire, beside
+    // what the dictionary derived for the order. That the line was decoded
+    // is the line's fact, and the line counts it.
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let wire: &[u8] = b"8=FIX.4.4\x0135=D\x0195=4\x0196=\xff\xfe A\x0110=000\x01";
@@ -345,18 +386,18 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire_and_says_nothing_of_it()
         .iter()
         .find(|entry| entry.tag() == 96)
         .expect("the data field");
-    assert_eq!(arrived.value().as_bytes(), "\u{ff}\u{fe} A".as_bytes());
-    assert_eq!(parsed.into_bytes(1), line.body().as_bytes());
-    assert_ne!(parsed.into_bytes(1), wire);
-    assert!(
-        parsed.anomalies().next().is_none(),
-        "a value that is text is not a lossy decode of anything"
+    assert_eq!(arrived.value(), Some("\u{ff}\u{fe} A"));
+    assert_eq!(
+        parsed.into_bytes(1),
+        format!("{}59=0\u{1}", line.body()).as_bytes()
     );
+    assert_ne!(parsed.into_bytes(1), wire);
 
     // And the row round-trips whole, which the byte door's line cannot.
     let row = parsed.into_row(&schema).unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(held.into_bytes(1), parsed.into_bytes(1));
+    assert_eq!(held.entries(), parsed.entries());
+    assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
 #[test]
@@ -371,7 +412,7 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     .unwrap()
     .required_field("line");
     let schema = fix_schema_carrying(&capture, &fix_schema(&registry, "fix").unwrap()).unwrap();
-    let parsed = reader.sole_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER).unwrap();
 
     // A parsed message has no capture columns: they are null in its row.
     let row = parsed.into_row(&schema).unwrap();
@@ -393,9 +434,13 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     );
     assert_eq!(filled.get(at("rownum")).unwrap().as_i128(), Some(42));
     assert_eq!(filled.get(at("symbol")).unwrap().as_str(), Some("AAPL"));
-    // The fixed columns are untouched by it, entries included.
+    // The fixed columns are untouched by it, entries included: the
+    // capture's own columns lead the row, so they lead the entries, and
+    // what the parse stated follows in its own order.
     let again = FixMsg::from_row(Arc::clone(&registry), &schema, &filled).unwrap();
-    assert_eq!(again.entries(), parsed.entries());
+    let names: Vec<&str> = again.entries().iter().map(FixEntry::name).collect();
+    assert_eq!(&names[..2], ["url", "rownum"]);
+    assert_eq!(&again.entries()[2..], parsed.entries());
     assert_eq!(
         again.by_name("url").unwrap().as_str(),
         Some("file:///capture.log")
@@ -419,14 +464,23 @@ fn a_row_without_the_entries_group_has_no_entries() {
     let narrow = DataType::from_fields(columns)
         .unwrap()
         .required_field("fix");
-    let parsed = reader.sole_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER).unwrap();
     let row = parsed.into_row(&narrow).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &row).unwrap();
     assert!(held.entries().is_empty());
-    assert!(held.into_bytes(b'|').is_empty());
-    assert_eq!(held.by_tag(55).unwrap(), parsed.by_tag(55).unwrap());
-    assert_eq!(held.into_row(&narrow).unwrap(), row);
+    // The typed facts are the holders' and still on the wire; the content
+    // is gone with the record.
+    let wire = String::from_utf8(held.into_bytes(b'|')).unwrap();
+    assert!(wire.starts_with("8=FIX.4.4|35=D|"), "{wire}");
+    assert!(wire.contains("|54=1|"), "{wire}");
+    assert!(!wire.contains("11=") && !wire.contains("55="), "{wire}");
+    // A row that dropped the record cannot give the content back, so the
+    // row it makes is the one a message of typed facts alone fills - and
+    // that row is its own fixed point.
+    let again = held.into_row(&narrow).unwrap();
+    let twice = FixMsg::from_row(Arc::clone(&registry), &narrow, &again).unwrap();
+    assert_eq!(twice.into_row(&narrow).unwrap(), again);
 }
 
 #[test]
@@ -438,11 +492,11 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     // materializes, so the deepest level folds into the JSON leaf.
     const DEEP: &[u8] =
         b"8=FIX.4.4|35=AE|571=T1|552=1|54=1|453=1|448=P1|452=1|802=1|523=S1|803=1|10=0|";
-    let parsed = reader.sole_line(DEEP, false).unwrap();
+    let parsed = reader.sole_line(DEEP).unwrap();
     fn depth(entries: &[FixEntry]) -> usize {
         entries
             .iter()
-            .map(|entry| 1 + depth(entry.children()))
+            .map(|entry| 1 + depth(entry.entries()))
             .max()
             .unwrap_or(0)
     }
@@ -454,7 +508,7 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     let row = parsed.into_row(&schema).unwrap();
     // The row holds a folded leaf somewhere under the entries column.
     fn leaf(entry: &[Scalar]) -> bool {
-        match entry.get(4) {
+        match entry.get(3) {
             Some(tail) if tail.as_str().is_some_and(|text| !text.is_empty()) => true,
             Some(tail) => tail
                 .as_sequence()
@@ -477,10 +531,60 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
             .any(leaf)
     );
 
+    // The folded leaf decodes back into the message: every pair the four
+    // levels state is stated again, at the depth it was folded from. The
+    // shape around them - a group whose occurrences nest a second group -
+    // is the one [`FixMsg::from_row`] names as not rebuilding entry for
+    // entry, so what is pinned here is that nothing folded is lost.
+    fn pairs(entries: &[FixEntry], out: &mut Vec<(i32, String)>) {
+        for entry in entries {
+            if entry.entries().is_empty() {
+                if let Some(value) = entry.value() {
+                    out.push((entry.tag(), value.to_owned()));
+                }
+            } else {
+                pairs(entry.entries(), out);
+            }
+        }
+    }
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(held.entries(), parsed.entries());
-    assert_eq!(held.into_bytes(b'|'), DEEP);
-    assert_eq!(held.into_row(&schema).unwrap(), row);
+    let (mut stated, mut rebuilt) = (Vec::new(), Vec::new());
+    pairs(parsed.entries(), &mut stated);
+    pairs(held.entries(), &mut rebuilt);
+    assert_eq!(rebuilt, stated);
+    assert!(
+        stated.contains(&(523, "S1".to_owned())),
+        "the folded level's own pair: {stated:?}"
+    );
+}
+
+/// A group nested in an occurrence is one entry under its counter, as a
+/// group at the root is: the counter beside it states nothing the entry
+/// does not, so the wire carries each counter once.
+#[test]
+fn a_nested_group_re_emits_its_counter_once() {
+    let (_, reader) = reader();
+    const DEEP: &[u8] =
+        b"8=FIX.4.4|35=AE|571=T1|552=1|54=1|453=1|448=P1|452=1|802=1|523=S1|803=1|10=0|";
+    let parsed = reader.sole_line(DEEP).unwrap();
+    let side = parsed
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 552)
+        .expect("the sides")
+        .entries()
+        .first()
+        .expect("one side");
+    assert_eq!(
+        side.entries()
+            .iter()
+            .filter(|member| member.tag() == 453)
+            .count(),
+        1,
+        "{:?}",
+        side.entries()
+    );
+    assert_eq!(parsed.into_bytes(b'|'), DEEP);
 }
 
 #[test]
@@ -495,10 +599,8 @@ fn an_entries_column_holding_no_entry_is_refused() {
     values[schema.index_of(FIXENTRIES_COLUMN).unwrap()] =
         Scalar::from_sequence([Scalar::from_sequence([
             Scalar::from(35_i32),
-            Scalar::from(0_i32),
-            Scalar::from("35"),
-            Scalar::from("D"),
             Scalar::from("msgtype"),
+            Scalar::from("D"),
             Scalar::from(b"not json" as &[u8]),
         ])]);
     let row = Scalar::from_sequence(values);
@@ -510,17 +612,18 @@ fn an_entries_column_holding_no_entry_is_refused() {
 fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let message = reader.sole_line(ORDER, false).unwrap();
+    let message = reader.sole_line(ORDER).unwrap();
     let original = message.into_row(&schema).unwrap();
     let at = schema.index_of(FIXENTRIES_COLUMN).unwrap();
     let row = |leaf: Scalar| {
         let mut tail = leaf;
         for _ in 0..3 {
+            // No value of its own: an entry that heads others is what the
+            // materialized levels above a fold hold.
             tail = Scalar::from_sequence([Scalar::from_sequence([
                 Scalar::from(0_i32),
                 Scalar::from("raw"),
-                Scalar::from("value"),
-                Scalar::from("raw"),
+                Scalar::Null,
                 tail,
             ])]);
         }
@@ -535,17 +638,18 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
         "true",
         "{}",
         "[1]",
-        // Four members is one short and six is one over: an arrival is
-        // exactly the five the materialized levels hold.
-        "[[0,\"name\",\"value\",\"key\"]]",
-        "[[0,\"name\",\"value\",\"key\",[],0]]",
-        "[[-1,\"name\",\"value\",\"key\",[]]]",
-        "[[2147483648,\"name\",\"value\",\"key\",[]]]",
-        "[[\"0\",\"name\",\"value\",\"key\",[]]]",
-        "[[0,\"name\",\"value\",1,[]]]",
-        "[[0,\"name\",false,\"key\",[]]]",
-        "[[0,\"name\",\"value\",\"key\",true]]",
-        "[[0,\"name\",\"value\",\"key\",[false]]]",
+        // Three members is one short and five is one over: an entry is
+        // exactly the four the materialized levels hold.
+        "[[0,\"name\",\"value\"]]",
+        "[[0,\"name\",\"value\",[],0]]",
+        "[[-1,\"name\",\"value\",[]]]",
+        "[[2147483648,\"name\",\"value\",[]]]",
+        "[[\"0\",\"name\",\"value\",[]]]",
+        "[[0,1,\"value\",[]]]",
+        "[[0,null,\"value\",[]]]",
+        "[[0,\"name\",false,[]]]",
+        "[[0,\"name\",\"value\",true]]",
+        "[[0,\"name\",\"value\",[false]]]",
     ] {
         let error =
             FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from(leaf))).unwrap_err();
@@ -555,19 +659,28 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
             "{leaf}: {error}"
         );
     }
-    // Null optional members are meaningful defaults, unlike an absent member;
-    // `tagname` among them, because the folded leaf is untyped and the name is
-    // what a dictionary says about the tag beside it rather than an arrival.
-    let accepted = FixMsg::from_row(
-        Arc::clone(&registry),
-        &schema,
-        &row(Scalar::from("[[null,null,null,null,[]]]")),
-    )
-    .unwrap();
-    let leaf = &accepted.entries()[0].children()[0].children()[0].children()[0];
-    assert_eq!(leaf.tag(), 0);
-    assert!(leaf.key().is_empty());
-    assert!(leaf.value().is_empty());
+    // A null tag is the tag of a key that named no field, and a null value
+    // is an entry that only heads others; the name is never null, because
+    // an entry is reached by it.
+    assert!(
+        FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &row(Scalar::from("[[null,\"\",null,[]]]")),
+        )
+        .is_ok()
+    );
+    // A folded pair the dictionary knows is read rather than refused; what
+    // it reads back as is
+    // `entries_folded_past_the_materialization_depth_read_back_whole`'s.
+    assert!(
+        FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &row(Scalar::from("[[448,\"partyid\",\"P1\",[]]]")),
+        )
+        .is_ok()
+    );
     assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from("[]"))).is_ok());
     // An empty leaf and an absent one both mean nothing was folded - which is
     // what the nullable leaf buys over the empty-string-only spelling.

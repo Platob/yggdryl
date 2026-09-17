@@ -1,7 +1,7 @@
 //! The third verb: a message as the rows one message field holds them.
 //!
-//! A parse lands a capture in the fixed row and an enrichment fills what each
-//! message implies. This is where the same messages answer under a *message
+//! A parse lands a capture in the fixed row, filled with what each message
+//! implies. This is where the same messages answer under a *message
 //! field* a consumer names - the fixed row itself, which keeps every column a
 //! capture lands in, a venue's own message type, or a projection of either -
 //! and where a column the source row did not carry is lifted back out of the
@@ -56,12 +56,12 @@ fn a_format_target_is_any_message_field_a_caller_names() {
     let wanted = [
         "symbol",
         "side",
-        "updatedat",
-        "createdat",
-        "msghash",
-        "msgphash",
-        "code",
-        "snapshotat",
+        "unix",
+        "creatunix",
+        "hashcode",
+        "crosshashcode",
+        "crosscode",
+        "snapunix",
         "sendingtime",
         "beginstring",
     ];
@@ -96,13 +96,14 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     let keep = [
         "beginstring",
         "msgtype",
-        "version",
-        "updatedat",
-        "msghash",
-        "msgphash",
-        "createdat",
-        "code",
-        "snapshotat",
+        "unix",
+        "creatunix",
+        "hashcode",
+        "crosshashcode",
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "snapunix",
         "sendingtime",
         "fixentries",
         "nofixentries",
@@ -115,7 +116,7 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         .unwrap()
         .required_field("fix");
 
-    let parsed = codec.sole_line(ORDER, false).unwrap();
+    let parsed = codec.sole_line(ORDER).unwrap();
     let stored = parsed.into_row(&narrow).unwrap();
     assert!(
         narrow.index_of("symbol").is_none(),
@@ -133,7 +134,10 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     assert_eq!(at(&row, &schema, "symbol").as_str(), Some("AAPL"));
     assert_eq!(at(&row, &schema, "price").as_f64(), Some(12.5));
     assert_eq!(at(&row, &schema, "securityexchange").as_str(), Some("XLON"));
-    assert_eq!(at(&row, &schema, "side"), parsed.by_tag(54).unwrap());
+    // The side is the event's own, held typed and never in the record: a
+    // row that dropped its column dropped the fact, where the parse had it.
+    assert_eq!(parsed.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert!(at(&row, &schema, "side").is_null());
 }
 
 /// A group comes back off the record whole, occurrence by occurrence.
@@ -147,13 +151,14 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
     let keep = [
         "beginstring",
         "msgtype",
-        "version",
-        "updatedat",
-        "msghash",
-        "msgphash",
-        "createdat",
-        "code",
-        "snapshotat",
+        "unix",
+        "creatunix",
+        "hashcode",
+        "crosshashcode",
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "snapunix",
         "sendingtime",
         "fixentries",
         "nofixentries",
@@ -166,11 +171,7 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         .unwrap()
         .required_field("fix");
 
-    let stored = codec
-        .sole_line(line, false)
-        .unwrap()
-        .into_row(&narrow)
-        .unwrap();
+    let stored = codec.sole_line(line).unwrap().into_row(&narrow).unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &stored).unwrap();
     let row = codec
         .format_messages([Ok(held)], &schema)

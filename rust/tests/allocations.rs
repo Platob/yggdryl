@@ -861,10 +861,10 @@ fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
         free("four settled identity tag borrows", || {
             let held = black_box(&message);
             for tag in [
-                yggdryl::UPDATEDAT_TAG_NAME.0,
-                yggdryl::CREATEDAT_TAG_NAME.0,
-                yggdryl::MSGHASH_TAG_NAME.0,
-                yggdryl::MSGPHASH_TAG_NAME.0,
+                yggdryl::UNIX_TAG_NAME.0,
+                yggdryl::CREATUNIX_TAG_NAME.0,
+                yggdryl::HASHCODE_TAG_NAME.0,
+                yggdryl::CROSSHASHCODE_TAG_NAME.0,
             ] {
                 black_box(held.get_by_tag(black_box(tag)));
             }

@@ -3424,7 +3424,7 @@ NativeFixMsg.prototype.set = function set(key, value) {
 // widen, because a line is a decoded row and not a value - and a batch source
 // as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
 // batch, IPC bytes. That widening lives here, beside the conversions it uses.
-for (const name of ['parseTextArrowReader', 'enrichMessagesArrowReader', 'messages']) {
+for (const name of ['parseTextArrowReader', 'lifecycleArrowReader', 'messages']) {
   const native = binding.FixCodec.prototype[name]
   binding.FixCodec.prototype[name] = {
     [name](source) {
@@ -3476,14 +3476,10 @@ function asLine(value) {
   return value
 }
 {
-  // `FixLifecycle.snapshots` is the same kind of stage: the stream it answers
-  // owns the lifecycle and pulls the iterable exactly as a codec stage does.
   const streams = [
     [binding.FixCodec, 'parseLines', '_parseLinesNative', toBytes, 'lines'],
     [binding.FixCodec, 'parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
-    [binding.FixCodec, 'enrichMessages', '_enrichMessagesNative', asMessage, 'messages'],
     [binding.FixCodec, 'lifecycle', '_lifecycleNative', asMessage, 'messages'],
-    [binding.FixLifecycle, 'snapshots', '_snapshotsNative', asMessage, 'messages'],
   ]
   for (const [owner, name, hidden, read, what] of streams) {
     const native = owner.prototype[hidden]
@@ -3514,14 +3510,6 @@ function asLine(value) {
   }
 }
 
-// The grid interval a lifecycle truncates `updatedat` to when none is
-// configured, read once from the core, which owns the constant.
-Object.defineProperty(binding.FixLifecycle, 'DEFAULT_INTERVAL_NS', {
-  enumerable: true,
-  value: binding._fixLifecycleDefaultIntervalNsNative(),
-  writable: false,
-})
-
 const nativeFixMessagesNext = binding.FixMessages.prototype.next
 binding.FixMessages.prototype.next = function next() {
   const value = nativeFixMessagesNext.call(this)
@@ -3541,10 +3529,10 @@ Object.defineProperty(binding.FixMessages.prototype, Symbol.iterator, {
   value: function messages() { return this },
 })
 
-// Both FIX collections are lazy native iterators, so the loader supplies only
-// the protocol Node-API cannot spell: iterating a registry walks its fields in
-// identifier order and iterating a message walks its `[name, value]`
-// pairs.
+// The registry is a lazy native iterator and a message answers its entries
+// whole, so the loader supplies only the protocol Node-API cannot spell:
+// iterating a registry walks its fields in identifier order, then its
+// definitions, and iterating a message walks its entries.
 Object.defineProperty(binding.FixRegistry.prototype, Symbol.iterator, {
   configurable: true,
   value: function fields() {
@@ -3553,7 +3541,7 @@ Object.defineProperty(binding.FixRegistry.prototype, Symbol.iterator, {
 })
 Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
   configurable: true,
-  value: function pairs() {
+  value: function entries() {
     return this.entries()[Symbol.iterator]()
   },
 })
@@ -3568,7 +3556,6 @@ const fix = Object.freeze({
   FixCodec: binding.FixCodec,
   MsgType: binding.MsgType,
   FixMessages: binding.FixMessages,
-  FixLifecycle: binding.FixLifecycle,
   schema: binding.fixSchema,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
@@ -3582,31 +3569,22 @@ const fix = Object.freeze({
 for (const name of [
   'FixFieldIterator',
   'FixMsg',
-  'FixMsgEntries',
   'FixCodec',
   'FixRegistry',
-  'FixDefinitionIterator',
   'MsgType',
-  'MsgTypeIterator',
   'FixMessages',
-  'FixLifecycle',
   'JsFixFieldIterator',
   'JsFixMsg',
-  'JsFixMsgEntries',
   'JsFixCodec',
   'JsFixRegistry',
-  'JsFixDefinitionIterator',
   'JsMsgType',
-  'JsMsgTypeIterator',
   'JsFixMessages',
-  'JsFixLifecycle',
   'fixCrateFields',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
-  '_fixLifecycleDefaultIntervalNsNative',
 ]) {
   delete binding[name]
 }

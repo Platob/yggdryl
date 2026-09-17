@@ -11,8 +11,6 @@ mod cfb;
 mod classification;
 #[path = "fix/codec.rs"]
 mod codec;
-#[path = "fix/content_identity.rs"]
-mod content_identity;
 #[path = "fix/dataset.rs"]
 mod dataset;
 #[path = "fix/dictionary.rs"]
@@ -33,26 +31,10 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
-#[path = "fix/identifier_dictionary.rs"]
-mod identifier_dictionary;
 #[path = "fix/identifiers.rs"]
 mod identifiers;
-#[path = "fix/instids.rs"]
-mod instids;
 #[path = "fix/latest.rs"]
 mod latest;
-#[path = "fix/lifecycle.rs"]
-mod lifecycle;
-#[path = "fix/lifecycle_chains.rs"]
-mod lifecycle_chains;
-#[path = "fix/lifecycle_grid.rs"]
-mod lifecycle_grid;
-#[path = "fix/lifecycle_previous.rs"]
-mod lifecycle_previous;
-#[path = "fix/lifecycle_targets.rs"]
-mod lifecycle_targets;
-#[path = "fix/lift.rs"]
-mod lift;
 #[path = "fix/map_groups.rs"]
 mod map_groups;
 #[path = "fix/merge.rs"]
@@ -61,18 +43,10 @@ mod merge;
 mod message;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
-
-/// What a message takes from the one before it in its chain.
-#[path = "fix/previous.rs"]
-mod previous;
 #[path = "fix/schema.rs"]
 mod schema;
-#[path = "fix/session.rs"]
-mod session;
 #[path = "fix/store.rs"]
 mod store;
-#[path = "fix/transient.rs"]
-mod transient;
 #[path = "fix/zero_entries.rs"]
 mod zero_entries;
 
@@ -115,8 +89,9 @@ mod warned {
     static SINK: Sink = Sink;
     static INSTALLED: Once = Once::new();
 
-    /// Runs `body`, answering what it warned about beside what it answered.
-    pub fn during<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+    /// Runs `body`, answering everything it warned about beside what it
+    /// answered.
+    pub fn during_all<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
         INSTALLED.call_once(|| {
             // Another logger may already own the process; the buffer is then
             // empty and the assertions say so rather than the install failing.
@@ -126,6 +101,21 @@ mod warned {
         HELD.with_borrow_mut(|held| *held = Some(Vec::new()));
         let answered = body();
         let warnings = HELD.with_borrow_mut(Option::take).unwrap_or_default();
+        (answered, warnings)
+    }
+
+    /// Runs `body`, answering what the thing it read warned about.
+    ///
+    /// What a registry's construction warns about is one fact, pinned by
+    /// `digest::every_registry_registers_the_crates_fields_without_warning`;
+    /// a test reading a CBlock or a store asserts that reading's warnings
+    /// alone, so the construction's are left out here.
+    pub fn during<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+        let (answered, warnings) = during_all(body);
+        let warnings = warnings
+            .into_iter()
+            .filter(|warning| !warning.starts_with("registering FIX crate definition"))
+            .collect();
         (answered, warnings)
     }
 }
@@ -192,7 +182,7 @@ fn dated_line(
 /// message, and a fixture that grew a second would otherwise be read as its
 /// first with nobody noticing.
 trait SoleMessage {
-    fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+    fn sole_line(&self, row: &[u8]) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
 fn sole_message(
@@ -208,23 +198,9 @@ fn sole_message(
     Ok(message)
 }
 
-/// The sole message a fixture yields, filled where asked: a stage is a call
-/// on the codec, so the flag lives in the test helper alone.
-fn sole_message_filled(
-    codec: &yggdryl::FixCodec,
-    messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
-    enrich: bool,
-) -> yggdryl::Result<yggdryl::FixMsg> {
-    let message = sole_message(messages)?;
-    if enrich {
-        return codec.enrich_message(message);
-    }
-    Ok(message)
-}
-
 impl SoleMessage for yggdryl::FixCodec {
-    fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        sole_message_filled(self, self.parse_line(row)?, enrich)
+    fn sole_line(&self, row: &[u8]) -> yggdryl::Result<yggdryl::FixMsg> {
+        sole_message(self.parse_line(row)?)
     }
 }
 
@@ -241,11 +217,6 @@ fn identity_scalar(bytes: [u8; 16]) -> yggdryl::Scalar {
         .expect("sixteen bytes under the sixteen-byte layout")
 }
 
-/// One distinguishable identity per number, the way an integer named a UUID.
-fn numbered_identity(last: u128) -> [u8; 16] {
-    last.to_be_bytes()
-}
-
 /// The sixteen bytes a column holds, refusing every other value.
 #[track_caller]
 fn identity_bytes(held: &yggdryl::Scalar) -> [u8; 16] {
@@ -254,40 +225,6 @@ fn identity_bytes(held: &yggdryl::Scalar) -> [u8; 16] {
     };
     assert_eq!(bytes.fixed(), Some(16), "{held:?}");
     <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
-}
-
-/// The sixteen bytes as the lowercase hex a chain code spells a scope with.
-fn identity_text(bytes: &[u8; 16]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-/// The `msgphash` a chain code hashes to: the XXH3-128 of its exact bytes.
-fn persistent_identity(code: &str) -> [u8; 16] {
-    yggdryl::hashing::xxhash::xxh128(code.as_bytes()).to_be_bytes()
-}
-
-/// The scope a chain hangs its identifiers under: the instrument digest the
-/// lifecycle computes from what the message says the instrument is - its
-/// market, its classification, its ISIN else its symbol, and its currency -
-/// each upper-cased and closed by a unit separator, an absent part
-/// contributing its separator alone.
-///
-/// No column carries it: the value is derived from the message and never
-/// stated, so a test that needs it computes it the way the lifecycle does.
-fn instrument_identity(parts: [Option<&str>; 4]) -> [u8; 16] {
-    let mut bytes = Vec::new();
-    for part in parts {
-        if let Some(held) = part {
-            bytes.extend_from_slice(held.to_ascii_uppercase().as_bytes());
-        }
-        bytes.push(0x1f);
-    }
-    yggdryl::hashing::xxhash::xxh128(&bytes).to_be_bytes()
-}
-
-/// The scope of a message naming its instrument by symbol alone.
-fn symbol_identity(symbol: &str) -> [u8; 16] {
-    instrument_identity([None, None, Some(symbol), None])
 }
 
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";
@@ -328,10 +265,57 @@ fn crated_components() -> usize {
         .count()
 }
 
-/// Initial registry fields, including the standard SendingTime and TransactTime seeds.
+/// The scalar fields a registry holds: what a dictionary's own fields add
+/// to, beside the components and groups `len` counts with them.
+fn scalars(registry: &yggdryl::FixRegistry) -> usize {
+    registry
+        .iter()
+        .filter(|field| !field.dtype().is_nested())
+        .count()
+}
+
+/// The occurrences a value holds, owned.
+///
+/// A lookup answers a value rather than a borrow of one, so a caller that
+/// walks a group's occurrences owns them: this is that walk, spelled once.
+#[track_caller]
+fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
+    value.as_sequence().expect("a sequence").to_vec()
+}
+
+/// Which category a registry field is filed under: a definition is filed by
+/// the shape it has - a Struct is a component, a List or a Map a group - and
+/// everything else is a wire field.
+fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
+    match field.dtype() {
+        yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
+        dtype if dtype.is_nested() => yggdryl::FixCategory::Groups,
+        _ => yggdryl::FixCategory::Fields,
+    }
+}
+
+/// The registry's fields of one category, in the one iteration order.
+fn definitions(
+    registry: &yggdryl::FixRegistry,
+    category: yggdryl::FixCategory,
+) -> impl Iterator<Item = &yggdryl::Field> {
+    registry
+        .iter()
+        .filter(move |field| category_of(field) == category)
+}
+
+/// The message components a registry holds: a component naming a wire code.
+fn msgtypes(registry: &yggdryl::FixRegistry) -> impl Iterator<Item = &yggdryl::Field> {
+    registry
+        .iter()
+        .filter(|field| field.as_fix().msgtype().is_some())
+}
+
+/// Initial registry scalar fields: the crate's own and the standard
+/// SendingTime and TransactTime seeds.
 fn seeded_fields() -> usize {
     static COUNT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-    *COUNT.get_or_init(|| yggdryl::FixRegistry::new().len())
+    *COUNT.get_or_init(|| scalars(&yggdryl::FixRegistry::new()))
 }
 
 /// Where the column carrying `tag` sits in a batch: by the tag its field

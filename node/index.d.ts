@@ -1279,15 +1279,15 @@ export type JsFilter = Filter
  * stream methods take any iterable and answer a lazy `FixMessages`, the
  * Arrow methods take and answer a `BatchReader`, one batch at a time.
  *
- * Every message it builds opens with `beginstring` - the wire's own, else
- * the version the message was read at - and carries the settled replay
- * fields: `SendingTime` is the message's valid tag 52, else the carrier's,
- * else `defaultSendingTime`, else UTC now read once for that new message;
- * `snapshotat` is `TransactTime` (60) else `SendingTime`; `updatedat` and
- * `createdat` default to that instant; `code`, `msghash` and `msgphash` follow.
- * None of them is an entry unless the line carried it, so `intoBytes`
- * re-emits the line byte for byte. Parsing undated bytes without a default
- * sending time is deliberately not deterministic.
+ * Every message it builds is settled as it is parsed: the typed facts are
+ * lifted off the line, a nested `XmlData` is exploded into the message,
+ * deprecated fields are restated to their latest aliases, the dictionary's
+ * `fix:derivation` rules run, the identifiers and the order lanes fill, and
+ * the identity is derived. `SendingTime` is the message's valid tag 52,
+ * else the carrier's, else `defaultSendingTime`, else UTC now read once for
+ * that new message, and it goes back on the wire only when the message
+ * stated it. Parsing undated bytes without a default sending time is
+ * deliberately not deterministic.
  */
 export declare class FixCodec {
   /**
@@ -1380,32 +1380,14 @@ export declare class FixCodec {
    */
   parseTextArrowReader(source: JsBatchReader): JsBatchReader
   /**
-   * Fills what one message implies but did not carry.
+   * A stream of batches of FIX rows walked through one lifecycle.
    *
-   * Restatement is the pass's first step rather than a door of its own:
-   * every rule below it reads by tag, and a child stored under an alias
-   * has no tag until the registry's field has canonicalized it, so the row
-   * comes back at the dictionary's newest version.
-   *
-   * An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
-   * Only the row is filled: the arrival record is what the wire carried and
-   * is left alone, so `intoBytes` re-emits the received line either way, and
-   * a stated value is never replaced.
-   * A known message also fills a sorted `altids` map from its direct
-   * identifiers, without flattening groups or replacing a stated map,
-   * including an empty one. Unknown types gain no map. A scalar identifier
-   * that cannot convert to UTF-8 raises the native located refusal.
+   * `lifecycle` over batches: each row is a message through
+   * `FixMsg.fromRow`, stated as the one after the live message it follows,
+   * and written back under the **same** schema, so a carried column
+   * returns to its place. Nothing is parsed again. The source is consumed.
    */
-  enrichMessage(message: FixMsg): FixMsg
-  /**
-   * Fills a stream of batches of FIX rows with what each message implies.
-   *
-   * `enrichMessages` over batches: each row is a message through
-   * `FixMsg.fromRow`, filled, and written back under the **same** schema,
-   * so a carried column returns to its place and the arrival record is
-   * untouched. Nothing is parsed again. The source is consumed.
-   */
-  enrichMessagesArrowReader(source: JsBatchReader): JsBatchReader
+  lifecycleArrowReader(source: JsBatchReader): JsBatchReader
   /**
    * A stream of batches of FIX rows as the stream of messages it holds.
    *
@@ -1448,28 +1430,18 @@ export declare class FixCodec {
 export type JsFixCodec = FixCodec
 
 /**
- * Lazy category definitions with a retained native registry.
+ * The fields of a registry: the scalars in ascending identifier order, then
+ * the components and the groups.
  *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class FixDefinitionIterator {
-
-}
-export type JsFixDefinitionIterator = FixDefinitionIterator
-
-/**
- * The fields of a registry, in ascending identifier order.
- *
- * Answered by `keys()`. It advances with the core's own cursor - the registry
- * plus the last `FixId` it answered - so taking one field from a dictionary of
- * thousands costs one lookup, and a walk crosses every field in the one order
- * the core iterates: tag-major, then identifier. It lets the registry go the moment the walk ends, because
- * JavaScript collects at its own pace and a mutation must not wait for a
- * drained iterator to be swept.
+ * Answered by `keys()`. The scalars advance with the core's own cursor - the
+ * registry plus the last `FixId` it answered - so taking one field from a
+ * dictionary of thousands costs one lookup, and a walk crosses every field in
+ * the one order the core iterates: tag-major, then identifier. The
+ * definitions follow, each reached by its position from the end of the
+ * core's own walk, because the catalog keeps them behind the scalars and
+ * answers no cursor into them. It lets the registry go the moment the walk
+ * ends, because JavaScript collects at its own pace and a mutation must not
+ * wait for a drained iterator to be swept.
  *
  * This type implements JavaScript's iterable iterator protocol.
  * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
@@ -1481,86 +1453,6 @@ export declare class FixFieldIterator {
 
 }
 export type JsFixFieldIterator = FixFieldIterator
-
-/**
- * The state a stream of messages has reached, one chain per live event.
- *
- * Built once per stream, over one dictionary or the process default, and fed
- * every message in order. A nonempty `code` names its chain globally;
- * otherwise the first identifier - stated `altids`, else the message type's
- * declared identifiers - reaching a live chain under the instrument the
- * message names supplies its code, and a new chain is named
- * `<scope hex or ->/<first identifier>`; the instrument is a digest of what
- * the message says it is and no column carries it. Occupied identifiers are never
- * stolen, and an empty code opens no chain. `msgphash` hashes the settled code.
- *
- * Every accepted message has `updatedat` truncated to its epoch grid bucket
- * of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
- * carries its first message's `createdat` and hands each later message the
- * previous message's `prevupdatedat` and `prevmsghash`. A terminal state closes
- * the chain; what is held is the live chains, their code, first creation
- * instant, last clock and identity, and highest consumed bucket - never pending
- * messages. `FixCodec.lifecycle` runs one at the default cadence over an
- * iterable.
- */
-export declare class FixLifecycle {
-  /**
-   * A stream with no event alive yet.
-   *
-   * `options.intervalNs` is the positive grid interval in nanoseconds,
-   * `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) when unstated; a
-   * nonpositive one throws the core's located refusal. The stamped columns
-   * are the registry's own crate fields, which every registry holds.
-   */
-  constructor(registry?: FixRegistry | undefined | null, options?: FixLifecycleOptions | undefined | null)
-  /** The epoch-grid interval in nanoseconds. */
-  get intervalNs(): bigint
-  /**
-   * Selects a positive grid interval before any chain is live.
-   *
-   * Repeating the current interval is a no-op even while chains are live;
-   * a nonpositive interval, or a change while a chain is live, throws and
-   * changes nothing.
-   */
-  setIntervalNs(intervalNs: bigint | number): void
-  /**
-   * Answers one message normalized to its grid and moves its chain along.
-   *
-   * The chain is selected by `code`, else by identifier; the message's
-   * `updatedat` becomes its grid instant, it takes the live chain's first
-   * `createdat`, each absent previous stamp comes from the chain's last
-   * message while a stated one is kept, and `msghash` is finalized after
-   * every stamp. A fresh or cleared lifecycle replaying the same stream
-   * answers the same messages. Only the row is stamped: the arrival record
-   * is what the wire carried, so `intoBytes` re-emits the received line.
-   * A refusal throws and changes no chain, history, bucket or identifier.
-   */
-  fill(message: FixMsg): FixMsg
-  /**
-   * Processes one message as `fill` does, answering it only as a new
-   * snapshot, else `null`.
-   *
-   * A message emits only when it arrived off-grid in a bucket above its
-   * live chain's highest consumed one. An already-aligned arrival consumes
-   * its bucket without emitting; equal or older buckets and messages with
-   * no chain name answer `null`. Suppressed messages still advance history
-   * and a terminal one still closes its chain.
-   */
-  snapshot(message: FixMsg): FixMsg | null
-  /**
-   * How many events are alive: opened by a message and not yet closed by
-   * a terminal state.
-   */
-  get alive(): number
-  /**
-   * Forgets every chain's creation, history and bucket, as a new session
-   * or a new day would, keeping the interval.
-   */
-  clear(): void
-  /** How this stream renders: the events alive in it. */
-  toString(): string
-}
-export type JsFixLifecycle = FixLifecycle
 
 /**
  * A stream of messages, one at a time.
@@ -1587,20 +1479,27 @@ export declare class FixMessages {
 export type JsFixMessages = FixMessages
 
 /**
- * A FIX message: a value plus the registry that types it.
+ * A FIX message: its typed facts, and the content row the registry types.
  *
- * The schema is one non-null Struct `Field` - the only row schema - and the
- * value the row it declares, so a plain object crosses as the record the core
- * canonicalizes into that order exactly as every other row is. The row is
- * written through `set` and `remove`; the entries never are, because they are
- * what the wire carried. The message compares, hashes, renders and clones by
- * the schema and the value it carries, against the registry it was resolved
- * against.
+ * The typed facts live beside the row: the event the message is - the
+ * graph traits' facts - the standard header, what the capture said about
+ * the line, the `Text(58)` and the metadata a bridge spelled under its own
+ * namespaces. The row holds everything else the message states: the
+ * dictionary fields, groups as lists beside their counter, components as
+ * structs. The schema is one non-null Struct `Field` - the only row schema -
+ * and a plain object crosses as the record the core canonicalizes into that
+ * order exactly as every other row is; a child stating a typed fact fills
+ * the holder that owns it and leaves the row. The entries are the row read
+ * as a tree, derived on the first ask; the wire is the header, the event's
+ * own tags and the entries. The message compares, hashes, renders and clones
+ * by its facts and its row, against the registry it was resolved against.
  *
- * Every message carries the settled replay fields, never null: `updatedat`,
- * `createdat`, `msghash`, `msgphash`, `code`, `snapshotat` and `SendingTime` (52).
- * The four the readers of the same names answer are held beside the row, so
- * reading them costs no lookup.
+ * Every message carries its identity settled: the cross code read off the
+ * first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
+ * over it, the `hashcode` over everything the message says, the `curruuid`
+ * over its instant and that hash, and the `crossuuid` over the cross hash -
+ * or the `curruuid` itself when no cross code names a chain. Every write
+ * settles it again.
  */
 export declare class FixMsg {
   /**
@@ -1608,11 +1507,13 @@ export declare class FixMsg {
    *
    * The loader widens `value`: anything `Scalar.fromJs` reads becomes the
    * native value first, and the core alone validates and canonicalizes it
-   * against `field`. A mandatory replay field the root lacks is appended:
-   * `SendingTime` reads UTC now when the value states none, `snapshotat`
-   * is `TransactTime` (60) else `SendingTime`, `updatedat` and `createdat`
-   * default to that instant, `code` to the empty name, and `msghash` and
-   * `msgphash` are computed. A stated identity must match what is computed.
+   * against `field`. A child stating a typed fact - a header tag, a
+   * crate column, one of the event's own tags, `Text(58)` - fills the
+   * holder that owns it and leaves the row. `SendingTime` reads UTC now
+   * when the value states none; the event's instant is `TransactTime(60)`
+   * where it states one with a clock, else the sending time; the creation
+   * instant is `OrigSendingTime(122)` else that instant. The identity is
+   * then settled.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1621,57 +1522,117 @@ export declare class FixMsg {
    * `schema` is the row's root - the one `fix.schema` or
    * `fix.schemaCarrying` built, or a batch reader's `field` - and `row` the
    * row under it, which the loader widens from whatever `Scalar.fromJs`
-   * reads. The columns are the message's children under the schema's
-   * names, reached by tag as a parsed message's are, and the entries are
-   * rebuilt from the `fixentries` column, so `intoBytes` re-emits the
-   * line the row was read from; a row without that column has no entries.
-   * Nothing is parsed again and no clock is read: the row must carry the
-   * seven non-null replay fields - `updatedat`, `createdat`, `msghash`,
-   * `msgphash`, `code`, `snapshotat`, `SendingTime` - and its `msghash` and
-   * `msgphash` must match what its content computes, or it throws the located
-   * refusal. The process default is the registry when none is named.
+   * reads. The typed facts are read off the columns that hold them, and
+   * the content is rebuilt from the `fixentries` column, each entry typed
+   * through the dictionary exactly as the builder types a pair, so
+   * `intoBytes` re-emits the line the row was read from; a row without
+   * that column has the typed facts and no content. A column no tag names
+   * is a capture's own and stays a child. Nothing is parsed again and no
+   * clock is read. The process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
   get registry(): FixRegistry
-  /** The root Struct field: the message's resolved schema. */
+  /**
+   * The root Struct field: the content row's schema, holding every child
+   * the message states beyond its typed facts.
+   */
   get field(): JsField
-  /** The ordered row value. */
+  /** The ordered content row. */
   get value(): JsScalar
   /**
-   * How many values the root declares, which is what `entries` yields.
+   * How many children the content row declares.
    *
    * Counts are JavaScript numbers, exact to 2^53, as everywhere else at
-   * this boundary; Python spells the same answer `len(message)`.
+   * this boundary.
    */
   get size(): number
   /**
-   * The value of the root child an identifier names, or `null`.
+   * The event this message is: every fact the graph traits answer, as
+   * one plain object read once.
+   */
+  event(): FixEventView
+  /** The standard header, typed, as one plain object read once. */
+  header(): FixHeaderView
+  /** What the capture said about the line, as one plain object read once. */
+  capture(): FixCaptureView
+  /** `Text(58)`: the free text the message carries, or `null`. */
+  get text(): string | null
+  /**
+   * What a bridge stated under its own namespaces - a `TECH.CLIENTID`,
+   * a `firm.*` key - each under the key as the bridge spelled it, folded,
+   * in sorted order; empty where it stated none.
+   */
+  get metadata(): Record<string, string>
+  /** This message's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity of the chain this message belongs to, as its hyphenated
+   * text: `curruuid` when no cross code names a chain.
+   */
+  get crossuuid(): string
+  /** The code the chain is named by, or empty. */
+  get crosscode(): string
+  /** The XXH3-64 over everything this message says. */
+  get hashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /** When the event happened, nanoseconds since the Unix epoch, UTC. */
+  get unix(): bigint
+  /**
+   * The order state the message reached, ranked: `00UNKNOWN` where it
+   * states none.
+   */
+  get state(): string
+  /** The message's place in its chain, `0` until a lifecycle states it. */
+  get seqnum(): number
+  /** The identity of the message this one follows, or `null`. */
+  get prevuuid(): string | null
+  /** The identities of the messages this one descends from. */
+  get parentuuids(): Array<string>
+  /** The identifiers the message is known by, scheme to value, sorted. */
+  get identifiers(): Record<string, string>
+  /** The price, as decimal text; `0` where none is stated. */
+  get px(): string
+  /** The quantity, as decimal text; `0` where none is stated. */
+  get qty(): string
+  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  get side(): string
+  /** The currency; `XXX` where none is stated. */
+  get currency(): string
+  /**
+   * The value the root child an identifier names, or `null`.
    *
    * An identifier is exact and does not fold: `id` is the number
    * `field.fix.id` answers, and a field the dictionary does not hold
-   * under it simply misses.
+   * under it simply misses. A typed fact answers from its holder.
    */
   getById(id: number): JsScalar | null
-  /** The value of the root child an identifier names. */
+  /** The value the root child an identifier names. */
   byId(id: number): JsScalar
   /**
-   * The value of the root child a tag names, or `null`.
+   * The value a tag names, or `null`.
    *
-   * The tag resolves through the dictionary: the canonical holder first,
-   * then an alternate.
+   * A tag the typed holders own - a header tag, a crate column, one of
+   * the event's own tags, `Text(58)` - answers the fact the holder states
+   * as the `Scalar` its column types: `byTag(35)` is the type's text,
+   * `byTag(52)` the sending clock as `datetime64(ns, UTC)`, `byTag(54)`
+   * the side as `BUY` or `SELL`, a crate tag its column's own type - a
+   * `uuid`, a `uint64`, a `decimal128(38, 18)`. Any other tag reaches
+   * the row through the dictionary: the canonical holder first, then an
+   * alternate, then a child spelled by the tag's decimal.
    */
   getByTag(tag: number): JsScalar | null
-  /** The value of the root child a tag names. */
+  /** The value a tag names. */
   byTag(tag: number): JsScalar
   /**
-   * The value of the root child a name reaches, or `null`.
+   * The value a name reaches, or `null`.
    *
    * The name folds through the dictionary: the canonical spelling first,
-   * then an alias.
+   * then an alias; a typed fact answers from its holder.
    */
   getByName(name: string): JsScalar | null
-  /** The value of the root child a name reaches. */
+  /** The value a name reaches. */
   byName(name: string): JsScalar
   /** The value a path reaches, or `null`. */
   getByPath(path: string | FieldPath): JsScalar | null
@@ -1688,164 +1649,103 @@ export declare class FixMsg {
    * The value a tag or a name reaches.
    *
    * The failing half of `get` is spelled `at` rather than the core's
-   * `value`, because `value` is this class's property for the whole message
-   * value.
+   * `value`, because `value` is this class's property for the whole
+   * content row.
    */
   at(key: number | string): JsScalar
   /**
-   * Writes one value into the row, typed by the field the key resolves to.
+   * Writes one value into the message, typed by the field the key
+   * resolves to.
    *
    * `key` is a tag or a name, resolved as a lookup resolves one - through
    * the dictionary, canonical before alternate or alias - and a name the
-   * dictionary does not know still reaches a child spelled that way. `value` is whatever `Scalar.fromJs` reads, widened by the
-   * loader; a known field types it through the core's value contract, and
-   * `null` is stored as a stated null. An existing child is replaced where
-   * it stands and an absent one appended; a bare tag no dictionary explains
-   * appends a text child named by its decimal. Only the row changes: the
-   * entries, the wire and the digest stay what they were, while `msghash` and
-   * `msgphash` are recomputed from the new content. No clock is read.
+   * dictionary does not know still reaches a child spelled that way.
+   * `value` is whatever `Scalar.fromJs` reads, widened by the loader. A
+   * key reaching a typed fact records it on the holder that owns it, and
+   * `null` clears it; any other key lands in the row: a known field types
+   * the value through the core's value contract, `null` is stored as a
+   * stated null, an existing child is replaced where it stands and an
+   * absent one appended, and a bare tag no dictionary explains appends a
+   * text child named by its decimal. The entries and the wire follow the
+   * row, and the identity is settled again. No clock is read.
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was.
    */
   set(key: number | string, value: unknown): void
   /**
-   * Removes the child a key reaches, answering its value, or `null`.
+   * Removes what a key reaches, answering the value it held, or `null`.
    *
-   * The key resolves as `set` resolves one, and a key reaching nothing
-   * answers `null` and changes nothing. The entries are untouched.
-   *
-   * A mandatory replay field - `updatedat`, `createdat`, `msghash`, `msgphash`,
-   * `code`, `snapshotat` or `SendingTime` - refuses removal and throws,
-   * leaving the message exactly as it was; so does any other refusal.
+   * The key resolves as `set` resolves one: a typed fact is cleared on
+   * its holder, a row child leaves the row, and a key reaching nothing
+   * answers `null` and changes nothing. The identity is settled again.
    */
   remove(key: number | string): JsScalar | null
   /**
-   * The `[name, value]` pairs of the root, in the order it declares.
+   * The content row read as a tree: one entry per child it states, a
+   * group's occurrences and a component's members nested under the entry
+   * that heads them, nothing for a child stating null.
    *
-   * The loader wires `Symbol.iterator` over this.
+   * Derived on the first ask and kept until a write. The typed facts are
+   * not entries: the header, the event and the capture are the holders'
+   * to answer, and the wire `intoBytes` emits puts the header and the
+   * event's own tags in front of these. The loader wires
+   * `Symbol.iterator` over this.
    */
-  entries(): Generator<[string, Scalar]>
+  entries(): Array<FixEntryView>
   /**
-   * The digest of what this message said, as sixteen bytes.
+   * The digest of what this message emits on the wire, as sixteen bytes.
    *
-   * Over the arrival record with the envelope tags left out, so two
-   * republications of one message digest alike however their sequence
-   * numbers and sending times differ.
+   * Over every entry of `intoBytes`, pre-order, so two messages that
+   * re-emit alike digest alike whatever separator either was read with.
    */
   digest(): Buffer
-  /** One instrument symbol that is the same across venues, or `null`. */
-  symbolTicker(): JsScalar | null
-  /**
-   * The settled message instant, `DateTime64(ns, UTC)`, never null.
-   *
-   * Settled once, when the message is first built: a valid stated
-   * `updatedat`, else the event instant `snapshotat` holds. A lifecycle
-   * truncates it to its snapshot grid. Mutation and enrichment carry it
-   * unless it is written explicitly; no clock is read after intake.
-   */
-  updatedat(): JsScalar
-  /**
-   * The settled creation instant, `DateTime64(ns, UTC)`, never null.
-   *
-   * A valid stated `createdat`, else the event instant; a lifecycle
-   * carries the first creation instant of the live chain a message joins.
-   */
-  createdat(): JsScalar
-  /**
-   * The message's time/content identity, never null.
-   *
-   * Sixteen `fixedbinary(16)` bytes - a `Buffer` in JavaScript:
-   * `updatedat`'s signed nanoseconds with the sign bit flipped in bytes
-   * 0..8, then all 64 bits of the canonical named content's XXH64;
-   * `updatedat`, `createdat`, `msghash` itself and the arrival record are not
-   * content. A stated `msghash` must match it.
-   */
-  msghash(): JsScalar
-  /**
-   * The event chain's identity, never null.
-   *
-   * The sixteen big-endian `fixedbinary(16)` bytes of the XXH3-128 of the
-   * exact `code` bytes alone - a `Buffer` in JavaScript - so the empty
-   * (unknown) code has one deterministic `msgphash` too. A stated `msgphash`
-   * must match it.
-   */
-  msgphash(): JsScalar
-  /** One lifted facet's value, or `null` where nothing carries it. */
-  lifted(facet: string): JsScalar | null
-  /**
-   * The tag a lifted facet was read from, or `null`.
-   *
-   * A lift source is declared by tag, and the tag is the whole of what it
-   * is; the field that tag names is the registry's to answer.
-   */
-  liftSource(facet: string): number | null
-  /** Every facet this message lifts, in the table's own order. */
-  lift(): Array<[string, Scalar]>
-  /** One party by its role: identifier, source, role, qualifier. */
-  party(role: string): Array<Scalar | null> | null
-  /** One regulatory timestamp by its type, or `null`. */
-  trdRegTimestamp(kind: string): JsScalar | null
-  /**
-   * What this message says about itself that does not add up.
-   *
-   * Derived by comparing the row against the arrival record, so a caller
-   * who never asks pays nothing.
-   */
-  anomalies(): Array<string>
-  /**
-   * What arrived, in arrival order, untranslated.
-   *
-   * Flattened pre-order: a group's members follow the counter pair that
-   * heads them, so a caller reading the array reads the wire. Each entry
-   * is `[tag, key, value]`; tag 0 marks a key the dictionary did not
-   * resolve, whether it arrived as a name or as a number, and its raw key
-   * is kept.
-   */
-  arrivals(): Array<[number, string, string]>
   /**
    * This message as the fixed row a table holds.
    *
    * `schema` is the fixed root `fixSchema` builds: every column is filled by
    * the tag its field carries - never by its spelling - so a message that
    * carried nothing at a column answers null there rather than shifting its
-   * neighbours. A column no tag names is the capture's: it takes the child
-   * of that name where the message has one, else null. The arrival record
-   * closes the row under `fixentries`, unresolved keys at tag 0.
+   * neighbours. A typed fact fills its column from its holder, a group's
+   * column from the message's own occurrences, and a column no tag names
+   * is the capture's: it takes the child of that name where the message
+   * has one, else null. The arrival record closes the row under
+   * `fixentries`, unresolved keys at tag 0.
    *
-   * A replayable row keeps the seven replay fields; a schema missing or
-   * mistyping one, or a cell its column cannot represent, throws the
-   * located refusal. No clock is read.
+   * A value a column will not hold is that column's null; a column that
+   * cannot be null keeps the refusal, and throws it located. No clock is
+   * read.
    */
   intoRow(schema: JsField): JsScalar
-  /** Re-emit this message on the wire, separated by `separator`. */
+  /**
+   * Re-emit this message on the wire, separated by `separator`: the
+   * standard header - `SendingTime` only when the message stated it - the
+   * event's own FIX tags, then the content entries, derived values
+   * included, coded facts as their wire code.
+   */
   intoBytes(separator?: number | undefined | null): Buffer
-  /** Whether two messages carry the same schema, value and dictionary. */
+  /**
+   * The same as `intoBytes`, as text, separated by one character - the
+   * FIX `SOH` when unstated.
+   *
+   * A value holding a control byte throws the core's refusal.
+   */
+  intoText(separator?: string | undefined | null): string
+  /**
+   * Whether two messages carry the same facts, schema, row and
+   * dictionary.
+   */
   equals(other: FixMsg): boolean
-  /** Deterministic hash bits over the schema and the value. */
+  /** Deterministic hash bits over the facts, the schema and the row. */
   stableHash(): bigint
-  /** A cheap clone: the schema and value are shared, the registry link kept. */
+  /** A cheap clone: the schema and row are shared, the registry link kept. */
   clone(): FixMsg
-  /** A one-line summary naming the root and how many values it holds. */
+  /** A one-line summary naming the root and how many values the row holds. */
   toString(): string
-  /** The schema document and the value document, the two halves a message is. */
+  /** The content row's schema document and value document. */
   toJSON(): any
 }
 export type JsFixMsg = FixMsg
-
-/**
- * The `[name, value]` pairs of one message's root, in declared order.
- *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class FixMsgEntries {
-
-}
-export type JsFixMsgEntries = FixMsgEntries
 
 /**
  * FIX field definitions resolved by identifier, by tag, by name, or by dotted
@@ -1857,60 +1757,38 @@ export type JsFixMsgEntries = FixMsgEntries
  * changing a dictionary underneath a message that already used it.
  */
 export declare class FixRegistry {
-  /** Look up a globally unique group by its scalar counter tag. */
-  getGroupByTag(tag: number): JsField | null
-  /** Look up a globally unique group, failing when absent or ambiguous. */
-  groupByTag(tag: number): JsField
-  /** Look up a category definition, returning null when absent. */
-  getDefinition(category: string, name: string): JsField | null
-  /** Look up a category definition, failing when absent. */
-  definition(category: string, name: string): JsField
-  /** Definitions in native category order, retaining the registry while active. */
-  definitions(category: string): FixDefinitionIterator
   /**
-   * Fold a named definition into the one its name reaches.
+   * The repeating group a counter tag opens, or `null`.
    *
-   * The lenient counterpart of `createDefinition`, which refuses a name it
-   * holds, and of `insertDefinition`, which replaces one wholesale.
-   * Answers `true` when the definition arrived and `false` when it merged;
-   * `"fields"` redirects to `addField`.
-   *
-   * A merge keeps the stored definition's identity, name and every member
-   * it declares, in its order, and appends the members it lacks - for a
-   * group, to the occurrence inside the list, and to the component when
-   * that occurrence is a component's. It is one level deep: a member both
-   * sides declare stays the stored one, so a member whose datatype - or
-   * whose restated reference - disagrees is refused. Every message and
-   * component referencing the definition sees the appended members.
-   *
-   * One mutation: a refusal leaves the dictionary exactly as it was.
+   * `tag` is the counter's, never the group's own: `getFieldByTag` answers
+   * the counter itself off the same key, and the group it heads is a
+   * definition of its own, reached here or by its name. Two groups on one
+   * counter name nothing.
    */
-  addDefinition(category: string, field: JsField): boolean
-  /** Insert or replace a complete native category definition atomically. */
-  insertDefinition(category: string, field: JsField): JsField | null
-  /** Create a definition, refusing an existing identity. */
-  createDefinition(category: string, field: JsField): void
-  /** Replace an existing definition atomically, preserving identity. */
-  updateDefinition(category: string, field: JsField): JsField
-  /** Remove a definition, refusing dangling references. */
-  removeDefinition(category: string, name: string): JsField | null
-  /** Borrow the message singleton named by wire code, canonical name, or alias. */
+  getFieldByCounter(tag: number): JsField | null
+  /**
+   * The repeating group a counter tag opens, failing when absent or
+   * ambiguous.
+   */
+  fieldByCounter(tag: number): JsField
+  /**
+   * The message definition a wire code, a canonical name or tag 35's
+   * alias names, or `null`: a copy of the registry's own, so a later
+   * mutation of the dictionary leaves it as it was answered.
+   */
   getMsgtype(spelling: string): MsgType | null
-  /** Borrow a message singleton, failing when absent. */
+  /** The message definition a spelling names, failing when absent. */
   msgtype(spelling: string): MsgType
-  /** Iterate native message singletons in canonical order. */
-  msgtypes(): MsgTypeIterator
   /**
    * A registry holding the built-in definitions.
    *
-   * Every registry holds the thirty-four scalar fields, the sorted
-   * `altids` Map group and the `instids` Struct that `fixCrateFields`
-   * lists. It also holds the standard
+   * Every registry holds the crate's own definitions - the scalar columns
+   * `fixCrateFields` lists, the `identifiers` and `metadata` Map groups
+   * and the `fixmsg` component that is the fixed row - and the standard
    * `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
    * the dictionary defines no field of its own at those tags. A dictionary
-   * loaded from a store, built from fields or left alone holds them alike;
-   * scalar lookups and `size` exclude groups and components, so a new
-   * registry's `size` is 36.
+   * loaded from a store, built from fields or left alone holds them alike,
+   * and `size` counts every one of them beside the dictionary's own.
    */
   constructor()
   /**
@@ -1965,16 +1843,20 @@ export declare class FixRegistry {
   /**
    * Write every populated shard under `<location>/fields/<shard>.json` and
    * every definition under `<location>/<category>/<name>.json`, removing
-   * the shards and trees no field populates any more. The crate's own
-   * definitions are written like every other - its tag block from 65000 is
-   * one shard, and its `altids` and `instids` are two documents - so a
-   * store states the whole row; a reader takes the
-   * definition it holds from construction over the document it finds.
+   * the shards and trees no field populates any more. A shard is named by
+   * its tag block, nine digits with leading zeros: tag 55 lands in
+   * `fields/000000000.json`, tag 5001 in `fields/000000050.json`. The
+   * crate's own definitions are written like every other - its tag block
+   * from 65000 is `fields/000000650.json`, its `identifiers` and
+   * `metadata` Map groups two documents under `groups/`, and the fixed row
+   * is `components/fixmsg.json` - so a store states the whole row; a
+   * reader takes the definition it holds from construction over the
+   * document it finds.
    */
   writeInto(location: LocationInput): void
   /**
-   * How many scalar fields are held, the crate's own thirty-four among
-   * them, 36 for a new registry with its two seeded clocks.
+   * How many fields are held: the scalar fields, then the components and
+   * the groups, the crate's own and the two seeded clocks among them.
    */
   get size(): number
   /**
@@ -2045,14 +1927,27 @@ export declare class FixRegistry {
    * the stored field - leaves the dictionary exactly as it was.
    */
   addField(field: JsField): boolean
-  /** Add a field, answering the one it replaced. */
+  /**
+   * Add a field, answering the one it replaced.
+   *
+   * A definition is filed by the shape it has: a Struct inserts as a
+   * component - a message when it carries `fix:msgtype` - a List of
+   * Structs or a Map as a group, and anything else as a scalar field.
+   */
   insert(field: JsField): JsField | null
   /**
    * Merge a definition into the stored field with the same identity: the
-   * same tag under the same folded name.
+   * same tag under the same folded name, or the component or group of
+   * the same folded name.
    */
   update(field: JsField): void
-  /** Remove the field a tag or a name reaches, answering it. */
+  /**
+   * Remove the field a tag or a name reaches, answering it.
+   *
+   * A name no scalar answers to reaches a component or a group, so a
+   * definition leaves through the same door; one another definition still
+   * references stays, and `null` says so.
+   */
   remove(key: number | string): JsField | null
   /**
    * Remove the field one identifier names exactly, answering it.
@@ -2072,14 +1967,15 @@ export declare class FixRegistry {
    */
   dialects(): Array<string>
   /**
-   * The fields in ascending identifier order, lazily.
+   * Every field, lazily: the scalar fields in ascending identifier order,
+   * then the components and the groups in the catalog's name order.
    *
-   * The order is the core's: tag-major, then by identifier. The iterator holds
-   * the registry and the identifier it stopped at, so nothing is collected
-   * crossing the boundary and the dictionary is never cloned to walk it.
-   * Holding it is therefore sharing it: a mutation refuses until the walk
-   * ends, which is what stops the fields moving under a cursor into them.
-   * The loader wires `Symbol.iterator` over this.
+   * The order is the core's: tag-major, then by identifier, the definitions
+   * behind. The iterator holds the registry and the identifier it stopped
+   * at, so nothing is collected crossing the boundary and the dictionary is
+   * never cloned to walk it. Holding it is therefore sharing it: a mutation
+   * refuses until the walk ends, which is what stops the fields moving
+   * under a cursor into them. The loader wires `Symbol.iterator` over this.
    */
   keys(): Generator<Field>
   /** Whether two registries hold the same fields, in identifier order. */
@@ -2090,7 +1986,10 @@ export declare class FixRegistry {
   clone(): FixRegistry
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
-  /** A complete native catalog snapshot: the three categories. */
+  /**
+   * A complete native catalog snapshot: the fields, the components and
+   * the groups.
+   */
   toJSON(): any
   /** Load a complete native catalog snapshot. */
   static fromJson(input: string): FixRegistry
@@ -2978,7 +2877,10 @@ export declare class MimeType {
 }
 export type JsMimeType = MimeType
 
-/** An immutable singleton view; retaining its registry keeps its index stable. */
+/**
+ * An immutable message definition: a copy of the registry's own, so a
+ * later mutation of the dictionary leaves it as it was answered.
+ */
 export declare class MsgType {
   /** The native canonical name. */
   get name(): string
@@ -3009,20 +2911,6 @@ export declare class MsgType {
   toJSON(): any
 }
 export type JsMsgType = MsgType
-
-/**
- * Lazy immutable message singletons with a retained native registry.
- *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class MsgTypeIterator {
-
-}
-export type JsMsgTypeIterator = MsgTypeIterator
 
 /**
  * One namespace of a catalog: identity, plus its two collection views.
@@ -5768,6 +5656,35 @@ export interface FileSelector {
   allowNotFound: boolean
 }
 
+/**
+ * What the capture stated about the line a message was read from, as
+ * plain values.
+ *
+ * Facts about the capture and not about the message: none of them is FIX,
+ * none is content, and none reaches the code the message digests to.
+ */
+export interface FixCaptureView {
+  /**
+   * The URL of the object the line was read from, where the capture
+   * named it.
+   */
+  sourceurl: string | null
+  /**
+   * When the capture recorded the line, nanoseconds since the Unix
+   * epoch, UTC, where it dated it.
+   */
+  recordedat: bigint | null
+  /**
+   * The plugin that logged the line inside a bridge, as the bridge names
+   * it.
+   */
+  pluginid: string | null
+  /** The message context a bridge handled the line in. */
+  msgctxid: string | null
+  /** The session instance a bridge handled the line on. */
+  msgsessionid: string | null
+}
+
 /** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
   /** The byte a numeric frame splits on where the line does not say. */
@@ -5799,27 +5716,21 @@ export interface FixCodecOptions {
 }
 
 /**
- * The thirty-six definitions this crate owns, in tag order: thirty-four
- * scalar fields at 65001 to 65003, 65005 to 65015, 65017 to 65019, 65021 to
- * 65035 and 65037 to 65038, the sorted `altids` Map group at 65020 and the
- * `instids` Struct at 65036. Tags 65000, 65004 and 65016 are retired and
- * not reused.
+ * The definitions this crate owns, in tag order, above every tag FIX or a
+ * venue publishes.
  *
- * The version read at, the ticker, `updatedat` and its partition, the
- * parent identifiers, the sessions the message states, the bridge's message
- * context, the plugin that logged the line and the one it came through
- * before that, the two session names the line spells, the ISIN, MIC and
- * order state a row derives, the `msghash` and `msgphash` identities,
- * the direct identifiers enrichment records in `altids`, the previous
- * message's `prevupdatedat` and `prevmsghash`, `createdat`, `code` and
- * `snapshotat`, the `sourceurl` a line was read from, the `nofixentries`
- * that counts its arrival record, `recordedat` and `expiredat`, the two
- * lane currencies, the bridge's own session instance, the instrument's
- * Bloomberg, CUSIP and SEDOL codes with the `instids` Struct that joins
- * them, and the two session message identifiers. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
- * `snapshotat` are non-null. Every registry already holds them in their
- * category, so this is the listing a schema or a document walks rather than
- * something a caller registers.
+ * The event's instant `unix` and the chain's `creatunix`, `expirunix`,
+ * `prevunix` and `snapunix`; the identities `hashcode`, `crosshashcode`,
+ * `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
+ * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
+ * the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
+ * the instrument's ISIN, MIC, Bloomberg, CUSIP and SEDOL codes; what a
+ * bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`,
+ * `sourceurl`, `recordedat`; and the `nofixentries` that counts the content
+ * record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
+ * `crossuuid` are non-null. Every registry already holds them, so this is
+ * the listing a schema or a document walks rather than something a caller
+ * registers.
  */
 export declare function fixCrateFields(): Array<JsField>
 
@@ -5831,28 +5742,185 @@ export interface FixDirection {
   patterns: Array<string>
 }
 
-/** How a lifecycle is configured, where a caller configures it at all. */
-export interface FixLifecycleOptions {
+/**
+ * One entry of a message, as the plain object JavaScript reads.
+ *
+ * The row read as a tree: a resolved field carries its canonical positive
+ * tag and name, a key no dictionary explains carries `0` and its own
+ * spelling, and an entry that heads others - a group under its counter, an
+ * occurrence, a component - nests them under `entries`. A group entry's
+ * value is its occurrence count; an occurrence and a component state no
+ * value of their own.
+ */
+export interface FixEntryView {
+  /** The resolved canonical tag, or `0` for a key no dictionary explains. */
+  tag: number
+  /** The dictionary's canonical name, else the key as it arrived. */
+  name: string
   /**
-   * The positive epoch-grid interval in nanoseconds;
-   * `FixLifecycle.DEFAULT_INTERVAL_NS` when unstated.
+   * The value as the wire spells it, or `null` for an entry that only
+   * heads others.
    */
-  intervalNs?: bigint | number
+  value: string | null
+  /** The entries nested under this one, in their order. */
+  entries: Array<FixEntryView>
+}
+
+/**
+ * The event a message is: every fact the graph traits answer, as plain
+ * values.
+ *
+ * A UUID is its hyphenated text, a hash and an instant a `bigint` - the
+ * instants nanoseconds since the Unix epoch, UTC - a price or a quantity its
+ * decimal text, a currency, a side, a state and an instrument code the text
+ * each is. What the event does not state is `null` where the core holds
+ * nothing, and the core's own nothing where it holds a value that means
+ * none: a price or a quantity of `0`, the `XXX` currency, an empty unit or
+ * cross code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`.
+ */
+export interface FixEventView {
+  /**
+   * This message's own identity: a time UUID over its instant and its
+   * `hashcode`.
+   */
+  curruuid: string
+  /**
+   * The identity of the chain the message belongs to: a version-8 UUID
+   * over the `crosshashcode`, or `curruuid` when no cross code names a
+   * chain.
+   */
+  crossuuid: string
+  /**
+   * The code the chain is named by: the first stated of `OrderID(37)`,
+   * `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
+   * and `MDReqID(262)`, or empty.
+   */
+  crosscode: string
+  /**
+   * The XXH3-64 of the event, the text, the metadata, the header and the
+   * row.
+   */
+  hashcode: bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  crosshashcode: bigint
+  /** The identifiers the message is known by, scheme to value, sorted. */
+  identifiers: Record<string, string>
+  /** The UUIDs of the messages this one descends from. */
+  parentuuids: Array<string>
+  /**
+   * When the event happened: `TransactTime(60)` where the message states
+   * one with a clock, else its sending time.
+   */
+  unix: bigint
+  /** The order state the message reached, ranked: `20NEW`, `80FILLED`. */
+  state: string
+  /** The message's place in its chain, `0` until a lifecycle states it. */
+  seqnum: number
+  /** When the chain was created, where stated. */
+  creatunix: bigint | null
+  /** When the chain expires, where stated. */
+  expirunix: bigint | null
+  /**
+   * The instant of the message this one follows, where a lifecycle
+   * stated it.
+   */
+  prevunix: bigint | null
+  /**
+   * The identity of the message this one follows, where a lifecycle
+   * stated it.
+   */
+  prevuuid: string | null
+  /** The instant a snapshot was taken at, where one was. */
+  snapunix: bigint | null
+  /** The price, as decimal text. */
+  px: string
+  /** The quantity, as decimal text. */
+  qty: string
+  /** The currency, `XXX` where none is stated. */
+  currency: string
+  /** The unit the quantity is counted in, empty where none is stated. */
+  unit: string
+  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  side: string
+  /** The instrument's ISIN, where stated. */
+  isincode: string | null
+  /** The instrument's CUSIP, where stated. */
+  cusipcode: string | null
+  /** The instrument's SEDOL, where stated. */
+  sedolcode: string | null
+  /** The instrument's Bloomberg code, where stated. */
+  bloombergcode: string | null
+  /** The instrument's CFI classification, where stated. */
+  cficode: string | null
+  /** The market the message names, where stated. */
+  miccode: string | null
+  /** The bid lane's price, where filled. */
+  bidpx: string | null
+  /** The bid lane's quantity, where filled. */
+  bidqty: string | null
+  /** The bid lane's currency, where filled. */
+  bidcurrency: string | null
+  /** The bid lane's unit, where filled. */
+  bidunit: string | null
+  /** The ask lane's price, where filled. */
+  askpx: string | null
+  /** The ask lane's quantity, where filled. */
+  askqty: string | null
+  /** The ask lane's currency, where filled. */
+  askcurrency: string | null
+  /** The ask lane's unit, where filled. */
+  askunit: string | null
+}
+
+/**
+ * The standard header a message holds typed, as plain values.
+ *
+ * What FIX puts in front of every message: the version it says it speaks,
+ * the type it is, who sent it to whom, its place in the session and when it
+ * was sent, plus which way it moved where the line or the caller said.
+ */
+export interface FixHeaderView {
+  /** `BeginString(8)`: `FIX.4.4`; empty where the message states none. */
+  beginstring: string
+  /**
+   * `MsgType(35)`: the wire code, `D`; empty where the message states
+   * none.
+   */
+  msgtype: string
+  /** `SenderCompID(49)`, where stated. */
+  sendercompid: string | null
+  /** `TargetCompID(56)`, where stated. */
+  targetcompid: string | null
+  /** `MsgSeqNum(34)`, where stated. */
+  msgseqnum: number | null
+  /**
+   * `SendingTime(52)` as nanoseconds since the Unix epoch, UTC: what the
+   * message stated, else the clock the intake settled.
+   */
+  sendingtime: bigint
+  /** `PossDupFlag(43)`, where stated. */
+  possdupflag: boolean | null
+  /**
+   * `MsgDirection(385)` as the code the dictionary's set spells it, where
+   * the line or the caller stated which way the message moved.
+   */
+  msgdirection: string | null
 }
 
 /**
  * The fixed root every message answers as, built from one dictionary.
  *
- * Header, the fields a consumer reads, the groups worth persisting whole, the
- * trailer, this crate's own derived facts through tag 65025, `MsgDirection`
- * (385), and the one list that closes every row: `fixentries`, the whole
- * arrival record, unresolved keys at tag 0. Columns are spelled by the
- * dictionary's folded canonical names - `msgtype`, never `35` - so a row
- * reads the way a message reads; the tag stays each column's identity, on
- * its `fix:tag`, and is what fills it. `beginstring` and
- * the replay fields - `sendingtime`, `updatedat`, `createdat`, `msghash`,
- * `msgphash`, `code` - are required; `snapshotat` is the one the bundle
- * holds without requiring, because only a snapshot stamps it.
+ * The crate's own columns lead - its clocks, then its identities, then the
+ * rest it knows - then the header, the fields a consumer reads, the groups
+ * worth persisting whole, the trailer, `MsgDirection` (385), and the one
+ * list that closes every row: `fixentries`, the whole content record,
+ * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
+ * canonical names - `msgtype`, never `35` - so a row reads the way a
+ * message reads; the tag stays each column's identity, on its `fix:tag`,
+ * and is what fills it. `beginstring` and the settled identity - `unix`,
+ * `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * required; every other column is nullable, because a message that carried
+ * nothing there must answer null rather than shift its neighbours.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
@@ -5871,7 +5939,11 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 
-/** One row's columns, in order, as tags. */
+/**
+ * One row's columns, in order, as tags: the crate's own, the header, the
+ * body, the groups, the trailer, `MsgDirection` and the counter of the
+ * content record.
+ */
 export declare function fixSchemaTags(): Array<number>
 
 /**

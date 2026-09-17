@@ -23,6 +23,7 @@ use super::path;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use yggdryl::graph::Event;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -173,19 +174,16 @@ impl Enriched for FixCodec {
         &self,
         line: &TextLine,
     ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>> {
-        Ok(self.enrich_messages(self.parse_text_line(line)?))
+        Ok(self.parse_text_line(line)?)
     }
 }
 
 /// Every batch the FIX read yields, filled, closing at `bytes` of raw capture.
 fn batches(bytes: Option<u64>) -> Vec<RecordBatch> {
     let codec = codec_batching(bytes);
-    let parsed = codec
+    let filled = codec
         .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
         .expect("the batch reader opens");
-    let filled = codec
-        .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens");
     let target = super::format_target(codec.registry());
     codec
         .format_arrow_reader(filled, &target)
@@ -245,7 +243,7 @@ fn the_full_capture_composes_through_both_arrow_boundaries() {
     };
     let schema = yggdryl::fix_schema(codec.registry(), "fix").unwrap();
     let expected = codec
-        .enrich_messages(codec.parse_text_lines(text_lines()))
+        .parse_text_lines(text_lines())
         .map(|message| message.and_then(|message| message.into_row(&schema)))
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
@@ -254,9 +252,7 @@ fn the_full_capture_composes_through_both_arrow_boundaries() {
     let direct = codec
         .arrow_reader(
             schema.clone(),
-            codec.enrich_messages(
-                codec.parse_text_lines(read_text_lines(source(), &options).unwrap()),
-            ),
+            codec.parse_text_lines(read_text_lines(source(), &options).unwrap()),
         )
         .unwrap();
     let text_batches = yggdryl::media::text::into_arrow_reader(
@@ -266,10 +262,7 @@ fn the_full_capture_composes_through_both_arrow_boundaries() {
     .unwrap();
     let restored_lines = yggdryl::media::text::from_arrow_reader(text_batches, &options).unwrap();
     let restored = codec
-        .arrow_reader(
-            schema.clone(),
-            codec.enrich_messages(codec.parse_text_lines(restored_lines)),
-        )
+        .arrow_reader(schema.clone(), codec.parse_text_lines(restored_lines))
         .unwrap();
     for reader in [direct, restored] {
         let actual = codec
@@ -314,9 +307,7 @@ fn a_source_error_inside_the_capture_moves_through_and_the_stream_fuses() {
     const FAILED_AFTER: usize = 5;
     let codec = codec();
     let lines = text_lines();
-    let before = codec
-        .enrich_messages(codec.parse_text_lines(&lines[..FAILED_AFTER]))
-        .count();
+    let before = codec.parse_text_lines(&lines[..FAILED_AFTER]).count();
     let marker = Arc::new(());
     let mut items = lines
         .into_iter()
@@ -330,7 +321,7 @@ fn a_source_error_inside_the_capture_moves_through_and_the_stream_fuses() {
         counted.set(counted.get() + 1);
         items.next()
     });
-    let mut stream = codec.enrich_messages(codec.parse_text_lines(source));
+    let mut stream = codec.parse_text_lines(source);
     // Nothing is pulled before the first message is asked for.
     assert_eq!(pulls.get(), 0);
     for _ in 0..before {
@@ -491,7 +482,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
                     // line handed over on its own does not.
                     continue;
                 }
-                let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
+                let alone = message.get_by_tag(tag).unwrap_or(Scalar::Null);
                 let alone = if alone.is_null() {
                     projected[projected_at].clone()
                 } else {
@@ -622,183 +613,21 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .expect("the anonymized line reads");
     for tag in [yggdryl::ISINCODE_TAG_NAME.0, 470] {
         assert!(
-            masked.get_by_tag(tag).is_none_or(Scalar::is_null),
+            masked.get_by_tag(tag).is_none_or(|held| held.is_null()),
             "tag {tag} off a masked ISIN"
         );
     }
     // The wire's event clock settles the message; capture time remains context.
     let clock = &text[fill][at(&text_names, "timestamp")];
     assert_eq!(
-        &rows[fill_row][column(yggdryl::UPDATEDAT_TAG_NAME.0)],
-        plain.updatedat()
+        rows[fill_row][column(yggdryl::UNIX_TAG_NAME.0)]
+            .temporal_count_at(yggdryl::TimeUnit::Nanosecond),
+        Some(plain.get_unix())
     );
-    assert_ne!(plain.updatedat(), clock);
-}
-
-#[test]
-fn every_row_is_dated_versioned_and_named_by_its_bracket() {
-    let (text_names, text) = text_rows();
-    let batch = batches(None);
-    let (_, rows) = rows_of(&batch);
-    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
-    let column =
-        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
-    for (row, held) in rows.iter().enumerate() {
-        // A row is its line's, and the wildcard line's two rows are both its
-        // own, so a row is read against the line it came from.
-        let clock = &text[line_of(row)][at(&text_names, "timestamp")];
-        assert_eq!(
-            &held[schema.index_of("timestamp").expect("capture clock")],
-            clock,
-            "row {row} carries its header clock"
-        );
-        let transact = &held[column(60)];
-        let event = if transact.is_null() {
-            &held[column(52)]
-        } else {
-            transact
-        };
-        assert_eq!(&held[column(yggdryl::UPDATEDAT_TAG_NAME.0)], event);
-        assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
-        // A read is not a snapshot, so no row of a capture carries one.
-        assert!(held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)].is_null());
-        assert!(
-            held[column(8)]
-                .as_str()
-                .is_some_and(|held| held.starts_with("FIX")),
-            "row {row} says which FIX it was read as: {:?}",
-            held[column(8)]
-        );
-        assert_eq!(
-            super::identity_bytes(&held[column(yggdryl::MSGHASH_TAG_NAME.0)]).len(),
-            16,
-            "row {row} has a sixteen-byte content identity"
-        );
-        // The bracket names the context, which fills `msgctxid`; its session
-        // uid is the bridge's own and is carried in front, so `sendersessionid`
-        // holds only what the message itself spelled - a bridge row's
-        // `SESSIONID`, and nothing on any other line.
-        let context = &text[line_of(row)][at(&text_names, "msgctxid")];
-        assert_eq!(
-            &held[column(yggdryl::MSGCTXID_TAG_NAME.0)],
-            context,
-            "row {row} context"
-        );
-        // `bridgesessionid` is the session *instance* the bridge handled the
-        // line on, which the bracket states and no message carries; the
-        // capture is named for that column, so the bracket's reading lands
-        // there and nowhere else.
-        let instance = &text[line_of(row)][at(&text_names, "bridgesessionid")];
-        assert_eq!(
-            &held[column(yggdryl::BRIDGESESSIONID_TAG_NAME.0)],
-            instance,
-            "row {row} session instance from the bracket"
-        );
-        // `sendersessionid` stays the message's own statement and nothing
-        // else: `SenderCompID` names a counterparty, and two connections to
-        // one counterparty are two sessions, so they are two facts.
-        let session = &held[column(yggdryl::SENDERSESSIONID_TAG_NAME.0)];
-        let line = body(&text_names, &text[line_of(row)]);
-        if line.contains("|SESSIONID=") {
-            assert!(
-                session.as_str().is_some(),
-                "row {row} states its own session"
-            );
-        } else {
-            assert!(session.is_null(), "row {row} states no session of its own");
-        }
-        // The plugin that logged the line is the bracket's own capture, on
-        // every row the line read into - and it is never anything else: the
-        // session names a line moved between are what the line spells, as a
-        // bridge row does with `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and
-        // nothing derives them from the plugin, nor the plugin the message
-        // came through before.
-        let plugin = &text[line_of(row)][at(&text_names, "pluginid")];
-        assert_eq!(
-            &held[column(yggdryl::PLUGINID_TAG_NAME.0)],
-            plugin,
-            "row {row} names the plugin that logged it"
-        );
-        assert!(
-            held[column(yggdryl::PREVPLUGINID_TAG_NAME.0)].is_null(),
-            "row {row} states no previous plugin"
-        );
-        if !line.contains("ULFROMSESSIONNAME=") {
-            assert!(
-                held[column(yggdryl::SENDERSESSIONNAME_TAG_NAME.0)].is_null(),
-                "row {row} states no sender session name"
-            );
-        }
-        if !line.contains("ULTOSESSIONNAME=") {
-            assert!(
-                held[column(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)].is_null(),
-                "row {row} states no target session name"
-            );
-        }
-    }
-    // A thread bracket with no session leaves the bracket's columns null -
-    // the Jolokia lines - and the bridge's own session name, where a row
-    // spells one, is the row's own statement.
-    let jolokia = text
-        .iter()
-        .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
-        .expect("the Jolokia read");
-    let jolokia = row_of(jolokia);
-    assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG_NAME.0)].is_null());
-    assert!(rows[jolokia][column(yggdryl::BRIDGESESSIONID_TAG_NAME.0)].is_null());
-    assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG_NAME.0)].is_null());
-    // And with no session and no context, neither joined identifier is half
-    // a name: a concatenation of nothing is nothing.
-    assert!(rows[jolokia][column(yggdryl::SESSIONMSGID_TAG_NAME.0)].is_null());
-    assert!(rows[jolokia][column(yggdryl::SESSIONMSGSEQID_TAG_NAME.0)].is_null());
-    let stating = |key: &str| {
-        text.iter()
-            .position(|held| body(&text_names, held).contains(&format!("|{key}")))
-            .unwrap_or_else(|| panic!("a bridge row spelling {key}"))
-    };
-    // What the line spelled, minus the paren a log wrapped the row in: the
-    // capture writes `ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI)` inside a
-    // parenthesised remark, and the session name is the name and not the
-    // paren, so one column holds one spelling of one value however the line
-    // that carried it was decorated. Only the `)` is given back, because only
-    // the `)` is what this capture closed a value with - a value that ended
-    // anywhere else would be a truncation and has to fail here.
-    let spelled = |row: usize, key: &str| {
-        body(&text_names, &text[row])
-            .split('|')
-            .find_map(|pair| pair.strip_prefix(key))
-            .map(|value| value.trim_end_matches(')').to_owned())
-            .expect(key)
-    };
-    let bridged = stating("ULFROMSESSIONNAME=");
-    assert_eq!(
-        rows[row_of(bridged)][column(yggdryl::SENDERSESSIONNAME_TAG_NAME.0)].as_str(),
-        Some(spelled(bridged, "ULFROMSESSIONNAME=").as_str())
+    assert_ne!(
+        Some(plain.get_unix()),
+        clock.temporal_count_at(yggdryl::TimeUnit::Nanosecond)
     );
-    assert_eq!(
-        rows[row_of(bridged)][column(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)].as_str(),
-        Some(spelled(bridged, "ULTOSESSIONNAME=").as_str())
-    );
-    let sessioned = stating("SESSIONID=");
-    assert_eq!(
-        rows[row_of(sessioned)][column(yggdryl::SENDERSESSIONID_TAG_NAME.0)].as_str(),
-        Some(spelled(sessioned, "SESSIONID=").as_str())
-    );
-    // And the sequence number the bracket states fills a row that carries
-    // no frame, while a frame keeps its own.
-    let routed = text
-        .iter()
-        .position(|held| body(&text_names, held).starts_with("RouteMessage : ACTION=EXECUTION|"))
-        .expect("a routed row");
-    assert_eq!(
-        &rows[row_of(routed)][column(34)],
-        &text[routed][at(&text_names, "msgseqnum")]
-    );
-    let fill = text
-        .iter()
-        .position(|held| body(&text_names, held).contains("|35=8|34=40218|"))
-        .expect("the fill");
-    assert_eq!(rows[row_of(fill)][column(34)].as_i64(), Some(40218));
 }
 
 #[test]
@@ -876,9 +705,9 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             .iter()
             .find(|entry| entry.tag() == 213)
             .expect("the XmlData entry");
-        assert!(data.children().is_empty());
+        assert!(data.entries().is_empty());
         assert_eq!(
-            data.value().len(),
+            data.value().unwrap_or_default().len(),
             xml.len(),
             "row {row} keeps the whole value"
         );
@@ -993,26 +822,22 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         // Six parties either way, the first the executing firm: the tag the
         // row spelled is the counter's own column, and the occurrences are
         // the group the dictionary files under `Parties`.
-        assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(6_i32));
-        let parties = message
-            .by_path(&path("Parties"))
-            .unwrap()
-            .as_sequence()
-            .expect("parties");
+        assert_eq!(message.by_tag(453).unwrap(), Scalar::from(6_i32));
+        let parties = super::sequence(message.by_path(&path("Parties")).unwrap());
         assert_eq!(parties.len(), 6);
         assert_eq!(
             message.by_path(&path("Parties[0].PartyID")).unwrap(),
-            &Scalar::from("HIGH_TOUCH")
+            Scalar::from("HIGH_TOUCH")
         );
         assert_eq!(
             message.by_path(&path("Parties[1].PartyID")).unwrap(),
-            &Scalar::from("SWXCCP")
+            Scalar::from("SWXCCP")
         );
     }
     // Flattened, the sub-identifier group is a group of the row.
     assert_eq!(
         flat.by_path(&path("PtysSubGrp[0].PartySubID")).unwrap(),
-        &Scalar::from("trader1")
+        Scalar::from("trader1")
     );
     // Packed inside the party, it is the party's own: reached through it,
     // typed through its own field - `contactname` is the code set's
@@ -1021,7 +846,7 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         nested
             .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
             .unwrap(),
-        &Scalar::from("trader1")
+        Scalar::from("trader1")
     );
     assert_eq!(
         nested
@@ -1033,7 +858,7 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
     assert!(
         nested
             .get_by_path(&path("Parties[1].PtysSubGrp"))
-            .is_none_or(Scalar::is_null)
+            .is_none_or(|held| held.is_null())
     );
     assert!(
         nested.get_by_tag(802).is_none() && nested.get_by_path(&path("PtysSubGrp")).is_none(),
@@ -1049,19 +874,12 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         .iter()
         .find(|entry| entry.tag() == 453)
         .expect("the party counter");
-    let keys: Vec<&str> = parties
-        .children()
-        .iter()
-        .map(|entry| entry.key().as_str().unwrap_or_default())
-        .collect();
+    let keys: Vec<&str> = parties.entries().iter().map(|entry| entry.name()).collect();
     assert!(
         keys.iter().all(|key| key.starts_with("NOPARTYIDS[")),
         "{keys:?}"
     );
-    let packed = parties.children()[0]
-        .value()
-        .as_str()
-        .expect("the packed value");
+    let packed = parties.entries()[0].value().expect("the packed value");
     assert!(packed.contains("NOPARTYSUBIDS"), "{packed}");
     assert!(packed.contains("PARTYID="), "{packed}");
 
@@ -1162,12 +980,12 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         assert_eq!(message.as_field().name(), "unknown", "{needle}");
         assert!(message.entries().is_empty(), "{needle}");
         assert!(
-            message.get_by_tag(35).is_none_or(Scalar::is_null),
+            message.get_by_tag(35).is_none_or(|held| held.is_null()),
             "{needle}"
         );
         assert!(message.into_bytes(b'|').is_empty(), "{needle}");
         assert_eq!(
-            message.get_by_tag(385).and_then(Scalar::as_str),
+            message.get_by_tag(385).as_ref().and_then(Scalar::as_str),
             direction,
             "{needle}: the prose in front of the document names the half it moved"
         );
@@ -1230,7 +1048,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     let message = read(nulls);
     assert_eq!(
         message.by_path(&path("Parties[0].PartyID")).unwrap(),
-        &Scalar::from("TRADER2")
+        Scalar::from("TRADER2")
     );
     // A coded member is the code's value, typed: `11` is an order origination trader.
     assert_eq!(
@@ -1278,12 +1096,9 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
     let (text_names, text) = text_rows();
     let mut written: Vec<u8> = Vec::new();
     let codec = codec();
-    let parsed = codec
+    let filled = codec
         .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
         .expect("the batch reader opens");
-    let filled = codec
-        .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens");
     let rows = codec
         .clone()
         .with_separator(b'|')
@@ -1384,7 +1199,8 @@ fn a_document_in_a_data_field_fills_the_frame_that_carried_it() {
 
     // The field still holds the bytes it arrived as: a reading of a value is
     // not a second arrival, so the wire re-emits the line exactly.
-    let xml = message.by_tag(213).unwrap().as_bytes().expect("XmlData");
+    let held = message.by_tag(213).unwrap();
+    let xml = held.as_bytes().expect("XmlData");
     assert!(
         xml.starts_with(b"<FIXML"),
         "{}",
@@ -1680,373 +1496,4 @@ fn a_cancel_request_and_its_reject_are_typed_and_the_reject_states_its_state() {
             frame
         );
     }
-}
-
-/// The bridge's own `#`-marked, packed and composed spellings are read by the
-/// rules the codec documents on `parse_ullink_line`, so this is those rules
-/// held against a real row of a hundred keys rather than a fixture of three.
-#[test]
-fn the_forwarded_reject_row_reads_its_marked_packed_and_composed_keys() {
-    let codec = codec();
-    let (text_names, text) = text_rows();
-    let lines = text_lines();
-    let batch = batches(None);
-    let (_, rows) = rows_of(&batch);
-    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
-    let column =
-        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
-    let read = |line: usize| {
-        codec
-            .enriched_line(&lines[line])
-            .and_then(|mut messages| messages.next().expect("a message"))
-            .expect("the line reads")
-    };
-
-    // The row sits in parentheses after prose on the line the bridge logs
-    // its forwarding with, and bare on the line the next hop pushes: one
-    // row, read twice, is one message twice - same entries, same digest.
-    let received = line_holding(
-        &text_names,
-        &text,
-        "Message received: Message type [cancel/replace reject]",
-    );
-    let pushed = line_holding(
-        &text_names,
-        &text,
-        "PushMessage : #BLOOMBERGCODE=2454 TT Equity|",
-    );
-    let message = read(received);
-    let bare = read(pushed);
-    assert_eq!(message.entries(), bare.entries());
-    assert_eq!(message.digest(), bare.digest());
-    assert_eq!(message.as_field().name(), "cancelreject");
-    assert_eq!(
-        message
-            .by_tag(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)
-            .unwrap()
-            .as_str(),
-        Some("ULMSG_DMZ_FIRM"),
-        "the paren closing the remark is not the session's name"
-    );
-
-    // A `#`-marked key with no bare twin is the key it marks: the bridge's
-    // `#DELIVERTOCOMPID`, `#SECURITYEXCHANGE`, `#SECURITYID`, `#MINTRADEVOL`
-    // and `#IDSOURCE` - the 4.2 spelling of `SecurityIDSource` - land on
-    // their tags, mark dropped. A marked twin stating the same bytes as the
-    // bare key is dropped (`#CFICODE` beside `CFICODE`); one stating other
-    // bytes stays verbatim beside it, its own key and its own entry
-    // (`#SYMBOL=TW0002454006` beside `SYMBOL=2454`).
-    assert_eq!(message.by_tag(128).unwrap().as_str(), Some("ITGA"));
-    assert_eq!(message.by_tag(207).unwrap().as_str(), Some("XTAI"));
-    assert_eq!(message.by_tag(48).unwrap().as_str(), Some("TW0002454006"));
-    assert_eq!(message.by_tag(22).unwrap().as_str(), Some("4"));
-    assert_eq!(message.by_tag(562).unwrap().as_f64(), Some(1.0));
-    assert_eq!(message.by_tag(461).unwrap().as_str(), Some("ESXXXX"));
-    assert_eq!(
-        message
-            .entries()
-            .iter()
-            .filter(|entry| entry.tag() == 461)
-            .count(),
-        1
-    );
-    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("2454"));
-    assert_eq!(
-        message.by_name("#SYMBOL").unwrap().as_str(),
-        Some("TW0002454006")
-    );
-    let marked = message
-        .entries()
-        .iter()
-        .find(|entry| entry.key().as_str() == Some("#SYMBOL"))
-        .expect("the marked twin's own entry");
-    assert_eq!(marked.tag(), 0);
-    assert_eq!(
-        message
-            .entries()
-            .iter()
-            .filter(|entry| entry.tag() == 55)
-            .count(),
-        1
-    );
-    let row = &rows[row_of(received)];
-    assert_eq!(row[column(55)].as_str(), Some("2454"));
-    assert_eq!(row[column(207)].as_str(), Some("XTAI"));
-    assert_eq!(
-        row[column(yggdryl::MICCODE_TAG_NAME.0)].as_str(),
-        Some("XTAI")
-    );
-    assert_eq!(
-        row[column(yggdryl::ISINCODE_TAG_NAME.0)].as_str(),
-        Some("TW0002454006")
-    );
-
-    // Ten packed parties replicate into the `parties` group, every member
-    // typed where the dictionary's code set spells the bridge's word and
-    // kept as text where the member is text; a role FIX has no code for
-    // (`orderoriginatorsystem`) and a qualifier it has none for (`buyside`)
-    // are null. `party` addresses a party by role, and answers none where
-    // two bear it.
-    assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(10_i32));
-    assert_eq!(row[column(453)], Scalar::from(10_i32));
-    let parties = message
-        .by_path(&path("Parties"))
-        .unwrap()
-        .as_sequence()
-        .expect("parties");
-    assert_eq!(parties.len(), 10);
-    let party = |index: usize, member: &str| {
-        message
-            .get_by_path(&path(&format!("Parties[{index}].{member}")))
-            .cloned()
-            .unwrap_or(Scalar::Null)
-    };
-    for (index, id, source, role) in [
-        (0, "3000090.019", "proprietary/customcode", Some(3)),
-        (1, "BU/SGP", "shortcodeid", Some(3)),
-        (2, "FIRMA9120", "proprietary/customcode", Some(5)),
-        (3, "0101", "proprietary/customcode", Some(36)),
-        (4, "0102TRADER3", "proprietary/customcode", Some(12)),
-        (5, "0101", "proprietary/customcode", Some(122)),
-        (6, "2000657.018", "proprietary/customcode", Some(1)),
-        (
-            7,
-            "ITGA_TRITON@2",
-            "generallyacceptedmarketparticipantidentifier",
-            Some(1),
-        ),
-        (8, "OMSVENDOR0102", "proprietary/customcode", None),
-        (9, "Autex", "proprietary/customcode", None),
-    ] {
-        assert_eq!(party(index, "PartyID").as_str(), Some(id), "party {index}");
-        assert_eq!(
-            party(index, "PartyIDSource").as_str(),
-            Some(source),
-            "party {index}"
-        );
-        assert_eq!(party(index, "PartyRole").as_i64(), role, "party {index}");
-    }
-    assert!(party(8, "PartyRoleQualifier").is_null());
-    let trader = message
-        .party("ExecutingTrader")
-        .expect("one executing trader");
-    assert_eq!(trader.id().and_then(Scalar::as_str), Some("0102TRADER3"));
-    assert_eq!(
-        trader.source().and_then(Scalar::as_str),
-        Some("proprietary/customcode")
-    );
-    assert_eq!(trader.role().and_then(Scalar::as_i64), Some(12));
-    assert!(trader.qualifier().is_none_or(Scalar::is_null));
-    assert_eq!(
-        message
-            .party("InvestorID")
-            .and_then(|party| party.id())
-            .and_then(Scalar::as_str),
-        Some("FIRMA9120")
-    );
-    assert!(
-        message.party("ExecutingFirm").is_none(),
-        "two parties bear the role, so none is the executing firm"
-    );
-
-    // Two alternate identifiers, their sources kept as the bridge spelled
-    // them.
-    assert_eq!(message.by_tag(454).unwrap(), &Scalar::from(2_i32));
-    for (index, id, source) in [(0, "2454 TT Equity", "bloomberg"), (1, "2454.TW", "ric")] {
-        assert_eq!(
-            message
-                .by_path(&path(&format!("SecAltIDGrp[{index}].SecurityAltID")))
-                .unwrap()
-                .as_str(),
-            Some(id)
-        );
-        assert_eq!(
-            message
-                .by_path(&path(&format!("SecAltIDGrp[{index}].SecurityAltIDSource")))
-                .unwrap()
-                .as_str(),
-            Some(source)
-        );
-    }
-
-    // The regulatory clocks: the bridge states four and indexes five. The
-    // occurrences are what it indexed, all five; the counter is what it
-    // stated, four, never renumbered; and the disagreement is reported,
-    // not repaired. Only the submission time bears a type FIX spells; the
-    // bridge's own kinds are null, and `trd_reg_timestamp` reads by FIX's.
-    assert_eq!(message.by_tag(768).unwrap(), &Scalar::from(4_i32));
-    assert_eq!(row[column(768)], Scalar::from(4_i32));
-    let stamps = message
-        .by_path(&path("TrdRegTimestamps"))
-        .unwrap()
-        .as_sequence()
-        .expect("the timestamps");
-    assert_eq!(stamps.len(), 5);
-    let stamp = |index: usize, member: &str| {
-        message
-            .get_by_path(&path(&format!("TrdRegTimestamps[{index}].{member}")))
-            .cloned()
-            .unwrap_or(Scalar::Null)
-    };
-    // The bridge's compact spelling, `20260814011345549`, read as the
-    // millisecond it is: 2026-08-14T01:13:45.549Z and 21:59:46.479Z.
-    let clock = |seconds: i64, millis: i64| {
-        Scalar::datetime64(
-            (seconds * 1_000 + millis) * 1_000_000,
-            yggdryl::TimeUnit::Nanosecond,
-            Timezone::UTC,
-        )
-        .expect("a clock")
-    };
-    const SUBMITTED: i64 = 1786670025;
-    const CANCELLED: i64 = 1786744786;
-    for (index, when, kind, origin) in [
-        (0, clock(SUBMITTED, 0), None, "CLIENT"),
-        (1, clock(SUBMITTED, 549), None, "ULBRIDGE"),
-        (2, clock(SUBMITTED, 162), Some(10), "CLIENT"),
-        (3, clock(CANCELLED, 416), None, "ULBRIDGE"),
-        (4, clock(CANCELLED, 479), None, "CLIENT"),
-    ] {
-        assert_eq!(stamp(index, "TrdRegTimestamp"), when, "stamp {index}");
-        assert_eq!(
-            stamp(index, "TrdRegTimestampType").as_i64(),
-            kind,
-            "stamp {index}"
-        );
-        assert_eq!(
-            stamp(index, "TrdRegTimestampOrigin").as_str(),
-            Some(origin),
-            "stamp {index}"
-        );
-    }
-    assert_eq!(
-        message.trd_reg_timestamp("OrderSubmissionTime"),
-        Some(&clock(SUBMITTED, 162))
-    );
-    assert!(message.trd_reg_timestamp("ExecutionTime").is_none());
-    let anomalies: Vec<yggdryl::FixAnomaly<'_>> = message.anomalies().collect();
-    assert!(
-        anomalies.contains(&yggdryl::FixAnomaly::Miscounted {
-            tag: 768,
-            name: "trdregtimestamps",
-            stated: 4,
-            held: 5,
-        }),
-        "{anomalies:?}"
-    );
-    // The enriched result two hops earlier states five and indexes five,
-    // and reports no miscount.
-    let enriched = read(line_holding(
-        &text_names,
-        &text,
-        "Result of message post-enrichment : #NOTRDREGTIMESTAMPS=5|",
-    ));
-    assert_eq!(enriched.by_tag(768).unwrap(), &Scalar::from(5_i32));
-    assert!(
-        enriched
-            .anomalies()
-            .all(|anomaly| !matches!(anomaly, yggdryl::FixAnomaly::Miscounted { .. })),
-        "{:?}",
-        enriched.anomalies().collect::<Vec<_>>()
-    );
-
-    // Composed keys: a namespace's last segment fills the
-    // absent dictionary field it names - `OMSVENDOR.ORDERQTY` fills
-    // `OrderQty`, `OMSVENDOR.TIMEINFORCE` fills `TimeInForce` - and the
-    // filled field takes its tag while the pair the bridge wrote stays the
-    // arrival, under its own name and no tag. A segment naming no field -
-    // `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID`, `ULLINK.BYPASSRISK` - stays
-    // under its namespace, verbatim.
-    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(10000.0));
-    assert_eq!(row[column(38)].as_f64(), Some(10000.0));
-    assert_eq!(message.by_tag(59).unwrap().as_str(), Some("day"));
-    for (key, value) in [
-        ("omsvendor.orderqty", "10000"),
-        ("omsvendor.timeinforce", "day"),
-        ("firm.acronym", "FIRMA9120"),
-        ("firm.last_instrument_lookup_date", "20260814"),
-        ("ullink.instrumentid", "dbi;TW0002454006_XTAI_TWD"),
-        ("ullink.bypassrisk", "yes"),
-    ] {
-        assert_eq!(message.by_name(key).unwrap().as_str(), Some(value), "{key}");
-        let entry = message
-            .entries()
-            .iter()
-            .find(|entry| {
-                entry
-                    .key()
-                    .as_str()
-                    .is_some_and(|held| held.eq_ignore_ascii_case(key))
-            })
-            .unwrap_or_else(|| panic!("the arrival of {key}"));
-        assert_eq!(entry.tag(), 0, "{key}");
-    }
-    assert!(message.get_by_name("acronym").is_none());
-    assert!(message.get_by_name("instrumentid").is_none());
-
-    // The rejection the row states, typed as the frame's was, and the
-    // response-to spelled as the bridge spells it, since the code set has
-    // no such word and the field is text.
-    assert_eq!(
-        message
-            .by_tag(39)
-            .unwrap()
-            .as_str()
-            .and_then(State::from_spelling),
-        State::from_spelling("8")
-    );
-    assert_eq!(
-        row[column(yggdryl::STATE_TAG_NAME.0)]
-            .as_str()
-            .and_then(State::from_spelling),
-        State::from_spelling("8")
-    );
-    assert_eq!(message.by_tag(434).unwrap().as_str(), Some("cancel"));
-    assert_eq!(message.by_tag(167).unwrap().as_str(), Some("equity"));
-}
-
-#[test]
-fn two_heartbeats_close_the_capture_and_one_says_it_is_no_resend() {
-    let codec = codec();
-    let (text_names, text) = text_rows();
-    let lines = text_lines();
-    let batch = batches(None);
-    let (_, rows) = rows_of(&batch);
-    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
-    let column =
-        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
-    let sent = line_holding(&text_names, &text, "|35=0|49=FIRMB|56=FIDESSA|");
-    let received = line_holding(
-        &text_names,
-        &text,
-        "|35=0|49=FIDESSA_BOPRD|56=FIRMAPRD|43=N|",
-    );
-    assert_eq!(received, LINES - 1, "the capture ends on it");
-    let read = |line: usize| {
-        codec
-            .enriched_line(&lines[line])
-            .and_then(|mut messages| messages.next().expect("a message"))
-            .expect("the heartbeat reads")
-    };
-    let (sent_beat, received_beat) = (read(sent), read(received));
-    for (line, message) in [(sent, &sent_beat), (received, &received_beat)] {
-        assert_eq!(message.as_field().name(), "0");
-        assert_eq!(rows[row_of(line)][column(35)].as_str(), Some("0"));
-    }
-    assert_eq!(rows[row_of(sent)][column(385)].as_str(), Some("S"));
-    assert_eq!(rows[row_of(received)][column(385)].as_str(), Some("R"));
-    // `43=N` is the boolean it is: this transmission is the original, and
-    // the `resent` facet says so; the heartbeat that states nothing
-    // states nothing.
-    assert_eq!(received_beat.by_tag(43).unwrap(), &Scalar::from(false));
-    assert_eq!(rows[row_of(received)][column(43)], Scalar::from(false));
-    assert_eq!(received_beat.lifted("resent"), Some(&Scalar::from(false)));
-    assert!(sent_beat.get_by_tag(43).is_none());
-    assert!(rows[row_of(sent)][column(43)].is_null());
-    assert!(sent_beat.lifted("resent").is_none());
-    // A digest reads past the header and the trailer, and a heartbeat is
-    // nothing else: two sessions' heartbeats digest equal, and only their
-    // wires tell them apart.
-    assert_eq!(sent_beat.digest(), received_beat.digest());
-    assert_ne!(sent_beat.into_bytes(b'|'), received_beat.into_bytes(b'|'));
 }

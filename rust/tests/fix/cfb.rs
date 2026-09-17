@@ -9,9 +9,7 @@ use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{
-    DataType, Error, Field, FixCategory, FixCodec, FixField, FixId, FixRegistry, IOBase,
-};
+use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -373,7 +371,7 @@ fn children(root: &Field) -> Vec<&str> {
 #[test]
 fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
     let (registry, _) = parse(CBLOCK);
-    assert_eq!(registry.len(), 14 + super::seeded_fields());
+    assert_eq!(super::scalars(&registry), 14 + super::seeded_fields());
 
     // Named by `alt` lower-cased, with the file's own spelling kept beside it,
     // so a caller spelling it the file's way still resolves.
@@ -684,10 +682,8 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         (5002, "VendorSubEntries", "VendorSubEntry"),
     ] {
         // Every definition the file produced is a member of the dialect.
-        let group = registry.definition(FixCategory::Groups, name).unwrap();
-        let component = registry
-            .definition(FixCategory::Components, component)
-            .unwrap();
+        let group = registry.field_by_name(name).unwrap();
+        let component = registry.field_by_name(component).unwrap();
         assert_eq!(branches(group), ["venue"]);
         assert_eq!(branches(component), ["venue"]);
         // The counter is its tag and its name, and the group tables key on
@@ -704,7 +700,7 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
                 .get_group_by_tag(counter)
                 .is_some()
         );
-        assert!(registry.get_group_by_tag(counter).is_some());
+        assert!(registry.get_field_by_counter(counter).is_some());
     }
     let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
         panic!("a list group");
@@ -911,7 +907,7 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
         super::warned::during(|| FixRegistry::from_cfb_file(&handle(doubled), None));
     let (registry, roots) = read.expect("a readable CBlock");
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(registry.len(), 2 + super::seeded_fields());
+    assert_eq!(super::scalars(&registry), 2 + super::seeded_fields());
     // The first declaration is the one the bare tag answers.
     let holder = registry.field_by_tag(35).unwrap();
     assert_eq!(holder.name(), "msgtype");
@@ -1059,7 +1055,7 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(whole), None).expect("a readable CBlock");
     assert_eq!(
-        (registry.len(), roots.len()),
+        (super::scalars(&registry), roots.len()),
         (2 + super::seeded_fields(), 1)
     );
 
@@ -1085,7 +1081,7 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(&whole[..at]), None).expect("a readable prefix");
     assert_eq!(
-        (registry.len(), roots.len()),
+        (super::scalars(&registry), roots.len()),
         (2 + super::seeded_fields(), 0)
     );
 }
@@ -1204,7 +1200,7 @@ fn a_file_declaring_no_message_type_tag_keeps_its_types_out_of_the_dictionary() 
 	<vocabulary><vocabulary-tag name="55" alt="Symbol" type="string" /></vocabulary>
 </cplugin-configuration>"#;
     let (registry, _) = FixRegistry::from_cfb_file(&handle(body), None).expect("a readable CBlock");
-    assert_eq!(registry.len(), 1 + super::seeded_fields());
+    assert_eq!(super::scalars(&registry), 1 + super::seeded_fields());
     assert!(registry.get_field_by_tag(35).is_none());
 }
 
@@ -1349,7 +1345,10 @@ fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
 
     // The roots are what a registry holds instead.
     let (registry, roots) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some(DIALECT)).unwrap();
-    assert_eq!(registry.len(), fields.len() - 1 + super::seeded_fields());
+    assert_eq!(
+        super::scalars(&registry),
+        fields.len() - 1 + super::seeded_fields()
+    );
     assert_eq!(roots.len(), 1);
     assert_eq!(registry.dialects(), [DIALECT]);
 }
@@ -1432,7 +1431,7 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
         .unwrap_err();
     assert!(refused(&error), "{error}");
     assert_eq!(
-        dictionary.len(),
+        super::scalars(&dictionary),
         super::seeded_fields(),
         "a refused read writes nothing"
     );
@@ -1702,7 +1701,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
         ["price", "lastpx"]
     );
     let (registry, _) = FixRegistry::from_cfb_file(&handle(doubled), None).unwrap();
-    assert_eq!(registry.len(), 2 + super::seeded_fields());
+    assert_eq!(super::scalars(&registry), 2 + super::seeded_fields());
     let holder = registry.field_by_tag(44).unwrap();
     assert_eq!(holder.name(), "price");
     assert_eq!(holder.as_fix().names().collect::<Vec<_>>(), ["lastpx"]);
@@ -1763,7 +1762,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     assert_eq!(fields.len(), 2);
     assert!(warnings.is_empty(), "{warnings:?}");
     let (registry, _) = FixRegistry::from_cfb_file(&handle(repeated), None).unwrap();
-    assert_eq!(registry.len(), 1 + super::seeded_fields());
+    assert_eq!(super::scalars(&registry), 1 + super::seeded_fields());
 }
 
 #[test]
@@ -1776,7 +1775,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // the parsed dictionary's SendingTime seed participates too. Crate fields
     // never count as folds.
     assert_eq!((added, merged), (14, 2));
-    assert_eq!(dictionary.len(), 14 + super::seeded_fields());
+    assert_eq!(super::scalars(&dictionary), 14 + super::seeded_fields());
 
     // The dialect the caller named is what every field the file produced is
     // a member of - the name wins over the stem - and the version the root
@@ -1896,22 +1895,14 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         );
     }
     assert_eq!(
-        branches(
-            seeded
-                .definition(FixCategory::Groups, "VendorEntries")
-                .unwrap()
-        ),
+        branches(seeded.field_by_name("VendorEntries").unwrap()),
         ["venue"]
     );
     assert_eq!(
-        branches(
-            seeded
-                .definition(FixCategory::Components, "VendorEntry")
-                .unwrap()
-        ),
+        branches(seeded.field_by_name("VendorEntry").unwrap()),
         ["venue"]
     );
-    assert!(seeded.get_group_by_tag(5000).is_some());
+    assert!(seeded.get_field_by_counter(5000).is_some());
     // A field no file touched states nothing still.
     assert!(branches(seeded.field_by_tag(35).unwrap()).is_empty());
 
@@ -2291,8 +2282,8 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     let reader = super::fixed_codec(Arc::new(registry));
     let row: &[u8] = b"MSGTYPE=tradecapturereport|HEDGECURRENCY=USD|TR_FIXINGCENTER=LN\
 |NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGESETTLDATE=20260818\x04\x03HEDGECURRENCY=XAU\x04\x03";
-    let message = <FixCodec as super::SoleMessage>::sole_line(&reader, row, false)
-        .expect("the bridge row builds");
+    let message =
+        <FixCodec as super::SoleMessage>::sole_line(&reader, row).expect("the bridge row builds");
     assert_eq!(message.by_tag(11025).unwrap().as_str(), Some("USD"));
     assert_eq!(message.by_tag(11033).unwrap().as_str(), Some("LN"));
     let occurrences = message
@@ -2310,20 +2301,33 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
         .iter()
         .find(|entry| entry.tag() == 11020)
         .expect("the counter pair");
-    let occurrence = held.children();
+    let occurrence = held.entries();
     assert_eq!(occurrence.len(), 1);
+    assert_eq!(held.value(), Some("1"), "the counter counts the occurrence");
     assert_eq!(
-        occurrence[0].key().as_str(),
-        Some("NOHEDGEGROUPS[0]"),
-        "the pair the bridge wrote",
+        occurrence[0].value(),
+        None,
+        "an occurrence states nothing of its own"
     );
+    // The currency is the group's own tag, and named by it: a spelling two
+    // tags share names neither, so the member spells its tag. The date's
+    // wire spelling is the entry's own fact, pinned by the equivalence
+    // snapshot.
     assert_eq!(
-        occurrence[0].value().as_str(),
-        Some("HEDGESETTLDATE=20260818\u{4}\u{3}HEDGECURRENCY=XAU\u{4}\u{3}"),
+        occurrence[0]
+            .entries()
+            .iter()
+            .map(|member| (member.tag(), member.name()))
+            .collect::<Vec<_>>(),
+        [(11021, "hedgesettldate"), (11024, "11024")],
+        "the members the bridge packed, each under its own field",
     );
+    assert_eq!(occurrence[0].entries()[1].value(), Some("XAU"));
+    // The member is reached by the name the dictionary gives its tag, which
+    // is the tag itself where two tags share a spelling.
     assert_eq!(
         message
-            .by_path(&path("hedgegroups[0].hedgecurrency"))
+            .by_path(&path("hedgegroups[0].\"11024\""))
             .expect("the group's own currency")
             .as_str(),
         Some("XAU"),
@@ -2344,11 +2348,14 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         .expect("the trade capture frame");
     let (registry, _) = parse(HEDGED);
     let reader = super::fixed_codec(Arc::new(registry));
-    let message = <FixCodec as super::SoleMessage>::sole_line(&reader, logged.as_bytes(), false)
+    let message = <FixCodec as super::SoleMessage>::sole_line(&reader, logged.as_bytes())
         .expect("the captured frame builds");
 
-    // The frame's own type stays the frame's.
-    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+    // The row inside the frame says what the message is, and overrides the
+    // envelope's `35=UL`: the bridge's own type is the transport's, and the
+    // trade capture is what was carried.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("AE"));
+    assert_eq!(message.header().msgtype(), "AE");
 
     // The hedge the payload packs is this dialect's group, typed by it: the
     // currency is the group's own tag and not the one the top of the message
@@ -2361,7 +2368,9 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         panic!("a list, got {}", hedge.dtype());
     };
     let currency = item.fields().first().expect("its first member");
-    assert_eq!(currency.name(), "hedgecurrency");
+    // Named as the dictionary names the tag: a spelling two tags share
+    // names neither, so the member spells its tag and displays the spelling.
+    assert_eq!(currency.name(), "11024");
     assert_eq!(currency.as_fix().tag().unwrap(), Some(11024));
     let held = message
         .by_name("hedgegroups")
@@ -2474,7 +2483,13 @@ fn two_grammars_bound_under_one_wire_type_are_one_message_carrying_both() {
 
     // One message, holding the union of what the two bindings declared, the
     // first binding's members first and in its order.
-    assert_eq!(registry.msgtypes().count(), 1);
+    assert_eq!(
+        registry
+            .iter()
+            .filter(|field| field.as_fix().msgtype().is_some())
+            .count(),
+        1
+    );
     let message = registry.msgtype("6").expect("one message under tag 35 `6`");
     assert_eq!(message.as_str(), "6");
     let members: Vec<&str> = message

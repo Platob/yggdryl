@@ -7,12 +7,29 @@ use std::collections::BTreeSet;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::{
-    DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Scalar,
     TimeUnit, Timezone,
 };
 
 fn seed() -> FixRegistry {
     super::committed_registry().as_ref().clone()
+}
+
+/// The registry's fields of one category: a definition is filed by the
+/// shape it has - a Struct is a component, a List or a Map a group - and
+/// everything else is a wire field.
+fn definitions(registry: &FixRegistry, category: FixCategory) -> impl Iterator<Item = &Field> {
+    registry
+        .iter()
+        .filter(move |field| category_of(field) == category)
+}
+
+fn category_of(field: &Field) -> FixCategory {
+    match field.dtype() {
+        DataType::Struct(_) => FixCategory::Components,
+        dtype if dtype.is_nested() => FixCategory::Groups,
+        _ => FixCategory::Fields,
+    }
 }
 
 #[test]
@@ -54,7 +71,7 @@ fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its
     // carries a membership and it lists no dialect.
     assert!(registry.dialects().is_empty(), "{:?}", registry.dialects());
     for category in FixCategory::ALL {
-        for field in registry.definitions(category) {
+        for field in definitions(&registry, category) {
             assert_eq!(
                 field.as_fix().branches().count(),
                 0,
@@ -83,13 +100,15 @@ fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its
 #[test]
 fn every_generated_name_is_folded_and_no_two_collide() {
     let registry = seed();
-    let scalar_names: BTreeSet<_> = registry.iter().map(Field::name).collect();
+    let scalar_names: BTreeSet<_> = definitions(&registry, FixCategory::Fields)
+        .map(Field::name)
+        .collect();
     // Across every category, not within one: a derived tag is the definition's
     // identity in the whole catalog.
     let mut derived_tags = BTreeSet::new();
     for category in FixCategory::ALL {
         let mut seen = BTreeSet::new();
-        for field in registry.definitions(category) {
+        for field in definitions(&registry, category) {
             let name = field.name();
             assert!(
                 !name.bytes().any(|byte| byte.is_ascii_uppercase()),
@@ -116,8 +135,8 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                 );
                 // A crate tag on a named definition means the definition is
                 // one of this crate's own columns, reached by the tag the
-                // fixed row files it under: `altids` is the Map whose counter
-                // is that tag, `instids` the Struct beside it.
+                // fixed row files it under: `identifiers` and `metadata` are
+                // the Maps whose counter is that tag.
                 if yggdryl::is_crate_tag(derived) {
                     assert!(
                         yggdryl::fix_crate_fields()
@@ -156,14 +175,20 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     assert_eq!(side.as_fix().code_name("1"), Some("Buy"));
     assert_eq!(side.as_fix().code_value("buy"), Some("1"));
     // The order's state is declared twice, as `OrdStatus` and as `ExecType`,
-    // and both take the crate's `state`: their code sets agree on every value
-    // they share, and the type reads either. The code set stays on the field
-    // that declares it.
+    // each keeping its own code set as text; only the crate's `state` column
+    // is typed as a state, and it reads either.
     for tag in [39, 150] {
         let state = registry.field_by_tag(tag).expect("a state tag");
-        assert_eq!(state.dtype(), &DataType::State, "tag {tag}");
+        assert_eq!(state.dtype(), &DataType::utf8(), "tag {tag}");
         assert!(state.as_fix().codes().count() > 5, "tag {tag}");
     }
+    assert_eq!(
+        registry
+            .field_by_tag(yggdryl::STATE_TAG_NAME.0)
+            .unwrap()
+            .dtype(),
+        &DataType::State
+    );
     assert_eq!(
         registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
         Some("PartiallyFilled")
@@ -202,9 +227,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     let counter = registry.field_by_tag(453).expect("NoPartyIDs");
     assert_eq!(counter.name(), "nopartyids");
     assert_eq!(counter.dtype(), &DataType::Int32);
-    let parties = registry
-        .definition(FixCategory::Groups, "Parties")
-        .expect("Parties group");
+    let parties = registry.field_by_name("Parties").expect("Parties group");
     assert_eq!(parties.name(), "parties");
     assert_eq!(parties.display(), Some("Parties"));
     assert_eq!(parties.as_fix().counter().unwrap(), Some(453));
@@ -219,9 +242,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert_eq!(item.name(), "party");
     assert_eq!(item.as_fix().component(), Some("party"));
     assert!(!item.is_nullable());
-    let component = registry
-        .definition(FixCategory::Components, "Party")
-        .expect("Party component");
+    let component = registry.field_by_name("Party").expect("Party component");
     assert_eq!(component.dtype(), item.dtype());
     let members: Vec<&str> = item
         .dtype()
@@ -234,11 +255,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert!(members.contains(&"partyrole"), "{members:?}");
     assert!(!members.contains(&"nopartyids"), "{members:?}");
     assert_eq!(
-        registry
-            .definition(FixCategory::Groups, "Parties")
-            .unwrap()
-            .get_field_by_path("party.partyid")
-            .map(Field::name),
+        parties.get_field_by_path("party.partyid").map(Field::name),
         Some("partyid")
     );
 }
@@ -340,10 +357,8 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
         }
     }
     let mut out = Vec::new();
-    for category in FixCategory::ALL {
-        for field in registry.definitions(category) {
-            walk(field, &mut out);
-        }
+    for field in registry.iter() {
+        walk(field, &mut out);
     }
     out
 }
@@ -378,6 +393,10 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
 
     // The registry's own entries, where each field is counted once.
+    let clock = DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    };
     let mut times = 0_usize;
     let mut naive = 0_usize;
     let mut utc = 0_usize;
@@ -391,76 +410,138 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat,
-    // prevupdatedat, recordedat and expiredat.
-    assert_eq!(utc, 74, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus the crate's six clocks: `unix`,
+    // `creatunix`, `prevunix`, `snapunix`, `recordedat` and `expirunix`.
+    let crated = registry
+        .iter()
+        .filter(|field| {
+            field.dtype() == &clock
+                && field
+                    .as_fix()
+                    .tag()
+                    .ok()
+                    .flatten()
+                    .is_some_and(yggdryl::is_crate_tag)
+        })
+        .count();
+    assert_eq!(crated, 6, "the crate's own clocks");
+    assert_eq!(utc, 68 + crated, "instants stated in UTC");
+}
+
+/// A field FIX Latest removed is still the dictionary's, marked so: a
+/// message stating it is read, and its value restated to the field that
+/// replaced it, so a capture of every version lands in one row.
+#[test]
+fn a_removed_field_is_kept_and_marked_deprecated() {
+    let registry = seed();
+    // `MaxFloor(111)` went in 5.0, replaced by `DisplayQty`.
+    let floor = registry.field_by_tag(111).expect("MaxFloor");
+    assert_eq!(floor.as_fix().deprecated(), Some("5.0"), "{floor:?}");
+    assert!(floor.as_fix().replacements().next().is_some());
+    // `Signature(89)` went with it and nothing replaces it: the mark stands
+    // on its own.
+    let signature = registry.field_by_tag(89).expect("Signature");
+    assert_eq!(signature.as_fix().deprecated(), Some("5.0"));
+    assert!(signature.as_fix().replacements().next().is_none());
+    assert!(
+        registry
+            .field_by_tag(11)
+            .unwrap()
+            .as_fix()
+            .deprecated()
+            .is_none(),
+        "ClOrdID stands"
+    );
+    let deprecated = definitions(&registry, FixCategory::Fields)
+        .filter(|field| field.as_fix().deprecated().is_some())
+        .count();
+    assert_eq!(deprecated, 56);
+}
+
+/// A component's member is a reference to the field or group it holds,
+/// and it names the tag beside the name, so a reader resolves the member
+/// by identity without the shard in hand.
+#[test]
+fn a_member_reference_carries_the_field_and_its_tag() {
+    let registry = seed();
+    let party = registry.field_by_name("Party").expect("Party component");
+    let partyid = party
+        .get_field_by_path("partyid")
+        .expect("the PartyID member");
+    assert_eq!(partyid.as_fix().field_ref(), Some("partyid"));
+    assert_eq!(partyid.as_fix().tag().unwrap(), Some(448));
+    let subgroup = party
+        .get_field_by_path("ptyssubgrp")
+        .expect("the sub-party group member");
+    assert_eq!(subgroup.as_fix().group(), Some("ptyssubgrp"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let document = std::fs::read_to_string(root.join("components/party.json")).unwrap();
+    let stored = yggdryl::from_json_scalar(&document).unwrap();
+    let member = stored
+        .get_key_str("dtype")
+        .and_then(|dtype| dtype.get_key_str("fields"))
+        .and_then(Scalar::as_sequence)
+        .and_then(|members| members.first())
+        .and_then(|member| member.get_key_str("metadata"))
+        .expect("the first member's metadata");
+    assert_eq!(
+        member.get_key_str("fix:field").and_then(Scalar::as_str),
+        Some("partyid")
+    );
+    assert_eq!(
+        member.get_key_str("fix:tag").and_then(Scalar::as_str),
+        Some("448")
+    );
+    // A field's shard is its tag over a hundred, named nine digits wide:
+    // tag 55 sits in the first, tag 50000 in the five-hundredth.
+    assert!(root.join("fields/000000000.json").exists());
+    assert!(root.join("fields/000000500.json").exists());
+    assert!(!root.join("fields/0.json").exists(), "the old shard name");
 }
 
 /// The committed dictionary's hash, pinned as a literal.
 ///
-/// The registry hash walks scalar fields, then `[Components, Groups]` with
-/// the messages among the components in name order, so a change to that walk
-/// or to any shipped document moves this number on purpose, in the commit that
-/// says why. It moved when the crate's own `pluginconfig` message went - a
-/// registry carries the crate's own fields and no message of the crate's -
-/// as it had moved when every registry began to carry it; for the builtin altids
-/// group and the generated component identifier declarations; for the three
-/// lifecycle identities renamed and typed as UUIDs; for the chain's scoped
-/// lifecycle recipe described in its field; for the previous clock and UUID
-/// declarations; when msghash was retired, updatedat renamed,
-/// createdat/code/snapshotat added and the identity recipes in the crate
-/// declarations replaced - the shipped SendingTime/TransactTime definitions
-/// already supply the standard clock seeds. It moved when the previous clock
-/// became `prevupdatedat` and the partition `timepartition`, typed as the
-/// hour instant, marked as the partition column and deriving by an
-/// expression, and when the enrichment rules left Rust for the 29 shipped fields
-/// that carry a `fix:derivation`, and onto the three crate columns that
-/// derive - `CountryOfIssue` listing the crate's 249 ISO 3166 codes,
-/// `OrderQty` reading a canceled quantity outright, `isincode` reading each
-/// identifier through `try_cast(... as isin)`. It then types the four
-/// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
-/// `fixed_size_binary(16)` rather than `uuid`. The last things to move this
-/// number are the crate's own `sourceurl` - where a line was read from is a
-/// column of the row, typed as the URL it is - and `nofixentries`, the
-/// counter the arrival record group is counted by. It then reverses decision
-/// 26's retirement of the `msghash` spelling: the message identity is
-/// `msghash` (65017), the chain's is `msgphash` (65018) and the preceding
-/// message's is `prevmsghash` (65022). Only the name moves - the tags, the
-/// layouts and every identity recipe are what they were, and the 65000 that
-/// carried the original `msghash` stays retired and unreused. It then adds
-/// four columns after them - `recordedat`, `expiredat` and the two lane
-/// currencies - each declaring on the field itself how it fills, and reorders
-/// the fixed row so the crate's own clocks and identities lead it. It then
-/// retires `timepartition` - how a layout is cut is the target's, and an
-/// Iceberg table takes an `hour` transform over `updatedat` - and marks the
-/// columns settled to one message with `fix:transient`. It then adds the
-/// session the bridge handled a line on, the three instrument identifiers
-/// beside `isincode`, the `instids` component that joins all five, and the
-/// two session message identifiers - seven columns, each declaring on the
-/// field itself how it fills. `instids` is a component rather than a scalar,
-/// so it is the first named definition to answer to a crate tag rather than
-/// to a derived one, and the components count moves with it. The bracket's
-/// session is `bridgesessionid`, not `sessionid`: a bridge row spells its own
-/// `SESSIONID` for the counterparty session, which `sendersessionid` already
-/// owns. `snapshotat` moves with them: it is what a snapshot stamps and
-/// nothing else, so its description says so and its column is nullable. The
-/// last thing to move it is the canonical documents becoming the arrays they
-/// always were: `fix:codes` is `[{...}]` where it was `{"codes":[{...}]}`,
-/// and `fix:replacements` and `fix:directions` lose the same wrapper, so
-/// every shipped field carrying one holds different text for the
-/// same facts. The last thing to move it is `instuuid` retiring: the
-/// instrument is the scope a chain hangs its identifiers under, digested
-/// from what the message says it is, and never a column - so 65016 joins
-/// 65000 and 65004 as a slot this crate does not reuse, and the crate's
-/// listing is one field shorter.
+/// The registry hash walks scalar fields, then the components and the groups
+/// in name order, so a change to that walk or to any shipped document moves
+/// this number on purpose, in the commit that says why. It last moved when
+/// the message became a typed market event: the crate's columns are the
+/// event's facts - `unix`, `creatunix`, `hashcode`, `crosshashcode`,
+/// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
+/// `identifiers` and `metadata` - the shards are named nine digits wide,
+/// every member reference carries its `fix:tag`, and a field FIX Latest
+/// removed is marked `fix:deprecated`.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_885_025_894_600_962_413);
-    assert_eq!(registry.msgtypes().count(), 181);
+    assert_eq!(registry.stable_hash(), 348_766_036_673_918_042);
+    let messages = definitions(&registry, FixCategory::Components)
+        .filter(|component| component.as_fix().msgtype().is_some())
+        .count();
+    assert_eq!(messages, 181);
     assert_eq!(
-        registry.definitions(FixCategory::Components).count(),
+        definitions(&registry, FixCategory::Components).count(),
         928 + super::crated_components()
     );
-    assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
+    // Every group the store ships resolves, the crate's two Map groups
+    // among them: the census is the directory rather than a literal, so a
+    // generated group added or dropped moves nothing here.
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix/groups");
+    for entry in std::fs::read_dir(root).expect("the generated group directory") {
+        let path = entry.expect("a group document").path();
+        let name = path
+            .file_stem()
+            .expect("a group name")
+            .to_str()
+            .expect("ASCII");
+        assert!(
+            definitions(&registry, FixCategory::Groups).any(|group| group.name() == name),
+            "{name} resolves as a group"
+        );
+    }
+    assert_eq!(
+        registry.len(),
+        definitions(&registry, FixCategory::Fields).count()
+            + definitions(&registry, FixCategory::Components).count()
+            + definitions(&registry, FixCategory::Groups).count()
+    );
 }

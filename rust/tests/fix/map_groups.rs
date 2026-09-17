@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use yggdryl::graph::Element;
 use yggdryl::{DataType, Field, FixCategory, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn mapping_group(name: &str, tag: i32, sorted: bool) -> Field {
@@ -32,34 +33,23 @@ fn fresh(registry: Arc<FixRegistry>, schema: &Field, mut values: Vec<Scalar>) ->
 fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     let mut registry = FixRegistry::new();
     let group = mapping_group("nativeids", 65_090, true);
-    let before = registry.clone();
-    assert!(registry.insert(group.clone()).is_err());
-    assert_eq!(registry, before);
-    registry.add_field(group.clone()).unwrap();
-    assert_eq!(registry.get_group_by_tag(65_090), Some(&group));
+    // A definition is filed by the shape it has: a Map is a group, so the
+    // one insert door files it as one and no scalar stands beside it.
+    registry.insert(group.clone()).unwrap();
+    assert_eq!(registry.get_field_by_counter(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
     assert!(
-        registry
-            .definitions(FixCategory::Fields)
-            .all(|field| !field.dtype().is_nested())
+        super::definitions(&registry, FixCategory::Fields).all(|field| !field.dtype().is_nested())
     );
 
     let before = registry.clone();
     let mut conflicting = mapping_group("anotherids", 65_090, true);
-    assert!(
-        registry
-            .insert_definition(FixCategory::Groups, conflicting.clone())
-            .is_err()
-    );
+    assert!(registry.insert(conflicting.clone()).is_err());
     conflicting.as_fix_mut().set_counter(65_091).unwrap();
+    assert!(registry.insert(conflicting).is_err());
     assert!(
         registry
-            .insert_definition(FixCategory::Groups, conflicting)
-            .is_err()
-    );
-    assert!(
-        registry
-            .insert_definition(FixCategory::Groups, mapping_group("foreignids", 55, true))
+            .insert(mapping_group("foreignids", 55, true))
             .is_err()
     );
     assert_eq!(registry, before);
@@ -82,13 +72,11 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
             if scalar_first {
                 registry.insert(scalar.clone()).unwrap();
             } else {
-                registry
-                    .insert_definition(FixCategory::Groups, group.clone())
-                    .unwrap();
+                registry.insert(group.clone()).unwrap();
             }
             let before = registry.clone();
             let refused = if scalar_first {
-                registry.insert_definition(FixCategory::Groups, group.clone())
+                registry.insert(group.clone())
             } else {
                 registry.insert(scalar.clone())
             };
@@ -102,8 +90,8 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
                 before.get_field_by_tag(65_090)
             );
             assert_eq!(
-                registry.get_group_by_tag(65_090),
-                before.get_group_by_tag(65_090)
+                registry.get_field_by_counter(65_090),
+                before.get_field_by_counter(65_090)
             );
         }
     }
@@ -119,36 +107,22 @@ fn ordinary_list_groups_still_require_a_separate_int32_counter() {
     .nullable_field("ordinary");
     group.as_fix_mut().set_counter(9001).unwrap();
     let mut registry = FixRegistry::new();
-    assert!(
-        registry
-            .insert_definition(FixCategory::Groups, group.clone())
-            .is_err()
-    );
+    assert!(registry.insert(group.clone()).is_err());
     let mut wrong = DataType::Int64.nullable_field("count");
     wrong.as_fix_mut().set_tag(9001).unwrap();
     registry.insert(wrong).unwrap();
-    assert!(
-        registry
-            .insert_definition(FixCategory::Groups, group)
-            .is_err()
-    );
+    assert!(registry.insert(group).is_err());
 }
 
 #[test]
 fn merging_map_groups_preserves_layout_sortedness_and_key_nullability() {
     let mut registry = FixRegistry::new();
     let group = mapping_group("nativeids", 65_090, true);
-    registry
-        .insert_definition(FixCategory::Groups, group)
-        .unwrap();
+    registry.insert(group).unwrap();
     let mut incoming = mapping_group("nativeids", 65_090, false);
     incoming.set_comment("merged").unwrap();
-    assert!(
-        !registry
-            .add_definition(FixCategory::Groups, incoming)
-            .unwrap()
-    );
-    let stored = registry.get_group_by_tag(65_090).unwrap();
+    assert!(!registry.add_field(incoming).unwrap());
+    let stored = registry.get_field_by_counter(65_090).unwrap();
     let DataType::Map(map) = stored.dtype() else {
         panic!("merging preserves Map")
     };
@@ -183,7 +157,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
 #[test]
 fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     let registry = Arc::new(FixRegistry::new());
-    let group = registry.get_group_by_tag(65_020).unwrap().clone();
+    let group = registry.get_field_by_counter(65_020).unwrap().clone();
     let schema = DataType::from_fields([group])
         .unwrap()
         .required_field("fix");
@@ -196,7 +170,7 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     ] {
         let mapping = Scalar::from_mapping(pairs).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
-        assert_eq!(source.by_tag(65_020).unwrap(), &mapping);
+        assert_eq!(source.by_tag(65_020).unwrap(), mapping);
         let schema = source.as_field();
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
@@ -212,7 +186,7 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 #[test]
 fn map_paths_distinguish_present_null_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
-    let schema = DataType::from_fields([registry.get_group_by_tag(65_020).unwrap().clone()])
+    let schema = DataType::from_fields([registry.get_field_by_counter(65_020).unwrap().clone()])
         .unwrap()
         .required_field("fix");
     let key = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
@@ -229,8 +203,8 @@ fn map_paths_distinguish_present_null_missing_and_absent_maps() {
     for value in [Scalar::from("O-1"), Scalar::Null] {
         let mapping = Scalar::from_mapping([(Scalar::from("clordid"), value.clone())]).unwrap();
         let message = fresh(Arc::clone(&registry), &schema, vec![mapping]);
-        assert_eq!(message.get_by_path(&key), Some(&value));
-        assert_eq!(message.get("altids['clordid']"), Some(&value));
+        assert_eq!(message.get_by_path(&key), Some(value.clone()));
+        assert_eq!(message.get("altids['clordid']"), Some(value));
         assert_eq!(message.get_by_path(&missing), None);
         for invalid in [&named_child, &indexed_child] {
             assert_eq!(message.get_by_path(invalid), None);
@@ -249,7 +223,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     label.as_fix_mut().set_tag(9001).unwrap();
     label.as_fix_mut().set_names(["AltIds"]).unwrap();
     registry.insert(label.clone()).unwrap();
-    let map = registry.get_group_by_tag(65_020).unwrap().clone();
+    let map = registry.get_field_by_counter(65_020).unwrap().clone();
     let schema = DataType::from_fields([label, map])
         .unwrap()
         .required_field("fix");
@@ -266,7 +240,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let path = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
     assert_eq!(registry.field_by_name("AltIds").unwrap().name(), "label");
     let declared = registry.field_by_path(&root).unwrap();
-    assert_eq!(declared, registry.get_group_by_tag(65_020).unwrap());
+    assert_eq!(declared, registry.get_field_by_counter(65_020).unwrap());
     let DataType::Map(map) = declared.dtype() else {
         panic!("the canonical Map owns the resolved path")
     };
@@ -274,15 +248,15 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
         registry.field_by_path(&path).unwrap(),
         &map.entries().fields()[1]
     );
-    assert_eq!(message.get_by_name("AltIds"), Some(&mapping("O-1")));
-    assert_eq!(message.get_by_path(&root), Some(&mapping("O-1")));
-    assert_eq!(message.get_by_path(&path), Some(&Scalar::from("O-1")));
+    assert_eq!(message.get_by_name("AltIds"), Some(mapping("O-1")));
+    assert_eq!(message.get_by_path(&root), Some(mapping("O-1")));
+    assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-1")));
     message.set("ALTIDS", mapping("O-2")).unwrap();
-    assert_eq!(message.get_by_path(&root), Some(&mapping("O-2")));
-    assert_eq!(message.get_by_path(&path), Some(&Scalar::from("O-2")));
+    assert_eq!(message.get_by_path(&root), Some(mapping("O-2")));
+    assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-2")));
     assert_eq!(
         message.get_by_name("label"),
-        Some(&Scalar::from("stated-label"))
+        Some(Scalar::from("stated-label"))
     );
     assert_eq!(
         message.as_field().fields().len(),
@@ -293,7 +267,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
 
 #[test]
 fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
-    for alias_tag in [9001, yggdryl::MSGHASH_TAG_NAME.0, 52] {
+    for alias_tag in [9001, yggdryl::HASHCODE_TAG_NAME.0, 52] {
         let mut registry = FixRegistry::new();
         let mut alias = if let Some(field) = registry.get_field_by_tag(alias_tag) {
             field.clone()
@@ -313,7 +287,7 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
                 .unwrap(),
             Some(alias_tag)
         );
-        let mut map = registry.get_group_by_tag(65_020).unwrap().clone();
+        let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
         map.remove_metadata("fix:tag");
         assert_eq!(map.as_fix().counter().unwrap(), Some(65_020));
         let schema = DataType::from_fields([map]).unwrap().required_field("fix");
@@ -321,12 +295,12 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
         let mapping =
             Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from("O-1"))]).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
-        assert_eq!(source.by_tag(65_020).unwrap(), &mapping);
-        super::identity_bytes(source.msghash());
+        assert_eq!(source.by_tag(65_020).unwrap(), mapping);
+        assert_ne!(source.get_hashcode(), 0);
         let row = source.into_row(source.as_field()).unwrap();
         let restored = FixMsg::from_row(Arc::clone(&registry), source.as_field(), &row).unwrap();
-        assert_eq!(restored.by_tag(65_020).unwrap(), &mapping);
-        assert_eq!(restored.get_by_name("AltIds"), Some(&mapping));
+        assert_eq!(restored.by_tag(65_020).unwrap(), mapping);
+        assert_eq!(restored.get_by_name("AltIds"), Some(mapping.clone()));
         assert_eq!(restored.into_row(source.as_field()).unwrap(), row);
 
         let empty = DataType::from_fields([]).unwrap().required_field("fix");
@@ -343,11 +317,11 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
         assert!(absent.set("AltIds", sending.clone()).is_err());
         assert_eq!(absent, before, "a Map name never writes the aliased clock");
         absent.set("AltIds", mapping.clone()).unwrap();
-        assert_eq!(absent.get_by_name("AltIds"), Some(&mapping));
-        assert_eq!(absent.get_by_path(&root), Some(&mapping));
-        assert_eq!(absent.get_by_path(&key), Some(&Scalar::from("O-1")));
-        assert_eq!(absent.get_by_tag(65_020), Some(&mapping));
-        assert_eq!(absent.by_tag(52).unwrap(), &sending);
+        assert_eq!(absent.get_by_name("AltIds"), Some(mapping.clone()));
+        assert_eq!(absent.get_by_path(&root), Some(mapping.clone()));
+        assert_eq!(absent.get_by_path(&key), Some(Scalar::from("O-1")));
+        assert_eq!(absent.get_by_tag(65_020), Some(mapping.clone()));
+        assert_eq!(absent.by_tag(52).unwrap(), sending);
     }
 }
 
@@ -364,11 +338,9 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
         let component = DataType::from_fields([DataType::utf8().nullable_field("note")])
             .unwrap()
             .required_field("AltIds");
-        registry
-            .create_definition(FixCategory::Components, component)
-            .unwrap();
+        registry.insert(component).unwrap();
         for category in [FixCategory::Components, FixCategory::Groups] {
-            assert!(registry.get_definition(category, "altids").is_some());
+            assert!(registry.get_field_by_name("altids").is_some());
         }
         for spelling in ["altids", "AltIds", "altids['clordid']", "AltIds.note"] {
             let path = yggdryl::FieldPath::from_str(spelling).unwrap();
@@ -391,13 +363,11 @@ fn canonical_scalar_and_map_names_conflict_atomically_in_either_order() {
         if scalar_first {
             registry.insert(scalar.clone()).unwrap();
         } else {
-            registry
-                .insert_definition(FixCategory::Groups, group.clone())
-                .unwrap();
+            registry.insert(group.clone()).unwrap();
         }
         let before = registry.clone();
         let refused = if scalar_first {
-            registry.insert_definition(FixCategory::Groups, group.clone())
+            registry.insert(group.clone())
         } else {
             registry.insert(scalar.clone())
         };
@@ -408,8 +378,8 @@ fn canonical_scalar_and_map_names_conflict_atomically_in_either_order() {
             before.get_field_by_name("nativeids")
         );
         assert_eq!(
-            registry.get_group_by_tag(65_090),
-            before.get_group_by_tag(65_090)
+            registry.get_field_by_counter(65_090),
+            before.get_field_by_counter(65_090)
         );
     }
 }

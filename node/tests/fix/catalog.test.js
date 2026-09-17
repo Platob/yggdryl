@@ -1,5 +1,13 @@
 'use strict'
 
+// Components, groups and messages through the one set of field doors: a
+// definition is filed by the shape it has, reached by name, counter or path,
+// and mutated by `insert`, `update` and `remove` like any field.
+//
+// Every rule is the core's; what these check is the crossing - the shape a
+// JavaScript caller builds, the refusals that arrive as the native ones, and
+// the message definition a registry answers as a copy of its own.
+
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
@@ -25,249 +33,223 @@ function members(field) {
   return held
 }
 
+/** A registry holding one order message over one repeating group. */
 function catalog() {
   const registry = fix.FixRegistry.fromFields([tagged('NoPartyIDs', 453, 'int32'), tagged('PartyID', 448)])
   const member = registry.field(448)
   member.fix.fieldRef = 'PartyID'
   const component = fields.struct('Party', [member], { nullable: false })
-  registry.createDefinition('components', component)
+  registry.insert(component)
   const group = fields.list('Parties', component)
   group.fix.counter = 453
   group.fix.component = 'Party'
-  registry.createDefinition('groups', group)
-  const occurrence = registry.definition('groups', 'Parties')
+  registry.insert(group)
+  const occurrence = registry.fieldByName('Parties')
   occurrence.fix.group = 'Parties'
   const counter = registry.field(453)
   counter.fix.fieldRef = 'NoPartyIDs'
-  registry.createDefinition('components', message('NewOrderSingle', 'D', [counter, occurrence]))
+  registry.insert(message('NewOrderSingle', 'D', [counter, occurrence]))
   return registry
 }
 
-test('category CRUD refreshes references and refuses invalid changes atomically', (t) => {
+test('a definition is filed by the shape it has and reached through the field doors', () => {
   const registry = catalog()
-  const before = registry.intoJson()
-  for (const [category, name] of [['fields', 'PartyID'], ['components', 'Party'], ['groups', 'Parties']]) {
-    assert.throws(() => registry.removeDefinition(category, name))
-    assert.equal(registry.intoJson(), before)
-  }
-  // One namespace: a held tag under another name is a new field beside the
-  // holder, which gains the name as an alias while the bare tag keeps
-  // answering it; a held name under another tag is what is refused.
-  {
-    const beside = registry.clone()
-    beside.createDefinition('fields', tagged('DifferentName', 448))
-    assert.equal(beside.field(448).name, 'PartyID')
-    assert.ok(beside.field(448).fix.names.includes('DifferentName'))
-    assert.equal(beside.fieldByName('differentname').fix.tag, 448)
-    assert.notEqual(beside.fieldByName('differentname').fix.id, beside.field(448).fix.id)
-  }
-  assert.throws(() => registry.createDefinition('fields', tagged('PartyID', 9448)), /existing FIX definition/)
-  assert.equal(registry.intoJson(), before)
-  for (const [category, name] of [['fields', 'PartyID'], ['components', 'Party'], ['groups', 'Parties'], ['components', 'NewOrderSingle']]) {
-    const original = registry.definition(category, name)
-    const changed = original.clone()
-    changed.setName(name.toLowerCase())
-    changed.fix.description = 'Reviewed'
-    assert.ok(registry.updateDefinition(category, changed).equals(original))
-    assert.equal(registry.definition(category, name).name, name)
-    assert.equal(registry.definition(category, name).fix.description, 'Reviewed')
-    assert.throws(() => registry.createDefinition(category, changed))
-  }
-  assert.equal(registry.fieldByPath('NewOrderSingle.Parties.PartyID').fix.description, 'Reviewed')
-  const settled = registry.intoJson()
-  assert.throws(() => registry.updateDefinition('fields', tagged('PartyID', 448, 'int32')))
-  assert.equal(registry.intoJson(), settled)
-  const invalid = registry.field(448)
-  invalid.fix.fieldRef = 'PartyID'
-  invalid.fix.description = 'Occurrence override'
-  assert.throws(() => registry.createDefinition('components', fields.struct('Invalid', [invalid], { nullable: false })))
-  assert.equal(registry.intoJson(), settled)
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-catalog-'))
-  t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
-  registry.writeInto(folder)
-  assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
-  for (const [category, name] of [['components', 'NewOrderSingle'], ['groups', 'Parties'], ['components', 'Party'], ['fields', 'PartyID'], ['fields', 'NoPartyIDs']]) {
-    assert.ok(registry.removeDefinition(category, name))
-    assert.equal(registry.getDefinition(category, name), null)
-    assert.equal(registry.removeDefinition(category, name), null)
-  }
-  // Only what seeds every registry is left: the crate's own thirty-four
-  // scalar fields and the standard SendingTime (52) and TransactTime (60)
-  // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
-  // fields category. The crate's thirty-six definitions add the altids
-  // group and the instids struct, which are filed by the shapes they have.
-  assert.equal(registry.size, 36)
-  assert.equal([...registry.definitions('fields')].length, 36)
-  assert.equal(registry.fieldByTag(52).name, 'sendingtime')
-  assert.equal(registry.fieldByTag(60).name, 'transacttime')
-  assert.equal(fix.crateFields().length, 36)
-  assert.equal(registry.groupByTag(65020).name, 'altids')
+
+  // A Struct is a component, a List of Structs a group, and a Struct
+  // carrying `fix:msgtype` a message; each is reached by its name, and a
+  // group by the counter it opens.
+  assert.equal(registry.fieldByName('Party').dtype.id, 'struct')
+  assert.equal(registry.fieldByName('Parties').dtype.id, 'list')
+  assert.equal(registry.fieldByCounter(453).name, 'Parties')
+  assert.ok(registry.getFieldByCounter(453).equals(registry.fieldByName('Parties')))
+  assert.equal(registry.getFieldByCounter(999), null)
+  assert.throws(() => registry.fieldByCounter(999), /got nothing/)
+  // The counter itself is the scalar the tag holds: the group is a
+  // definition of its own beside it.
+  assert.equal(registry.fieldByTag(453).name, 'NoPartyIDs')
+  assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
+  // A path walks through the group into its member.
+  assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
+  assert.equal(registry.fieldByPath('NewOrderSingle.Parties.PartyID').fix.tag, 448)
+  // A counter is a tag: an exact number, never text.
+  assert.throws(() => registry.fieldByCounter(1.5), /tag must be a signed 32-bit integer/)
+  assert.throws(() => registry.getFieldByCounter('453'), /into rust type `f64`/)
+  // A named definition carries a derived tag of its own, from the block
+  // above every published tag.
+  const parties = registry.fieldByName('Parties').fix.tag
+  assert.ok(parties >= 100_000 && parties < 1_100_000, `derived definition tag, got ${parties}`)
+  // And every definition is in the walk, behind the scalars.
+  const names = [...registry].map((field) => field.name)
+  for (const name of ['Party', 'Parties', 'NewOrderSingle']) assert.ok(names.includes(name), name)
+  assert.equal(names.length, registry.size)
 })
 
-test('addDefinition folds a definition into the one its name reaches', () => {
+test('insert, update and remove carry a definition as they carry a field', () => {
   const registry = catalog()
-  assert.equal(registry.addField(tagged('PartyNote', 9002)), true)
+  const before = registry.intoJson()
+
+  // A definition another one references does not leave.
+  for (const name of ['PartyID', 'Party', 'Parties']) {
+    assert.equal(registry.remove(name), null, name)
+    assert.equal(registry.intoJson(), before, name)
+  }
+
+  // `update` merges into the definition of the same folded name, and the
+  // stored spelling stands.
+  const changed = registry.fieldByName('Party')
+  changed.setName('party')
+  changed.fix.description = 'Reviewed'
+  registry.update(changed)
+  assert.equal(registry.fieldByName('Party').name, 'Party')
+  assert.equal(registry.fieldByName('Party').fix.description, 'Reviewed')
+
+  // A component another definition references is the one that definition
+  // holds: restating its members is refused, naming the reference it would
+  // break, and the dictionary is left exactly as it was.
+  assert.equal(registry.insert(tagged('PartyNote', 9002)), null)
   const note = registry.field(9002)
   note.fix.fieldRef = 'PartyNote'
-  const extended = registry.definition('components', 'Party')
+  const extended = registry.fieldByName('Party')
   extended.setDtype(DataType.fromFields([...members(extended), note]))
-  assert.equal(registry.addDefinition('components', extended), false)
-
-  // The stored members keep their order and the incoming one is appended; the
-  // group and the message that reference the component see it without holding
-  // a copy, and the reference resolves again.
-  assert.deepEqual(members(registry.definition('components', 'Party')).map(held => held.name), ['PartyID', 'PartyNote'])
-  for (const spelled of ['Party.PartyNote', 'Parties.PartyNote', 'NewOrderSingle.Parties.PartyNote']) {
-    const member = registry.fieldByPath(spelled)
-    assert.equal(member.fix.tag, 9002, spelled)
-    assert.equal(member.fix.fieldRef, 'partynote', spelled)
-  }
+  const settled = registry.intoJson()
+  assert.throws(() => registry.update(extended), /Parties/)
+  assert.equal(registry.intoJson(), settled)
+  assert.throws(() => registry.insert(extended), /Parties/)
+  assert.equal(registry.intoJson(), settled)
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 
-  // A message extends the same way and keeps its wire code.
-  const order = registry.definition('components', 'NewOrderSingle')
-  order.setDtype(DataType.fromFields([...members(order), Field.from('Text: utf8')]))
-  assert.equal(registry.addDefinition('components', order), false)
-  const held = registry.definition('components', 'NewOrderSingle')
-  assert.equal(held.fix.msgtype, 'D')
-  assert.deepEqual(members(held).map(member => member.name), ['NoPartyIDs', 'Parties', 'Text'])
-
-  // A name no definition reaches arrives whole, and `'fields'` redirects a
-  // scalar to `addField`.
-  const hop = fields.struct('Hop', [Field.from('HopID: utf8')], { nullable: false })
-  assert.equal(registry.addDefinition('components', hop), true)
-  assert.equal(registry.addDefinition('fields', tagged('Symbol', 55)), true)
-  assert.equal(registry.field(55).name, 'Symbol')
-
-  // One level deep: a member both sides declare stays the stored one, so an
-  // incoming member restating it under another datatype refuses the whole
-  // call, and the strict verb still refuses the name outright.
-  const before = registry.intoJson()
-  const disagreeing = fields.struct('Party', [Field.from('partynote: int32')], { nullable: false })
-  assert.throws(() => registry.addDefinition('components', disagreeing), /Party\.PartyNote/)
-  assert.equal(registry.intoJson(), before)
-  assert.throws(() => registry.createDefinition('components', registry.definition('components', 'Party')))
-  assert.equal(registry.intoJson(), before)
+  // A definition nothing references leaves, and leaving again is null.
+  const removed = registry.remove('NewOrderSingle')
+  assert.equal(removed.name, 'NewOrderSingle')
+  assert.equal(registry.remove('NewOrderSingle'), null)
+  assert.equal(registry.getFieldByName('NewOrderSingle'), null)
+  assert.equal(registry.getMsgtype('D'), null)
+  assert.equal(registry.remove('Parties').name, 'Parties')
+  assert.equal(registry.getFieldByCounter(453), null)
 })
 
-test('inline codes and the complete native catalog survive snapshots', () => {
+test('the complete native catalog survives a snapshot and a store', (t) => {
   const registry = catalog()
   const coded = registry.field(448)
   coded.set('fix:codes', '[{"value":"B","name":"Broker"}]')
-  registry.updateDefinition('fields', coded)
+  registry.update(coded)
   assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('fix:codes'), /Broker/)
   const vendor = tagged('Vendor', 9001)
   vendor.fix.branches = ['venue']
   registry.insert(vendor)
-  const document = registry.toJSON()
+
   // Three categories and nothing else: a dictionary's membership is metadata
   // on the field it contributed to, so it travels inside `fields`.
+  const document = registry.toJSON()
   assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
-  assert.equal(document.fields.find(value => value.name === 'Vendor').metadata['fix:branches'], 'venue')
+  assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['fix:branches'], 'venue')
+  assert.ok(document.components.some((value) => value.name === 'Party'))
+  assert.ok(document.groups.some((value) => value.name === 'Parties'))
+
   const declared = fix.FixRegistry.fromJson(JSON.stringify(document))
   assert.deepEqual(declared.fieldByTag(9001).fix.branches, ['venue'])
   assert.deepEqual(declared.dialects(), ['venue'])
   for (const copy of [declared.clone(), fix.FixRegistry.fromJson(declared.intoJson())]) {
     assert.ok(copy.equals(declared))
     assert.equal(copy.stableHash(), declared.stableHash())
-    assert.equal(copy.groupByTag(453).name, 'Parties')
-    assert.equal(copy.getGroupByTag(999), null)
+    assert.equal(copy.fieldByCounter(453).name, 'Parties')
   }
-  // A counter is a tag: an exact number, never text.
-  assert.throws(() => declared.groupByTag(1.5), /tag must be a signed 32-bit integer/)
-  assert.throws(() => declared.getGroupByTag('453'), /into rust type `f64`/)
-  assert.throws(() => registry.definitions('codesets'))
+
+  // A store writes the whole dictionary, the crate's own definitions
+  // included, and reads it back as itself.
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-catalog-'))
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
+  registry.writeInto(folder)
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['components', 'fields', 'groups'])
+  // A definition is one document under its category, and the crate's own
+  // are written like every other: the fixed row is `components/fixmsg.json`
+  // and its two Map groups are two documents.
+  const documents = (category) => fs.readdirSync(path.join(folder, category)).sort()
+  assert.ok(documents('components').includes('fixmsg.json'))
+  assert.ok(documents('components').some((name) => name.toLowerCase() === 'party.json'))
+  assert.deepEqual(
+    documents('groups').map((name) => name.toLowerCase()).sort(),
+    ['identifiers.json', 'metadata.json', 'parties.json'],
+  )
+  assert.ok(documents('fields').every((name) => /^\d{9}\.json$/.test(name)))
+  assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
+
+  // A change to any category changes the value.
   const changed = registry.clone()
-  const definition = changed.definition('components', 'NewOrderSingle')
+  const definition = changed.fieldByName('NewOrderSingle')
   definition.fix.description = 'Different'
-  changed.updateDefinition('components', definition)
+  changed.update(definition)
   assert.equal(changed.equals(registry), false)
   assert.notEqual(changed.stableHash(), registry.stableHash())
 })
 
-test('native category cursors release holds on exhaustion and early close', () => {
-  const registry = catalog()
-  const cursor = registry.definitions('components')[Symbol.iterator]()
-  // A message is a component: the two iterate together, in
-  // name order.
-  assert.equal(cursor.next().value.name, 'NewOrderSingle')
-  assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
-  assert.equal(cursor.next().value.name, 'Party')
-  // The crate's own is behind them: `instids`, the Struct that joins an
-  // instrument's identifiers, which every registry carries as it carries
-  // the crate's own fields.
-  assert.equal(cursor.next().value.name, 'instids')
-  assert.equal(cursor.next().done, true)
-  assert.equal(cursor.next().done, true)
-  registry.insert(tagged('Extra', 9000))
-  for (const ignored of registry.definitions('groups')) { void ignored; break }
-  assert.ok(registry.remove(9000))
-  const messages = registry.msgtypes()[Symbol.iterator]()
-  messages.return()
-  registry.insert(tagged('AfterClose', 9000))
-  assert.ok(registry.clone().removeDefinition('components', 'NewOrderSingle'))
-})
-
-test('message singleton indices distinguish names from another wire code', () => {
+test('a message definition is a copy of the registry-owned one', () => {
   const registry = new fix.FixRegistry()
-  registry.createDefinition('components', message('D', 'X'))
-  registry.createDefinition('components', message('NewOrderSingle', 'D'))
-  registry.createDefinition('components', message('BridgeReport', 'P Report Ack'))
-  // In name order, and none of the crate's own among them: a registry
-  // declares no message type before a caller creates one.
-  assert.deepEqual([...new fix.FixRegistry().msgtypes()], [])
-  const values = [...registry.msgtypes()]
-  assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D']])
+  registry.insert(message('D', 'X'))
+  registry.insert(message('NewOrderSingle', 'D'))
+  registry.insert(message('BridgeReport', 'P Report Ack'))
+
+  // A code, a canonical name and tag 35's alias all reach it.
   assert.equal(registry.msgtype('D').name, 'NewOrderSingle')
   assert.equal(registry.msgtype('bridgereport').asStr(), 'P Report Ack')
   assert.equal(registry.getMsgtype('p report ack'), null)
-  assert.equal(values[1].clone().asStr(), 'X')
-  assert.equal(values[1].compare(values[1].clone()), 0)
-  assert.equal(values[0].compare(values[1]), -1)
-  assert.equal(values[1].compare(values[0]), 1)
-  assert.equal(values[1].stableHash(), values[1].clone().stableHash())
-  const projected = values[1].asField()
+  assert.equal(registry.getMsgtype('nothing'), null)
+  assert.throws(() => registry.msgtype('nothing'), /nothing/)
+  // A registry declares no message before a caller builds one.
+  assert.equal(new fix.FixRegistry().getMsgtype('D'), null)
+
+  const held = registry.msgtype('D')
+  assert.equal(held.asStr(), 'D')
+  assert.equal(held.compare(registry.msgtype('D')), 0)
+  assert.equal(held.equals(registry.msgtype('D')), true)
+  assert.equal(held.equals(registry.msgtype('bridgereport')), false)
+  assert.equal(typeof held.stableHash(), 'bigint')
+  assert.equal(held.stableHash(), held.clone().stableHash())
+  assert.equal(String(held), 'D')
+  assert.equal(held.toJSON().name, 'NewOrderSingle')
+  assert.throws(() => new fix.MsgType())
+
+  // It is a copy: the definition it projects is independently mutable, and
+  // a later mutation of the dictionary leaves the answered value alone.
+  const projected = held.asField()
   projected.setName('Changed')
   projected.fix.msgtype = 'Changed'
-  assert.equal(values[1].name, 'D')
-  assert.equal(values[1].asStr(), 'X')
-  assert.equal(registry.definition('components', 'D').fix.msgtype, 'X')
-  assert.throws(() => new fix.MsgType())
-  assert.throws(() => registry.createDefinition('components', message('AnotherOrder', 'D')), /shared/)
-  // One message-code namespace: a second message declaring a held code under
-  // another name is a second message reached by its name, and the bare code
-  // answers the message tag 35's code set names - none here, so the first
-  // in name order - whichever arrived first.
-  const second = registry.clone()
-  second.createDefinition('components', message('AnotherOrder', 'D'))
-  assert.equal(second.msgtype('D').name, 'AnotherOrder')
-  assert.equal(second.msgtype('newordersingle').asStr(), 'D')
-  assert.equal(second.msgtype('anotherorder').asStr(), 'D')
-  assert.equal([...second.msgtypes()].length, 4)
-  const held = catalog().msgtype('D')
-  assert.equal(held.getGroupByTag(453).name, 'Parties')
-  assert.equal(held.getGroupByTag(999), null)
+  assert.equal(held.name, 'NewOrderSingle')
+  assert.equal(held.asStr(), 'D')
+  assert.equal(registry.fieldByName('NewOrderSingle').fix.msgtype, 'D')
+  registry.remove('NewOrderSingle')
+  assert.equal(held.asStr(), 'D', 'the copy outlives the definition')
+  // The bare code now reaches the other message the dictionary holds under
+  // that name - the one whose own code is `X`.
+  assert.equal(registry.msgtype('D').name, 'D')
+  assert.equal(registry.msgtype('D').asStr(), 'X')
+  assert.equal(registry.getMsgtype('newordersingle'), null)
 })
 
-test('numeric counters remain int32 beside message-scoped occurrence lists', () => {
+test('a message reaches its group by the counter that opens it', () => {
   const registry = catalog()
+  const held = registry.msgtype('D')
+  assert.equal(held.getGroupByTag(453).name, 'Parties')
+  assert.equal(held.getGroupByTag(999), null)
+  assert.throws(() => held.getGroupByTag(1.5), /tag must be a signed 32-bit integer/)
+
+  // And a parse under that registry fills the group beside its counter.
   const codec = new fix.FixCodec(registry)
   const values = [...codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))]
   assert.equal(values.length, 1)
   const value = values[0]
-  assert.equal(registry.field(453).dtype.toString(), 'int32')
-  // A named definition carries a derived tag of its own now, taken from the
-  // block above every published tag (FixId::DEFINITION_TAG_MIN..MAX).
-  const parties = registry.definition('groups', 'Parties').fix.tag
-  assert.ok(parties >= 100_000 && parties < 1_100_000, `derived definition tag, got ${parties}`)
   assert.equal(value.byTag(453).asJs(), 2)
   assert.equal(value.byPath('Parties[0].PartyID').asJs(), 'ONE')
   assert.equal(value.byPath('Parties[1].PartyID').asJs(), 'TWO')
-  assert.deepEqual(value.anomalies(), [])
-  assert.match(value.intoBytes(124).toString(), /453=2\|448=ONE\|448=TWO/)
+  assert.match(value.intoText('|'), /453=2\|448=ONE\|448=TWO/)
+  // The group states its count once, on the entry that heads it.
+  const parties = value.entries().find((entry) => entry.tag === 453)
+  assert.equal(parties.value, '2')
+  assert.equal(parties.entries.length, 2)
+  assert.deepEqual(parties.entries.map((entry) => entry.value), [null, null])
 })
 
-test('identifier declarations replace whole on merge and reload in final member order', () => {
+test('identifier declarations replace whole on update and reload in member order', () => {
   const client = tagged('clordid', 11)
   const order = tagged('orderid', 37)
   const registry = fix.FixRegistry.fromFields([client, order])
@@ -275,34 +257,33 @@ test('identifier declarations replace whole on merge and reload in final member 
   order.fix.fieldRef = 'orderid'
   const initial = message('order', 'D', [client, order])
   initial.fix.identifiers = ['clordid']
-  registry.createDefinition('components', initial)
+  registry.insert(initial)
+  assert.deepEqual(registry.fieldByName('order').fix.identifiers, ['clordid'])
+
   const incoming = message('order', 'D', [order, client])
-  incoming.fix.identifiers = ['orderid']
-  assert.equal(registry.addDefinition('components', incoming), false)
-  assert.deepEqual(registry.definition('components', 'order').fix.identifiers, ['orderid'])
   incoming.fix.identifiers = ['37', '11']
   assert.deepEqual(incoming.fix.identifiers, ['orderid', 'clordid'])
-  registry.addDefinition('components', incoming)
-  assert.deepEqual(registry.definition('components', 'order').fix.identifiers, ['clordid', 'orderid'])
+  registry.update(incoming)
+  assert.deepEqual(registry.fieldByName('order').fix.identifiers, ['orderid', 'clordid'])
   const restored = fix.FixRegistry.fromJson(registry.intoJson())
   assert.ok(restored.equals(registry))
-  assert.deepEqual(restored.definition('components', 'order').fix.identifiers, ['clordid', 'orderid'])
+  assert.deepEqual(restored.fieldByName('order').fix.identifiers, ['orderid', 'clordid'])
+
   const malformed = incoming.clone()
   malformed.set('fix:identifiers', 'clordid,,orderid')
   const before = registry.intoJson()
-  assert.throws(() => registry.addDefinition('components', malformed), /fix:identifiers/)
+  assert.throws(() => registry.update(malformed), /fix:identifiers/)
   assert.equal(registry.intoJson(), before)
 })
 
-test('compiled identifier selection returns independent declarations and native BigInt scalars', () => {
+test('compiled identifier selection returns independent declarations and native scalars', () => {
   const client = tagged('clordid', 11)
   const order = tagged('orderid', 37)
   const numeric = tagged('numericid', 9001, 'int64')
   const declaration = message('order', 'D', [client, order, numeric])
   declaration.fix.identifiers = ['9001', '37', '11']
   const registry = fix.FixRegistry.fromFields([client, order, numeric])
-  registry.createDefinition('components', declaration)
-  const registered = registry.definition('components', 'order')
+  registry.insert(declaration)
   const row = fields.struct('row', [tagged('venueorder', 37), client, numeric], { nullable: false })
   const numericValue = 9007199254740993n
   const value = new fix.FixMsg(row, ['O-1', 'C-1', numericValue], registry)
@@ -311,80 +292,15 @@ test('compiled identifier selection returns independent declarations and native 
   assert.deepEqual(selected.map(([field, scalar]) => [field.name, scalar.asJs()]), [
     ['clordid', 'C-1'], ['orderid', 'O-1'], ['numericid', numericValue],
   ])
-  assert.ok(selected[0][0].equals(declaration.fieldAt(0)))
   assert.ok(selected[0][1] instanceof Scalar)
   assert.ok(selected[0][1].equals(value.byName('clordid')))
-  assert.ok(selected[2][1].equals(value.byName('numericid')))
   assert.equal(typeof selected[2][1].asJs(), 'bigint')
+  // The Fields are independent copies.
   selected[0][0].setName('changed')
-  selected[0][0].fix.names = ['ChangedAlias']
   assert.equal(singleton.identifierValues(value)[0][0].name, 'clordid')
-  assert.deepEqual(singleton.identifierValues(value)[0][0].fix.names, [])
-  assert.ok(registry.definition('components', 'order').equals(registered))
   const absent = new fix.FixMsg(row, [null, 'C-1', null], registry)
-  assert.deepEqual(singleton.identifierValues(absent).map(([field, scalar]) => [field.name, scalar.asJs()]), [['clordid', 'C-1']])
+  assert.deepEqual(singleton.identifierValues(absent).map(([field]) => field.name), ['clordid'])
   assert.throws(() => singleton.identifierValues('not a message'))
-})
-
-test('binary identifiers stay native and name nothing when they will not spell text', () => {
-  const code = tagged('msgtype', 35)
-  const identifier = tagged('customid', 9001, 'binary')
-  const declaration = message('custom', 'Z9', [code, identifier])
-  declaration.fix.identifiers = ['customid']
-  const registry = fix.FixRegistry.fromFields([code, identifier])
-  registry.createDefinition('components', declaration)
-  const raw = Buffer.from([0x41, 0xff])
-  const value = new fix.FixMsg(declaration, ['Z9', raw], registry)
-  const before = value.clone()
-  const selected = registry.msgtype('Z9').identifierValues(value)
-  assert.equal(selected.length, 1)
-  assert.equal(selected[0][0].name, 'customid')
-  assert.ok(selected[0][1] instanceof Scalar)
-  assert.ok(selected[0][1].equals(value.byTag(9001)))
-  assert.ok(selected[0][1].asJs() instanceof Uint8Array)
-  assert.deepEqual(Buffer.from(selected[0][1].asJs()), raw)
-  // An identifier whose value will not spell text names nothing, so it is
-  // left out of the map rather than refusing the message around it.
-  const codec = new fix.FixCodec(registry)
-  const enriched = codec.enrichMessage(value)
-  assert.ok(enriched.byTag(9001).equals(value.byTag(9001)))
-  assert.ok(value.equals(before))
-})
-
-test('compiled identifiers never assign one ambiguous tag to another direct member', () => {
-  const left = tagged('leftid', 9001)
-  const right = tagged('rightid', 9001)
-  const declaration = message('paired', 'PAIR', [left, right])
-  declaration.fix.identifiers = ['rightid', 'leftid']
-  const registry = new fix.FixRegistry()
-  registry.createDefinition('components', declaration)
-  const singleton = registry.msgtype('PAIR')
-  const exact = fields.struct('row', [right, left], { nullable: false })
-  const value = new fix.FixMsg(exact, ['R-1', 'L-1'], registry)
-  assert.deepEqual(singleton.identifierValues(value).map(([field, scalar]) => [field.name, scalar.asJs()]), [
-    ['leftid', 'L-1'], ['rightid', 'R-1'],
-  ])
-  const renamed = fields.struct('row', [tagged('venueleft', 9001), tagged('venueright', 9001)], { nullable: false })
-  assert.deepEqual(singleton.identifierValues(new fix.FixMsg(renamed, ['L-1', 'R-1'], registry)), [])
-})
-
-test('a builtin altids group reference reloads over the persisted builtin definition', (t) => {
-  const registry = new fix.FixRegistry()
-  const mapping = registry.groupByTag(65020)
-  mapping.fix.group = 'altids'
-  registry.createDefinition('components', message('identified', 'ID', [mapping]))
-  // A dump states the crate's own group, and reading one back takes the held
-  // declaration over the document's.
-  assert.deepEqual(
-    registry.toJSON().groups.map((group) => group.name),
-    ['altids'],
-  )
-  assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-altids-'))
-  t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
-  registry.writeInto(folder)
-  assert.equal(fs.existsSync(path.join(folder, 'groups', 'altids.json')), true)
-  assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 })
 
 test('a JSON document is one unknown message through every door', () => {
@@ -392,21 +308,21 @@ test('a JSON document is one unknown message through every door', () => {
   const codec = new fix.FixCodec(registry)
   // A body that is JSON says nothing FIX can read, and being unable to read
   // a body is not an error in the codec: the row is one message named
-  // `unknown` with no entries, from the line door and the text-line door
+  // `unknown` with no content, from the line door and the text-line door
   // alike, and the cursor fuses behind it.
   const body = Buffer.from('{"a":1}')
   const schema = fix.schema(registry)
   for (const cursor of [codec.parseLine(body), codec.parseTextLine(new TextLine(17, body))]) {
     assert.ok(cursor instanceof fix.FixMessages)
     assert.equal(cursor[Symbol.iterator](), cursor)
-    const message = cursor.next().value
-    assert.equal(message.field.name, 'unknown')
-    assert.deepEqual(message.arrivals(), [])
-    assert.equal(message.intoBytes(124).length, 0)
+    const held = cursor.next().value
+    assert.equal(held.field.name, 'unknown')
+    assert.deepEqual(held.entries(), [])
+    assert.equal(held.size, 0)
     assert.equal(cursor.next().done, true)
     assert.equal(cursor.next().done, true)
-    assert.equal(message.intoRow(schema).asJs().length, schema.fieldLen)
-    assert.equal(typeof message.stableHash(), 'bigint')
+    assert.equal(held.intoRow(schema).asJs().length, schema.fieldLen)
+    assert.equal(typeof held.stableHash(), 'bigint')
   }
 })
 
@@ -418,9 +334,10 @@ for (const [property, key, value] of [['counter', 'counter', 453], ['component',
     assert.equal(field.fix[property], expected)
     assert.equal(field.get(`fix:${key}`), String(expected))
     const before = JSON.stringify(field)
-    // A counter is a positive tag: zero marks an unresolved arrival and is
-    // refused like any other nonpositive number (`rust/tests/fix/zero_entries.rs`).
-    for (const invalid of property === 'counter' ? [0, -1, 1.5, 2 ** 31] : ['', '\u0000']) {
+    // A counter is a positive tag: zero marks an unresolved entry and is
+    // refused like any other nonpositive number.
+    const refused = property === 'counter' ? [0, -1, 1.5, 2 ** 31] : ['', ' ']
+    for (const invalid of refused) {
       assert.throws(() => { field.fix[property] = invalid })
       assert.equal(JSON.stringify(field), before)
     }

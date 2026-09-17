@@ -141,16 +141,21 @@ impl Pinned {
             } else {
                 format!("{path}.{index}")
             };
+            // An entry that only heads others - an occurrence, a component
+            // - states no value, and is pinned without one.
             self.push(
                 format!("{at}.entry[{here}]"),
-                format!(
-                    "t{} {}={}",
-                    entry.tag(),
-                    escaped(entry.key().as_bytes()),
-                    escaped(entry.value().as_bytes())
-                ),
+                match entry.value() {
+                    Some(value) => format!(
+                        "t{} {}={}",
+                        entry.tag(),
+                        escaped(entry.name().as_bytes()),
+                        escaped(value.as_bytes())
+                    ),
+                    None => format!("t{} {}", entry.tag(), escaped(entry.name().as_bytes())),
+                },
             );
-            self.entries(at, &here, entry.children());
+            self.entries(at, &here, entry.entries());
         }
     }
 
@@ -175,20 +180,31 @@ impl Pinned {
                 return;
             }
         };
+        // A message that does not come back as itself is unread, and named
+        // with what moved: every identity is checked, none stops the
+        // reading, so the whole answer is still written beside the failure.
         match FixMsg::from_row(Arc::clone(codec.registry()), schema, &row) {
             Ok(held) => {
-                assert_eq!(held.entries(), message.entries(), "{at}: the arrivals");
-                assert_eq!(
+                if held.entries() != message.entries() {
+                    self.unread
+                        .push(format!("{at}: the arrivals a row reads back"));
+                }
+                let (back, wire) = (
                     escaped(&held.into_bytes(b'|')),
                     escaped(&message.into_bytes(b'|')),
-                    "{at}: the wire a row re-emits"
                 );
-                assert_eq!(held.digest(), message.digest(), "{at}: the digest");
-                assert_eq!(
-                    held.into_row(schema).expect("a message fills its row"),
-                    row,
-                    "{at}: the row it makes"
-                );
+                if back != wire {
+                    self.unread
+                        .push(format!("{at}: the wire a row re-emits: {back} was {wire}"));
+                }
+                if held.digest() != message.digest() {
+                    self.unread
+                        .push(format!("{at}: the digest a row reads back"));
+                }
+                if held.into_row(schema).ok().as_ref() != Some(&row) {
+                    self.unread
+                        .push(format!("{at}: the row a read message makes"));
+                }
             }
             Err(refused) => self.unread.push(format!("{at}: {refused}")),
         }
@@ -209,13 +225,13 @@ impl Pinned {
         }
     }
 
-    /// One line read through the door every caller uses, filled where the
-    /// group it belongs to is a filled one.
+    /// One line read through the door every caller uses, which fills what
+    /// the message implies as it reads.
     ///
     /// A line the codec refuses is pinned too: a refusal that turns into a
     /// message, or a message that turns into a refusal, is exactly the kind
     /// of movement this file exists to catch.
-    fn line(&mut self, at: &str, codec: &FixCodec, schema: &Field, line: &[u8], enrich: bool) {
+    fn line(&mut self, at: &str, codec: &FixCodec, schema: &Field, line: &[u8]) {
         self.push(format!("{at}.line"), escaped(line));
         let held = match codec.parse_line(line) {
             Ok(held) => held,
@@ -228,13 +244,7 @@ impl Pinned {
         for (index, message) in held.enumerate() {
             answered += 1;
             let at = format!("{at}:{index}");
-            match message.and_then(|message| {
-                if enrich {
-                    codec.enrich_message(message)
-                } else {
-                    Ok(message)
-                }
-            }) {
+            match message {
                 Ok(message) => self.message(&at, codec, &message, schema),
                 Err(refused) => self.push(format!("{at}.refused"), refused.to_string()),
             }
@@ -243,16 +253,10 @@ impl Pinned {
     }
 
     /// Every line of one corpus, under one codec.
-    fn lines(&mut self, group: &str, codec: &FixCodec, lines: &[Vec<u8>], enrich: bool) {
+    fn lines(&mut self, group: &str, codec: &FixCodec, lines: &[Vec<u8>]) {
         let schema = fix_schema(codec.registry(), "fix").expect("the fixed schema");
         for (index, line) in lines.iter().enumerate() {
-            self.line(
-                &format!("{group}[{index:03}]"),
-                codec,
-                &schema,
-                line,
-                enrich,
-            );
+            self.line(&format!("{group}[{index:03}]"), codec, &schema, line);
         }
     }
 
@@ -492,8 +496,8 @@ fn lifts() -> Vec<Vec<u8>> {
     ])
 }
 
-/// The lines the specification's tables are read against, each pinned with
-/// the fill applied - the composition, not the read alone.
+/// The lines the specification's tables are read against: a parse fills
+/// what each message implies, so what is pinned is the composition.
 fn enrichments() -> Vec<Vec<u8>> {
     owned(&[
         "8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|",
@@ -575,10 +579,14 @@ fn capture_names() -> Vec<String> {
 }
 
 /// The bridge's own capture, read the way a dataset read reads it: framed by
-/// the text reader, then each line through the codec's line door.
+/// the text reader, then each line through the codec's line door - and then
+/// the whole capture walked as one lifecycle, which is the reading a
+/// consumer of chains gets: each message stating the one it follows, in
+/// the walk's own order.
 fn capture(pinned: &mut Pinned) {
     let codec = bridge_codec().with_capture_names(capture_names());
     let schema = fix_schema(codec.registry(), "fix").expect("the fixed schema");
+    let mut messages = Vec::new();
     for (index, line) in capture_lines().iter().enumerate() {
         let at = format!("ulbridge[{index:03}]");
         let held = match codec.parse_text_line(line) {
@@ -595,17 +603,19 @@ fn capture(pinned: &mut Pinned) {
             match message {
                 Ok(message) => {
                     pinned.message(&at, &codec, &message, &schema);
-                    if message.as_field().name() == "executionreport" {
-                        let enriched = codec
-                            .enrich_message(message)
-                            .expect("a captured execution report enriches");
-                        pinned.message(&format!("enrich.{at}"), &codec, &enriched, &schema);
-                    }
+                    messages.push(message);
                 }
                 Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
             }
         }
         pinned.push(format!("{at}.messages"), answered.to_string());
+    }
+    for (index, message) in codec.lifecycle(messages).enumerate() {
+        let at = format!("lifecycle[{index:03}]");
+        match message {
+            Ok(message) => pinned.message(&at, &codec, &message, &schema),
+            Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
+        }
     }
 }
 
@@ -613,18 +623,18 @@ fn capture(pinned: &mut Pinned) {
 fn read() -> Pinned {
     let mut pinned = Pinned::default();
     capture(&mut pinned);
-    pinned.lines("shapes", &committed_codec(), &shapes(), false);
-    pinned.lines("frames", &committed_codec(), &frames(), false);
-    pinned.lines("bridge", &bridge_codec(), &bridge(), false);
-    pinned.lines("lift", &committed_codec(), &lifts(), false);
-    pinned.lines("enrich", &committed_codec(), &enrichments(), true);
-    pinned.lines("latest", &committed_codec(), &restatements(), false);
+    pinned.lines("shapes", &committed_codec(), &shapes());
+    pinned.lines("frames", &committed_codec(), &frames());
+    pinned.lines("bridge", &bridge_codec(), &bridge());
+    pinned.lines("lift", &committed_codec(), &lifts());
+    pinned.lines("enrich", &committed_codec(), &enrichments());
+    pinned.lines("latest", &committed_codec(), &restatements());
     // The absence convention is deliberately not byte-preserving, so the same
     // marked and null-spelled lines are read once more with it turned off: a
     // difference the convention would have swallowed shows here instead.
     let verbatim =
         super::fixed_codec(super::committed_registry()).with_null_values::<[&str; 0], _>([]);
-    pinned.lines("verbatim", &verbatim, &frames(), false);
+    pinned.lines("verbatim", &verbatim, &frames());
     pinned
 }
 
@@ -649,14 +659,19 @@ fn the_codec_answers_what_it_answered() {
     // are the fixtures that exercise both - so a capture of ten million
     // lines cannot end on one bad value, and what those rows said is still
     // in the arrival record the snapshot pins beside them.
+    // Written before the identity is judged, so a regeneration lands the
+    // whole answer even while one message does not read back as itself.
+    let path = snapshot_path();
+    let writing = std::env::var(WRITE).as_deref() == Ok("1");
+    if writing {
+        std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
+    }
     assert_eq!(
         pinned.unread,
         [] as [&str; 0],
         "every row reads back; an unreadable value is a null, not a refusal"
     );
-    let path = snapshot_path();
-    if std::env::var(WRITE).as_deref() == Ok("1") {
-        std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
+    if writing {
         return;
     }
     let text = std::fs::read_to_string(&path).unwrap_or_else(|absent| {

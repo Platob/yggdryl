@@ -91,10 +91,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             "fixentries",
         ]
     );
-    for tag in [
-        yggdryl::PREVUPDATEDAT_TAG_NAME.0,
-        yggdryl::PREVMSGHASH_TAG_NAME.0,
-    ] {
+    for tag in [yggdryl::PREVUNIX_TAG_NAME.0, yggdryl::PREVUUID_TAG_NAME.0] {
         assert_eq!(
             schema
                 .fields()
@@ -118,7 +115,23 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // newest one, and the column is the dictionary's one `lastqty` in both.
     // The crate's own clocks lead the row, then its identities, then the
     // standard header - a table is read by time and joined by identity.
-    assert_eq!(&names[..3], ["updatedat", "prevupdatedat", "createdat"]);
+    // The row reads the way a message reads: when it happened first, then
+    // which event it is, then which message and session, and the header
+    // after them. Each column is found by its name rather than by an offset,
+    // so a band that gains one does not move this assertion.
+    let at = |name: &str| {
+        schema
+            .index_of(name)
+            .unwrap_or_else(|| panic!("a {name} column"))
+    };
+    for pair in ["unix", "creatunix", "prevunix", "expirunix", "snapunix"].windows(2) {
+        assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
+    }
+    assert!(at("snapunix") < at("curruuid"), "the clocks open the row");
+    assert!(
+        at("curruuid") < at("beginstring"),
+        "the event before the header"
+    );
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(
         &names[header..header + 3],
@@ -143,36 +156,27 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     );
     assert_eq!(typed(44), DataType::Float64, "Price(44)");
     assert_eq!(
-        typed(yggdryl::PREVUPDATEDAT_TAG_NAME.0),
-        typed(yggdryl::UPDATEDAT_TAG_NAME.0)
+        typed(yggdryl::PREVUNIX_TAG_NAME.0),
+        typed(yggdryl::UNIX_TAG_NAME.0)
     );
-    assert_eq!(
-        typed(yggdryl::PREVMSGHASH_TAG_NAME.0),
-        super::identity_dtype()
-    );
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), super::identity_dtype());
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::VERSION_TAG_NAME.0, "Version"),
-        (yggdryl::SYMBOLTICKER_TAG_NAME.0, "SymbolTicker"),
-        (yggdryl::UPDATEDAT_TAG_NAME.0, "UpdatedAt"),
-        (yggdryl::PARENTCLORDID_TAG_NAME.0, "ParentClOrdID"),
-        (yggdryl::PARENTORDERID_TAG_NAME.0, "ParentOrderID"),
-        (yggdryl::SENDERSESSIONID_TAG_NAME.0, "SenderSessionId"),
+        (yggdryl::UNIX_TAG_NAME.0, "Unix"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
         (yggdryl::PLUGINID_TAG_NAME.0, "PluginId"),
-        (yggdryl::PREVPLUGINID_TAG_NAME.0, "PrevPluginId"),
-        (yggdryl::SENDERSESSIONNAME_TAG_NAME.0, "SenderSessionName"),
-        (yggdryl::TARGETSESSIONNAME_TAG_NAME.0, "TargetSessionName"),
+        (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
         (yggdryl::ISINCODE_TAG_NAME.0, "ISINCode"),
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
-        (yggdryl::MSGPHASH_TAG_NAME.0, "MsgPHash"),
-        (yggdryl::PREVUPDATEDAT_TAG_NAME.0, "PrevUpdatedAt"),
-        (yggdryl::PREVMSGHASH_TAG_NAME.0, "PrevMsgHash"),
+        (yggdryl::HASHCODE_TAG_NAME.0, "HashCode"),
+        (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
+        (yggdryl::CROSSCODE_TAG_NAME.0, "CrossCode"),
+        (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
+        (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -205,15 +209,15 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
-    use yggdryl::{FixMsg, IOMedia, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, FixMsg, HASHCODE_TAG_NAME, IOMedia, PREVUUID_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
     let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
-    let mut message = codec.sole_line(wire, false).unwrap();
+    let mut message = codec.sole_line(wire).unwrap();
     let digest = message.digest();
     let identities = [(
-        PREVMSGHASH_TAG_NAME,
+        PREVUUID_TAG_NAME,
         [
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
             0xee, 0xff,
@@ -233,18 +237,21 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     )
     .unwrap();
     message
-        .set(yggdryl::PREVUPDATEDAT_TAG_NAME.0, previous_clock.clone())
+        .set(yggdryl::PREVUNIX_TAG_NAME.0, previous_clock.clone())
         .unwrap();
     assert_eq!(message.digest(), digest);
-    assert_eq!(message.into_bytes(b'|'), wire);
+    assert_eq!(
+        message.into_bytes(b'|'),
+        [wire.as_slice(), b"59=0|"].concat()
+    );
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    for (tag, _) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME] {
+    for (tag, _) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
         super::identity_bytes(at(&row, &schema, tag));
     }
     assert_eq!(
-        at(&row, &schema, yggdryl::PREVUPDATEDAT_TAG_NAME.0),
+        at(&row, &schema, yggdryl::PREVUNIX_TAG_NAME.0),
         &previous_clock
     );
     for ((tag, name), bytes) in identities {
@@ -256,18 +263,18 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(restored.into_row(&schema).unwrap(), row);
     assert_eq!(restored.digest(), digest);
-    assert_eq!(restored.into_bytes(b'|'), wire);
+    assert_eq!(restored.into_bytes(b'|'), message.into_bytes(b'|'));
 
     let outgoing = codec.arrow_reader(schema.clone(), [Ok(message)]).unwrap();
     let arrow_schema = outgoing.schema();
     assert_eq!(
         arrow_schema
-            .field_with_name(yggdryl::PREVUPDATEDAT_TAG_NAME.1)
+            .field_with_name(yggdryl::PREVUNIX_TAG_NAME.1)
             .unwrap()
             .data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
     );
-    for (_, name) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME] {
+    for (_, name) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, PREVUUID_TAG_NAME] {
         // Plain sixteen bytes, with no extension name over them: a lake
         // engine reads the storage and nothing has to know the extension.
         let field = arrow_schema.field_with_name(name).unwrap();
@@ -351,7 +358,7 @@ fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns(
     assert_eq!(rebuilt, wide, "one dictionary, one schema");
 
     let order = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|")
         .unwrap();
     for schema in [&wide, &narrow, &rebuilt, &wide, &narrow] {
         let row = order.into_row(schema).unwrap();
@@ -377,7 +384,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let schema = fix_schema(&registry, "fix").unwrap();
 
     let order = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|")
         .unwrap();
     let row = order.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 35).as_str(), Some("D"));
@@ -388,7 +395,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.
-    let bare = reader.sole_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap();
+    let bare = reader.sole_line(b"8=FIX.4.4|35=0|10=0|").unwrap();
     let thin = bare.into_row(&schema).unwrap();
     assert_eq!(
         thin.as_sequence().map(<[Scalar]>::len),
@@ -403,64 +410,30 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
-        .sole_line(
-            b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|",
-            false,
-        )
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|")
         .unwrap();
     let row = order.into_row(&schema).unwrap();
 
-    super::identity_bytes(at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0));
-
-    // One ticker for one instrument, qualified by the venue that named it.
-    assert_eq!(
-        at(&row, &schema, yggdryl::SYMBOLTICKER_TAG_NAME.0).as_str(),
-        Some("AAPL@XNAS"),
-    );
+    // The code the content digests to, a sixty-four-bit number the row holds.
+    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
 
     // The clock the row is cut by - how a layout is cut from it is the
     // target's, not a column of this crate's.
-    assert!(!at(&row, &schema, yggdryl::UPDATEDAT_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::UNIX_TAG_NAME.0).is_null());
 
-    // The version it was read at, which is not always what the frame claimed.
-    assert_eq!(
-        at(&row, &schema, yggdryl::VERSION_TAG_NAME.0).as_str(),
-        Some("4.4")
-    );
+    // The version it was read at, which the header holds and the row states.
+    assert_eq!(at(&row, &schema, 8).as_str(), Some("FIX.4.4"));
 
     // Hard identities and clocks are stored mirrors, never invented arrivals.
     assert!(order.get_by_tag(65_000).is_none());
-    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG_NAME.0).is_some());
-    assert!(order.get_by_tag(yggdryl::UPDATEDAT_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::HASHCODE_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::UNIX_TAG_NAME.0).is_some());
     assert!(
         order
             .entries()
             .iter()
-            .all(|entry| entry.tag() != yggdryl::UPDATEDAT_TAG_NAME.0)
+            .all(|entry| entry.tag() != yggdryl::UNIX_TAG_NAME.0)
     );
-}
-
-#[test]
-fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
-    let (_, reader) = reader();
-    // A plain ticker is itself; an identifier is qualified by the scheme that
-    // numbers it, because `US0378331005` does not say it is an ISIN.
-    let ticker = reader
-        .sole_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|", false)
-        .unwrap();
-    assert_eq!(ticker.symbol_ticker().as_str(), Some("AAPL"));
-
-    let identified = reader
-        .sole_line(b"8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|10=0|", false)
-        .unwrap();
-    assert_eq!(
-        identified.symbol_ticker().as_str(),
-        Some("4:US0378331005@XNAS"),
-    );
-
-    // A message naming no instrument answers nothing rather than a guess.
-    let none = reader.sole_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap();
-    assert!(none.symbol_ticker().is_null());
 }
 
 #[test]
@@ -471,7 +444,7 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     // A buy order at a price is a party willing to pay it, so the bid lane it
     // never wrote is filled and the ask lane is not.
     let buy = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|")
         .unwrap();
     let row = buy.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 132), &Scalar::from(12.5_f64));
@@ -480,14 +453,14 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
 
     // A one-sided quote implies the side it never wrote.
     let quote = reader
-        .sole_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|")
         .unwrap();
     let row = quote.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 54).as_str(), Some("BUY"));
 
     // And a stated column is never overwritten by a derivation.
     let stated = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
         .unwrap();
     let row = stated.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 132), &Scalar::from(99.0_f64));
@@ -498,7 +471,7 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
         .unwrap()
         .into_row(&schema)
         .unwrap();
@@ -508,33 +481,22 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     // The record is everything that arrived, in arrival order, so the wire is
     // rebuilt from it and never from the columns.
     assert_eq!(entries.len(), 6);
-    let unknown: Vec<_> = entries
-        .iter()
-        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
-        .map(|entry| entry.get(3).and_then(Scalar::as_str).unwrap())
-        .collect();
-    assert_eq!(unknown, ["9999", "VenueOwnThing"]);
-
-    // A key no dictionary explains is named after itself: `tagname` cannot be
-    // null, and the arrival's own spelling is the only name it has.
+    // A key no dictionary explains is named after itself, folded as every
+    // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries
         .iter()
         .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
         .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
         .collect();
-    assert_eq!(named, ["9999", "VenueOwnThing"]);
+    assert_eq!(named, ["9999", "venueownthing"]);
 
-    // A key one does explain carries the dictionary's name beside the
-    // arrival's, so a consumer groups by name without a dictionary of its own.
-    let beginstring = entries
+    // A key one does explain carries the dictionary's canonical name, so a
+    // consumer groups by name without a dictionary of its own.
+    let symbol = entries
         .iter()
-        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(8))
-        .expect("the BeginString arrival");
-    assert_eq!(
-        beginstring.get(1).and_then(Scalar::as_str),
-        Some("beginstring")
-    );
-    assert_eq!(beginstring.get(3).and_then(Scalar::as_str), Some("8"));
+        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(55))
+        .expect("the Symbol arrival");
+    assert_eq!(symbol.get(1).and_then(Scalar::as_str), Some("symbol"));
 }
 
 /// The two documents a datatype writes name it the same way.
@@ -596,7 +558,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, HASHCODE_TAG_NAME, PREVUUID_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -608,14 +570,14 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     ];
     let messages: Vec<_> = lines
         .iter()
-        .map(|line| Ok(codec.sole_line(line, false).unwrap()))
+        .map(|line| Ok(codec.sole_line(line).unwrap()))
         .collect();
     let fixed = fix_schema(&registry, "fix").unwrap();
     let stamped: Vec<_> = codec
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let identities = [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME];
+    let identities = [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, PREVUUID_TAG_NAME];
     // Read off the projected row, because the fixed schema is what the table
     // holds and a projection is content: `msghash` digests the row it lands in
     // (see `message.md#clocks-and-identity`), and the table's business is to
@@ -745,7 +707,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     assert!(at(&row, &schema, yggdryl::ISINCODE_TAG_NAME.0).is_null());
     // The row is still a row: the columns beside the unreadable ones are
     // filled, and the identity bundle still settled.
-    assert!(!at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
 }
 
 /// A market spelled wider than a MIC derives nothing rather than refusing.
@@ -759,7 +721,7 @@ fn a_derivation_wider_than_its_column_stays_silent() {
     let schema = fix_schema(&registry, "fix").unwrap();
 
     let narrow = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLON|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLON|10=0|")
         .unwrap()
         .into_row(&schema)
         .unwrap();
@@ -769,7 +731,7 @@ fn a_derivation_wider_than_its_column_stays_silent() {
     );
 
     let wide = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLONX|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLONX|10=0|")
         .unwrap()
         .into_row(&schema)
         .unwrap();
@@ -791,10 +753,7 @@ fn a_group_keeps_the_members_that_read() {
     // A packed occurrence stating only the identifier: the members it never
     // wrote are null and the identifier it did write is kept.
     let packed = reader
-        .sole_line(
-            b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE",
-            false,
-        )
+        .sole_line(b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
         .unwrap()
         .into_row(&schema)
         .unwrap();
@@ -811,14 +770,25 @@ fn a_group_keeps_the_members_that_read() {
     // And one member the row cannot read costs that member alone: the
     // occurrence around it and the occurrences beside it stay.
     let marked = reader
-        .sole_line(
-            b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
-            false,
-        )
+        .sole_line(b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
         .unwrap()
         .into_row(&schema)
         .unwrap();
     let members = group(&marked, &schema)[0].as_sequence().expect("a party");
     assert_eq!(members[0].as_str(), Some("BUYSIDE"));
     assert_eq!(members[2].as_i128(), Some(1));
+}
+
+#[test]
+fn zzz_probe_schema() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let tags = yggdryl::fix_schema_tags();
+    println!("PROBE tags len={} {:?}", tags.len(), tags);
+    let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
+    println!("PROBE names len={} {:?}", names.len(), names);
+    let msg = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
+        .unwrap();
+    println!("PROBE lossless entries={:?}", msg.entries());
 }

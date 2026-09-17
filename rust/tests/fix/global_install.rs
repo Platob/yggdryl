@@ -30,7 +30,7 @@ fn an_installed_registry_is_the_default_and_cannot_be_replaced() {
     let value = Scalar::from_record([("Symbol", Scalar::from("AAPL"))]).expect("one entry");
     let msg = FixMsg::new(root, value).expect("a valid message");
     assert!(Arc::ptr_eq(msg.registry(), global));
-    assert_eq!(msg.by_tag(55).expect("Symbol"), &Scalar::from("AAPL"));
+    assert_eq!(msg.by_tag(55).expect("Symbol"), Scalar::from("AAPL"));
 
     // Once resolved, the default cannot change underneath its callers.
     let error = FixRegistry::install_global(FixRegistry::new()).expect_err("already resolved");

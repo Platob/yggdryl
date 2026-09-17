@@ -48,8 +48,8 @@ pub use expression::{
     expression_vocabularies,
 };
 pub use fix::{
-    FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,
-    JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, fix_crate_fields,
+    FixCaptureView, FixCodecOptions, FixEntryView, FixEventView, FixHeaderView, JsFixCodec,
+    JsFixFieldIterator, JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields,
     fix_global_registry, fix_install_global_registry, fix_schema, fix_schema_carrying,
     fix_schema_tags,
 };

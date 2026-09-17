@@ -38,7 +38,7 @@ fn the_configuration_directory_seeds_the_default() {
         .expect("one field")
         .write_into(&mut Folder::new(home.join(".config").join("fix")).expect("a local folder"))
         .expect("the shard written");
-    assert!(home.join(".config/fix/fields/0.json").is_file());
+    assert!(home.join(".config/fix/fields/000000000.json").is_file());
 
     // SAFETY: `set_var` is `unsafe` because another thread reading the
     // environment concurrently is a data race. This binary holds only this
@@ -50,7 +50,7 @@ fn the_configuration_directory_seeds_the_default() {
     }
     let global = FixRegistry::global().expect("the configured registry");
     assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
-    assert_eq!(global.len(), 1 + super::seeded_fields());
+    assert_eq!(super::scalars(global), 1 + super::seeded_fields());
 
     // SAFETY: the same reasoning as above.
     unsafe {

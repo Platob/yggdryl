@@ -39,7 +39,11 @@ export {
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
+  type FixCaptureView,
   type FixDirection,
+  type FixEntryView,
+  type FixEventView,
+  type FixHeaderView,
   type MetadataEntry,
   type PartitionEntry,
   type StringParameters,
@@ -93,12 +97,9 @@ import {
   DataFile,
   FixMsg,
   FixCodec,
-  FixLifecycle,
   FixRegistry,
-  FixDefinitionIterator,
   FixMessages,
   MsgType,
-  MsgTypeIterator,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -122,12 +123,9 @@ export type {
   DataFile,
   FixMsg,
   FixCodec,
-  FixLifecycle,
   FixRegistry,
-  FixDefinitionIterator,
   FixMessages,
   MsgType,
-  MsgTypeIterator,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -532,17 +530,18 @@ declare module './index' {
   }
 
   interface FixRegistry {
-    /** Walk the fields in ascending canonical-identifier order, lazily. */
+    /**
+     * Walk the fields lazily: the scalars in ascending canonical-identifier
+     * order, then the components and the groups.
+     */
     [Symbol.iterator](): Generator<Field>
   }
 
   interface FixMsg {
-    /** Walk the root's `[name, value]` pairs in the order it declares. */
-    [Symbol.iterator](): Generator<[string, Scalar]>
+    /** Walk the content entries, each with what is nested under it. */
+    [Symbol.iterator](): IterableIterator<FixEntryView>
   }
 
-  interface FixDefinitionIterator extends IterableIterator<Field> {}
-  interface MsgTypeIterator extends IterableIterator<MsgType> {}
   interface FixMessages extends IterableIterator<FixMsg> {
     next(): IteratorResult<FixMsg>
   }
@@ -555,15 +554,10 @@ declare module './index' {
     /** A stream of lines, pulled one at a time; each as `parseTextLine` reads it. */
     parseTextLines(lines: Iterable<TextLine>): FixMessages
     /**
-     * A stream of messages filled with what each implies, one at a time,
-     * each as `enrichMessage` fills one; nothing is carried from one message
-     * to the next.
-     */
-    enrichMessages(messages: Iterable<FixMsg>): FixMessages
-    /**
-     * One lifecycle at `FixLifecycle.DEFAULT_INTERVAL_NS` over a whole stream
-     * of messages, one at a time, answering every message as
-     * `FixLifecycle.fill` does.
+     * The one walk over a whole stream of messages, lazily: sorted by
+     * instant, each stated as the one after the live message it follows -
+     * its `prevuuid`, `prevunix`, `seqnum`, the predecessor among its
+     * `parentuuids` and the chain's `creatunix` - and settled again.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -575,7 +569,7 @@ declare module './index' {
      * A stream of messages as the rows one message field holds them.
      *
      * The third verb, and the one a consumer reads by: `parse*` turns a
-     * capture into messages, `enrich*` fills what each implies, and this
+     * capture into messages, `lifecycle` states what each follows, and this
      * answers them under whatever field a consumer reads by - a venue's own
      * message type, `fix.schema` itself, which keeps every column a capture
      * lands in, or any Struct root a caller built. A column the message does
@@ -585,25 +579,10 @@ declare module './index' {
     formatMessages(messages: Iterable<FixMsg>, field: Field): Scalar[]
     /** The batch twins take whatever `BatchReader.from` accepts. */
     parseTextArrowReader(source: BatchSource): BatchReader
-    enrichMessagesArrowReader(source: BatchSource): BatchReader
+    lifecycleArrowReader(source: BatchSource): BatchReader
     formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
-  }
-  interface FixLifecycle {
-    /**
-     * The snapshots a stream of messages emits, pulled one at a time: only
-     * messages `snapshot` would answer `null` for disappear. The stream owns
-     * this lifecycle - its interval and live chains - so every later call on
-     * this object throws. A refused message throws where it is met without
-     * advancing state and the stream continues; a failure of the iterable
-     * throws as itself and ends it.
-     */
-    snapshots(messages: Iterable<FixMsg>): FixMessages
-  }
-  namespace FixLifecycle {
-    /** The grid interval, in nanoseconds, a lifecycle uses unless configured: one second. */
-    const DEFAULT_INTERVAL_NS: bigint
   }
 
   interface Field {
@@ -3139,8 +3118,10 @@ export type FixValueInput =
 export interface FixMsgConstructor {
   /**
    * Build a message, linking the process default when none is named. A
-   * mandatory replay field the root lacks is appended - `SendingTime` reads
-   * UTC now when the value states none - and `msghash`/`msgphash` are computed.
+   * child stating a typed fact - a header tag, a crate column, one of the
+   * event's own tags, `Text(58)` - fills the holder that owns it and leaves
+   * the row; `SendingTime` reads UTC now when the value states none, and the
+   * identity is settled.
    */
   new (
     field: Field,
@@ -3148,9 +3129,9 @@ export interface FixMsgConstructor {
     registry?: FixRegistry | null,
   ): FixMsg
   /**
-   * The message a fixed row holds: the inverse of `intoRow`, its entries
-   * rebuilt from the `fixentries` column without a parse. The row carries
-   * the seven non-null replay fields and no clock is read.
+   * The message a fixed row holds: the inverse of `intoRow`, its typed facts
+   * read off their columns and its content rebuilt from the `fixentries`
+   * column without a parse. No clock is read.
    */
   fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
   readonly prototype: FixMsg
@@ -3166,11 +3147,15 @@ export interface Fix {
    * to - provenance a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
-  /** A FIX message: a value plus the registry that types it. */
+  /**
+   * A FIX message: its typed facts - the event, the header, the capture,
+   * the text and the metadata - and the content row the registry types.
+   */
   readonly FixMsg: FixMsgConstructor
   /**
-   * One dictionary, reading captured lines into messages, enriching them,
-   * and the Arrow twin of each - a pin is on the codec, a stage is a call.
+   * One dictionary, reading captured lines into settled messages, walking
+   * them through one lifecycle, and the Arrow twin of each - a pin is on the
+   * codec, a stage is a call.
    */
   readonly FixCodec: typeof FixCodec
   /**
@@ -3180,17 +3165,6 @@ export interface Fix {
   readonly MsgType: abstract new () => MsgType
   /** A lazy stream of messages: what every stage of `FixCodec` answers. */
   readonly FixMessages: abstract new () => FixMessages
-  /**
-   * The state a stream of messages has reached, one chain per live event:
-   * `fill` names each message's chain by `code` (else by identifier),
-   * truncates `updatedat` to the `intervalNs` epoch grid while `snapshotat`
-   * keeps the real instant, carries the chain's first `createdat` and the
-   * previous message's `prevupdatedat`/`prevmsghash`, and finalizes `msghash`;
-   * `snapshot` and `snapshots` answer only new grid snapshots; `alive`
-   * counts the chains a terminal state has not closed, and `clear` forgets
-   * them all.
-   */
-  readonly FixLifecycle: typeof FixLifecycle
   /**
    * The fixed root every message answers as, built from one dictionary.
    *
@@ -3212,24 +3186,20 @@ export interface Fix {
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /**
-   * One row's tagged columns, in order, ending `..., 65026, 385, 65027`; the
-   * `fixentries` group that closes the row is counted by that last one.
+   * One row's tagged columns, in order: the crate's own, the header, the
+   * body, the groups, the trailer, then `385` and the `65027` that counts
+   * the `fixentries` group closing the row.
    */
   schemaTags(): number[]
   /**
-   * The thirty-six crate definitions in tag order: thirty-four scalar fields
-   * at 65001-65003, 65005-65015, 65017-65019, 65021-65035 and 65037-65038,
-   * the sorted `altids` Map group at 65020 and the `instids` Struct at 65036
-   * (65000, 65004 and 65016 are retired) - the version, the ticker,
-   * `updatedat`, the sessions a message states, the bridge's message
-   * context, the plugins and plugin sessions a line moved between, the
-   * ISIN, MIC and order state a row derives, the `msghash` and `msgphash`
-   * identities, the direct identifiers enrichment records in
-   * `altids`, `prevupdatedat`/`prevmsghash`, `createdat`, `code`, `snapshotat`,
-   * the `sourceurl` a line was read from and the `nofixentries` counting its
-   * arrival record. Every registry holds them in their category from
+   * The crate's own definitions in tag order, above every tag FIX or a
+   * venue publishes: the event's instants, the identities, the cross code
+   * and the sequence, the `identifiers` and `metadata` Map groups, the
+   * state, the price, the quantity, the units and the lane currencies, the
+   * instrument codes, what a bridge's capture states, and the `nofixentries`
+   * counting the content record. Every registry holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
-   * (60) clocks, so a new registry's `size` is 36.
+   * (60) clocks.
    */
   crateFields(): Field[]
   /** The process-wide registry, loading it on the first call. */

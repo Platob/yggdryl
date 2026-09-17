@@ -248,11 +248,15 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     );
     // The crate's own clocks open the fixed columns; the standard header
     // follows them.
-    assert_eq!(
-        &names[7..10],
-        ["updatedat", "prevupdatedat", "createdat"],
-        "{names:?}"
-    );
+    let at = |name: &str| {
+        names
+            .iter()
+            .position(|held| *held == name)
+            .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
+    };
+    for pair in ["level", "unix", "creatunix", "prevunix"].windows(2) {
+        assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
+    }
     let header = names
         .iter()
         .position(|held| *held == "beginstring")
@@ -394,7 +398,7 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // All three parts of the bracket are captures named after the fields they
     // fill, so all three land in those columns rather than in front: the
     // routed row's bracket stated them, the heartbeat's did not.
-    let session = tag_text(&read, yggdryl::BRIDGESESSIONID_TAG_NAME.0);
+    let session = tag_text(&read, yggdryl::MSGSESSIONID_TAG_NAME.0);
     let context = tag_text(&read, yggdryl::MSGCTXID_TAG_NAME.0);
     assert_eq!(session[ROUTED_ROW].as_deref(), Some("e7254b22"));
     assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
@@ -418,14 +422,10 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
         Some("Broker_DarkPool_TradeCapture")
     );
     assert_eq!(plugin[RESPONSE_ROW].as_deref(), Some("Jolokia"));
-    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG_NAME.0);
-    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG_NAME.0);
-    let previous = tag_text(&read, yggdryl::PREVPLUGINID_TAG_NAME.0);
-    for row in 0..MESSAGES {
-        assert_eq!(sender[row], None, "row {row} states no sender session name");
-        assert_eq!(target[row], None, "row {row} states no target session name");
-        assert_eq!(previous[row], None, "row {row} states no previous plugin");
-    }
+    // The session instance the bridge handled a line on is the bracket's
+    // own, and no line here spells one.
+    let session = tag_text(&read, yggdryl::MSGSESSIONID_TAG_NAME.0);
+    assert_eq!(session[HEARTBEAT_ROW], None);
 
     // The bracket's sequence number fills `MsgSeqNum` where the line stated
     // none - the routed row is keyed by name and carries no 34 - and never
@@ -543,7 +543,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // Every projected row carries its sixteen content identity bytes.
     // Distinct real messages remain distinct, independently of the separate
     // arrival digest.
-    let identities = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
+    let identities = tag_column(&read, yggdryl::HASHCODE_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
         assert_eq!(
             super::identity_bytes(held).len(),
@@ -552,7 +552,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         );
     }
     assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
-    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
     assert!(stamp[FILL_ROW].is_temporal());
     assert!(stamp[ROUTED_ROW].is_temporal());
 }
@@ -566,9 +566,9 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     // settles the real event independently of when the bridge logged it.
     let clock = column(&stage, "timestamp");
     let carried = column(&read, "timestamp");
-    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
-    let snapshot = tag_column(&read, yggdryl::SNAPSHOTAT_TAG_NAME.0);
-    let created = tag_column(&read, yggdryl::CREATEDAT_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
+    let snapshot = tag_column(&read, yggdryl::SNAPUNIX_TAG_NAME.0);
+    let created = tag_column(&read, yggdryl::CREATUNIX_TAG_NAME.0);
     assert_eq!(stamp.len(), MESSAGES);
     assert_eq!(clock.len(), CAPTURE.len());
     for (row, line) in CARRYING.into_iter().enumerate() {
@@ -616,7 +616,7 @@ fn a_json_document_is_one_unknown_row_carrying_only_what_the_row_stated() {
     let body = &RESPONSE[ROWHEADER_WIDTH..];
     assert!(body.starts_with("Response: {"), "{body}");
     let message = codec
-        .sole_line(body.as_bytes(), false)
+        .sole_line(body.as_bytes())
         .expect("the line carries one document, and so one message");
 
     // A JSON document is a body this codec does not read: the row said
@@ -627,10 +627,12 @@ fn a_json_document_is_one_unknown_row_carrying_only_what_the_row_stated() {
     assert_eq!(message.as_field().name(), "unknown");
     assert!(message.entries().is_empty());
     assert!(message.into_bytes(b'|').is_empty());
-    assert!(message.get_by_tag(35).is_none_or(Scalar::is_null));
+    assert!(message.get_by_tag(35).is_none_or(|held| held.is_null()));
     for spelled in ["SenderCompID", "TargetCompID", "Name", "CurrentPort"] {
         assert!(
-            message.get_by_name(spelled).is_none_or(Scalar::is_null),
+            message
+                .get_by_name(spelled)
+                .is_none_or(|held| held.is_null()),
             "{spelled}: nothing the document spelled reaches the message"
         );
     }
@@ -705,9 +707,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_str().expect("a body").as_bytes();
             let message = codec
-                .sole_line(body, false)
+                .sole_line(body)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
-            let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
+            let alone = message.get_by_tag(tag).unwrap_or(Scalar::Null);
             let expected = match (tag, &alone) {
                 (34, Scalar::Null) => rendered(&sequenced[CARRYING[row]]),
                 _ => rendered(&alone),
@@ -726,7 +728,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // context, the plugin or the clock - so the arrival record is still the
     // line alone.
     let routed = bodies[ROUTED_ROW].as_str().expect("a body").as_bytes();
-    let alone = codec.sole_line(routed, false).expect("the routed row");
+    let alone = codec.sole_line(routed).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
     let entries = column(&read, "fixentries");
@@ -745,7 +747,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,
         yggdryl::PLUGINID_TAG_NAME.0,
-        yggdryl::UPDATEDAT_TAG_NAME.0,
+        yggdryl::UNIX_TAG_NAME.0,
     ] {
         assert!(
             !recorded.contains(&i64::from(filled)),
@@ -836,7 +838,7 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
     assert_eq!(tag_column(&read, 34)[1].as_i64(), Some(935));
 
     // Capture context is shared, while each frame keeps its own event clock.
-    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
+    let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
     assert_ne!(stamp[0], stamp[1]);
     assert_eq!(stamp, tag_column(&read, 52));
     let captured = column(&read, "timestamp");

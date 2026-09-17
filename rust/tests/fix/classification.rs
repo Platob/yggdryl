@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use yggdryl::graph::MarketElement;
 use yggdryl::types::string::Cfi;
 use yggdryl::{FixMsg, FixRegistry};
 
@@ -13,11 +14,12 @@ fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
 }
 
+/// One line parsed, which is where the classification is derived: a parse
+/// fills what the message implies, and no second pass exists.
 fn enriched(line: &[u8]) -> FixMsg {
-    let codec = super::fixed_codec(registry());
-    codec
-        .enrich_message(codec.parse_fix_line(line).expect("parses"))
-        .expect("enriches")
+    super::fixed_codec(registry())
+        .parse_fix_line(line)
+        .expect("parses")
 }
 
 /// Tag 461 as the fixed row reads it back, which is where the column lives.
@@ -100,18 +102,23 @@ fn a_partial_stated_code_takes_what_the_rest_of_the_message_adds() {
 }
 
 #[test]
-fn the_classification_column_is_the_one_the_instrument_struct_reads() {
-    // One owner: `instids` fills its `cficode` member from tag 461 exactly
-    // as the column beside it answers, so a row never says two things.
+fn the_classification_column_is_the_one_the_event_holds() {
+    // One owner: tag 461 is the event's own, so the column, the lookup by
+    // tag and the graph reading all answer the one fact.
     let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|167=CS|48=US0378331005|22=4|10=0|");
-    let schema = yggdryl::fix_schema(&registry(), "fix").expect("a schema");
-    let row = held.into_row(&schema).expect("a row");
-    let values = row.as_sequence().expect("a row");
-    let members = values[schema.index_of("instids").expect("instids")]
-        .as_sequence()
-        .expect("a struct value");
-    assert_eq!(members[0].as_str(), classified(&held).as_deref());
-    let at = yggdryl::fix_column_of(&schema, 461).expect("a classification column");
-    assert_eq!(values[at].as_str(), classified(&held).as_deref());
-    assert!(!values[at].is_null());
+    let classified = classified(&held);
+    assert_eq!(classified.as_deref(), Some("ESXXXX"));
+    assert_eq!(
+        held.get_cficode().map(ToString::to_string),
+        classified,
+        "the event holds what the column states"
+    );
+    assert_eq!(
+        held.by_tag(461).expect("the classification").as_str(),
+        classified.as_deref()
+    );
+    assert!(
+        held.as_field().index_of("cficode").is_none(),
+        "a typed fact is held once, never in the row"
+    );
 }

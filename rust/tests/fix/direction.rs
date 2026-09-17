@@ -595,15 +595,16 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
         bridge.by_tag(MSGDIRECTION_TAG_NAME.0).unwrap().as_str(),
         Some("S")
     );
-    // The fill is a row child and never an entry: the wire re-emits as it
-    // arrived.
+    // The fill is the header's and never an entry: the wire re-emits
+    // without it, and with nothing but what the dictionary derived for an
+    // order - its `TimeInForce`.
     assert!(
         fixed
             .entries()
             .iter()
             .all(|entry| entry.tag() != MSGDIRECTION_TAG_NAME.0)
     );
-    assert_eq!(fixed.into_bytes(b'|'), b"8=FIX.4.2|35=D|10=0|");
+    assert_eq!(fixed.into_bytes(b'|'), b"8=FIX.4.2|35=D|10=0|59=0|");
 
     // The pin is a code of the set, any spelling, and a spelling outside the
     // set is refused naming the set.

@@ -1,12 +1,11 @@
-//! Identifiers are a declaration, and their values a Map group.
+//! Identifiers are a declaration, and the names a message goes by are what a
+//! parse fills from it.
 
 use std::sync::Arc;
 
 use super::SoleMessage;
-use yggdryl::{
-    ALTIDS_TAG_NAME, DataType, Error, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar,
-    fix_schema,
-};
+use yggdryl::graph::Element;
+use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
@@ -123,9 +122,7 @@ fn registry_merge_orders_the_incoming_selection_by_the_final_members() {
             .unwrap()
             .required_field("order");
         stored.as_fix_mut().set_identifiers(["11"]).unwrap();
-        registry
-            .create_definition(FixCategory::Components, stored)
-            .unwrap();
+        registry.insert(stored).unwrap();
         members.reverse();
         let mut incoming = DataType::from_fields(members)
             .unwrap()
@@ -135,12 +132,8 @@ fn registry_merge_orders_the_incoming_selection_by_the_final_members() {
             incoming.as_fix().identifiers().collect::<Vec<_>>(),
             ["orderid", "clordid"]
         );
-        registry
-            .add_definition(FixCategory::Components, incoming)
-            .unwrap();
-        let merged = registry
-            .definition(FixCategory::Components, "order")
-            .unwrap();
+        registry.add_field(incoming).unwrap();
+        let merged = registry.field_by_name("order").unwrap();
         assert_eq!(
             merged.as_fix().identifiers().collect::<Vec<_>>(),
             ["clordid", "orderid"],
@@ -158,9 +151,7 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
         .unwrap();
     definition.as_fix_mut().set_msgtype("D").unwrap();
     let mut registry = FixRegistry::new();
-    registry
-        .create_definition(FixCategory::Components, definition)
-        .unwrap();
+    registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
     let field = DataType::from_fields([
         tagged("venue_order", 37),
@@ -185,7 +176,7 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
     let held = definition.identifier_values(&message).collect::<Vec<_>>();
     assert_eq!(held.len(), 1);
     assert_eq!(held[0].0.name(), "orderid");
-    assert!(std::ptr::eq(held[0].1, message.by_tag(37).unwrap()));
+    assert_eq!(*held[0].1, message.by_tag(37).unwrap());
     assert_eq!(held[0].1.as_str(), Some("O-01"));
 }
 
@@ -200,9 +191,7 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
         .unwrap();
     definition.as_fix_mut().set_msgtype("D").unwrap();
     let mut registry = FixRegistry::new();
-    registry
-        .create_definition(FixCategory::Components, definition)
-        .unwrap();
+    registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
     let field = DataType::from_fields([
         tagged("first_tag_holder", 11),
@@ -259,9 +248,7 @@ fn compiled_selection_skips_a_tag_shared_by_unnamed_row_children() {
         .unwrap();
     definition.as_fix_mut().set_msgtype("D").unwrap();
     let mut registry = FixRegistry::new();
-    registry
-        .create_definition(FixCategory::Components, definition)
-        .unwrap();
+    registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
     let field = DataType::from_fields([tagged("first", 11), tagged("second", 11)])
         .unwrap()
@@ -298,12 +285,7 @@ fn malformed_stored_declarations_are_refused_at_message_registration() {
             .update_metadata([("fix:identifiers", text.to_owned())])
             .unwrap();
         let mut registry = FixRegistry::new();
-        assert!(
-            registry
-                .create_definition(FixCategory::Components, field)
-                .is_err(),
-            "{text}"
-        );
+        assert!(registry.insert(field).is_err(), "{text}");
         assert!(registry.get_msgtype("D").is_none());
     }
 }
@@ -311,11 +293,6 @@ fn malformed_stored_declarations_are_refused_at_message_registration() {
 #[test]
 fn raw_component_and_occurrence_identifiers_are_refused_before_create_or_merge() {
     for group in [false, true] {
-        let category = if group {
-            FixCategory::Groups
-        } else {
-            FixCategory::Components
-        };
         let definition = |field: Field| {
             if group {
                 let mut group = DataType::list(field).nullable_field("orders");
@@ -341,9 +318,7 @@ fn raw_component_and_occurrence_identifiers_are_refused_before_create_or_merge()
             counter.as_fix_mut().set_tag(9001).unwrap();
             let mut registry = FixRegistry::from_fields([counter]).unwrap();
             let before = registry.clone();
-            let error = registry
-                .create_definition(category, raw.clone())
-                .unwrap_err();
+            let error = registry.insert(raw.clone()).unwrap_err();
             assert!(
                 matches!(error, Error::InvalidMetadataValue { .. }),
                 "{error}"
@@ -355,11 +330,9 @@ fn raw_component_and_occurrence_identifiers_are_refused_before_create_or_merge()
 
             let mut valid = component();
             valid.as_fix_mut().set_identifiers(["clordid"]).unwrap();
-            registry
-                .create_definition(category, definition(valid))
-                .unwrap();
+            registry.insert(definition(valid)).unwrap();
             let before = registry.clone();
-            let error = registry.add_definition(category, raw).unwrap_err();
+            let error = registry.add_field(raw).unwrap_err();
             assert!(
                 matches!(error, Error::InvalidMetadataValue { .. }),
                 "{error}"
@@ -391,12 +364,10 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
             .required_field("order");
         raw.update_metadata([("fix:identifiers", "37,ClientOrder")])
             .unwrap();
-        registry
-            .create_definition(FixCategory::Components, raw.clone())
-            .unwrap();
+        registry.insert(raw.clone()).unwrap();
         assert_eq!(
             registry
-                .definition(FixCategory::Components, "order")
+                .field_by_name("order")
                 .unwrap()
                 .as_fix()
                 .identifiers()
@@ -404,12 +375,10 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
             ["clordid", "orderid"]
         );
         raw.update_metadata([("fix:identifiers", "37,11")]).unwrap();
-        registry
-            .add_definition(FixCategory::Components, raw)
-            .unwrap();
+        registry.add_field(raw).unwrap();
         assert_eq!(
             registry
-                .definition(FixCategory::Components, "order")
+                .field_by_name("order")
                 .unwrap()
                 .as_fix()
                 .identifiers()
@@ -463,9 +432,7 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
             .unwrap();
             let registry =
                 FixRegistry::from_json(&yggdryl::into_json_scalar(&snapshot).unwrap()).unwrap();
-            let component = registry
-                .definition(FixCategory::Components, "order")
-                .unwrap();
+            let component = registry.field_by_name("order").unwrap();
             assert_eq!(
                 component.as_fix().identifiers().collect::<Vec<_>>(),
                 ["clordid", "orderid"],
@@ -479,178 +446,78 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
     }
 }
 
-fn mapping(pairs: &[(&str, &str)]) -> Scalar {
-    Scalar::from_mapping(
-        pairs
-            .iter()
-            .map(|(key, value)| (Scalar::from(*key), Scalar::from(*value))),
-    )
-    .unwrap()
-}
-
-fn custom_identifier_message(dtype: DataType, value: Scalar) -> (FixCodec, FixMsg) {
-    let msgtype = tagged("msgtype", 35);
-    let mut identifier = dtype.nullable_field("customid");
-    identifier.as_fix_mut().set_tag(9001).unwrap();
-    let mut registry = FixRegistry::from_fields([msgtype.clone(), identifier.clone()]).unwrap();
-    let mut field = DataType::from_fields([msgtype, identifier])
-        .unwrap()
-        .required_field("custom");
-    field.as_fix_mut().set_msgtype("Z9").unwrap();
-    field.as_fix_mut().set_identifiers(["customid"]).unwrap();
-    registry
-        .create_definition(FixCategory::Components, field.clone())
-        .unwrap();
-    let registry = Arc::new(registry);
-    let message = FixMsg::with_registry(
-        Arc::clone(&registry),
-        field,
-        Scalar::from_sequence([Scalar::from("Z9"), value]),
-    )
-    .unwrap();
-    (super::fixed_codec(registry), message)
-}
-
+/// The names a message goes by, as the event holds them.
+///
+/// A parse fills them from the message component's identifier declaration:
+/// every declared member the message states, under the member's canonical
+/// name, in sorted order. The map is the event's, so it is read through the
+/// graph trait rather than out of the row.
 #[test]
-fn scalar_identifiers_render_through_the_existing_utf8_value_contract() {
-    let value = Scalar::from(-42_i32);
-    let expected = DataType::utf8().scalar(value.clone()).unwrap();
-    let (codec, message) = custom_identifier_message(DataType::Int32, value.clone());
-    let enriched = codec.enrich_message(message).unwrap();
-    assert_eq!(enriched.by_tag(9001).unwrap(), &value);
-    assert_eq!(
-        enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
-        &mapping(&[("customid", "-42")])
-    );
-    assert_eq!(
-        enriched
-            .by_tag(ALTIDS_TAG_NAME.0)
-            .unwrap()
-            .get_key_str("customid"),
-        Some(&expected)
-    );
-    assert_eq!(codec.enrich_message(enriched.clone()).unwrap(), enriched);
-}
-
-#[test]
-fn a_binary_identifier_that_will_not_spell_text_names_nothing() {
-    let value = Scalar::from(vec![b'A', 0xff]);
-    let (codec, message) = custom_identifier_message(DataType::binary(), value.clone());
-    let enriched = codec.enrich_message(message).unwrap();
-    // The declared identifier is unreadable as text, so it names nothing and
-    // is left out of the map. It does not take the message with it: the
-    // message enriches, and the bytes it stated are still its own.
-    assert_eq!(enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &mapping(&[]));
-    assert_eq!(enriched.by_tag(9001).unwrap(), &value);
-    assert_eq!(codec.enrich_message(enriched.clone()).unwrap(), enriched);
-}
-
-/// One unreadable identifier costs that identifier and not the ones beside it.
-#[test]
-fn a_readable_identifier_beside_an_unreadable_one_still_names_itself() {
-    let mut registry = FixRegistry::new();
-    let mut readable = DataType::utf8().nullable_field("readableid");
-    readable.as_fix_mut().set_tag(9002).unwrap();
-    registry.insert(readable.clone()).unwrap();
-    let mut binary = DataType::binary().nullable_field("customid");
-    binary.as_fix_mut().set_tag(9001).unwrap();
-    registry.insert(binary.clone()).unwrap();
-    let mut msgtype = DataType::utf8().nullable_field("msgtype");
-    msgtype.as_fix_mut().set_tag(35).unwrap();
-    let mut field = DataType::from_fields([msgtype, binary, readable])
-        .unwrap()
-        .required_field("zmessage");
-    field.as_fix_mut().set_msgtype("Z9").unwrap();
-    field
-        .as_fix_mut()
-        .set_identifiers(["customid", "readableid"])
-        .unwrap();
-    registry
-        .create_definition(FixCategory::Components, field.clone())
-        .unwrap();
-    let registry = Arc::new(registry);
-    let message = FixMsg::with_registry(
-        Arc::clone(&registry),
-        field,
-        Scalar::from_sequence([
-            Scalar::from("Z9"),
-            Scalar::from(vec![b'A', 0xff]),
-            Scalar::from("R-1"),
-        ]),
-    )
-    .unwrap();
-    let enriched = super::fixed_codec(registry)
-        .enrich_message(message)
-        .unwrap();
-    assert_eq!(
-        enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
-        &mapping(&[("readableid", "R-1")]),
-    );
-}
-
-#[test]
-fn enrichment_fills_sorted_identifier_text_and_preserves_arrival_and_second_pass() {
+fn a_parse_fills_the_names_a_message_goes_by_in_sorted_order() {
     let registry = super::committed_registry();
     let codec = super::fixed_codec(Arc::clone(&registry));
     let line = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|";
-    let original = codec.sole_line(line, false).unwrap();
-    let enriched = codec.enrich_message(original.clone()).unwrap();
+    let read = codec.sole_line(line).unwrap();
     assert_eq!(
-        enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
-        &mapping(&[
+        read.get_identifiers()
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>(),
+        [
             ("clordid", "C-001"),
             ("execid", "E-09"),
-            ("orderid", "O-01"),
-        ])
+            ("orderid", "O-01")
+        ]
     );
-    assert_eq!(enriched.entries(), original.entries());
-    assert_eq!(enriched.digest(), original.digest());
-    assert_eq!(enriched.into_bytes(b'|'), line);
-    assert_eq!(codec.enrich_message(enriched.clone()).unwrap(), enriched);
+    // Filling them is not an arrival: the record and the wire are the line's.
+    assert_eq!(read.into_bytes(b'|'), line);
 
+    // And the row carries them, so a message read back off one goes by the
+    // same names.
     let schema = fix_schema(&registry, "fix").unwrap();
-    let row = enriched.into_row(&schema).unwrap();
+    let row = read.into_row(&schema).unwrap();
     let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(
-        rebuilt.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
-        enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap()
-    );
+    assert_eq!(rebuilt.get_identifiers(), read.get_identifiers());
     let array = yggdryl::arrow::scalar_array(&schema, &row).unwrap();
     let roundtrip = yggdryl::arrow::scalar_value(&schema, array.as_ref()).unwrap();
     assert_eq!(roundtrip, row);
 }
 
+/// A message whose component declares no identifier, or whose type no
+/// component claims, goes by no name at all - never by a guess.
 #[test]
-fn stated_maps_including_empty_are_preserved_and_unknown_types_have_none() {
+fn a_message_declaring_no_identifier_goes_by_no_name() {
     let codec = super::fixed_codec(super::committed_registry());
-    for stated in [mapping(&[("venue", "001")]), mapping(&[])] {
-        let mut message = codec
-            .sole_line(b"8=FIX.4.4|35=D|11=C-1|10=0|", false)
-            .unwrap();
-        message.set(ALTIDS_TAG_NAME.0, stated.clone()).unwrap();
-        let message = codec.enrich_message(message).unwrap();
-        assert_eq!(message.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &stated);
-        assert_eq!(codec.enrich_message(message.clone()).unwrap(), message);
+    for line in [
+        b"8=FIX.4.4|35=0|10=0|".as_slice(),
+        b"8=FIX.4.4|35=ZZ|11=C-1|10=0|",
+    ] {
+        let message = codec.sole_line(line).unwrap();
+        assert!(
+            message.get_identifiers().is_empty(),
+            "{}",
+            String::from_utf8_lossy(line)
+        );
     }
-    for line in [b"8=FIX.4.4|35=0|10=0|".as_slice(), b"8=FIX.4.4|35=D|10=0|"] {
-        let message = codec.sole_line(line, true).unwrap();
-        assert_eq!(message.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &mapping(&[]));
-    }
-    let unknown = codec
-        .sole_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|", true)
-        .unwrap();
-    assert!(unknown.get_by_tag(ALTIDS_TAG_NAME.0).is_none());
 }
 
+/// An identifier inside a repeating group's occurrence is that occurrence's,
+/// never the message's: only a direct member of the declaring component
+/// names the message.
 #[test]
-fn enrichment_does_not_promote_an_identifier_from_a_nested_occurrence() {
+fn a_nested_occurrence_never_names_the_message_it_rides_in() {
     let codec = super::fixed_codec(super::committed_registry());
-    let nested = codec.sole_line(
-        b"MSGTYPE=E|#LISTID=L-1|#NOORDERS=1|#NOORDERS[0]=CLORDID=C-nested\x04\x03SYMBOL=EXAMPLE",
-        true,
-    ).unwrap();
+    let nested = codec
+        .sole_line(
+            b"MSGTYPE=E|#LISTID=L-1|#NOORDERS=1|#NOORDERS[0]=CLORDID=C-nested\x04\x03SYMBOL=EXAMPLE",
+        )
+        .unwrap();
     assert_eq!(
-        nested.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
-        &mapping(&[("listid", "L-1")])
+        nested
+            .get_identifiers()
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect::<Vec<_>>(),
+        [("listid", "L-1")]
     );
 }

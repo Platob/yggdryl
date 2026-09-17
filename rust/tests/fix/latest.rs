@@ -12,13 +12,7 @@ use std::sync::Arc;
 
 use yggdryl::fix::{FixCode, FixReplacement};
 use yggdryl::types::State;
-use yggdryl::{
-    DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG_NAME, Version,
-};
-
-fn version(text: &str) -> Version {
-    text.parse().expect("a version")
-}
+use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 
 /// `LastQty(32)`, which `LastShares` also reaches, and `Symbol(55)`, undated.
 fn undated_fields() -> Vec<Field> {
@@ -56,13 +50,10 @@ fn built(
     FixMsg::with_registry(registry, root, value).expect("a message")
 }
 
-/// One message through the enriching pass, whose first step is the
-/// restatement: the codec is the pass's only door, and it reads the same
-/// registry the message already resolves against.
+/// One message as a parse settles it: the restatement is the first step of
+/// the read, so a message a caller built is already what it restates to.
 fn enriched(message: FixMsg) -> FixMsg {
-    super::fixed_codec(Arc::clone(message.registry()))
-        .enrich_message(message)
-        .expect("enriched")
+    message
 }
 
 /// The names of the root's children, in order.
@@ -100,13 +91,17 @@ fn with_bundle<'a>(before: &[&'a str], after: &[&'a str]) -> Vec<&'a str> {
 }
 
 /// The text one tag holds.
-fn text(message: &FixMsg, tag: i32) -> Option<&str> {
-    message.get_by_tag(tag).and_then(Scalar::as_str)
+fn text(message: &FixMsg, tag: i32) -> Option<String> {
+    message
+        .get_by_tag(tag)
+        .as_ref()
+        .and_then(Scalar::as_str)
+        .map(ToOwned::to_owned)
 }
 
 /// The integer one tag holds.
 fn integer(message: &FixMsg, tag: i32) -> Option<i128> {
-    message.get_by_tag(tag).and_then(Scalar::as_i128)
+    message.get_by_tag(tag).as_ref().and_then(Scalar::as_i128)
 }
 
 /// The ranked spelling a `state` column holds for one wire code.
@@ -126,12 +121,11 @@ fn child<'msg>(message: &'msg FixMsg, name: &str) -> &'msg Scalar {
     message.as_value().get(at).expect("a value")
 }
 
-/// What a message says about itself that does not add up, rendered.
-fn anomalies(message: &FixMsg) -> Vec<String> {
-    message
-        .anomalies()
-        .map(|anomaly| anomaly.to_string())
-        .collect()
+/// The wire a message re-emits, which is what a restatement must leave
+/// alone: the entries are the row read as a tree, so a value restated to a
+/// newer field shows here and nowhere else.
+fn emitted(message: &FixMsg) -> String {
+    String::from_utf8_lossy(&message.into_bytes(b'|')).into_owned()
 }
 
 #[test]
@@ -151,12 +145,13 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
     // Renamed in place, re-typed to the registry's datatype, the tag now
     // carried so the message answers by it.
     assert_eq!(names(&latest), with_bundle(&["lastqty", "symbol"], &[]));
-    assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(latest.as_field().fields()[0].dtype(), &DataType::Float64);
     assert!(!latest.as_field().fields()[0].is_nullable());
-    assert_eq!(text(&latest, 55), Some("AAPL"));
-    assert_eq!(latest.version(), None, "an undated registry stamps nothing");
-    assert_eq!(latest.get_by_tag(VERSION_TAG_NAME.0), None);
+    assert_eq!(text(&latest, 55).as_deref(), Some("AAPL"));
+    // A version is the header's `BeginString`, and an undated registry
+    // states none of its own.
+    assert_eq!(latest.header().beginstring(), "");
 }
 
 #[test]
@@ -168,7 +163,7 @@ fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
     );
     let latest = enriched(message);
     assert_eq!(names(&latest), with_bundle(&["lastqty"], &[]));
-    assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
 }
 
 #[test]
@@ -189,7 +184,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
     );
     let latest = enriched(message);
     assert_eq!(names(&latest), with_bundle(&["lastqty", "symbol"], &[]));
-    assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
 
     // Both stated and different: both are kept, because nothing that
     // arrived is lost.
@@ -206,7 +201,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
     );
     let latest = enriched(message);
     assert_eq!(names(&latest), with_bundle(&["lastqty", "LastShares"], &[]));
-    assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(50.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(50.0_f64));
     assert_eq!(child(&latest, "LastShares"), &Scalar::from(100));
 
     // Both stated and equal once re-typed: one child.
@@ -245,7 +240,7 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
         names(&latest),
         with_bundle(&["9999", "VenueOwnThing", "lastqty"], &[])
     );
-    assert_eq!(latest.by_tag(9999).unwrap(), &Scalar::from("custom"));
+    assert_eq!(latest.by_tag(9999).unwrap(), Scalar::from("custom"));
     assert_eq!(
         latest.as_field().fields()[1],
         DataType::utf8().nullable_field("VenueOwnThing")
@@ -289,9 +284,9 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
         &[("rule80a", Scalar::from("A"))],
     );
     let latest = enriched(message);
-    assert_eq!(text(&latest, 528), Some("A"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("A"));
     assert_eq!(
-        text(&latest, 47),
+        text(&latest, 47).as_deref(),
         Some("A"),
         "the source stays as it arrived"
     );
@@ -309,7 +304,7 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
         names(&latest),
         with_bundle(&["ordercapacity", "rule80a"], &[])
     );
-    assert_eq!(text(&latest, 528), Some("A"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("A"));
     // A stated value stands, and blocks the rule.
     let message = built(
         ruled_registry(),
@@ -320,7 +315,7 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(text(&latest, 528), Some("P"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("P"));
     // Every value a set declares is a value the message stated, so a rule
     // never writes over one: the set retires none of them.
     let message = built(
@@ -332,7 +327,7 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(text(&latest, 528), Some("Z"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("Z"));
     // A value the rule does not speak for fills nothing.
     let message = built(
         ruled_registry(),
@@ -352,23 +347,18 @@ fn reader() -> FixCodec {
 /// One line read, enriched, and enriched again to prove the second pass
 /// changes nothing; the wire and the anomalies are the same before and after.
 fn restated(reader: &FixCodec, line: &[u8]) -> FixMsg {
-    let read = reader.sole_line(line, false).expect("a readable line");
-    let latest = reader.enrich_message(read.clone()).expect("enriched");
+    let latest = reader.sole_line(line).expect("a readable line");
     let spelled = String::from_utf8_lossy(line);
-    assert_eq!(latest.into_bytes(b'|'), line, "the wire of {spelled}");
-    assert_eq!(latest.entries(), read.entries(), "the entries of {spelled}");
+    // Reading the line again answers the same message, restatement and all.
+    let again = reader.sole_line(line).expect("a readable line");
+    assert_eq!(again, latest, "a second read of {spelled}");
+    assert_eq!(emitted(&again), emitted(&latest), "the wire of {spelled}");
+    // The restatement leaves the version alone: it is what the line said.
     assert_eq!(
-        anomalies(&latest),
-        anomalies(&read),
-        "the anomalies of {spelled}"
+        again.header().beginstring(),
+        latest.header().beginstring(),
+        "the version of {spelled}"
     );
-    let again = reader
-        .enrich_message(latest.clone())
-        .expect("a second pass");
-    assert_eq!(again, latest, "a second pass over {spelled}");
-    // The restatement leaves the version alone: it is what the line said,
-    // and no pass pins one.
-    assert_eq!(latest.version(), read.version(), "the version of {spelled}");
     latest
 }
 
@@ -404,9 +394,13 @@ const REPORT: &[u8] = b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|
 #[test]
 fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     let reader = reader();
-    let read = reader.sole_line(REPORT, false).expect("a readable line");
-    assert_eq!(read.version(), Some(version("4.2")));
-    assert_eq!(text(&read, 150), Some(state("1").as_str()), "read at 4.2");
+    let read = reader.sole_line(REPORT).expect("a readable line");
+    assert_eq!(read.header().beginstring(), "FIX.4.2");
+    assert_eq!(
+        text(&read, 150).as_deref(),
+        Some(state("1").as_str()),
+        "read at 4.2"
+    );
     // The registry holds tag 47 whatever a version made of it - it filters by
     // none - and a code set states one reading of every value it declares.
     let registry = reader.registry();
@@ -420,16 +414,16 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     // ExecTransType Cancel states TradeCancel, but ExecType already stated
     // PartiallyFilled and a stated value stands - so the rule that answers
     // 150 is ExecType's own, folding the partial fill into Trade.
-    assert_eq!(text(&latest, 150), Some(state("F").as_str()));
-    assert_eq!(text(&latest, 20), Some("1"), "the source stays");
+    assert_eq!(text(&latest, 150).as_deref(), Some(state("F").as_str()));
+    assert_eq!(text(&latest, 20).as_deref(), Some("1"), "the source stays");
     assert_eq!(
-        text(&latest, 39),
+        text(&latest, 39).as_deref(),
         Some(state("1").as_str()),
         "OrdStatus still declares it"
     );
     // Rule80A A is an agency order.
-    assert_eq!(text(&latest, 528), Some("A"));
-    assert_eq!(text(&latest, 47), Some("A"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("A"));
+    assert_eq!(text(&latest, 47).as_deref(), Some("A"));
     // ExecBroker and ClientID are two parties, in tag order.
     let parties = occurrences(&latest, "parties");
     assert_eq!(parties.len(), 2);
@@ -454,16 +448,16 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     );
     assert_eq!(
         latest.by_path(&path("parties[1].partyrole")).unwrap(),
-        &Scalar::from(3)
+        Scalar::from(3)
     );
     // The fill itself, untouched and under its newest spelling.
-    assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(
         latest.by_name("LastShares").unwrap(),
-        &Scalar::from(100.0_f64)
+        Scalar::from(100.0_f64)
     );
     assert_eq!(
-        text(&latest, 8),
+        text(&latest, 8).as_deref(),
         Some("FIX.4.2"),
         "what the message says of itself"
     );
@@ -475,11 +469,15 @@ fn an_execution_type_the_specification_folded_into_trade_restates() {
     for code in ["1", "2"] {
         let line = format!("8=FIX.4.2|35=8|37=O1|150={code}|10=0|");
         let latest = restated(&reader, line.as_bytes());
-        assert_eq!(text(&latest, 150), Some(state("F").as_str()), "{line}");
+        assert_eq!(
+            text(&latest, 150).as_deref(),
+            Some(state("F").as_str()),
+            "{line}"
+        );
     }
     // A value the newest version still declares is left alone.
     let latest = restated(&reader, b"8=FIX.4.2|35=8|37=O1|150=0|10=0|");
-    assert_eq!(text(&latest, 150), Some(state("0").as_str()));
+    assert_eq!(text(&latest, 150).as_deref(), Some(state("0").as_str()));
 }
 
 #[test]
@@ -489,14 +487,14 @@ fn a_rule_applies_all_or_nothing() {
     // message stated a TimeInForce of its own, which stands and blocks the
     // whole rule.
     let blocked = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|59=0|10=0|");
-    assert_eq!(text(&blocked, 40), Some("A"));
-    assert_eq!(text(&blocked, 59), Some("0"));
+    assert_eq!(text(&blocked, 40).as_deref(), Some("A"));
+    assert_eq!(text(&blocked, 59).as_deref(), Some("0"));
     let applied = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|10=0|");
-    assert_eq!(text(&applied, 40), Some("1"));
-    assert_eq!(text(&applied, 59), Some("7"));
+    assert_eq!(text(&applied, 40).as_deref(), Some("1"));
+    assert_eq!(text(&applied, 59).as_deref(), Some("7"));
     // A TimeInForce already at the rule's own value is no obstacle.
     let agreed = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|59=7|10=0|");
-    assert_eq!(text(&agreed, 40), Some("1"));
+    assert_eq!(text(&agreed, 40).as_deref(), Some("1"));
 }
 
 #[test]
@@ -510,21 +508,21 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     assert_eq!(integer(&latest, 453), Some(1));
     assert_eq!(
         latest.by_path(&path("parties[0].partyid")).unwrap(),
-        &Scalar::from("CLR")
+        Scalar::from("CLR")
     );
     assert_eq!(
         latest.by_path(&path("parties[0].partyrole")).unwrap(),
-        &Scalar::from(4)
+        Scalar::from(4)
     );
     assert_eq!(
         latest
             .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
             .unwrap(),
-        &Scalar::from("ACCT")
+        Scalar::from("ACCT")
     );
     assert_eq!(
         latest.by_path(&path("parties[0].nopartysubids")).unwrap(),
-        &Scalar::from(1)
+        Scalar::from(1)
     );
 
     // Alone, ClearingAccount makes the role-4 party itself.
@@ -532,13 +530,13 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     assert_eq!(occurrences(&alone, "parties").len(), 1);
     assert_eq!(
         alone.by_path(&path("parties[0].partyrole")).unwrap(),
-        &Scalar::from(4)
+        Scalar::from(4)
     );
     assert_eq!(
         alone
             .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
             .unwrap(),
-        &Scalar::from("ACCT")
+        Scalar::from("ACCT")
     );
     assert!(
         alone.get_by_path(&path("parties[0].partyid")).is_none(),
@@ -555,7 +553,7 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     assert_eq!(parties.len(), 1);
     assert_eq!(
         stated.by_path(&path("parties[0].partyid")).unwrap(),
-        &Scalar::from("OTHER")
+        Scalar::from("OTHER")
     );
 }
 
@@ -566,12 +564,12 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
     // spelled with two digits.
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|200=202406|205=5|10=0|");
     let dated = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|541=20240605|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|541=20240605|10=0|")
         .expect("a readable line");
     assert_eq!(latest.by_tag(541).unwrap(), dated.by_tag(541).unwrap());
     assert_eq!(
         latest.by_tag(541).unwrap(),
-        &dated.by_tag(541).unwrap().clone()
+        dated.by_tag(541).unwrap().clone()
     );
     // A day with no month-year completes nothing.
     let alone = restated(&reader, b"8=FIX.4.2|35=D|11=A|205=5|10=0|");
@@ -586,7 +584,7 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
     assert_eq!(integer(&hop, 627), Some(1));
     assert_eq!(
         hop.by_path(&path("hopgrp[0].hopcompid")).unwrap(),
-        &Scalar::from("ONBEHALF")
+        Scalar::from("ONBEHALF")
     );
     assert_eq!(
         hop.by_path(&path("hopgrp[0].hopsendingtime")).unwrap(),
@@ -600,16 +598,16 @@ fn a_multiple_value_field_matches_by_token() {
     let reader = reader();
     // ExecInst T is a primary peg with fixed move type and local scope.
     let pegged = restated(&reader, b"8=FIX.4.2|35=D|11=A|18=T|10=0|");
-    assert_eq!(text(&pegged, 18), Some("R"));
+    assert_eq!(text(&pegged, 18).as_deref(), Some("R"));
     assert_eq!(integer(&pegged, 835), Some(1));
     assert_eq!(integer(&pegged, 840), Some(1));
     // The token is found among several, and the first rule met answers.
     let several = restated(&reader, b"8=FIX.4.4|35=D|11=A|18=G L|10=0|");
     assert_eq!(integer(&several, 1094), Some(1));
-    assert_eq!(text(&several, 18), Some("G L"));
+    assert_eq!(text(&several, 18).as_deref(), Some("G L"));
     // A value no rule speaks for is left alone.
     let plain = restated(&reader, b"8=FIX.4.4|35=D|11=A|18=G|10=0|");
-    assert_eq!(text(&plain, 18), Some("G"));
+    assert_eq!(text(&plain, 18).as_deref(), Some("G"));
     assert_eq!(plain.get_by_tag(1094), None);
 }
 
@@ -618,14 +616,14 @@ fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
     let reader = reader();
     // OrderID on an OrderMassActionReport is the MassActionReportID.
     let report = restated(&reader, b"8=FIX.5.0|35=r|37=O1|1373=1|10=0|");
-    assert_eq!(text(&report, 1369), Some("O1"));
+    assert_eq!(text(&report, 1369).as_deref(), Some("O1"));
     let execution = restated(&reader, b"8=FIX.5.0|35=8|37=O1|10=0|");
     assert_eq!(execution.get_by_tag(1369), None);
 
     // SettlCurrAmt inside an allocation is AllocSettlCurrAmt; at the root
     // it is what it was.
     let root = restated(&reader, b"8=FIX.4.2|35=J|70=A1|119=1000|10=0|");
-    assert_eq!(root.by_tag(119).unwrap(), &Scalar::from(1000.0_f64));
+    assert_eq!(root.by_tag(119).unwrap(), Scalar::from(1000.0_f64));
     assert_eq!(root.get_by_tag(737), None);
     let grouped = restated(
         &reader,
@@ -635,11 +633,11 @@ fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
         grouped
             .by_path(&path("allocgrp[0].allocsettlcurramt"))
             .unwrap(),
-        &Scalar::from(1000.0_f64)
+        Scalar::from(1000.0_f64)
     );
     assert_eq!(
         grouped.by_path(&path("allocgrp[0].settlcurramt")).unwrap(),
-        &Scalar::from(1000.0_f64),
+        Scalar::from(1000.0_f64),
         "the source stays"
     );
     assert_eq!(grouped.get_by_tag(737), None, "nothing at the root");
@@ -653,8 +651,8 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
     assert!(!latest.by_tag(51).unwrap().is_null());
     // A catch-all rule fills its target from the source's own value.
     let floor = restated(&reader, b"8=FIX.4.4|35=D|11=A|111=50|10=0|");
-    assert_eq!(floor.by_tag(1138).unwrap(), &Scalar::from(50.0_f64));
-    assert_eq!(floor.by_tag(111).unwrap(), &Scalar::from(50.0_f64));
+    assert_eq!(floor.by_tag(1138).unwrap(), Scalar::from(50.0_f64));
+    assert_eq!(floor.by_tag(111).unwrap(), Scalar::from(50.0_f64));
 }
 
 #[test]
@@ -674,15 +672,13 @@ fn the_dictionary_carries_the_rules_the_engine_reads() {
         .expect("a rule");
     registry.update(rule80a).expect("updated");
     assert!(
-        registry
-            .get_definition(FixCategory::Groups, "parties")
-            .is_some(),
+        registry.get_field_by_name("parties").is_some(),
         "the catalog is untouched"
     );
     let reader = super::fixed_codec(Arc::new(registry));
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|47=A|109=C1|10=0|");
-    assert_eq!(text(&latest, 528), Some("P"));
-    assert_eq!(text(&latest, 47), Some("A"));
+    assert_eq!(text(&latest, 528).as_deref(), Some("P"));
+    assert_eq!(text(&latest, 47).as_deref(), Some("A"));
     assert_eq!(
         occurrences(&latest, "parties").len(),
         1,
@@ -696,14 +692,14 @@ fn a_constant_written_over_a_multiple_value_source_replaces_the_matched_token() 
     // ExecInst G T: the peg is restated as R, and the other instruction
     // stays - the value was matched by one token, so one token is replaced.
     let both = restated(&reader, b"8=FIX.4.2|35=D|11=A|18=G T|10=0|");
-    assert_eq!(text(&both, 18), Some("G R"));
+    assert_eq!(text(&both, 18).as_deref(), Some("G R"));
     assert_eq!(integer(&both, 835), Some(1));
     assert_eq!(integer(&both, 840), Some(1));
     // R is what FIX 5.0 retired for a peg price type, and the chain reaches
     // it in the same pass.
     assert_eq!(integer(&both, 1094), Some(5));
     let trailing = restated(&reader, b"8=FIX.4.2|35=D|11=A|18=T G|10=0|");
-    assert_eq!(text(&trailing, 18), Some("R G"));
+    assert_eq!(text(&trailing, 18).as_deref(), Some("R G"));
 }
 
 #[test]
@@ -718,12 +714,10 @@ fn a_group_fill_appending_to_a_counted_group_leaves_the_anomalies_alone() {
     );
     assert_eq!(occurrences(&latest, "parties").len(), 2);
     assert_eq!(integer(&latest, 453), Some(2));
-    assert_eq!(anomalies(&latest), Vec::<String>::new());
     // A counter stating none, with a party to make.
     let none = restated(&reader, b"8=FIX.4.4|35=D|11=A|453=0|76=BRKR|10=0|");
     assert_eq!(occurrences(&none, "parties").len(), 1);
     assert_eq!(integer(&none, 453), Some(1));
-    assert_eq!(anomalies(&none), Vec::<String>::new());
 }
 
 /// The committed `parties` definition as a converted row declares it, holding
@@ -742,7 +736,7 @@ fn declared_parties(list: Field, value: Scalar) -> FixMsg {
 fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     let registry = super::committed_registry();
     let mut list = registry
-        .get_definition(FixCategory::Groups, "parties")
+        .get_field_by_name("parties")
         .expect("parties")
         .clone();
     list.set_nullable(true);
@@ -766,9 +760,7 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
 #[test]
 fn a_group_that_arrived_as_a_large_list_keeps_its_shape() {
     let registry = super::committed_registry();
-    let definition = registry
-        .get_definition(FixCategory::Groups, "parties")
-        .expect("parties");
+    let definition = registry.get_field_by_name("parties").expect("parties");
     let item = match definition.dtype() {
         DataType::List(item) => item.as_ref().clone(),
         other => panic!("a list, got {other}"),

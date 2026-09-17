@@ -1,17 +1,17 @@
-//! A mixed capture, end to end: log bytes in, enriched messages out.
+//! A mixed capture, end to end: log bytes in, filled messages out.
 //!
 //! Every other suite in these phases reads one shape against one entry point.
 //! This one is the whole path a desk actually takes, once, on a file holding
 //! every shape at once: a `.log` handle read as text records, those records
-//! read as messages by the codec, and each message filled with what it
+//! read as messages by the codec, each filled as it is read with what it
 //! implies - row by row and in batches, which have to agree.
 //!
 //! It is the acceptance test for the layers under it. Where a unit test says
 //! one rule works, this says the rules compose: the text reader answers a row
-//! per line and the codec a row per message, so the two counts
-//! are read apart here; the codec's dialect choice survives enrichment; and
-//! enrichment leaves the wire exactly as it arrived so the round trip still
-//! closes.
+//! per line and the codec a row per message, so the two counts are read
+//! apart here; the dialect is chosen per line; and what a message re-emits
+//! is what it states, the derived fields beside the arrived ones, so the
+//! round trip closes on the message rather than on the line.
 
 use super::SoleMessage;
 
@@ -175,7 +175,6 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
 
     let one_at_a_time: Vec<_> = codec
         .parse_text_lines(lines)
-        .map(|held| held.and_then(|held| codec.enrich_message(held)))
         .map(|held| held.expect("a message"))
         .collect();
     // A message per line but the last two: the prose opens no frame, states
@@ -195,14 +194,10 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     }
 
     // Batched: the same capture through the batch reader, which is the same
-    // read with the rows held in Arrow instead of one at a time, then the
-    // same filling over the rows.
-    let parsed = codec
+    // read with the rows held in Arrow instead of one at a time.
+    let filled = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
         .expect("the batch reader opens");
-    let filled = codec
-        .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens");
     let target = super::format_target(codec.registry());
     let batched: Vec<_> = codec
         .format_arrow_reader(filled, &target)
@@ -224,7 +219,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     for tag in [11, 55, 37, 17, 39, 151, 6, 120] {
         let column = tag_column(batch, tag);
         for (at, message) in one_at_a_time.iter().enumerate() {
-            let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
+            let alone = message.get_by_tag(tag).unwrap_or(Scalar::Null);
             assert_eq!(
                 rendered(&alone),
                 rendered(&column[at]),
@@ -254,22 +249,19 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     let codec = super::fixed_codec(Arc::clone(&registry));
 
     // A framed order behind prose: the frame is located and the prose dropped.
-    let order = codec.sole_line(TAGGED.as_bytes(), true).expect("an order");
+    let order = codec.sole_line(TAGGED.as_bytes()).expect("an order");
     assert_eq!(order.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
     assert_eq!(order.by_tag(55).unwrap().as_str(), Some("AAPL"));
 
     // A bridge row keyed by name, with its group packed into one occurrence.
-    let bridge = codec
-        .sole_line(NAMED.as_bytes(), true)
-        .expect("a bridge row");
+    let bridge = codec.sole_line(NAMED.as_bytes()).expect("a bridge row");
     assert_eq!(bridge.by_tag(55).unwrap().as_str(), Some("TTF"));
     // The packed occurrence split into the group the counter heads: one
     // occurrence, carrying the members the bridge packed into its value.
-    let parties = bridge
+    let group = bridge
         .by_name("parties")
-        .expect("the group the counter heads")
-        .as_sequence()
-        .expect("a list");
+        .expect("the group the counter heads");
+    let parties = group.as_sequence().expect("a list");
     assert_eq!(parties.len(), 1);
     let party = parties[0].as_sequence().expect("one occurrence");
     assert!(
@@ -282,7 +274,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // shape of run is prose: whitespace names no separator, so the line states
     // no message at all.
     let paired = codec
-        .sole_line(b"ACCOUNT=A1|SIDE=1", true)
+        .sole_line(b"ACCOUNT=A1|SIDE=1")
         .expect("a bridge row the pipe separated");
     assert_eq!(paired.by_tag(1).unwrap().as_str(), Some("A1"));
     assert!(
@@ -295,16 +287,14 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     );
 
     // A FIXML row, whose fields are attributes rather than pairs.
-    let fixml = codec
-        .sole_line(FIXML.as_bytes(), true)
-        .expect("a FIXML row");
+    let fixml = codec.sole_line(FIXML.as_bytes()).expect("a FIXML row");
     assert_eq!(fixml.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     // The same document behind a transport's prose, with whitespace either
     // side: the document opens where the tag opens, whatever was trimmed off
     // the line's end.
     let prosed = format!("  Sending : {FIXML}  \t");
     let behind = codec
-        .sole_line(prosed.as_bytes(), true)
+        .sole_line(prosed.as_bytes())
         .expect("a FIXML row behind prose");
     assert_eq!(behind.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
@@ -317,16 +307,17 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // and leaves it so. A message root carries no dictionary membership,
     // because a message is not a dictionary member.
     let document = codec
-        .sole_line(PLUGIN.as_bytes(), true)
+        .sole_line(PLUGIN.as_bytes())
         .expect("a JSON document is one message");
     assert_eq!(document.as_field().name(), "unknown");
     assert!(document.entries().is_empty());
-    assert!(document.into_bytes(b'|').is_empty());
-    assert!(document.get_by_tag(35).is_none_or(Scalar::is_null));
+    // Nothing but the version every built message states.
+    assert_eq!(document.into_bytes(b'|'), b"8=FIX.4.4|");
+    assert!(document.get_by_tag(35).is_none_or(|held| held.is_null()));
     assert!(
         document
             .get_by_name("SenderCompID")
-            .is_none_or(Scalar::is_null)
+            .is_none_or(|held| held.is_null())
     );
     assert_eq!(document.as_field().as_fix().branches().count(), 0);
 
@@ -348,56 +339,59 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
 }
 
 #[test]
-fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
+fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
     let registry = registry();
     let codec = super::fixed_codec(registry);
 
     // The part-filled report states what was ordered and what was done, so it
-    // has stated what is left and what the fill was worth.
-    let bare = codec
-        .sole_line(WORKING.as_bytes(), false)
-        .expect("a report");
-    let filled = codec.sole_line(WORKING.as_bytes(), true).expect("a report");
-    assert_eq!(bare.get_by_tag(151), None);
-    assert_eq!(filled.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
-    assert_eq!(filled.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
+    // has stated what is left and what the fill was worth - filled as it is
+    // read, with no second pass.
+    let filled = codec.sole_line(WORKING.as_bytes()).expect("a report");
+    assert_eq!(filled.by_tag(151).unwrap(), Scalar::from(60.0_f64));
+    assert_eq!(filled.by_tag(381).unwrap(), Scalar::from(420.0_f64));
 
     // A date arrives compact and reads as that day's midnight, stating no zone
     // because a local market date has none.
     let settled = filled.by_tag(64).expect("a settlement date");
-    assert_ne!(settled, &Scalar::Null);
+    assert_ne!(settled, Scalar::Null);
 
     // The closing fill settles in the currency it was dealt in, at the rate it
     // stated - Appendix O read as the implication it is.
-    let closed = codec.sole_line(FILLED.as_bytes(), true).expect("a report");
-    assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
+    let closed = codec.sole_line(FILLED.as_bytes()).expect("a report");
+    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
     assert_eq!(closed.by_tag(120).unwrap().as_str(), Some("EUR"));
 
-    // And none of it touched the arrival record, so the capture still
-    // re-emits the bytes it was read from.
+    // What was derived is the message's, so the entries and the wire carry
+    // it beside what arrived: a re-emitted report states its leaves.
     for line in [WORKING, FILLED] {
-        let plain = codec.sole_line(line.as_bytes(), false).expect("a report");
-        let held = codec.sole_line(line.as_bytes(), true).expect("a report");
-        assert_eq!(plain.entries(), held.entries());
-        assert_eq!(held.into_bytes(b'|'), line.as_bytes());
+        let held = codec.sole_line(line.as_bytes()).expect("a report");
+        assert!(
+            held.entries()
+                .iter()
+                .any(|entry| entry.tag() == 151 && entry.value().is_some()),
+            "{line}"
+        );
+        let wire = held.into_text('|').unwrap();
+        assert!(
+            wire.starts_with("8=FIX.4.4|35=8|49=VENUE|56=BUYSIDE|"),
+            "{wire}"
+        );
+        assert!(wire.contains("|151="), "{wire}");
     }
 }
 
 #[test]
-fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
+fn a_capture_writes_back_what_each_message_emits() {
     let registry = registry();
     let source = handle();
     let codec = super::fixed_codec(Arc::clone(&registry)).with_separator(b'|');
 
-    let parsed = codec
+    let reader = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
         .expect("the batch reader opens");
-    let reader = codec
-        .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens");
 
-    // The wire is rebuilt from each row's arrival record, never from its
-    // columns, so a filled column cannot leak into a re-emitted frame.
+    // The wire is rebuilt from each row's arrival record and the facts it
+    // holds typed, which is what the line read emits for the same line.
     let mut written: Vec<u8> = Vec::new();
     let rows = codec
         .write_arrow_reader(reader, &mut written)
@@ -407,12 +401,18 @@ fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
     // than it went in.
     assert_eq!(rows, MESSAGES as u64);
 
-    // The two framed reports come back exactly as they arrived, filled or not.
+    // The two framed reports come back as the line read emits them.
     let held = String::from_utf8(written).expect("the wire is text here");
     let lines: Vec<&str> = held.lines().collect();
     assert_eq!(lines.len(), MESSAGES);
-    assert!(lines.contains(&WORKING), "the report re-emits exactly");
-    assert!(lines.contains(&FILLED), "the fill re-emits exactly");
+    for line in [WORKING, FILLED] {
+        let emitted = codec
+            .sole_line(line.as_bytes())
+            .expect("a report")
+            .into_text('|')
+            .unwrap();
+        assert!(lines.contains(&emitted.as_str()), "{emitted}\n{lines:?}");
+    }
     for silent in [PROSE, CHATTER] {
         assert!(
             !lines.contains(&silent),
@@ -427,12 +427,9 @@ fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
     let source = handle();
     let codec = super::fixed_codec(registry);
 
-    let parsed = codec
-        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens");
     let batch = codec
-        .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens")
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens")
         .next()
         .expect("a batch")
         .expect("a batch");
@@ -453,7 +450,8 @@ fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
     // `Send`.
     assert_eq!(directions[5].as_str(), Some("S"));
 
-    // And the enrichment is visible in the columns, not just on the message.
+    // And what the parse filled is visible in the columns, not just on the
+    // message.
     let leaves = tag_column(&batch, 151);
     assert_eq!(leaves[1], Scalar::from(60.0_f64), "the part-filled report");
     assert_eq!(leaves[2], Scalar::from(0.0_f64), "the closing fill");
@@ -503,15 +501,15 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
 
     let codec = super::fixed_codec(registry());
     let message = codec
-        .sole_line(LOGGED.as_bytes(), false)
+        .sole_line(LOGGED.as_bytes())
         .expect("the line carries one document, and so one message");
     assert_eq!(message.as_field().name(), "unknown");
     assert!(message.entries().is_empty());
-    assert!(message.get_by_tag(35).is_none_or(Scalar::is_null));
+    assert!(message.get_by_tag(35).is_none_or(|held| held.is_null()));
     assert!(
         message
             .get_by_name("SenderCompID")
-            .is_none_or(Scalar::is_null)
+            .is_none_or(|held| held.is_null())
     );
     assert_eq!(message.by_tag(385).unwrap().as_str(), Some("R"));
 }
@@ -539,12 +537,15 @@ fn a_body_no_reader_here_can_read_is_one_unknown_at_every_door() {
     let unknown = |message: yggdryl::FixMsg, door: &str| {
         assert_eq!(message.as_field().name(), "unknown", "{door}");
         assert!(message.entries().is_empty(), "{door}");
-        assert!(message.into_bytes(b'|').is_empty(), "{door}");
-        assert!(message.get_by_tag(35).is_none_or(Scalar::is_null), "{door}");
+        assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|", "{door}");
+        assert!(
+            message.get_by_tag(35).is_none_or(|held| held.is_null()),
+            "{door}"
+        );
     };
     unknown(
         codec
-            .sole_line(STRANGER.as_bytes(), false)
+            .sole_line(STRANGER.as_bytes())
             .expect("the byte door reads one message"),
         "the byte door",
     );
@@ -600,7 +601,7 @@ fn a_json_document_is_one_unknown_and_any_other_unreadable_body_is_none() {
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{},"status":200}"#,
     ] {
         let message = codec
-            .sole_line(body.as_bytes(), false)
+            .sole_line(body.as_bytes())
             .unwrap_or_else(|error| panic!("{body:?}: {error}"));
         assert_eq!(message.as_field().name(), "unknown", "{body:?}");
         assert!(message.entries().is_empty(), "{body:?}");

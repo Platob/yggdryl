@@ -1,621 +1,249 @@
 'use strict'
 
-// The lifecycle's cadence: one normalized transition behind `fill`, the
-// filtered `snapshot` door and the `snapshots` stream, epoch-grid buckets of
-// `intervalNs`, and the first creation instant a live chain carries.
+// The one walk over events: `FixCodec.lifecycle` states each message as the
+// one after the live message it follows, and `lifecycleArrowReader` is the
+// same walk over batches of rows.
 //
-// Every rule is the core's, pinned in `rust/tests/fix/lifecycle_grid.rs`
-//; what these check is the crossing - the interval as a
-// `bigint` or an exact number, the refusals that arrive located, the stream a
-// JavaScript iterable feeds one message at a time, and the lifecycle that
-// stream owns once it is answered.
+// Every rule is the core's, pinned in `rust/tests/fix/`; what these check is
+// the crossing - the stream a JavaScript iterable feeds one message at a
+// time, the facts each walked message carries, and the batch twin.
 
 const assert = require('node:assert/strict')
+const path = require('node:path')
 const test = require('node:test')
 
-const { BatchReader, DataType, Scalar, fields, fix, hashing } = require('yggdryl')
+const { BatchReader, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
 
-const I64_MIN = -(2n ** 63n)
-const I64_MAX = 2n ** 63n - 1n
+const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
+// A second of a ULBridge's own capture, anonymized: the corpus
+// `rust/tests/fix/dataset.rs` reads.
+const CAPTURE = path.join(__dirname, '..', '..', '..', 'rust', 'tests', 'fix', 'ulbridge.log')
+// The bridge's own row header, as the core spells it: what a line states
+// about itself in front of the payload.
+const ROWHEADER =
+  String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)` +
+  String.raw`(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] ` +
+  String.raw`\[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
+const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
 
-const UPDATEDAT = 65003
-const SYMBOL = 55
-const STATE = 65015
-const ALTIDS = 65020
-const PREVUPDATEDAT = 65021
-const PREVUUID = 65022
-const CREATEDAT = 65023
-const CODE = 65024
-const SNAPSHOTAT = 65025
-
-/** A nanosecond UTC instant, the one layout every FIX clock holds. */
-function clock(nanos) {
-  return Scalar.datetime(BigInt(nanos), 'ns', 'UTC')
+let seedRegistry
+function seed() {
+  seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
+  return seedRegistry.clone()
 }
 
-/**
- * The sixteen identity bytes the Rust suite's `numbered_identity(value)`
- * builds: the number big-endian, as the `Buffer` a `fixedbinary(16)` column
- * takes.
- */
-function identityOf(value) {
-  return Buffer.from(value.toString(16).padStart(32, '0'), 'hex')
-}
-
-/**
- * The scope a chain hangs its identifiers under, for a message naming its
- * instrument by `Symbol(55)` alone: the xxh128 of each upper-cased part
- * closed by a unit separator, an absent part contributing its separator
- * alone. No column carries it, so a test computes it the way the lifecycle
- * does - the Rust suite's `symbol_identity`.
- */
-function scopeOf(symbol) {
-  const bytes = Buffer.concat([
-    Buffer.from([0x1f, 0x1f]),
-    Buffer.from(symbol.toUpperCase(), 'utf8'),
-    Buffer.from([0x1f, 0x1f]),
-  ])
-  return hashing.xxhash.xxh128(bytes).toString(16).padStart(32, '0')
-}
-
-/** The `Symbol(55)` column a message names its instrument with. */
-function symbolField() {
-  const field = fields.utf8('symbol', { nullable: true })
-  field.fix.tag = SYMBOL
-  return field
-}
-
-/**
- * One event every clock of which is `nanos`, named by `code`, naming an
- * optional instrument `symbol`, stating `identifiers` as its altids Map -
- * the Rust suite's `event` helper, built through the public constructor.
- */
-function event(registry, nanos, code, symbol = null, identifiers = []) {
-  const members = [52, UPDATEDAT, CREATEDAT, SNAPSHOTAT, CODE].map((tag) => registry.fieldByTag(tag))
-  members.push(registry.groupByTag(ALTIDS))
-  const values = [clock(nanos), clock(nanos), clock(nanos), clock(nanos), code, new Map(identifiers)]
-  if (symbol !== null) {
-    members.push(symbolField())
-    values.push(symbol)
+/** The bridge capture as the messages a text read answers. */
+function captured(codec) {
+  const options = new TextOptions()
+  options.rowheader = ROWHEADER
+  const messages = []
+  for (const line of new IOBase(CAPTURE).readTextLines(options)) {
+    for (const message of codec.parseTextLine(line)) messages.push(message)
   }
-  return new fix.FixMsg(fields.struct('event', members, { nullable: false }), values, registry)
+  return messages
 }
 
-/** A copy of `message` with one more value, as Rust's consuming `with_value`. */
-function withValue(message, key, value) {
-  const copy = message.clone()
-  copy.set(key, value)
-  return copy
-}
+/** One order's life, as a venue and its client tell it. */
+const LIFE = [
+  // The order, sent under the client's own identifier.
+  '8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|44=12.5|60=20260102-10:15:30.000|10=0|',
+  // Acknowledged under the venue's, which now names the same chain.
+  '8=FIX.4.4|35=8|11=A1|37=O1|17=E1|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=100|14=0|151=100|60=20260102-10:15:30.250|10=0|',
+  // Half of it done.
+  '8=FIX.4.4|35=8|11=A1|37=O1|17=E2|150=F|39=1|55=AAPL|207=XNAS|15=USD|38=100|14=50|151=50|32=50|31=12.5|60=20260102-10:15:31.000|10=0|',
+  // Filled: the chain ends here.
+  '8=FIX.4.4|35=8|11=A1|37=O1|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=100|14=100|151=0|32=50|31=12.6|60=20260102-10:15:33.000|10=0|',
+]
 
-/** A copy of `message` in a terminal order state. */
-function terminal(message) {
-  return withValue(message, STATE, 'Filled')
-}
+test('the walk states each message as the one after the live message it follows', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
+  // Read on its own, each message names the chain its own strongest
+  // identifier spells: the order names the client's `ClOrdID`, the reports
+  // the venue's `OrderID`, so the four open two chains.
+  assert.deepEqual(parsed.map((message) => message.crosscode), ['A1', 'O1', 'O1', 'O1'])
+  assert.equal(new Set(parsed.map((message) => message.crossuuid)).size, 2)
 
-function lifecycle(registry, intervalNs = 10n) {
-  return new fix.FixLifecycle(registry, { intervalNs })
-}
-
-/** The previous stamps `message` carries: `expected`'s grid clock and UUID, or null. */
-function previous(message, expected) {
-  const held = [message.byTag(PREVUPDATEDAT), message.byTag(PREVUUID)]
-  if (expected === null) {
-    assert.deepEqual(held.map((value) => value.kind), ['null', 'null'])
-    return
+  // The walk is what joins them: a message whose identifiers reach a live
+  // chain follows it and is restated onto its cross code.
+  const walked = [...codec.lifecycle(parsed)]
+  assert.ok(walked.every((message) => message.crosscode === 'A1'))
+  assert.ok(codec.lifecycle(parsed) instanceof fix.FixMessages)
+  assert.equal(walked.length, LIFE.length)
+  // The first states no predecessor; each later one carries the one before
+  // it - its identity, its instant, its place in the chain and the chain's
+  // creation - and takes it as a parent.
+  assert.equal(walked[0].prevuuid, null)
+  assert.equal(walked[0].seqnum, 0)
+  assert.deepEqual(walked[0].parentuuids, [])
+  for (let at = 1; at < walked.length; at += 1) {
+    assert.equal(walked[at].prevuuid, walked[at - 1].curruuid, `message ${at}`)
+    assert.equal(walked[at].event().prevunix, walked[at - 1].unix, `message ${at}`)
+    assert.equal(walked[at].seqnum, at, `message ${at}`)
+    assert.deepEqual(walked[at].parentuuids, [walked[at - 1].curruuid], `message ${at}`)
+    assert.equal(walked[at].event().creatunix, walked[0].event().creatunix, `message ${at}`)
+    assert.equal(walked[at].crossuuid, walked[0].crossuuid, `message ${at}`)
   }
-  assert.ok(held[0].equals(expected.updatedat()), 'prevupdatedat is the previous grid instant')
-  assert.ok(held[1].equals(expected.msghash()), 'prevmsghash is the previous message identity')
-}
-
-/** Whether a snapshot answer is `expected`, or no answer where none is expected. */
-function snapshotIs(answer, expected) {
-  if (expected === null) {
-    assert.equal(answer, null)
-    return
+  // The state each message reached is its own, ranked.
+  assert.deepEqual(walked.map((message) => message.state), ['00UNKNOWN', '20NEW', '40PARTFILL', '80FILLED'])
+  // The walk states facts; it parses nothing again, so the wire and the
+  // digest are what the parse answered.
+  for (const [at, message] of walked.entries()) {
+    assert.equal(message.intoText('|'), parsed[at].intoText('|'), `message ${at}`)
+    assert.deepEqual(message.digest(), parsed[at].digest(), `message ${at}`)
+    assert.deepEqual(message.entries(), parsed[at].entries(), `message ${at}`)
   }
-  assert.notEqual(answer, null)
-  assert.ok(answer.equals(expected))
-}
-
-/** The one msgphash any message naming `code` answers: the hash of the code alone. */
-function persistentOf(code) {
-  return event(new fix.FixRegistry(), 0, code).msgphash()
-}
-
-/** A registry whose previous-message field at `tag` is declared under `dtype`. */
-function wrongPrevious(tag, dtype) {
-  const registry = new fix.FixRegistry()
-  const field = registry.remove(tag)
-  field.setDtype(dtype)
-  field.setNullable(true)
-  registry.insert(field)
-  return registry
-}
-
-test('the cadence is positive, atomic and retained by clear', () => {
-  const registry = new fix.FixRegistry()
-  const life = new fix.FixLifecycle(registry)
-  assert.equal(fix.FixLifecycle.DEFAULT_INTERVAL_NS, 1_000_000_000n)
-  assert.equal(typeof life.intervalNs, 'bigint')
-  assert.equal(life.intervalNs, fix.FixLifecycle.DEFAULT_INTERVAL_NS)
-  // The constant is the core's, read once: it cannot be reassigned.
-  assert.throws(() => {
-    fix.FixLifecycle.DEFAULT_INTERVAL_NS = 1n
-  }, TypeError)
-  for (const invalid of [0n, -1n, I64_MIN]) {
-    assert.throws(() => life.setIntervalNs(invalid), /\$\.interval_ns/)
-    assert.equal(life.intervalNs, fix.FixLifecycle.DEFAULT_INTERVAL_NS)
-    assert.equal(life.alive, 0)
-  }
-  // An exact number crosses as the same count a bigint does.
-  life.setIntervalNs(10)
-  assert.equal(life.intervalNs, 10n)
-  life.fill(event(registry, 1, 'A'))
-  // Repeating the current interval is a no-op even while a chain is live;
-  // any change then is refused and changes nothing.
-  life.setIntervalNs(10n)
-  for (const invalid of [0, -1, 20]) {
-    assert.throws(() => life.setIntervalNs(invalid), /\$\.interval_ns/)
-    assert.equal(life.intervalNs, 10n)
-    assert.equal(life.alive, 1)
-  }
-  life.clear()
-  assert.equal(life.intervalNs, 10n)
-  assert.equal(life.alive, 0)
-  life.setIntervalNs(I64_MAX)
-  assert.equal(life.intervalNs, I64_MAX)
-  assert.throws(() => new fix.FixLifecycle(registry, { intervalNs: 0 }), /\$\.interval_ns/)
-  assert.equal(new fix.FixLifecycle(registry, {}).intervalNs, fix.FixLifecycle.DEFAULT_INTERVAL_NS)
-  // The boundary refuses what is not one exact signed 64-bit count before the
-  // core sees it.
-  assert.throws(() => life.setIntervalNs(1.5), /intervalNs/)
-  assert.throws(() => life.setIntervalNs(2n ** 63n), /intervalNs must fit a signed 64-bit integer/)
-  assert.throws(() => new fix.FixLifecycle(registry, { intervalNs: 2n ** 63n }), /intervalNs/)
-  assert.equal(life.intervalNs, I64_MAX)
+  // Walking a walked stream again answers the same messages.
+  const again = [...codec.lifecycle(walked)]
+  assert.equal(again.length, walked.length)
+  for (const [at, message] of again.entries()) assert.ok(message.equals(walked[at]), `message ${at}`)
+  assert.deepEqual([...codec.lifecycle([])], [])
 })
 
-test('the epoch floor uses negative buckets and a boundary opens its bucket', () => {
-  const registry = new fix.FixRegistry()
-  for (const [time, interval, grid] of [
-    [-11n, 10n, -20n],
-    [-10n, 10n, -10n],
-    [-1n, 10n, -10n],
-    [0n, 10n, 0n],
-    [9n, 10n, 0n],
-    [10n, 10n, 10n],
-    [11n, 10n, 10n],
-    [I64_MIN, 1n, I64_MIN],
-    [I64_MAX, 1n, I64_MAX],
-    [I64_MAX, I64_MAX, I64_MAX],
-  ]) {
-    const raw = event(registry, time, 'A')
-    const filled = lifecycle(registry, interval).fill(raw)
-    assert.ok(filled.updatedat().equals(clock(grid)), `${time} at ${interval}`)
-    assert.ok(filled.createdat().equals(clock(time)), `${time} at ${interval}`)
-    assert.ok(filled.byTag(SNAPSHOTAT).equals(clock(time)), `${time} at ${interval}`)
-    // Only an arrival off the grid is a new snapshot.
-    snapshotIs(lifecycle(registry, interval).snapshot(raw), time !== grid ? filled : null)
-  }
-})
+test('a message no live one precedes is answered as it came', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const heartbeat = codec.parseLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value
+  const [walked] = codec.lifecycle([heartbeat])
+  // No cross code names no chain, so nothing precedes it and its own
+  // identity is the chain's.
+  assert.equal(walked.crosscode, '')
+  assert.equal(walked.crossuuid, walked.curruuid)
+  assert.equal(walked.prevuuid, null)
+  assert.equal(walked.seqnum, 0)
+  assert.ok(walked.equals(heartbeat))
 
-test("creation is the first arrival's statement, not the minimum or the grid", () => {
-  const registry = new fix.FixRegistry()
-  const life = lifecycle(registry)
-  const otherCreation = lifecycle(registry)
-  let last = null
-  for (const [time, grid, stated] of [[21, 20, 987], [1, 0, -123], [31, 30, 432]]) {
-    const raw = withValue(event(registry, time, 'A'), CREATEDAT, clock(stated))
-    const comparison = otherCreation.fill(withValue(raw, CREATEDAT, clock(654)))
-    const filled = life.fill(raw)
-    assert.ok(filled.createdat().equals(clock(987)))
-    assert.ok(comparison.createdat().equals(clock(654)))
-    assert.ok(filled.updatedat().equals(clock(grid)))
-    assert.ok(filled.byTag(SNAPSHOTAT).equals(clock(time)))
-    // Creation is not content: the identities agree whatever it says.
-    assert.ok(filled.msghash().equals(comparison.msghash()))
-    assert.ok(filled.msgphash().equals(comparison.msgphash()))
-    previous(filled, last)
-    last = filled
-  }
-})
-
-test('the full and filtered doors share finalized history and consume aligned buckets', () => {
-  const registry = new fix.FixRegistry()
-  const full = lifecycle(registry)
-  const filtered = lifecycle(registry)
-  let last = null
-  for (const [time, grid, emit] of [[1, 0, true], [7, 0, false], [10, 10, false], [11, 10, false], [21, 20, true]]) {
-    const raw = event(registry, time, 'A')
-    const filled = full.fill(raw)
-    previous(filled, last)
-    assert.ok(filled.updatedat().equals(clock(grid)), `${time}`)
-    assert.ok(filled.createdat().equals(clock(1)), `${time}`)
-    assert.ok(filled.byTag(SNAPSHOTAT).equals(clock(time)), `${time}`)
-    snapshotIs(filtered.snapshot(raw), emit ? filled : null)
-    last = filled
-  }
-  assert.equal(full.alive, 1)
-  assert.equal(filtered.alive, 1)
-
-  // An aligned first arrival consumes its bucket without emitting, and still
-  // establishes the chain's creation.
-  const aligned = lifecycle(registry)
-  assert.equal(aligned.snapshot(withValue(event(registry, 10, 'B'), CREATEDAT, clock(77))), null)
-  assert.equal(aligned.snapshot(event(registry, 19, 'B')), null)
-  const afterAligned = aligned.snapshot(event(registry, 21, 'B'))
-  assert.notEqual(afterAligned, null)
-  assert.ok(afterAligned.createdat().equals(clock(77)))
-})
-
-test('explicit codes are global and never steal scoped identifier ownership', () => {
-  const registry = new fix.FixRegistry()
-  const life = lifecycle(registry)
-  const scope = 'ALPHA'
-  const first = life.fill(event(registry, 1, 'A', scope, [['id', 'OWNED']]))
-  const other = life.fill(event(registry, 2, 'B', scope, [['id', 'OWNED']]))
-  assert.equal(first.msgphash().equals(other.msgphash()), false)
-  assert.ok(first.createdat().equals(clock(1)))
-  assert.ok(other.createdat().equals(clock(2)))
-  previous(other, null)
-  assert.equal(life.alive, 2)
-  // An unnamed message reaching the owned identifier joins its owner.
-  const alias = life.fill(event(registry, 11, '', scope, [['id', 'OWNED']]))
-  assert.equal(alias.byTag(CODE).asJs(), 'A')
-  previous(alias, first)
-  assert.ok(alias.createdat().equals(first.createdat()))
-
-  // An explicit code joins its chain across instrument scopes.
-  const direct = life.fill(event(registry, 21, 'A', 'BETA', [['id', 'NEW']]))
-  previous(direct, alias)
-  assert.ok(direct.msgphash().equals(first.msgphash()))
-  assert.ok(direct.createdat().equals(first.createdat()))
-  const attached = life.fill(event(registry, 31, '', 'BETA', [['id', 'NEW']]))
-  previous(attached, direct)
-  assert.ok(attached.createdat().equals(first.createdat()))
-  assert.equal(life.alive, 2)
-
-  // When two identifiers reach different chains, canonical member name order
-  // wins, and the other owner keeps its key.
-  const b = life.fill(event(registry, 41, 'B', scope, [['id', 'OTHER']]))
-  const joined = life.fill(event(registry, 51, '', scope, [['a', 'OTHER'], ['z', 'OWNED']]))
-  previous(joined, b)
-  assert.ok(joined.msgphash().equals(other.msgphash()))
-  assert.ok(b.createdat().equals(other.createdat()))
-  assert.ok(joined.createdat().equals(other.createdat()))
-  const stillA = life.fill(event(registry, 61, '', scope, [['id', 'OWNED']]))
-  previous(stillA, attached)
-  assert.ok(stillA.createdat().equals(first.createdat()))
-})
-
-test('derived codes keep the scope and identifier text, and empty is not whitespace', () => {
-  const registry = new fix.FixRegistry()
-  const life = lifecycle(registry)
-  const text = 'Mixed/Case/界'
-  const scopes = [null, 'ALPHA', 'BETA']
-  const ids = []
-  for (const [at, scope] of scopes.entries()) {
-    const time = at + 1
-    const expected = scope === null ? `-/${text}` : `${scopeOf(scope)}/${text}`
-    const value = life.fill(event(registry, time, '', scope, [['id', text]]))
-    assert.equal(value.byTag(CODE).asJs(), expected)
-    assert.ok(value.msgphash().equals(persistentOf(expected)))
-    previous(value, null)
-    assert.ok(value.createdat().equals(clock(time)))
-    assert.ok(ids.every((held) => !held.equals(value.msgphash())))
-    ids.push(value.msgphash())
-  }
-  assert.equal(life.alive, 3)
-  for (const [at, scope] of scopes.entries()) {
-    const joined = life.fill(event(registry, 31, '', scope, [['id', text]]))
-    assert.ok(joined.createdat().equals(clock(at + 1)))
-    assert.ok(joined.msgphash().equals(ids[at]))
-  }
-
-  // No name opens no chain and emits no snapshot; its msgphash is still the one
-  // deterministic hash of the empty code.
-  const unknown = event(registry, 1, '')
-  const filled = life.fill(unknown)
-  assert.ok(filled.msgphash().equals(persistentOf('')))
-  assert.ok(filled.updatedat().equals(clock(0)))
-  assert.ok(filled.createdat().equals(unknown.createdat()))
-  previous(filled, null)
-  assert.equal(life.snapshot(unknown), null)
-  const nextUnnamed = life.fill(event(registry, 2, ''))
-  assert.ok(nextUnnamed.createdat().equals(clock(2)))
-  previous(nextUnnamed, null)
-  assert.equal(life.alive, 3)
-  // Whitespace is a real name.
-  const whitespace = life.snapshot(event(registry, 1, ' '))
-  assert.notEqual(whitespace, null)
-  assert.equal(whitespace.byTag(CODE).asJs(), ' ')
-  assert.equal(life.alive, 4)
-})
-
-test('late messages advance history without lowering the bucket high-water mark', () => {
-  const registry = new fix.FixRegistry()
-  const full = lifecycle(registry)
-  const filtered = lifecycle(registry)
-  let last = null
-  for (const [time, emit] of [[21, true], [1, false], [29, false], [31, true]]) {
-    const raw = event(registry, time, 'A')
-    const filled = full.fill(raw)
-    previous(filled, last)
-    assert.ok(filled.createdat().equals(clock(21)))
-    assert.ok(filled.byTag(SNAPSHOTAT).equals(clock(time)))
-    snapshotIs(filtered.snapshot(raw), emit ? filled : null)
-    last = filled
-  }
-})
-
-test('a suppressed terminal closes and a same-bucket reopening starts fresh', () => {
-  const registry = new fix.FixRegistry()
-  const life = lifecycle(registry)
-  const full = lifecycle(registry)
-  const raw = event(registry, 1, 'A', null, [['id', 'OLD']])
-  const first = life.snapshot(raw)
-  assert.notEqual(first, null)
-  assert.ok(full.fill(raw).equals(first))
-  const ending = terminal(event(registry, 2, 'A'))
-  const closed = full.fill(ending)
-  assert.ok(closed.createdat().equals(first.createdat()))
-  previous(closed, first)
-  assert.equal(full.alive, 0)
-  assert.equal(life.snapshot(ending), null)
-  assert.equal(life.alive, 0)
-  const reopened = life.snapshot(event(registry, 3, 'A'))
-  assert.notEqual(reopened, null)
-  previous(reopened, null)
-  assert.ok(reopened.msgphash().equals(first.msgphash()))
-  assert.ok(reopened.createdat().equals(clock(3)))
-  // The closed chain's identifier is free again, for a chain of its own.
-  const oldKey = life.fill(event(registry, 4, '', null, [['id', 'OLD']]))
-  assert.equal(oldKey.msgphash().equals(reopened.msgphash()), false)
-  previous(oldKey, null)
-  assert.ok(oldKey.createdat().equals(clock(4)))
-  assert.equal(life.alive, 2)
-  life.clear()
-  assert.equal(life.intervalNs, 10n)
-  for (const time of [5, 6]) {
-    const standalone = life.snapshot(terminal(event(registry, time, 'A')))
-    assert.notEqual(standalone, null)
-    previous(standalone, null)
-    assert.ok(standalone.createdat().equals(clock(time)))
-    assert.equal(life.alive, 0, 'no closed-chain tombstones')
-  }
-  assert.equal(life.snapshot(terminal(event(registry, 10, 'A'))), null)
-  assert.equal(life.alive, 0)
-})
-
-test('grid underflow refuses before opening, attaching, advancing or closing', () => {
-  const registry = new fix.FixRegistry()
-  for (const existing of [false, true]) {
-    const life = lifecycle(registry)
-    const first = existing ? life.fill(event(registry, 1, 'A', null, [['id', 'LIVE']])) : null
-    const failed = terminal(event(registry, I64_MIN, 'A', null, [['id', 'NEW']]))
-    assert.throws(() => life.snapshot(failed), /\$\.updatedat/)
-    assert.equal(life.alive, existing ? 1 : 0)
-    const accepted = life.snapshot(event(registry, 11, 'A'))
-    assert.notEqual(accepted, null)
-    previous(accepted, first)
-    assert.ok(accepted.createdat().equals(clock(existing ? 1 : 11)))
-    const free = life.fill(event(registry, 12, '', null, [['id', 'NEW']]))
-    previous(free, null)
-    assert.ok(free.createdat().equals(clock(12)))
-    assert.equal(free.msgphash().equals(accepted.msgphash()), false)
-  }
-})
-
-test('a previous stamp its target cannot hold consumes no bucket, closes and attaches nothing', () => {
-  const base = new fix.FixRegistry()
-  for (const [tag, name, dtype] of [
-    [PREVUUID, 'prevmsghash', DataType.from('utf8')],
-    [PREVUUID, 'prevmsghash', DataType.from('binary')],
-    [PREVUUID, 'prevmsghash', clock(0).dtype],
-    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('uuid')],
-    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('utf8')],
-  ]) {
-    const custom = wrongPrevious(tag, dtype)
-    for (const existing of [false, true]) {
-      const life = lifecycle(base)
-      const first = existing ? life.fill(event(base, 1, 'A', null, [['id', 'LIVE']])) : null
-      const failed = withValue(terminal(event(custom, 11, 'A', null, [['a', 'LIVE'], ['b', 'NEW']])), tag, null)
-      assert.throws(() => life.snapshot(failed), new RegExp(`\\$\\.${name}`))
-      assert.equal(life.alive, existing ? 1 : 0)
-      const accepted = life.snapshot(event(base, 12, 'A'))
-      assert.notEqual(accepted, null)
-      previous(accepted, first)
-      assert.ok(accepted.createdat().equals(clock(existing ? 1 : 12)))
-      const free = life.fill(event(base, 13, '', null, [['id', 'NEW']]))
-      previous(free, null)
-      assert.ok(free.createdat().equals(clock(13)))
-      assert.equal(free.msgphash().equals(accepted.msgphash()), false)
-    }
-  }
-})
-
-test('independently stated previous values are not the current history', () => {
-  const registry = new fix.FixRegistry()
-  const statedIdentity = identityOf(987)
-  for (const [statedClock, statedId] of [[false, false], [true, false], [false, true], [true, true]]) {
-    const life = lifecycle(registry)
-    const first = life.fill(event(registry, 1, 'A'))
-    let second = event(registry, 11, 'A')
-    second = withValue(second, PREVUPDATEDAT, statedClock ? clock(987) : null)
-    second = withValue(second, PREVUUID, statedId ? statedIdentity : null)
-    second = life.fill(second)
-    assert.ok(second.byTag(PREVUPDATEDAT).equals(statedClock ? clock(987) : first.updatedat()))
-    if (statedId) {
-      assert.deepEqual(Buffer.from(second.byTag(PREVUUID).asJs()), statedIdentity)
-    } else {
-      assert.ok(second.byTag(PREVUUID).equals(first.msghash()))
-    }
-    // The stored pair is the current message's own, never what it stated.
-    previous(life.fill(event(registry, 21, 'A')), second)
-  }
-})
-
-test('the snapshot stream is lazy, throws a refused message where it is met and fuses', () => {
-  const registry = new fix.FixRegistry()
-  const custom = wrongPrevious(PREVUUID, DataType.from('utf8'))
-  const bad = withValue(event(custom, 11, 'A'), PREVUUID, null)
-  const input = [
-    event(registry, 1, 'A'),
-    bad,
-    event(registry, 12, 'A'),
-    event(registry, 20, 'A'),
-    event(registry, 29, 'A'),
-    event(registry, 31, 'A'),
+  // Two chains are walked apart: each message follows the live one of its
+  // own chain.
+  const lines = [
+    '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|60=20260102-10:15:30.000|10=0|',
+    '8=FIX.4.4|35=D|11=B1|55=MSFT|54=1|60=20260102-10:15:31.000|10=0|',
+    '8=FIX.4.4|35=8|11=A1|37=A1|17=E1|150=0|39=0|60=20260102-10:15:32.000|10=0|',
+    '8=FIX.4.4|35=8|11=B1|37=B1|17=E2|150=0|39=0|60=20260102-10:15:33.000|10=0|',
   ]
-  let pulls = 0
-  const source = {
-    [Symbol.iterator]() {
-      return {
-        next() {
-          pulls += 1
-          return pulls <= input.length ? { value: input[pulls - 1], done: false } : { value: undefined, done: true }
-        },
-      }
-    },
-  }
-  const snapshots = lifecycle(registry).snapshots(source)
-  assert.ok(snapshots instanceof fix.FixMessages)
-  assert.equal(snapshots[Symbol.iterator](), snapshots)
-  assert.equal(pulls, 0)
-  const first = snapshots.next().value
-  assert.equal(pulls, 1)
-  // A transition the core refuses throws where it is met, advances nothing,
-  // and the stream goes on.
-  assert.throws(() => snapshots.next(), /\$\.prevmsghash/)
-  assert.equal(pulls, 2)
-  const recovered = snapshots.next().value
-  previous(recovered, first)
-  assert.ok(recovered.createdat().equals(first.createdat()))
-  assert.equal(pulls, 3, 'the refused transition did not consume bucket ten')
-  // Aligned and equal buckets are processed, not emitted.
-  assert.ok(snapshots.next().value.updatedat().equals(clock(30)))
-  assert.equal(pulls, 6)
-  assert.equal(snapshots.next().done, true)
-  assert.equal(pulls, 7)
-  assert.equal(snapshots.next().done, true)
-  assert.equal(pulls, 7, 'exhaustion is fused')
+  const walkedPair = [...codec.lifecycle(lines.map((line) => codec.parseLine(Buffer.from(line)).next().value))]
+  assert.equal(walkedPair.length, 4)
+  assert.equal(walkedPair[0].prevuuid, null)
+  assert.equal(walkedPair[1].prevuuid, null, 'another chain, another first message')
+  assert.equal(walkedPair[2].prevuuid, walkedPair[0].curruuid)
+  assert.equal(walkedPair[3].prevuuid, walkedPair[1].curruuid)
+})
 
-  // A failure of the iterable throws as itself, once, and ends the stream.
-  function* failing() {
-    yield event(registry, 1, 'LATE')
-    throw new RangeError('the source broke')
-  }
-  const broken = lifecycle(registry).snapshots(failing())
-  assert.notEqual(broken.next().value, undefined)
-  assert.throws(() => broken.next(), RangeError)
-  assert.equal(broken.next().done, true)
-  // What is not iterable is refused before anything is pulled, and an item
-  // that is not a message where it is met.
-  assert.throws(() => lifecycle(registry).snapshots(42), TypeError)
-  const mixed = lifecycle(registry).snapshots([event(registry, 1, 'A'), '8=FIX.4.4|35=0|10=0|'])
+test('the stream is lazy, pulls one message at a time and throws what its source throws', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
+
+  // What is not iterable is refused before anything is pulled.
+  assert.throws(() => codec.lifecycle(42), TypeError)
+  // The walk reads its source in order, so an item that is not a message
+  // ends the pull and throws in place of the stream's end.
+  const mixed = codec.lifecycle([parsed[0], '8=FIX.4.4|35=0|10=0|'])
   assert.equal(mixed.next().done, false)
   assert.throws(() => mixed.next(), TypeError)
   assert.equal(mixed.next().done, true)
-})
 
-test('the stream snapshots answers owns its lifecycle', () => {
-  const registry = new fix.FixRegistry()
-  const life = new fix.FixLifecycle(registry, { intervalNs: 10n })
-  life.fill(event(registry, 1, 'A'))
-  // The stream takes the configured interval and the live chain with it.
-  const stream = life.snapshots([event(registry, 11, 'A')])
-  const owned = /owned by the stream snapshots\(\) answered/
-  assert.throws(() => life.fill(event(registry, 21, 'A')), owned)
-  assert.throws(() => life.snapshot(event(registry, 21, 'A')), owned)
-  assert.throws(() => life.alive, owned)
-  assert.throws(() => life.intervalNs, owned)
-  assert.throws(() => life.setIntervalNs(10n), owned)
-  assert.throws(() => life.clear(), owned)
-  assert.throws(() => life.snapshots([]), owned)
-  assert.equal(String(life), 'FixLifecycle(owned by its snapshot stream)')
-  const [snapshot, ...rest] = [...stream]
-  assert.deepEqual(rest, [])
-  assert.ok(snapshot.updatedat().equals(clock(10)))
-  assert.ok(snapshot.createdat().equals(clock(1)), 'the live chain crossed into the stream')
-})
-
-test('a fresh replay is exact and a preprocessed snapshot replay emits nothing', () => {
-  const registry = new fix.FixRegistry()
-  const raw = [1, 7, 11, 21].map((time) => event(registry, time, 'A'))
-  const fill = (life, messages) => messages.map((message) => life.fill(message))
-  const same = (left, right) => {
-    assert.equal(left.length, right.length)
-    for (const [at, message] of left.entries()) assert.ok(message.equals(right[at]), `message ${at}`)
+  // A failure of the iterable throws as itself, once, and ends the stream.
+  function* failing() {
+    yield parsed[0]
+    throw new RangeError('the source broke')
   }
-  const full = lifecycle(registry)
-  const filled = fill(full, raw)
-  assert.equal(filled.length, raw.length)
-  assert.ok(filled.every((message) => message.createdat().equals(clock(1))))
-  same(fill(lifecycle(registry), raw), filled)
-  const fresh = lifecycle(registry)
-  same(fill(fresh, filled), filled)
-  assert.equal(fresh.alive, full.alive)
-  full.clear()
-  same(fill(full, raw), filled)
-  full.clear()
-  same(fill(full, filled), filled)
-  const snapshots = () => [...lifecycle(registry).snapshots(raw)]
-  const first = snapshots()
-  assert.equal(first.length, 3)
-  same(snapshots(), first)
-  const filtered = lifecycle(registry)
-  same(raw.map((message) => filtered.snapshot(message)).filter((held) => held !== null), first)
-  filtered.clear()
-  same(raw.map((message) => filtered.snapshot(message)).filter((held) => held !== null), first)
-  filtered.clear()
-  for (const message of filled) assert.equal(filtered.snapshot(message), null)
-  assert.equal(filtered.alive, full.alive)
-  const next = event(registry, 31, 'A')
-  assert.ok(filtered.fill(next).equals(full.fill(next)))
-  assert.equal([...lifecycle(registry).snapshots(filled)].length, 0)
+  const broken = codec.lifecycle(failing())
+  assert.equal(broken.next().done, false)
+  assert.throws(() => broken.next(), RangeError)
+  assert.equal(broken.next().done, true)
 
-  // The codec's lifecycle stream is one lifecycle at the default cadence.
-  const codec = new fix.FixCodec(registry)
-  const [streamed] = codec.lifecycle([raw[3]])
-  assert.ok(streamed.equals(new fix.FixLifecycle(registry).fill(raw[3])))
+  // The stream is its own iterator, and exhaustion is fused.
+  const stream = codec.lifecycle(parsed)
+  assert.equal(stream[Symbol.iterator](), stream)
+  assert.equal([...stream].length, LIFE.length)
+  assert.equal(stream.next().done, true)
 })
 
-test('the snapshot stream crosses Arrow both ways without a second transition', () => {
-  const registry = new fix.FixRegistry()
-  const raw = [1, 7, 11].map((time) => event(registry, time, 'A'))
-  const schema = raw[0].field
-  const codec = new fix.FixCodec(registry)
-  const input = codec.arrowReader(schema, raw)
-  const snapshots = lifecycle(registry).snapshots(codec.messages(input))
-  const reader = codec.arrowReader(schema, snapshots)
-  assert.ok(reader instanceof BatchReader)
-  const actual = [...new fix.FixCodec(registry).messages(reader)]
-  assert.equal(actual.length, 2)
-  assert.ok(actual[0].updatedat().equals(clock(0)))
-  assert.ok(actual[1].updatedat().equals(clock(10)))
-  assert.ok(actual.every((message) => message.createdat().equals(clock(1))))
-  for (const message of actual) {
-    const row = message.intoRow(message.field)
-    const replayed = fix.FixMsg.fromRow(message.field, row, registry)
-    assert.ok(replayed.equals(message))
-    assert.ok(replayed.intoRow(message.field).equals(row))
+test('the walk crosses Arrow both ways without a second parse', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const schema = fix.schema(registry)
+  const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
+
+  const walked = codec.lifecycleArrowReader(codec.arrowReader(schema, parsed))
+  assert.ok(walked instanceof BatchReader)
+  const back = [...codec.messages(walked)]
+  assert.equal(back.length, LIFE.length)
+  // The same walk the message stream answers, through the rows: each
+  // message states its place in the chain, the one before it, and the
+  // content it was parsed from. The identity is the row's own - a clock
+  // the intake settled is not a column, so a message read back settles its
+  // own - and the chain it names is what the walk states.
+  const expected = [...codec.lifecycle(parsed)]
+  for (const [at, message] of back.entries()) {
+    assert.equal(message.seqnum, expected[at].seqnum, `message ${at}`)
+    assert.equal(message.crosscode, expected[at].crosscode, `message ${at}`)
+    assert.deepEqual(message.entries(), expected[at].entries(), `message ${at}`)
+    assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].curruuid, `message ${at}`)
+    assert.deepEqual(message.parentuuids, at === 0 ? [] : [back[at - 1].curruuid], `message ${at}`)
+    assert.equal(message.crossuuid, back[0].crossuuid, `message ${at}`)
   }
-  // The same projection of the snapshots taken without the first crossing.
-  const expected = [...codec.messages(codec.arrowReader(schema, lifecycle(registry).snapshots(raw)))]
-  assert.equal(expected.length, actual.length)
-  for (const [at, message] of actual.entries()) assert.ok(message.equals(expected[at]), `message ${at}`)
+  // The source is consumed, as every batch door consumes one.
+  const source = codec.arrowReader(schema, parsed)
+  codec.lifecycleArrowReader(source)
+  assert.ok(source.consumed)
 })
 
-test('normalization keeps the wire, the arrival record, the digest and the real clock', () => {
-  const registry = new fix.FixRegistry()
-  const codec = new fix.FixCodec(registry)
-  const wire = '8=FIX.4.4|35=D|52=20260102-10:15:30.125|60=20260102-10:15:30.123456789|10=0|'
-  const raw = withValue(codec.parseFixLine(Buffer.from(wire)), CODE, 'A')
-  const filled = new fix.FixLifecycle(registry).fill(raw)
-  assert.deepEqual(filled.intoBytes(124), raw.intoBytes(124))
-  assert.deepEqual(filled.arrivals(), raw.arrivals())
-  assert.deepEqual(filled.digest(), raw.digest())
-  assert.ok(filled.byTag(SNAPSHOTAT).equals(raw.byTag(SNAPSHOTAT)))
-  assert.ok(filled.createdat().equals(raw.createdat()))
-  assert.equal(filled.updatedat().equals(raw.updatedat()), false)
+test('a bridge capture parses whole and walks its chains', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry, {
+    captureNames: ['timestamp', 'threadId', 'msgsessionid', 'msgctxid', 'msgseqnum', 'pluginid', 'level'],
+  })
+  const messages = captured(codec)
+  // Every line that carries a message is one message, the JSON documents
+  // among them (`rust/tests/fix/dataset.rs`).
+  assert.equal(messages.length, 94)
+
+  // What a bridge's row header states reaches the capture, and what its own
+  // namespaces state reaches the metadata.
+  const report = messages.find((message) => message.header().msgtype === '8')
+  assert.equal(report.capture().pluginid, 'ULBridge')
+  assert.match(report.capture().msgctxid, /^[0-9a-f]{10}$/)
+  assert.match(report.capture().msgsessionid, /^[0-9a-f]{8}$/)
+  assert.equal(typeof report.capture().recordedat, 'bigint')
+  assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('ullink.')))
+  assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('firm.')))
+  assert.ok(Object.keys(report.metadata).every((key) => key === key.toLowerCase()))
+  // The event reads the report: the instrument, the side, the price and the
+  // quantity, and the identifiers the message is known by.
+  assert.equal(report.event().isincode, 'CH0012214059')
+  assert.equal(report.event().miccode, 'XSWX')
+  assert.equal(report.side, 'BUY')
+  assert.ok(Object.keys(report.identifiers).includes('clordid'))
+  // The parties merge to one group with the counter synced.
+  const parties = report.entries().find((entry) => entry.tag === 453)
+  assert.equal(parties.value, '8')
+  assert.equal(parties.entries.length, 8)
+
+  // The walk states a predecessor for every message that has one.
+  const walked = [...codec.lifecycle(messages)]
+  assert.equal(walked.length, messages.length)
+  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 35)
+  assert.equal(walked.filter((message) => message.seqnum > 0).length, 35)
+  assert.ok(walked.every((message) => message.parentuuids.length === (message.prevuuid === null ? 0 : 1)))
+
+  // And the Arrow twin answers the same walk over the same corpus.
+  const schema = fix.schema(registry)
+  const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
+  const chained = [...codec.messages(rows)]
+  assert.equal(chained.length, messages.length)
+  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 35)
+})
+
+test('a transaction time stating only a day leaves the sending clock standing', () => {
+  const codec = new fix.FixCodec(seed(), { defaultSendingTime: SENDING })
+  // `60=20260814` states a day and no clock, so the event is the sending
+  // time rather than midnight (`rust/tests/fix/`).
+  const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))
+  assert.equal(day.unix, 1_704_190_530_000_000_000n)
+  assert.equal(day.header().sendingtime, day.unix)
+  const [walked] = codec.lifecycle([day])
+  assert.equal(walked.unix, day.unix)
 })

@@ -8,8 +8,11 @@ import {
   fix,
   type FixMsg,
   type FixCodec,
+  type FixCaptureView,
   type FixDirection,
-  type FixLifecycle,
+  type FixEntryView,
+  type FixEventView,
+  type FixHeaderView,
   type FixRegistry,
   type FixMessages,
   type MsgType,
@@ -142,9 +145,109 @@ const valueByPath: Scalar | null = message.getByPath('Parties.0.PartyID')
 const requiredValueByPath: Scalar = message.byPath('Parties.0.PartyID')
 const valueByKey: Scalar | null = message.get(55)
 const requiredValueByKey: Scalar = message.at('Symbol')
-const pairs: Generator<[string, Scalar]> = message.entries()
-const materialized: [string, Scalar][] = [...message.entries()]
-const iterated: [string, Scalar][] = [...message]
+const entries: FixEntryView[] = message.entries()
+const nested: FixEntryView[] = entries[0].entries
+const entryTag: number = entries[0].tag
+const entryName: string = entries[0].name
+const entryValue: string | null = entries[0].value
+const walked: FixEntryView[] = [...message]
+// The typed holders answer one plain object each.
+const event: FixEventView = message.event()
+const header: FixHeaderView = message.header()
+const capture: FixCaptureView = message.capture()
+const text: string | null = message.text
+const metadata: Record<string, string> = message.metadata
+// The graph facts a message answers directly.
+const curruuid: string = message.curruuid
+const crossuuid: string = message.crossuuid
+const crosscode: string = message.crosscode
+const hashcode: bigint = message.hashcode
+const crosshashcode: bigint = message.crosshashcode
+const unix: bigint = message.unix
+const state: string = message.state
+const seqnum: number = message.seqnum
+const prevuuid: string | null = message.prevuuid
+const parentuuids: string[] = message.parentuuids
+const messageIdentifiers: Record<string, string> = message.identifiers
+const px: string = message.px
+const qty: string = message.qty
+const side: string = message.side
+const currency: string = message.currency
+// And the same facts on the event, with the instants and the lanes.
+const eventUnix: bigint = event.unix
+const eventCreated: bigint | null = event.creatunix
+const eventPrevUnix: bigint | null = event.prevunix
+const eventSnap: bigint | null = event.snapunix
+const eventExpiry: bigint | null = event.expirunix
+const eventIsin: string | null = event.isincode
+const eventBidPx: string | null = event.bidpx
+const eventAskCurrency: string | null = event.askcurrency
+const eventIdentifiers: Record<string, string> = event.identifiers
+const eventParents: string[] = event.parentuuids
+const beginstring: string = header.beginstring
+const msgtype: string = header.msgtype
+const sendercompid: string | null = header.sendercompid
+const msgseqnum: number | null = header.msgseqnum
+const sendingtime: bigint = header.sendingtime
+const possdupflag: boolean | null = header.possdupflag
+const msgdirection: string | null = header.msgdirection
+const sourceurl: string | null = capture.sourceurl
+const recordedat: bigint | null = capture.recordedat
+const pluginid: string | null = capture.pluginid
+const msgctxid: string | null = capture.msgctxid
+const msgsessionid: string | null = capture.msgsessionid
+
+void entries
+void nested
+void entryTag
+void entryName
+void entryValue
+void walked
+void text
+void metadata
+void curruuid
+void crossuuid
+void crosscode
+void hashcode
+void crosshashcode
+void unix
+void state
+void seqnum
+void prevuuid
+void parentuuids
+void messageIdentifiers
+void px
+void qty
+void side
+void currency
+void eventUnix
+void eventCreated
+void eventPrevUnix
+void eventSnap
+void eventExpiry
+void eventIsin
+void eventBidPx
+void eventAskCurrency
+void eventIdentifiers
+void eventParents
+void beginstring
+void msgtype
+void sendercompid
+void msgseqnum
+void sendingtime
+void possdupflag
+void msgdirection
+void sourceurl
+void recordedat
+void pluginid
+void msgctxid
+void msgsessionid
+
+// @ts-expect-error a graph fact is read, never assigned
+message.curruuid = 'other'
+// @ts-expect-error the entries are derived from the row
+message.entries = []
+
 const equalMessages: boolean = message.equals(explicit)
 const messageHash: bigint = message.stableHash()
 const clonedMessage: FixMsg = message.clone()
@@ -172,9 +275,6 @@ void valueByPath
 void requiredValueByPath
 void valueByKey
 void requiredValueByKey
-void pairs
-void materialized
-void iterated
 void equalMessages
 void messageHash
 void clonedMessage
@@ -306,53 +406,24 @@ const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'))
 const fromBridge: FixMsg = reader.parseUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromFixml: FixMsg = reader.parseFixmlLine(Buffer.from("<Order ClOrdID='A'/>"))
 const fromPairs: FixMsg = reader.parsePairs([['55', 'AAPL']])
-const enriched: FixMsg = reader.enrichMessage(fromText)
-const enrichedStream: FixMessages = reader.enrichMessages([fromText, enriched])
 const readerCopy: FixCodec = reader.clone()
 
-// The lifecycle is a class over one dictionary, or over the process default,
-// and the codec runs one over any iterable, lazily.
-const lifeClass: typeof FixLifecycle = fix.FixLifecycle
-const life: FixLifecycle = new fix.FixLifecycle(loaded)
-const defaultLife: FixLifecycle = new fix.FixLifecycle()
-const gridded: FixLifecycle = new fix.FixLifecycle(loaded, { intervalNs: 10n })
-const griddedByNumber: FixLifecycle = new fix.FixLifecycle(null, { intervalNs: 1_000 })
-const defaultInterval: bigint = fix.FixLifecycle.DEFAULT_INTERVAL_NS
-const intervalNs: bigint = gridded.intervalNs
-gridded.setIntervalNs(10n)
-gridded.setIntervalNs(10)
-const stamped: FixMsg = life.fill(fromText)
-const singleSnapshot: FixMsg | null = gridded.snapshot(fromText)
-const alive: number = life.alive
-const lifeRendered: string = life.toString()
-life.clear()
-const stream: FixMessages = reader.lifecycle([fromText, stamped])
+// The walk is a codec stage: any iterable in, a lazy `FixMessages` out.
+const stream: FixMessages = reader.lifecycle([fromText])
 const stampedAgain: FixMessages = reader.lifecycle(stream)
-const snapshots: FixMessages = griddedByNumber.snapshots([fromText, stamped])
-const snapshotsOfStream: FixMessages = new fix.FixLifecycle().snapshots(reader.parseLines(['8=FIX.4.4|35=D|10=0|']))
 
-void griddedByNumber
-void defaultInterval
-void intervalNs
-void singleSnapshot
-void snapshots
-void snapshotsOfStream
+void stream
+void stampedAgain
 
-// @ts-expect-error the interval is a bigint or a number, never text
-new fix.FixLifecycle(loaded, { intervalNs: '10' })
-// @ts-expect-error the interval is read, and changed only through setIntervalNs
-gridded.intervalNs = 10n
-// @ts-expect-error the default interval is the core's constant
-fix.FixLifecycle.DEFAULT_INTERVAL_NS = 1n
-// @ts-expect-error a snapshot takes one message, never a stream
-gridded.snapshot([fromText])
-// @ts-expect-error the snapshot stream is an iterable of messages
-gridded.snapshots(fromText)
+// @ts-expect-error the walk takes an iterable of messages, never one message
+reader.lifecycle(fromText)
+// @ts-expect-error the walk takes messages, never lines
+reader.lifecycle([Buffer.from('8=FIX.4.4|35=0|10=0|')])
 
 // The Arrow twins take and answer batch readers, and a stream crosses back.
 const parsedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromIpc(new Uint8Array()))
-const filledBatches: BatchReader = reader.enrichMessagesArrowReader(parsedBatches)
-const readBackStream: FixMessages = reader.messages(filledBatches)
+const walkedBatches: BatchReader = reader.lifecycleArrowReader(parsedBatches)
+const readBackStream: FixMessages = reader.messages(walkedBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
 const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
 
@@ -363,22 +434,8 @@ void pinnedDirection
 void pinnedBatchByteSize
 void fromLines
 void fromFixml
-void enriched
-void enrichedStream
-void lifeClass
-void defaultLife
-void alive
-void lifeRendered
-void stream
-void stampedAgain
 void written
 
-// @ts-expect-error a lifecycle stamps messages, never lines
-life.fill(Buffer.from('8=FIX.4.4|35=0|10=0|'))
-// @ts-expect-error the stream is an iterable of messages
-reader.lifecycle(fromText)
-// @ts-expect-error alive is read, never set
-life.alive = 0
 // @ts-expect-error a stage is a call, never a flag
 reader.parseLine(Buffer.from('35=D|'), true)
 // @ts-expect-error a sink writes chunks
@@ -392,24 +449,27 @@ const fixedRow: Scalar = fromText.intoRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()
 
-// Everything the core derives about a message.
+// What a message emits and digests.
 const digest: Buffer = fromText.digest()
-const ticker: Scalar | null = fromText.symbolTicker()
-// The settled clocks and identities are never null.
-const clock: Scalar = fromText.updatedat()
-const created: Scalar = fromText.createdat()
-const messageUuid: Scalar = fromText.msghash()
-const chainUuid: Scalar = fromText.msgphash()
-// @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
-fromText.marketTimestamp()
-const lifted: Scalar | null = fromText.lifted('bidpx')
-const liftSource: number | null = fromText.liftSource('bidpx')
-const lift: Array<[string, Scalar]> = fromText.lift()
-const party: Array<Scalar | null> | null = fromText.party('1')
-const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
-const anomalies: string[] = fromText.anomalies()
-const arrivals: Array<[number, string, string]> = fromText.arrivals()
 const wire: Buffer = fromText.intoBytes(124)
+const defaultWire: Buffer = fromText.intoBytes()
+const wireText: string = fromText.intoText('|')
+const defaultWireText: string = fromText.intoText()
+
+void digest
+void wire
+void defaultWire
+void wireText
+void defaultWireText
+
+// @ts-expect-error the retired readers are gone: the facts are the holders'
+fromText.updatedat()
+// @ts-expect-error a lifted facet is the event's own lane
+fromText.lifted('bidpx')
+// @ts-expect-error the arrival record is the entries
+fromText.arrivals()
+// @ts-expect-error a separator is one byte
+fromText.intoBytes('|')
 
 void readerClass
 void pinned
@@ -426,41 +486,37 @@ void fixedSchema
 void fixedSchemaTags
 void crateFields
 void digest
-void ticker
-void clock
-void created
-void messageUuid
-void chainUuid
-void lifted
-void liftSource
-void lift
-void party
-void regulatory
-void anomalies
-void arrivals
-void wire
 
 // @ts-expect-error a fixed schema is built from a registry, never from a number
 fix.schema(55)
 
-// Categories contain native Fields; a counter remains scalar beside its list.
-const group: Field = loaded.definition('groups', 'parties')
-const counter: Field = loaded.definition('fields', 'nopartyids')
-const component: Field | null = loaded.getDefinition('components', 'party')
-const definitions: IterableIterator<Field> = loaded.definitions('components')
-const definitionAdded: boolean = loaded.addDefinition('components', field)
-const previous: Field | null = loaded.insertDefinition('components', field)
-loaded.createDefinition('components', field)
-const replaced: Field = loaded.updateDefinition('components', field)
-const deleted: Field | null = loaded.removeDefinition('components', 'party')
-const groupByTag: Field | null = loaded.getGroupByTag(453)
-const requiredGroup: Field = loaded.groupByTag(453)
+// A definition is reached through the field doors: by name, by the counter
+// it opens, or by the path grammar.
+const group: Field = loaded.fieldByName('parties')
+const groupByCounter: Field | null = loaded.getFieldByCounter(453)
+const requiredByCounter: Field = loaded.fieldByCounter(453)
+const nestedMember: Field = loaded.fieldByPath('Parties.PartyID')
+const definitionInserted: Field | null = loaded.insert(field)
+loaded.update(field)
+const definitionRemoved: Field | null = loaded.remove('parties')
 const snapshot: string = loaded.intoJson()
 const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
 
+void group
+void groupByCounter
+void requiredByCounter
+void nestedMember
+void definitionInserted
+void definitionRemoved
+void restored
+
+// @ts-expect-error the category doors are gone
+loaded.getDefinition('components', 'party')
+// @ts-expect-error a counter is a number, never text
+loaded.fieldByCounter('453')
+
 const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
-const messageTypes: IterableIterator<MsgType> = loaded.msgtypes()
 const registered: MsgType = loaded.registerMsgtype('BridgeReport', 'bridgereport')
 const wireCode: string = order.asStr()
 const messageDefinition: Field = order.asField()
@@ -512,7 +568,6 @@ new fix.FixMessages()
 // @ts-expect-error counter metadata requires a number
 field.fix.counter = '453'
 
-void [group, counter, component, definitions, previous, replaced, deleted, groupByTag,
-  requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
-  messageDefinition, identifierValues, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
-  componentRef, groupRef, fieldRef, messageCode, nextMessage, allMessages, single]
+void [order, optionalOrder, registered, wireCode, messageDefinition, identifierValues,
+  scoped, singletonHash, singletonEqual, singletonOrder, counterTag, componentRef,
+  groupRef, fieldRef, messageCode, nextMessage, allMessages, single]

@@ -111,7 +111,7 @@ const order = fields.struct(
     registry.fieldByTag(55),
     registry.fieldByTag(38),
     registry.fieldByName('NoPartyIDs'),
-    registry.definition('groups', 'Parties'),
+    registry.fieldByName('Parties'),
   ],
   { nullable: false },
 )
@@ -135,17 +135,17 @@ catalog.insert(counter)
 catalog.insert(partyId)
 partyId.fix.fieldRef = 'PartyID'
 const party = fields.struct('Party', [partyId], { nullable: false })
-catalog.createDefinition('components', party)
+catalog.insert(party)
 const parties = fields.list('Parties', party)
 parties.fix.counter = 453
 parties.fix.component = 'Party'
-catalog.createDefinition('groups', parties)
-const occurrence = catalog.definition('groups', 'Parties')
+catalog.insert(parties)
+const occurrence = catalog.fieldByName('Parties')
 occurrence.fix.group = 'Parties'
 counter.fix.fieldRef = 'NoPartyIDs'
 const definition = fields.struct('NewOrderSingle', [counter, occurrence], { nullable: false })
 definition.fix.msgtype = 'D'
-catalog.createDefinition('components', definition)
+catalog.insert(definition)
 const snapshot = catalog.intoJson()
 // The lenient field verb, both answers: `party_id` folds to the stored
 // `PartyID` and merges into it, `Symbol` is a name nothing answers to.
@@ -176,10 +176,8 @@ const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.B
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
 const orderType = registry.msgtype('D')
 const orderDeclaration = orderType.asField()
-const enriched = seedCodec.enrichMessage(parsed)
-const alternateIds = enriched.byName('altids').asJs()
-if (!(alternateIds instanceof Map) || alternateIds.get('clordid') !== 'ORDER-000000') {
-  throw new Error('enrichment must carry the declared identifier in a native Map')
+if (parsed.identifiers.clordid !== 'ORDER-000000') {
+  throw new Error('a parse must carry the declared identifier onto the event')
 }
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
@@ -238,43 +236,42 @@ try {
   benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/declared_identifiers', () => orderDeclaration.fix.identifiers)
   benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
-  benchmark('fix/altids_native_map', () => enriched.byName('altids').asJs())
+  // The typed holders, each read once into the plain object it crosses as.
+  benchmark('fix/message_event', () => parsed.event())
+  benchmark('fix/message_header', () => parsed.header())
+  benchmark('fix/message_capture', () => parsed.capture())
+  benchmark('fix/message_identifiers', () => parsed.identifiers)
+  benchmark('fix/message_metadata', () => parsed.metadata)
+  benchmark('fix/message_curruuid', () => parsed.curruuid)
+  benchmark('fix/message_hashcode', () => parsed.hashcode)
+  benchmark('fix/message_entries', () => parsed.entries())
   benchmark('fix/message_get_by_tag', () => message.getByTag(55))
   benchmark('fix/message_get_by_id', () => message.getById(SYMBOL_ID))
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('Parties.0.PartyID'))
   benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
   benchmark('fix/infer_ullink_msgtype', () => fix.FixCodec.inferMsgtypeText(ULLINK_LINE))
-  for (const category of ['fields', 'components', 'groups']) {
-    benchmark(`fix/${category}_first`, () => {
-      const iterator = catalog.definitions(category)[Symbol.iterator]()
-      const first = iterator.next().value
-      iterator.return()
-      return first
-    })
-    benchmark(`fix/${category}_drain`, () => drain(catalog.definitions(category)))
-  }
-  benchmark('fix/singleton_lookup', () => catalog.msgtype('D'))
-  benchmark('fix/singleton_first', () => {
-    const iterator = catalog.msgtypes()[Symbol.iterator]()
+  benchmark('fix/fields_first', () => {
+    const iterator = catalog.keys()[Symbol.iterator]()
     const first = iterator.next().value
     iterator.return()
     return first
   })
-  benchmark('fix/singleton_drain', () => drain(catalog.msgtypes()))
+  benchmark('fix/fields_drain', () => drain(catalog))
+  benchmark('fix/singleton_lookup', () => catalog.msgtype('D'))
   benchmark('fix/singleton_field', () => singleton.asField())
   benchmark('fix/singleton_hash', () => singleton.stableHash())
   benchmark('fix/singleton_compare', () => singleton.compare(singleton))
-  benchmark('fix/group_lookup', () => catalog.groupByTag(453))
+  benchmark('fix/group_lookup', () => catalog.fieldByCounter(453))
   benchmark('fix/catalog_hash', () => catalog.stableHash())
   benchmark('fix/catalog_snapshot_write', () => catalog.intoJson())
   benchmark('fix/catalog_snapshot_read', () => fix.FixRegistry.fromJson(snapshot))
   benchmark('fix/catalog_clone', () => catalog.clone())
   benchmark('fix/catalog_update', () => {
     const copy = catalog.clone()
-    const changed = copy.definition('components', 'Party')
+    const changed = copy.fieldByName('Party')
     changed.fix.description = 'Reviewed'
-    return copy.updateDefinition('components', changed)
+    return copy.update(changed)
   })
   benchmark('fix/catalog_add_field_merging', () => {
     const copy = catalog.clone()
@@ -286,18 +283,12 @@ try {
     copy.addField(arrivingField)
     return copy
   })
-  benchmark('fix/catalog_add_definition', () => {
-    const copy = catalog.clone()
-    const changed = copy.definition('components', 'Party')
-    changed.fix.description = 'Reviewed'
-    return copy.addDefinition('components', changed)
-  })
   benchmark('fix/catalog_create_remove', () => {
     const copy = catalog.clone()
     const empty = fields.struct('NewMessage', [], { nullable: false })
     empty.fix.msgtype = 'New Message Code'
-    copy.createDefinition('components', empty)
-    return copy.removeDefinition('components', 'NewMessage')
+    copy.insert(empty)
+    return copy.remove('NewMessage')
   })
   benchmark('fix/numeric_group_parse', () => drain(codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))))
   benchmark('fix/message_into_row', () => message.intoRow(order))
@@ -305,9 +296,9 @@ try {
   benchmark('fix/message_set', () => parsed.clone().set(55, 'MSFT'))
   benchmark('fix/message_remove', () => parsed.clone().remove(55))
   benchmark('fix/message_from_row', () => fix.FixMsg.fromRow(fixedSchema, parsedRow, registry))
-  benchmark('fix/enrich_message', () => seedCodec.enrichMessage(message))
+  benchmark('fix/message_into_text', () => message.intoText('|'))
   benchmark('fix/identified_message_arrow', () =>
-    seedCodec.arrowReader(fixedSchema, [enriched]).intoTable().numRows,
+    seedCodec.arrowReader(fixedSchema, [parsed]).intoTable().numRows,
   )
   const streams = Math.max(1, Math.round(iterations / 50))
   benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
@@ -320,8 +311,11 @@ try {
   benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.parseTextArrowReader(capture).intoTable().numRows,
   )
-  benchmarkStreams(`fix/enrich_messages_arrow_reader/${LINES.length}`, streams, () =>
-    seedCodec.enrichMessagesArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
+  benchmarkStreams(`fix/lifecycle_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.lifecycle(seedCodec.parseLines(LINES))),
+  )
+  benchmarkStreams(`fix/lifecycle_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.lifecycleArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
   )
   benchmarkStreams(`fix/messages_drain/${LINES.length}`, streams, () =>
     drain(seedCodec.messages(BatchReader.fromIpc(parsedIpc))),
