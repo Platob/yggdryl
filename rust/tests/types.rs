@@ -26,6 +26,10 @@ mod i256;
 mod logical;
 #[path = "types/media.rs"]
 mod media;
+#[path = "types/merge.rs"]
+mod merge;
+#[path = "types/regex.rs"]
+mod regex;
 #[path = "types/metadata.rs"]
 mod metadata;
 #[path = "types/scalar.rs"]
