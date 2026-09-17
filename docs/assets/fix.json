@@ -1,5 +1,5 @@
 {
-  "version": "0.1.6",
+  "version": "0.1.7",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6273,
+    "fields": 6277,
     "groups": 582,
     "enumFields": 2026,
     "codes": 27209,
@@ -104,7 +104,7 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 118,
+    "columns": 123,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 26,
@@ -115,7 +115,7 @@
       ],
       [
         "utf8",
-        1929
+        1930
       ],
       [
         "float64",
@@ -127,7 +127,7 @@
       ],
       [
         "boolean",
-        201
+        202
       ],
       [
         "currency",
@@ -162,16 +162,16 @@
         12
       ],
       [
+        "decimal128(38,18)",
+        4
+      ],
+      [
         "uint64",
         3
       ],
       [
         "uuid",
         3
-      ],
-      [
-        "decimal128(38,18)",
-        2
       ],
       [
         "int8",
@@ -378438,9 +378438,8 @@
           "type": "decimal128"
         },
         "metadata": {
-          "description": "The price the message states: Price, else LastPx, else AvgPx, else StopPx.",
+          "description": "The price the message is about: Price, else LastPx, else AvgPx, else the price its own side's lane quotes.",
           "display": "Px",
-          "fix:derivation": "coalesce(price, lastpx, avgpx, stoppx)",
           "fix:tag": "65043"
         },
         "name": "px",
@@ -378453,9 +378452,8 @@
           "type": "decimal128"
         },
         "metadata": {
-          "description": "The quantity the message states: OrderQty, else LastQty, else CumQty, else LeavesQty.",
+          "description": "The quantity the message is about: OrderQty, else LastQty, else CumQty, else LeavesQty, else the size its own side's lane quotes.",
           "display": "Qty",
-          "fix:derivation": "coalesce(orderqty, lastqty, cumqty, leavesqty)",
           "fix:tag": "65044"
         },
         "name": "qty",
@@ -378509,6 +378507,61 @@
           "fix:transient": "false"
         },
         "name": "crosscode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "precision": 38,
+          "scale": 18,
+          "type": "decimal128"
+        },
+        "metadata": {
+          "description": "The price stated before this message: PrevClosePx where the message states one, else the price its predecessor in the chain stated.",
+          "display": "PrevPx",
+          "fix:derivation": "prevclosepx",
+          "fix:tag": "65051"
+        },
+        "name": "prevpx",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "precision": 38,
+          "scale": 18,
+          "type": "decimal128"
+        },
+        "metadata": {
+          "description": "The quantity the message's predecessor in the chain stated.",
+          "display": "PrevQty",
+          "fix:tag": "65052"
+        },
+        "name": "prevqty",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "description": "Whether the instrument could be traded when the message was sent: SecurityTradingStatus, else TradSesStatus, else SecurityStatus; null where none of them says.",
+          "display": "Tradable",
+          "fix:derivation": "coalesce(case when securitytradingstatus in (3, 17) then true when securitytradingstatus in (1, 2, 4, 18, 19, 21) then false end, case when tradsesstatus in (2) then true when tradsesstatus in (1, 3, 4, 5, 7) then false end, case when securitystatus in ('1', '3') then true when securitystatus in ('2', '4', '5', '6', '9', '11') then false end)",
+          "fix:tag": "65053"
+        },
+        "name": "tradable",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The ticker the instrument is known by: what Symbol settles on, null where the message names none.",
+          "display": "SymbolTicker",
+          "fix:derivation": "case when symbol <> '[N/A]' and symbol <> '[N/A' then symbol end",
+          "fix:tag": "65054"
+        },
+        "name": "symbolticker",
         "nullable": true
       }
     ],
@@ -392728,6 +392781,13 @@
         "x": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)"
       },
       {
+        "c": "symbolticker",
+        "t": 65054,
+        "n": "SymbolTicker",
+        "y": "utf8",
+        "x": "The ticker the instrument is known by: what Symbol settles on, null where the message names none."
+      },
+      {
         "c": "securityid",
         "t": 48,
         "n": "SecurityID",
@@ -392819,6 +392879,34 @@
         "x": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt."
       },
       {
+        "c": "securitytradingstatus",
+        "t": 326,
+        "n": "SecurityTradingStatus",
+        "y": "int32",
+        "x": "Identifies the trading status applicable to the security."
+      },
+      {
+        "c": "tradsesstatus",
+        "t": 340,
+        "n": "TradSesStatus",
+        "y": "int32",
+        "x": "State of the trading session."
+      },
+      {
+        "c": "securitystatus",
+        "t": 965,
+        "n": "SecurityStatus",
+        "y": "utf8",
+        "x": "Indicates the current state of the instrument."
+      },
+      {
+        "c": "tradable",
+        "t": 65053,
+        "n": "Tradable",
+        "y": "boolean",
+        "x": "Whether the instrument could be traded when the message was sent: SecurityTradingStatus, else TradSesStatus, else SecurityStatus; null where none of them says."
+      },
+      {
         "c": "account",
         "t": 1,
         "n": "Account",
@@ -392907,42 +392995,14 @@
         "t": 65043,
         "n": "Px",
         "y": "decimal128(38,18)",
-        "x": "The price the message states: Price, else LastPx, else AvgPx, else StopPx."
+        "x": "The price the message is about: Price, else LastPx, else AvgPx, else the price its own side's lane quotes."
       },
       {
-        "c": "qty",
-        "t": 65044,
-        "n": "Qty",
+        "c": "prevpx",
+        "t": 65051,
+        "n": "PrevPx",
         "y": "decimal128(38,18)",
-        "x": "The quantity the message states: OrderQty, else LastQty, else CumQty, else LeavesQty."
-      },
-      {
-        "c": "unit",
-        "t": 65045,
-        "n": "Unit",
-        "y": "utf8",
-        "x": "The unit the quantity is counted in: UnitOfMeasure."
-      },
-      {
-        "c": "currency",
-        "t": 15,
-        "n": "Currency",
-        "y": "currency",
-        "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
-      },
-      {
-        "c": "price",
-        "t": 44,
-        "n": "Price",
-        "y": "float64",
-        "x": "Price per unit of quantity (e.g. per share)"
-      },
-      {
-        "c": "orderqty",
-        "t": 38,
-        "n": "OrderQty",
-        "y": "float64",
-        "x": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments."
+        "x": "The price stated before this message: PrevClosePx where the message states one, else the price its predecessor in the chain stated."
       },
       {
         "c": "lastpx",
@@ -392952,18 +393012,32 @@
         "x": "Price of this (last) fill."
       },
       {
-        "c": "lastqty",
-        "t": 32,
-        "n": "LastQty",
-        "y": "float64",
-        "x": "Quantity (e.g. shares) bought/sold on this (last) fill."
-      },
-      {
         "c": "avgpx",
         "t": 6,
         "n": "AvgPx",
         "y": "float64",
         "x": "Calculated average price of all fills on this order."
+      },
+      {
+        "c": "qty",
+        "t": 65044,
+        "n": "Qty",
+        "y": "decimal128(38,18)",
+        "x": "The quantity the message is about: OrderQty, else LastQty, else CumQty, else LeavesQty, else the size its own side's lane quotes."
+      },
+      {
+        "c": "prevqty",
+        "t": 65052,
+        "n": "PrevQty",
+        "y": "decimal128(38,18)",
+        "x": "The quantity the message's predecessor in the chain stated."
+      },
+      {
+        "c": "lastqty",
+        "t": 32,
+        "n": "LastQty",
+        "y": "float64",
+        "x": "Quantity (e.g. shares) bought/sold on this (last) fill."
       },
       {
         "c": "cumqty",
@@ -392980,18 +393054,25 @@
         "x": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14)."
       },
       {
-        "c": "ordtype",
-        "t": 40,
-        "n": "OrdType",
+        "c": "unit",
+        "t": 65045,
+        "n": "Unit",
         "y": "utf8",
-        "x": "Order type."
+        "x": "The unit the quantity is counted in: UnitOfMeasure."
       },
       {
-        "c": "quantity",
-        "t": 53,
-        "n": "Quantity",
-        "y": "float64",
-        "x": "Overall/total quantity (e.g. number of shares)"
+        "c": "currency",
+        "t": 15,
+        "n": "Currency",
+        "y": "currency",
+        "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
+      },
+      {
+        "c": "settlcurrency",
+        "t": 120,
+        "n": "SettlCurrency",
+        "y": "currency",
+        "x": "Currency code of settlement denomination."
       },
       {
         "c": "qtytype",
@@ -393001,11 +393082,18 @@
         "x": "Type of quantity specified in quantity field. ContractMultiplier (tag 231) is required when QtyType = 1 (Contracts). UnitOfMeasure (tag 996) and TimeUnit (tag 997) are required when QtyType = 2 (Units of Measure per Time Unit)."
       },
       {
-        "c": "settlcurrency",
-        "t": 120,
-        "n": "SettlCurrency",
-        "y": "currency",
-        "x": "Currency code of settlement denomination."
+        "c": "ordtype",
+        "t": 40,
+        "n": "OrdType",
+        "y": "utf8",
+        "x": "Order type."
+      },
+      {
+        "c": "timeinforce",
+        "t": 59,
+        "n": "TimeInForce",
+        "y": "utf8",
+        "x": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders."
       },
       {
         "c": "bidpx",
@@ -393385,31 +393473,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -393420,20 +393483,6 @@
                 "fix:tag": "40"
               },
               "name": "ordtype",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
               "nullable": false
             },
             {
@@ -393474,17 +393523,14 @@
         "ORDER-1",
         "AAPL",
         "XNAS",
-        100,
-        10.5,
         "2",
-        "0",
         "2024-02-01T12:34:56.123000000Z",
         "029"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": "S",
-      "size": 10,
+      "size": 7,
       "columns": [
         {
           "t": 35,
@@ -393529,16 +393575,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "10.500000000000000000"
         },
         {
           "t": 132,
@@ -393554,10 +393600,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-41fb-7000-9928-43f323a9f801",
+        "curruuid": "018d64aa-41fb-7000-97e5-74d69291de58",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
-        "hashcode": "6424459579998468097",
+        "hashcode": "15556968952752103000",
         "crosshashcode": "16375975223314930669",
         "identifiers": {
           "clordid": "ORDER-1"
@@ -393636,27 +393682,9 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "10.5",
-          "entries": []
-        },
-        {
           "tag": 40,
           "name": "ordtype",
           "value": "2",
-          "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
           "entries": []
         },
         {
@@ -393672,9 +393700,9 @@
           "entries": []
         }
       ],
-      "digest": "75eda80a85425d43efaf9cf1bba81217",
-      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56|54=1|132=10.5|134=100|9=139|11=ORDER-1|55=AAPL|207=XNAS|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))]"
+      "digest": "dc40605bab0a25b2d8e6313d28c7c303",
+      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56|38=100|44=10.5|54=1|59=0|132=10.5|134=100|9=139|11=ORDER-1|55=AAPL|207=XNAS|40=2|60=20240201-12:34:56.123|10=029|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))]"
     },
     {
       "key": "execution",
@@ -393764,71 +393792,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price of this (last) fill.",
-                "display": "LastPx",
-                "fix:derivation": "lastspotrate + lastforwardpoints",
-                "fix:tag": "31"
-              },
-              "name": "lastpx",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity (e.g. shares) bought/sold on this (last) fill.",
-                "display": "LastQty",
-                "fix:names": "[\"lastshares\"]",
-                "fix:tag": "32"
-              },
-              "name": "lastqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Total quantity (e.g. number of shares) filled.",
-                "display": "CumQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and orderqty - leavesqty >= 0 then orderqty - leavesqty end",
-                "fix:tag": "14"
-              },
-              "name": "cumqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14).",
-                "display": "LeavesQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
-                "fix:tag": "151"
-              },
-              "name": "leavesqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Calculated average price of all fills on this order.",
-                "display": "AvgPx",
-                "fix:derivation": "case when msgtype in ('8', '9') and cumqty = lastqty and lastqty > 0 then lastpx end",
-                "fix:tag": "6"
-              },
-              "name": "avgpx",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "timezone": "UTC",
                 "type": "datetime64",
                 "unit": "nanosecond"
@@ -393858,33 +393821,6 @@
                 "type": "float64"
               },
               "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
                 "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
                 "display": "GrossTradeAmt",
                 "fix:derivation": "case when msgtype in ('8', '9') then lastqty * lastpx end",
@@ -393907,21 +393843,14 @@
         "F",
         "2",
         "AAPL",
-        10.5,
-        100,
-        100,
-        0,
-        10.5,
         "2024-02-01T12:34:57.900000000Z",
         "249",
-        100,
-        "0",
         1050
       ],
       "mime": "text/fix",
       "msgtype": "8",
       "direction": null,
-      "size": 16,
+      "size": 9,
       "columns": [
         {
           "t": 35,
@@ -393960,10 +393889,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
+        },
+        {
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "10.500000000000000000"
         },
         {
           "t": 31,
@@ -393976,6 +393911,12 @@
           "n": "LastQty",
           "y": "float64",
           "v": "100"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
         },
         {
           "t": 39,
@@ -393997,10 +393938,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-48ec-7000-b7e5-87ffb8d16443",
+        "curruuid": "018d64aa-48ec-7000-aae5-e53af519a32e",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "hashcode": "4027774974139917379",
+        "hashcode": "3091128760642675502",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "execid": "E-1",
@@ -394026,8 +393967,8 @@
         "bloombergcode": null,
         "cficode": null,
         "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
+        "bidpx": "10.5",
+        "bidqty": "100",
         "bidcurrency": null,
         "bidunit": null,
         "askpx": null,
@@ -394092,36 +394033,6 @@
           "entries": []
         },
         {
-          "tag": 31,
-          "name": "lastpx",
-          "value": "10.5",
-          "entries": []
-        },
-        {
-          "tag": 32,
-          "name": "lastqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 14,
-          "name": "cumqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 151,
-          "name": "leavesqty",
-          "value": "0",
-          "entries": []
-        },
-        {
-          "tag": 6,
-          "name": "avgpx",
-          "value": "10.5",
-          "entries": []
-        },
-        {
           "tag": 60,
           "name": "transacttime",
           "value": "20240201-12:34:57.900",
@@ -394134,27 +394045,15 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
-        },
-        {
           "tag": 381,
           "name": "grosstradeamt",
           "value": "1050",
           "entries": []
         }
       ],
-      "digest": "06e761ff79d7990bbbc470544eec9c3f",
-      "emitted": "8=FIX.4.4|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|54=1|9=154|37=O-9|17=E-1|150=F|39=2|55=AAPL|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|38=100|59=0|381=1050|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))]"
+      "digest": "352b4856c0924e7345c0acb06c9120f6",
+      "emitted": "8=FIX.4.4|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|6=10.5|14=100|31=10.5|32=100|38=100|44=10.5|54=1|59=0|132=10.5|134=100|151=0|9=154|37=O-9|17=E-1|150=F|39=2|55=AAPL|60=20240201-12:34:57.900|10=249|381=1050|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))]"
     },
     {
       "key": "parties",
@@ -394199,31 +394098,6 @@
                 "fix:tag": "55"
               },
               "name": "symbol",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
               "nullable": false
             },
             {
@@ -394403,20 +394277,6 @@
               },
               "name": "checksum",
               "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
-              "nullable": false
             }
           ],
           "type": "struct"
@@ -394429,8 +394289,6 @@
         141,
         "ORDER-2",
         "BRN",
-        50,
-        41.25,
         2,
         [
           [
@@ -394451,13 +394309,12 @@
           ]
         ],
         "2024-02-01T12:35:02.000000000Z",
-        "055",
-        "0"
+        "055"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 10,
+      "size": 7,
       "columns": [
         {
           "t": 35,
@@ -394490,16 +394347,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "50"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "50.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "41.25"
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "41.250000000000000000"
         },
         {
           "t": 132,
@@ -394515,10 +394372,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-58f0-7000-988b-64e455f6b3b3",
+        "curruuid": "018d64aa-58f0-7000-9d3e-ad2bec695150",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
-        "hashcode": "6380304228957991859",
+        "hashcode": "15942370135099658576",
         "crosshashcode": "7987596581457795577",
         "identifiers": {
           "clordid": "ORDER-2"
@@ -394591,18 +394448,6 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "50",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "41.25",
-          "entries": []
-        },
-        {
           "tag": 453,
           "name": "parties",
           "value": "2",
@@ -394670,17 +394515,11 @@
           "name": "checksum",
           "value": "055",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "8143148e42d94e343e21b13bea13ad13",
-      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|54=1|132=41.25|134=50|9=141|11=ORDER-2|55=BRN|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02|10=055|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))]"
+      "digest": "4905a9be4a8345796d9f110f611aca70",
+      "emitted": "8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|38=50|44=41.25|54=1|59=0|132=41.25|134=50|9=141|11=ORDER-2|55=BRN|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02|10=055|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))]"
     },
     {
       "key": "marketdata",
@@ -397601,10 +397440,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b959-6c29d0a7e484",
-        "crossuuid": "018cc9ab-d1d0-7000-b959-6c29d0a7e484",
+        "curruuid": "018cc9ab-d1d0-7000-910d-64cd42247aba",
+        "crossuuid": "018cc9ab-d1d0-7000-910d-64cd42247aba",
         "crosscode": "",
-        "hashcode": "8744139078366651524",
+        "hashcode": "1228749106082773690",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -397734,7 +397573,7 @@
       ],
       "digest": "d3ce8061fc7f2b4077f6b59fecf9d7ce",
       "emitted": "8=FIX.4.4|35=W|49=VENUE|56=BUYSIDE|9=86|55=BRN|268=2|269=0|270=41.2|271=500|269=1|270=41.3|271=400|10=026|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))]"
     },
     {
       "key": "quote",
@@ -397845,10 +397684,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5120-7000-b4ca-f7f7a2e11eb6",
-        "crossuuid": "018d64aa-5120-7000-b4ca-f7f7a2e11eb6",
+        "curruuid": "018d64aa-5120-7000-9916-c87e599cf50e",
+        "crossuuid": "018d64aa-5120-7000-9916-c87e599cf50e",
         "crosscode": "",
-        "hashcode": "3804125478229450422",
+        "hashcode": "1807852745430725902",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -397927,7 +397766,7 @@
       ],
       "digest": "4319f65d089d96d1bef8623c4299b97b",
       "emitted": "8=FIX.4.4|35=S|132=41.2|133=41.3|134=500|135=500|9=69|55=BRN|60=20240201-12:35:00|10=240|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))]"
     },
     {
       "key": "logon",
@@ -398152,7 +397991,7 @@
       ],
       "digest": "31564381679a398b2e7472ff52a70c81",
       "emitted": "8=FIX.4.4|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00|9=80|98=0|108=30|141=Y|1137=9|10=228|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))]"
     },
     {
       "key": "heartbeat",
@@ -398298,7 +398137,7 @@
       ],
       "digest": "13ad44e6cf85d1be05046be3db50369f",
       "emitted": "8=FIX.4.2|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|9=51|10=151|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))]"
     },
     {
       "key": "reject",
@@ -398522,7 +398361,7 @@
       ],
       "digest": "bc733524b7015d8013e00c4243a33d48",
       "emitted": "8=FIX.4.4|35=3|49=VENUE|56=BUYSIDE|34=99|9=91|45=12|371=44|372=D|373=6|10=179|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))]"
     },
     {
       "key": "cancelreplace",
@@ -398596,31 +398435,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -398658,20 +398472,6 @@
               },
               "name": "checksum",
               "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
-              "nullable": false
             }
           ],
           "type": "struct"
@@ -398686,17 +398486,14 @@
         "ORDER-1",
         "O-9",
         "AAPL",
-        150,
-        10.75,
         "2",
         "2024-02-01T12:36:00.000000000Z",
-        "104",
-        "0"
+        "104"
       ],
       "mime": "text/fix",
       "msgtype": "G",
       "direction": null,
-      "size": 11,
+      "size": 8,
       "columns": [
         {
           "t": 35,
@@ -398729,16 +398526,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "150"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "150.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.75"
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "10.750000000000000000"
         },
         {
           "t": 132,
@@ -398754,10 +398551,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64ab-3b80-7000-a7c9-bce961696298",
+        "curruuid": "018d64ab-3b80-7000-ab0c-9dd50355260f",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "hashcode": "2867030348345729688",
+        "hashcode": "7713713799988323855",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "clordid": "ORDER-3",
@@ -398844,18 +398641,6 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "150",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "10.75",
-          "entries": []
-        },
-        {
           "tag": 40,
           "name": "ordtype",
           "value": "2",
@@ -398872,17 +398657,11 @@
           "name": "checksum",
           "value": "104",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "dd8019095ac9c8a4287e1cf71bd830c1",
-      "emitted": "8=FIX.4.4|35=G|49=BUYSIDE|56=VENUE|54=1|132=10.75|134=150|9=113|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|38=150|44=10.75|40=2|60=20240201-12:36:00|10=104|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))]"
+      "digest": "04b610b854b4af4db58680c3a9cea756",
+      "emitted": "8=FIX.4.4|35=G|49=BUYSIDE|56=VENUE|38=150|44=10.75|54=1|59=0|132=10.75|134=150|9=113|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|40=2|60=20240201-12:36:00|10=104|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))]"
     },
     {
       "key": "isin",
@@ -398946,31 +398725,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -398979,20 +398733,6 @@
                 "fix:tag": "10"
               },
               "name": "checksum",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
               "nullable": false
             },
             {
@@ -399048,10 +398788,7 @@
         "US0378331005",
         "4",
         "XNAS",
-        100,
-        10.5,
         "045",
-        "0",
         "USD",
         "6",
         "US"
@@ -399059,7 +398796,7 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 11,
+      "size": 8,
       "columns": [
         {
           "t": 35,
@@ -399092,16 +398829,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "10.500000000000000000"
         },
         {
           "t": 132,
@@ -399111,10 +398848,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-97ca-d1ba44305173",
-        "crossuuid": "018cc9ab-d1d0-7000-97ca-d1ba44305173",
+        "curruuid": "018cc9ab-d1d0-7000-8d44-7dae3e924b87",
+        "crossuuid": "018cc9ab-d1d0-7000-8d44-7dae3e924b87",
         "crosscode": "",
-        "hashcode": "1714413206106034547",
+        "hashcode": "5567713226664332167",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399191,27 +398928,9 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "10.5",
-          "entries": []
-        },
-        {
           "tag": 10,
           "name": "checksum",
           "value": "045",
-          "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
           "entries": []
         },
         {
@@ -399233,9 +398952,9 @@
           "entries": []
         }
       ],
-      "digest": "cc8ec2ba648eb8607c7d3c9fba7b8d49",
-      "emitted": "8=FIX.4.4|35=D|15=USD|54=1|132=10.5|134=100|9=62|48=US0378331005|22=4|207=XNAS|38=100|44=10.5|10=045|59=0|120=USD|2897=6|470=US|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
+      "digest": "7ddb43fa676bd296bd070e49d58c82cb",
+      "emitted": "8=FIX.4.4|35=D|15=USD|38=100|44=10.5|54=1|59=0|132=10.5|134=100|9=62|48=US0378331005|22=4|207=XNAS|10=045|120=USD|2897=6|470=US|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
     },
     {
       "key": "securitydefinition",
@@ -399502,10 +399221,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-b583-ffef5523a5a2",
-        "crossuuid": "018cc9ab-d1d0-7000-b583-ffef5523a5a2",
+        "curruuid": "018cc9ab-d1d0-7000-9cd7-adf2c94c0b44",
+        "crossuuid": "018cc9ab-d1d0-7000-9cd7-adf2c94c0b44",
         "crosscode": "",
-        "hashcode": "8467893127777330594",
+        "hashcode": "2078321011325668164",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399644,7 +399363,7 @@
       ],
       "digest": "e654fd4ad45abfe609a2524a7195926a",
       "emitted": "8=FIX.4.4|35=d|49=VENUE|56=BUYSIDE|15=GBP|461=FXXXXX|9=115|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|200=202403|10=042|120=GBP|2897=6|470=GB|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))]"
     },
     {
       "key": "bridge",
@@ -399665,31 +399384,6 @@
                 "fix:tag": "55"
               },
               "name": "symbol",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
               "nullable": false
             },
             {
@@ -399775,8 +399469,6 @@
       },
       "value": [
         "TTF",
-        1200,
-        41.25,
         1,
         [
           [
@@ -399789,7 +399481,7 @@
       "mime": "text/ullink",
       "msgtype": null,
       "direction": null,
-      "size": 5,
+      "size": 3,
       "columns": [
         {
           "t": 55,
@@ -399804,23 +399496,29 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "1200"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "1200.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "41.250000000000000000"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
           "y": "float64",
           "v": "41.25"
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9808-9dc35652a275",
-        "crossuuid": "018cc9ab-d1d0-7000-9808-9dc35652a275",
+        "curruuid": "018cc9ab-d1d0-7000-88b8-48203fc0fa48",
+        "crossuuid": "018cc9ab-d1d0-7000-88b8-48203fc0fa48",
         "crosscode": "",
-        "hashcode": "10955179555871171189",
+        "hashcode": "9851703488218724936",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -399843,8 +399541,8 @@
         "bloombergcode": null,
         "cficode": null,
         "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
+        "bidpx": "41.25",
+        "bidqty": "1200",
         "bidcurrency": null,
         "bidunit": null,
         "askpx": null,
@@ -399876,18 +399574,6 @@
           "tag": 55,
           "name": "symbol",
           "value": "TTF",
-          "entries": []
-        },
-        {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "1200",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "41.25",
           "entries": []
         },
         {
@@ -399923,9 +399609,9 @@
           ]
         }
       ],
-      "digest": "cbb33134fe75f2392e7f6759d7de500f",
-      "emitted": "8=FIX.4.4|54=1|55=TTF|38=1200|44=41.25|453=1|448=BUYSIDE|447=D|452=1|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
+      "digest": "88d272fedae7e4fd6f28cc6dd8fe571a",
+      "emitted": "8=FIX.4.4|38=1200|44=41.25|54=1|132=41.25|134=1200|55=TTF|453=1|448=BUYSIDE|447=D|452=1|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
     {
       "key": "fixul",
@@ -399974,19 +399660,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -399995,20 +399668,6 @@
                 "fix:tag": "10"
               },
               "name": "checksum",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
               "nullable": false
             }
           ],
@@ -400022,14 +399681,12 @@
         48,
         "ORDER-4",
         "AAPL",
-        100,
-        "122",
-        "0"
+        "122"
       ],
       "mime": "text/fixul",
       "msgtype": "D",
       "direction": null,
-      "size": 6,
+      "size": 4,
       "columns": [
         {
           "t": 35,
@@ -400050,17 +399707,17 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-87fb-291ea1613da3",
+        "curruuid": "018cc9ab-d1d0-7000-932e-81ccd04ddb53",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
-        "hashcode": "9798470625807908259",
+        "hashcode": "1382184852317395795",
         "crosshashcode": "7366101611310237723",
         "identifiers": {
           "clordid": "ORDER-4"
@@ -400133,27 +399790,15 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
           "tag": 10,
           "name": "checksum",
           "value": "122",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "8cfcd89854b34f3da9c6bec8ec06f399",
-      "emitted": "8=FIX.4.4|35=D|54=1|134=100|9=48|11=ORDER-4|55=AAPL|38=100|10=122|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
+      "digest": "705767bbcbb6152967ab8a1a547cb402",
+      "emitted": "8=FIX.4.4|35=D|38=100|54=1|59=0|134=100|9=48|11=ORDER-4|55=AAPL|10=122|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
     },
     {
       "key": "unknown-tag",
@@ -400190,19 +399835,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {},
@@ -400220,20 +399852,6 @@
               },
               "name": "checksum",
               "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
-              "nullable": false
             }
           ],
           "type": "struct"
@@ -400245,15 +399863,13 @@
       "value": [
         41,
         "AAPL",
-        100,
         "house-flag",
-        "204",
-        "0"
+        "204"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 6,
+      "size": 4,
       "columns": [
         {
           "t": 35,
@@ -400274,17 +399890,17 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-bbfa-710284aad964",
-        "crossuuid": "018cc9ab-d1d0-7000-bbfa-710284aad964",
+        "curruuid": "018cc9ab-d1d0-7000-beed-239e3a45125f",
+        "crossuuid": "018cc9ab-d1d0-7000-beed-239e3a45125f",
         "crosscode": "",
-        "hashcode": "8933577066472462692",
+        "hashcode": "13757691599176143455",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400349,12 +399965,6 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
           "tag": 0,
           "name": "9999",
           "value": "house-flag",
@@ -400365,17 +399975,11 @@
           "name": "checksum",
           "value": "204",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "cb44b1105a6e6573b30e5c5873266608",
-      "emitted": "8=FIX.4.4|35=D|54=1|134=100|9=41|55=AAPL|38=100|9999=house-flag|10=204|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
+      "digest": "92267bcd000bfc3c49e7bc26c98b3f3d",
+      "emitted": "8=FIX.4.4|35=D|38=100|54=1|59=0|134=100|9=41|55=AAPL|9999=house-flag|10=204|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
     },
     {
       "key": "untyped",
@@ -400412,31 +400016,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": true
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
-              "nullable": true
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -400445,20 +400024,6 @@
                 "fix:tag": "10"
               },
               "name": "checksum",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
               "nullable": false
             }
           ],
@@ -400471,15 +400036,12 @@
       "value": [
         40,
         "AAPL",
-        null,
-        null,
-        "029",
-        "0"
+        "029"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 6,
+      "size": 3,
       "columns": [
         {
           "t": 35,
@@ -400501,10 +400063,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9a41-d13c5ed3bb24",
-        "crossuuid": "018cc9ab-d1d0-7000-9a41-d13c5ed3bb24",
+        "curruuid": "018cc9ab-d1d0-7000-bd97-8fc2660c196e",
+        "crossuuid": "018cc9ab-d1d0-7000-bd97-8fc2660c196e",
         "crosscode": "",
-        "hashcode": "11115395412546272036",
+        "hashcode": "9049860041322797422",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -400573,17 +400135,11 @@
           "name": "checksum",
           "value": "029",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "bce4c0a740beebc1289fa76c3e504f99",
-      "emitted": "8=FIX.4.4|35=D|54=1|9=40|55=AAPL|10=029|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))]"
+      "digest": "d3935408c3cfd59572320b3c9281ea4e",
+      "emitted": "8=FIX.4.4|35=D|54=1|59=0|9=40|55=AAPL|10=029|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))]"
     },
     {
       "key": "keyvalue",
@@ -400813,7 +400369,7 @@
       ],
       "digest": "486840bc24d2d90d4c02222fb63e3487",
       "emitted": "8=FIX.4.4|1=ACCT-000117|109=MCFP2|venue=XPAR|453=1|448=MCFP2|452=3|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
     },
     {
       "key": "unsealed",
@@ -400850,31 +400406,6 @@
             },
             {
               "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
-                "display": "OrderQty",
-                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
-                "fix:tag": "38"
-              },
-              "name": "orderqty",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "float64"
-              },
-              "metadata": {
-                "description": "Price per unit of quantity (e.g. per share)",
-                "display": "Price",
-                "fix:tag": "44"
-              },
-              "name": "price",
-              "nullable": false
-            },
-            {
-              "dtype": {
                 "type": "string"
               },
               "metadata": {
@@ -400883,20 +400414,6 @@
                 "fix:tag": "10"
               },
               "name": "checksum",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
-                "display": "TimeInForce",
-                "fix:codes": "[{\"value\":\"0\",\"name\":\"Day\",\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"doc\":\"Good for this Month (GFM)\"}]",
-                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
-                "fix:tag": "59"
-              },
-              "name": "timeinforce",
               "nullable": false
             }
           ],
@@ -400909,15 +400426,12 @@
       "value": [
         42,
         "AAPL",
-        100,
-        10.5,
-        "999",
-        "0"
+        "999"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 6,
+      "size": 3,
       "columns": [
         {
           "t": 35,
@@ -400938,16 +400452,16 @@
           "v": "BUY"
         },
         {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
+          "t": 65044,
+          "n": "Qty",
+          "y": "decimal128(38,18)",
+          "v": "100.000000000000000000"
         },
         {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
+          "t": 65043,
+          "n": "Px",
+          "y": "decimal128(38,18)",
+          "v": "10.500000000000000000"
         },
         {
           "t": 132,
@@ -400957,10 +400471,10 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-84d7-bf0f72b7d66c",
-        "crossuuid": "018cc9ab-d1d0-7000-84d7-bf0f72b7d66c",
+        "curruuid": "018cc9ab-d1d0-7000-98a6-ae0a850be61b",
+        "crossuuid": "018cc9ab-d1d0-7000-98a6-ae0a850be61b",
         "crosscode": "",
-        "hashcode": "9572329606069343852",
+        "hashcode": "15611356518531458587",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
@@ -401025,37 +400539,19 @@
           "entries": []
         },
         {
-          "tag": 38,
-          "name": "orderqty",
-          "value": "100",
-          "entries": []
-        },
-        {
-          "tag": 44,
-          "name": "price",
-          "value": "10.5",
-          "entries": []
-        },
-        {
           "tag": 10,
           "name": "checksum",
           "value": "999",
           "entries": []
-        },
-        {
-          "tag": 59,
-          "name": "timeinforce",
-          "value": "0",
-          "entries": []
         }
       ],
-      "digest": "691e1781262df158f25921c307b6de7a",
-      "emitted": "8=FIX.4.4|35=D|54=1|132=10.5|134=100|9=42|55=AAPL|38=100|44=10.5|10=999|59=0|",
-      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
+      "digest": "0bdbd5857b134781b1ab1094fa8ef6d4",
+      "emitted": "8=FIX.4.4|35=D|38=100|44=10.5|54=1|59=0|132=10.5|134=100|9=42|55=AAPL|10=999|",
+      "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] }).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
     }
   ],
   "calls": {
     "registry": "const registry = fix.FixRegistry.fromHandle('config/fix')",
-    "reader": "const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') })"
+    "reader": "const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z'), excludeMsgtypes: [] })"
   }
 }

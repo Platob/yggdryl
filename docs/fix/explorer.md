@@ -133,7 +133,7 @@ Codes and `fix:identifiers` appear inside their owning field's detail panel. Lis
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 118 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
+The [Capture](capture.md#find-a-column) page searches the 123 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
 
 ## Where it came from
 
