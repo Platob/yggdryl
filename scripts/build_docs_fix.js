@@ -443,14 +443,14 @@ function frameCase(registry, reader, schema, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
+    call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}'), excludeMsgtypes: [] }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
 
 /** Build the native catalog and recorded result manifest. */
 function manifest() {
   const registry = dictionary()
-  const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date(SENDING) })
+  const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date(SENDING), excludeMsgtypes: [] })
   const schema = fix.schema(registry, 'FixMessage')
   const catalog = liveCatalog(registry)
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
@@ -487,7 +487,7 @@ function manifest() {
     ),
     calls: {
       registry: "const registry = fix.FixRegistry.fromHandle('config/fix')",
-      reader: `const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') })`,
+      reader: `const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}'), excludeMsgtypes: [] })`,
     },
   }
   return index
