@@ -47,19 +47,41 @@ impl fmt::Display for DataType {
         }
         use DataType as D;
         match self {
-            D::Null => formatter.write_str("null"),
-            D::Boolean => formatter.write_str("boolean"),
-            D::Int8 => formatter.write_str("int8"),
-            D::Int16 => formatter.write_str("int16"),
-            D::Int32 => formatter.write_str("int32"),
-            D::Int64 => formatter.write_str("int64"),
-            D::UInt8 => formatter.write_str("uint8"),
-            D::UInt16 => formatter.write_str("uint16"),
-            D::UInt32 => formatter.write_str("uint32"),
-            D::UInt64 => formatter.write_str("uint64"),
-            D::Float16 => formatter.write_str("float16"),
-            D::Float32 => formatter.write_str("float32"),
-            D::Float64 => formatter.write_str("float64"),
+            // Every parameter-free type displays as its variant name, which
+            // `DataTypeId::as_str` already spells; only parameters need an arm.
+            D::Null
+            | D::Boolean
+            | D::Int8
+            | D::Int16
+            | D::Int32
+            | D::Int64
+            | D::UInt8
+            | D::UInt16
+            | D::UInt32
+            | D::UInt64
+            | D::Float16
+            | D::Float32
+            | D::Float64
+            | D::Date32
+            | D::Date64
+            | D::Country
+            | D::Currency
+            | D::Mic
+            | D::Cfi
+            | D::Isin
+            | D::Cusip
+            | D::Sedol
+            | D::Bloomberg
+            | D::Side
+            | D::State
+            | D::TimeInForce
+            | D::Uuid
+            | D::Version
+            | D::Timezone
+            | D::MimeType
+            | D::MediaType
+            | D::Url
+            | D::Variant => formatter.write_str(self.name()),
             D::DateTime64 { unit, timezone } if timezone.is_naive() => {
                 write!(formatter, "datetime64({unit})")
             }
@@ -68,8 +90,6 @@ impl fmt::Display for DataType {
                 fmt_quoted(formatter, timezone.as_str())?;
                 formatter.write_char(')')
             }
-            D::Date32 => formatter.write_str("date32"),
-            D::Date64 => formatter.write_str("date64"),
             D::Time32(unit) => write!(formatter, "time32({unit})"),
             D::Time64(unit) => write!(formatter, "time64({unit})"),
             D::Duration32(unit) => write!(formatter, "duration32({unit})"),
@@ -77,23 +97,6 @@ impl fmt::Display for DataType {
             D::Interval(unit) => write!(formatter, "interval({unit})"),
             D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::Country => formatter.write_str("country"),
-            D::Currency => formatter.write_str("currency"),
-            D::Mic => formatter.write_str("mic"),
-            D::Cfi => formatter.write_str("cfi"),
-            D::Isin => formatter.write_str("isin"),
-            D::Cusip => formatter.write_str("cusip"),
-            D::Sedol => formatter.write_str("sedol"),
-            D::Bloomberg => formatter.write_str("bloomberg"),
-            D::Side => formatter.write_str("side"),
-            D::State => formatter.write_str("state"),
-            D::TimeInForce => formatter.write_str("timeinforce"),
-            D::Uuid => formatter.write_str("uuid"),
-            D::Version => formatter.write_str("version"),
-            D::Timezone => formatter.write_str("timezone"),
-            D::MimeType => formatter.write_str("mimetype"),
-            D::MediaType => formatter.write_str("mediatype"),
-            D::Url => formatter.write_str("url"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -152,12 +155,11 @@ impl fmt::Display for DataType {
                 fmt_field(formatter, &encoded.values)?;
                 formatter.write_char(')')
             }
-            D::Variant => formatter.write_str("variant"),
             // The defaults display bare, so `geometry` round-trips as itself
             // and a parameter appears exactly when it says something.
             D::Geometry(geospatial) => {
                 if geospatial.has_default_crs() {
-                    return formatter.write_str("geometry");
+                    return formatter.write_str(self.name());
                 }
                 formatter.write_str("geometry(")?;
                 fmt_quoted(formatter, geospatial.crs())?;
@@ -166,7 +168,7 @@ impl fmt::Display for DataType {
             D::Geography(geospatial) => {
                 let algorithm = geospatial.algorithm().unwrap_or_default();
                 if geospatial.has_default_crs() && algorithm == EdgeAlgorithm::Spherical {
-                    return formatter.write_str("geography");
+                    return formatter.write_str(self.name());
                 }
                 formatter.write_str("geography(")?;
                 fmt_quoted(formatter, geospatial.crs())?;

@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {
@@ -438,4 +438,29 @@ fn a_field_spelled_without_nullability_is_nullable_wherever_it_sits() {
         "field(\"a\",int32)".parse::<Field>().unwrap(),
         Field::new("a", DataType::Int32, true)
     );
+}
+
+#[test]
+fn a_parameter_free_type_displays_as_the_name_its_identifier_spells() {
+    // `Display` used to restate a literal for each of the thirty-three
+    // parameter-free variants, beside the same word in `DataTypeId::as_str`.
+    // The two spellings agreed only because nothing had drifted yet; this
+    // walks every identifier so a variant that displays as anything but its
+    // own name fails here instead of silently breaking the round trip.
+    for id in DataTypeId::ALL {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue; // an identifier with no standalone datatype spelling
+        };
+        assert_eq!(dtype.name(), id.as_str(), "{}", id.as_str());
+        assert_eq!(dtype.to_string(), id.as_str(), "{}", id.as_str());
+        assert_eq!(
+            DataType::from_str(&dtype.to_string()).unwrap(),
+            dtype,
+            "{}",
+            id.as_str()
+        );
+    }
 }
