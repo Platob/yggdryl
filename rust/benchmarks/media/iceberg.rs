@@ -1590,20 +1590,19 @@ mod s3 {
             }
             column
         });
+        // A FIX row states its two digests as the XXH3-64 they are, and
+        // Iceberg has no unsigned type to hold one, so the schema is widened
+        // for the target before it is numbered: `into_scheme_compat` rewrites
+        // only what the target cannot express and leaves the rest alone.
         let mut schema = Field::from_parts(
             carried.name(),
             DataType::from_fields(columns).expect("the columns are distinct"),
             carried.is_nullable(),
             carried.metadata_iter(),
         )
-        .expect("the schema rebuilds");
-        // A FIX row states its two digests as the XXH3-64 they are, and
-        // Iceberg has no unsigned type to hold one, so the schema is widened
-        // for the target before it is numbered: `into_scheme_compat` rewrites
-        // only what the target cannot express and leaves the rest alone.
-        let mut schema = schema
-            .into_scheme_compat(&Scheme::ICEBERG)
-            .expect("the row widens for Iceberg");
+        .expect("the schema rebuilds")
+        .into_scheme_compat(&Scheme::ICEBERG)
+        .expect("the row widens for Iceberg");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
         // There is no `timepartition` column: how a layout is cut is the
         // target's, so the table takes an `hour` transform over the `unix`
