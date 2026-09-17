@@ -187,15 +187,16 @@ def test_exact_width_factories_are_private_reconstruction_details() -> None:
         assert not hasattr(Scalar, name)
 
 
-def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
+def test_enumeration_reads_a_member_as_the_text_a_column_holds() -> None:
+    # An enum member's datatype is `string`, so the value is its canonical
+    # name and the vocabulary is what `from_enum` validates against, not
+    # something the value carries.
     value = Scalar.from_enum("IOMode", "append")
 
-    assert value.kind == "enum"
-    assert value.enum_kind == "IOMode"
-    assert value.enum_value == "append"
-    assert value.enum_ordinal == 1
+    assert value.kind == "string"
     assert value.as_py() == "append"
     assert value.as_str() == "append"
+    assert value == Scalar.from_("append")
     assert hash(value) == hash(copy.copy(value))
     assert pickle.loads(pickle.dumps(value)) == value
     with pytest.raises(ValueError, match="unknown"):

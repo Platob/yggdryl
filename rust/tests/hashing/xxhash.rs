@@ -969,7 +969,7 @@ mod values {
         Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
     };
     use yggdryl::{
-        Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, Scalar, TimeUnit,
+        Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit,
         Timezone, i256,
     };
 
@@ -1072,9 +1072,9 @@ mod values {
             Scalar::Code(Code::Currency(Currency::new("USD").unwrap())),
             Scalar::Code(Code::Side(Side::new("BUY").unwrap())),
             Scalar::Code(Code::TimeInForce(TimeInForce::new("1").unwrap())),
-            Scalar::Enum(Enum::Codec(Codec::Gzip)),
-            Scalar::Enum(Enum::Codec(Codec::Zstd)),
-            Scalar::Enum(Enum::DataTypeId(DataTypeId::Int128)),
+            Scalar::from(Codec::Gzip),
+            Scalar::from(Codec::Zstd),
+            Scalar::from(DataTypeId::Int128),
             Scalar::from(Arc::from(b"".as_slice())),
             Scalar::from(Arc::from(b"1".as_slice())),
             Scalar::from(Arc::from(b"AAPL".as_slice())),
@@ -1232,7 +1232,7 @@ mod values {
     fn the_feed_starts_with_the_pinned_datatype_id_byte() {
         // The wire contract: a variant inserted into `DataTypeId` anywhere but
         // the end moves these numbers and changes every stored digest.
-        let cases: [(Scalar, DataTypeId); 16] = [
+        let cases: [(Scalar, DataTypeId); 15] = [
             (Scalar::Null, DataTypeId::Null),
             (Scalar::from(true), DataTypeId::Boolean),
             (Scalar::from(1), DataTypeId::UInt128),
@@ -1240,10 +1240,6 @@ mod values {
             (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
             (Scalar::d128(1, 0), DataTypeId::Decimal256),
             (Scalar::from("AAPL"), DataTypeId::String),
-            (
-                Scalar::Enum(Enum::Codec(Codec::Gzip)),
-                DataTypeId::Dictionary,
-            ),
             (
                 Scalar::from(Arc::from(b"AAPL".as_slice())),
                 DataTypeId::Binary,
@@ -1446,9 +1442,7 @@ mod values {
             32
         );
         assert_eq!(
-            &*Scalar::Enum(Enum::Codec(Codec::Gzip))
-                .as_value_bytes()
-                .unwrap(),
+            &*Scalar::from(Codec::Gzip).as_value_bytes().unwrap(),
             b"gzip"
         );
         assert_eq!(

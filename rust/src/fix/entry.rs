@@ -166,7 +166,7 @@ pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Op
 pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
     use crate::Scalar;
     match value {
-        Scalar::String(_) | Scalar::Code(_) | Scalar::Enum(_) => value.as_str().map(SmolStr::new),
+        Scalar::String(_) | Scalar::Code(_) => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),

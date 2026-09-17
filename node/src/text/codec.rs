@@ -154,7 +154,10 @@ impl JsScalar {
         value_to_transport(&self.inner, 0, checked_depth(max_depth)?)
     }
 
-    /// Build an identity-preserving member of a core enum.
+    /// Build the canonical text of one core enum member, validating it.
+    ///
+    /// An enum member's datatype is `string`, so this answers a string
+    /// scalar; `kind` is the vocabulary the value has to belong to.
     #[napi(factory)]
     pub fn from_enum(kind: String, value: String) -> Result<Self> {
         Enum::from_parts(&kind, &value)
@@ -323,24 +326,6 @@ impl JsScalar {
     #[napi(getter)]
     pub fn family(&self) -> String {
         self.inner.family().as_str().to_owned()
-    }
-
-    /// The enum vocabulary name, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_kind(&self) -> Option<String> {
-        self.inner.as_enum().map(|value| value.kind().to_owned())
-    }
-
-    /// The canonical enum member spelling, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_value(&self) -> Option<String> {
-        self.inner.as_enum().map(|value| value.as_str().to_owned())
-    }
-
-    /// The compact zero-based member index, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_ordinal(&self) -> Option<u8> {
-        self.inner.as_enum().map(|value| value.ordinal())
     }
 
     /// The number of direct sequence children, mapping entries, or record fields.
@@ -2377,7 +2362,6 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Timezone(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MimeType(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MediaType(value) => Ok(JsonValue::String(value.to_string())),
-        Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
         Scalar::Bytes(value) => Ok(marker(

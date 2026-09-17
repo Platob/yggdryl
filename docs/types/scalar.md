@@ -52,19 +52,25 @@ One spelling per member at every boundary.
     assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
     ```
 
-## Enum scalars
+## Enum members
 
-`Scalar.from_enum` keeps kind, spelling, and ordinal.
+An enum member's datatype is `string` - there is no `DataType::Enum` - so a
+member **is** its canonical name, and which vocabulary it belongs to is the
+column's business. `Enum` is the vocabulary: `from_parts` validates a name
+against it, `kind`, `as_str` and `ordinal` read the member, and building a
+`Scalar` from one answers the text a column holds.
 
 === "Rust"
 
     ```rust
     use yggdryl::{Enum, IOMode, Scalar};
 
-    let value = Scalar::from(IOMode::Append);
-    let member = value.as_enum().expect("an enum scalar");
-    assert_eq!(member, &Enum::IOMode(IOMode::Append));
+    let member = Enum::from_parts("IOMode", "append").expect("a known member");
+    assert_eq!(member, Enum::IOMode(IOMode::Append));
     assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("IOMode", "append", 1));
+
+    // The value is the name, so it is the same scalar the text is.
+    assert_eq!(Scalar::from(IOMode::Append), Scalar::from("append"));
     ```
 
 === "Python"
@@ -73,8 +79,9 @@ One spelling per member at every boundary.
     from yggdryl import Scalar
 
     value = Scalar.from_enum("IOMode", "append")
-    assert (value.enum_kind, value.enum_value, value.enum_ordinal) == ("IOMode", "append", 1)
+    assert value.kind == "string"
     assert value.as_py() == "append"
+    assert value == Scalar.from_("append")
     ```
 
 === "JavaScript"
@@ -84,8 +91,9 @@ One spelling per member at every boundary.
     const { Scalar } = require('yggdryl')
 
     const value = Scalar.fromEnum('IOMode', 'append')
-    assert.deepEqual([value.enumKind, value.enumValue, value.enumOrdinal], ['IOMode', 'append', 1])
+    assert.equal(value.kind, 'string')
     assert.equal(value.asJs(), 'append')
+    assert.deepEqual(value, Scalar.from('append'))
     ```
 
 ## Widths and readers

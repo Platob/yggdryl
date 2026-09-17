@@ -38,14 +38,18 @@ fn the_serde_tag_is_the_name_kind_answers() {
 }
 
 #[test]
-fn identity_and_compact_ordinal_survive_scalar_conversion() {
+fn a_member_is_two_bytes_and_converts_to_the_text_a_column_holds() {
     let member = Enum::from_parts("IOMode", "append").unwrap();
     assert_eq!(member, Enum::IOMode(IOMode::Append));
     assert_eq!(member.kind(), "IOMode");
     assert_eq!(member.as_str(), "append");
     assert_eq!(member.ordinal(), 1);
     assert!(size_of::<Enum>() <= 2);
-    assert_eq!(Scalar::from(IOMode::Append), Scalar::Enum(member));
+
+    // A member's datatype is `string` - there is no `DataType::Enum` - so the
+    // scalar is the name, and the vocabulary stays with `Enum`.
+    assert_eq!(Scalar::from(IOMode::Append), Scalar::from("append"));
+    assert_eq!(Scalar::from(member), Scalar::from("append"));
 }
 
 #[test]
@@ -67,7 +71,7 @@ fn every_static_vocabulary_round_trips_and_invalid_parts_fail() {
             member
         );
         assert_ne!(member.ordinal(), u8::MAX);
-        assert_eq!(Scalar::from(member).as_enum(), Some(&member));
+        assert_eq!(Scalar::from(member).as_str(), Some(member.as_str()));
     }
 
     assert!(Enum::from_parts("missing", "append").is_err());

@@ -193,7 +193,6 @@ impl Scalar {
             Self::MimeType(_) => Ok(DataType::MimeType),
             Self::MediaType(_) => Ok(DataType::MediaType),
             Self::Uuid(_) => Ok(DataType::Uuid),
-            Self::Enum(_) => Ok(DataType::utf8()),
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),

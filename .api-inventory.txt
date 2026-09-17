@@ -3586,7 +3586,7 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   fn dtype(&self) -> Result<DataType>
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<&Self>
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Timezone, MimeType, MediaType, Enum, Bytes, Geometry, Geography, Sequence, Mapping, Record, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; each width and geospatial variant holds its leaf directly, `Code` is the one family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Sequence, Mapping, Record, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; each width and geospatial variant holds its leaf directly, `Code` is the one family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn id(&self) -> DataTypeId
   pub fn family(&self) -> DataTypeKind
   pub const fn kind(&self) -> &'static str
@@ -3595,7 +3595,6 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   pub fn from_record<K, I>(entries: I) -> Result<Self> where
   pub const fn as_bool(&self) -> Option<bool>
   pub fn as_str(&self) -> Option<&str>
-  pub const fn as_enum(&self) -> Option<&Enum>
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
   pub fn into_json_str(&self) -> Result<String>

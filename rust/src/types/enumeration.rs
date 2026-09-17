@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::format_smolstr;
 
 use super::scalar::Scalar;
+use super::string::Str;
 use crate::{
     Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Error, IOKind, IOMode, Result, TimeUnit,
     UnionMode,
@@ -124,8 +125,13 @@ impl fmt::Display for Enum {
 }
 
 impl From<Enum> for Scalar {
+    /// A member is its canonical name, which is what a column holds.
+    ///
+    /// There is no `DataType::Enum` and never was: an enum member's datatype
+    /// is `string`, so the value is the text and the vocabulary is the
+    /// column's business.
     fn from(value: Enum) -> Self {
-        Self::Enum(value)
+        Self::String(Str::new_static(value.as_str()))
     }
 }
 
@@ -139,7 +145,7 @@ macro_rules! enumeration_from {
 
         impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
-                Self::Enum(Enum::$variant(value))
+                Self::from(Enum::$variant(value))
             }
         }
     )+};

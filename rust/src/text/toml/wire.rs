@@ -293,7 +293,6 @@ fn write_scalar<W: Write>(
             let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
             write_quoted(writer, value.render(&mut slot))?;
         }
-        Scalar::Enum(value) => write_quoted(writer, value.as_str())?,
         Scalar::Bytes(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),

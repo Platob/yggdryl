@@ -350,7 +350,7 @@ native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_dtype_default_scalar: Scalar = typed_struct.dtype.default_scalar()
 native_instant = Scalar.datetime(0, "us", "UTC")
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
-native_enum = Scalar.from_enum("io_mode", "append")
+native_enum_text: str | None = Scalar.from_enum("IOMode", "append").as_str()
 native_scalar_id: str = native_instant.id
 native_scalar_family: str = native_instant.family
 native_scalar_field: Field = Scalar.from_(1).into_field()
@@ -361,9 +361,6 @@ temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
 decimal_coefficient: int | None = native_decimal.unscaled
 decimal_scale: int | None = native_decimal.scale
-enum_kind: str | None = native_enum.enum_kind
-enum_value: str | None = native_enum.enum_value
-enum_ordinal: int | None = native_enum.enum_ordinal
 dense_union_dtype: DataType = DataType.variant(
     [
         types.int64("integer", nullable=False),

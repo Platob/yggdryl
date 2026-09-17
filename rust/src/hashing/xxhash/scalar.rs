@@ -74,7 +74,6 @@ impl Scalar {
             | Self::MediaType(_) => return None,
             Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Code(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
@@ -330,11 +329,6 @@ impl Scalar {
                 let canonical = value.to_string();
                 write_len(sink, canonical.len());
                 sink.write(canonical.as_bytes());
-            }
-            Self::Enum(value) => {
-                write_tag(sink, DataTypeId::Dictionary);
-                write_text(sink, value.kind());
-                sink.write(&[value.ordinal()]);
             }
             Self::Bytes(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),

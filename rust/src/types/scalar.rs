@@ -50,7 +50,6 @@ use super::boolean::Boolean;
 use super::bytes::Bytes;
 use super::decimal::scalars as decimal;
 use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
-use super::enumeration::Enum;
 use super::floating::scalars::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
 use super::integer::scalars::{compare_integer_parts, integer_parts};
@@ -202,8 +201,6 @@ pub enum Scalar {
     /// coding list, which is wider than this enum, and a column of them is
     /// cloned once per row.
     MediaType(Arc<MediaType>),
-    /// One identity-preserving member of a shared static enum.
-    Enum(Enum),
     /// Opaque bytes retaining their storage representation.
     Bytes(Bytes),
     /// Planar geometry as validated Well-Known Binary.
@@ -340,7 +337,6 @@ impl Serialize for Scalar {
             Self::MimeType(value) => tagged(serializer, "mimetype", &value.as_str()),
             Self::MediaType(value) => tagged(serializer, "mediatype", &value.to_string()),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
-            Self::Enum(value) => tagged(serializer, "enum", value),
             // One tag for every byte value: the ordinary payload writes its
             // bytes and nothing else, and a layout or a fixed width is what
             // makes a value carry more than that.
@@ -549,7 +545,6 @@ impl<'de> Deserialize<'de> for Scalar {
             #[serde(rename = "mediatype")]
             MediaType(SmolStr),
             Url(SmolStr),
-            Enum(Enum),
             Bytes(Bytes),
             Geometry(Arc<[u8]>),
             Geography(Arc<[u8]>),
@@ -643,7 +638,6 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Url(value) => crate::Url::from_str(value.as_str())
                 .map(|value| Self::Url(Arc::new(value)))
                 .map_err(D::Error::custom),
-            StructuralWire::Enum(value) => Ok(Self::Enum(value)),
             StructuralWire::Bytes(value) => Ok(Self::Bytes(value)),
             StructuralWire::Geometry(value) => super::geospatial::Geometry::new(value)
                 .map(Self::Geometry)
@@ -844,7 +838,6 @@ impl Ord for Scalar {
             Self::MimeType(left) => same_kind!(Self::MimeType(right) => left.cmp(right)),
             Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
-            Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
@@ -923,7 +916,6 @@ impl Hash for Scalar {
             Self::MimeType(value) => value.hash(state),
             Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
-            Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
@@ -1013,7 +1005,10 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Mapping(_) => 12,
         Scalar::Record(_) => 13,
         Scalar::Geometry(_) | Scalar::Geography(_) => 14,
-        Scalar::Enum(_) => 15,
+        // 15 was the enum member, since retired: a member is its name, so it
+        // ranks with the text at 5. Only the order between kinds is read, so
+        // the number stays unused rather than resequencing the rest - the
+        // same convention `DataTypeId` keeps for its own retired byte.
         Scalar::Interval(_) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Code(_) => 18,
@@ -1082,7 +1077,6 @@ impl Scalar {
             Self::MimeType(_) => DataTypeId::MimeType,
             Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
-            Self::Enum(_) => DataTypeId::String,
             Self::Bytes(bytes) => bytes.layout().id(),
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
@@ -1133,7 +1127,6 @@ impl Scalar {
             Self::MimeType(_) => "mimetype",
             Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
-            Self::Enum(_) => "enum",
             Self::Bytes(bytes) => match bytes.layout() {
                 super::bytes::BytesLayout::Binary => "bytes",
                 other => other.as_str(),
@@ -1250,15 +1243,6 @@ impl Scalar {
         match self {
             Self::String(value) => Some(value.as_str()),
             Self::Code(value) => Some(value.as_str()),
-            Self::Enum(value) => Some(value.as_str()),
-            _ => None,
-        }
-    }
-
-    /// Return the retained generic enum member.
-    pub const fn as_enum(&self) -> Option<&Enum> {
-        match self {
-            Self::Enum(value) => Some(value),
             _ => None,
         }
     }
@@ -1453,7 +1437,6 @@ impl Scalar {
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)
-            | Self::Enum(_)
             | Self::Bytes(_)
             | Self::Geometry(_)
             | Self::Geography(_)

@@ -3715,12 +3715,6 @@ export declare class Scalar {
   get id(): string
   /** The coarse datatype family this value belongs to. */
   get family(): string
-  /** The enum vocabulary name, when this scalar is an enum. */
-  get enumKind(): string | null
-  /** The canonical enum member spelling, when this scalar is an enum. */
-  get enumValue(): string | null
-  /** The compact zero-based member index, when this scalar is an enum. */
-  get enumOrdinal(): number | null
   /** The number of direct sequence children, mapping entries, or record fields. */
   get length(): number
   /** Whether this is an empty sequence, mapping, or record. */

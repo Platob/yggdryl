@@ -389,17 +389,6 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "mediatype",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
-        Scalar::Enum(value) => tagged_pickle_state(
-            py,
-            "enum",
-            Some(pickle_tuple(
-                py,
-                vec![
-                    PyString::new(py, value.kind()).into_any().unbind(),
-                    PyString::new(py, value.as_str()).into_any().unbind(),
-                ],
-            )?),
-        ),
         // Plain bytes pickle as the payload alone; another layout or a fixed
         // width pickles the declaration beside it.
         Scalar::Bytes(value) if value.parameters() == BytesParameters::default() => {
@@ -704,12 +693,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .parse::<yggdryl::MediaType>()
             .map(|value| Scalar::MediaType(Arc::new(value)))
             .map_err(value_error),
-        "enum" => {
-            let (kind, value) = payload()?.extract::<(String, String)>()?;
-            Enum::from_parts(&kind, &value)
-                .map(Scalar::Enum)
-                .map_err(value_error)
-        }
         "bytes" => {
             let payload = payload()?;
             if let Ok(bytes) = payload.cast::<PyBytes>() {
@@ -890,7 +873,10 @@ impl PyScalar {
             .map_err(value_error)
     }
 
-    /// Build an identity-preserving member of a core enum.
+    /// Build the canonical text of one core enum member, validating it.
+    ///
+    /// An enum member's datatype is `string`, so this answers a string
+    /// scalar; `kind` is the vocabulary the value has to belong to.
     #[staticmethod]
     fn from_enum(kind: &str, value: &str) -> PyResult<Self> {
         Enum::from_parts(kind, value)
@@ -1129,24 +1115,6 @@ impl PyScalar {
     #[getter]
     fn family(&self) -> &'static str {
         self.inner.family().as_str()
-    }
-
-    /// The enum vocabulary name, or `None`.
-    #[getter]
-    fn enum_kind(&self) -> Option<&'static str> {
-        self.inner.as_enum().map(|value| value.kind())
-    }
-
-    /// The canonical enum member spelling, or `None`.
-    #[getter]
-    fn enum_value(&self) -> Option<&'static str> {
-        self.inner.as_enum().map(|value| value.as_str())
-    }
-
-    /// The compact zero-based enum member index, or `None`.
-    #[getter]
-    fn enum_ordinal(&self) -> Option<u8> {
-        self.inner.as_enum().map(|value| value.ordinal())
     }
 
     /// The count carried by a temporal value, or `None`.
@@ -1702,7 +1670,6 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Timezone(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MimeType(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
-        Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
         Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),

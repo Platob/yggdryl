@@ -678,7 +678,6 @@ pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
     Some(match value {
         Scalar::String(text) => Ok(text.clone()),
         Scalar::Code(code) => Ok(Str::from(code.storage())),
-        Scalar::Enum(member) => Ok(Str::new_static(member.as_str())),
         // A number of any width spells its own leaf's canonical `Display`.
         number if number.is_number() => {
             Ok(Str::from(format_smolstr!("{}", number.leaf_display()?)))

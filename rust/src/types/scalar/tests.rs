@@ -108,7 +108,8 @@ fn the_value_rank_sweep_is_unchanged() {
             Scalar::from(crate::Url::from_str("https://example.com/a").unwrap()),
             20,
         ),
-        (Scalar::from(TimeUnit::Second), 15),
+        // A vocabulary member is its name, so it ranks with the text it is.
+        (Scalar::from(TimeUnit::Second), 5),
         (Scalar::from(b"a".as_slice()), 6),
         (Scalar::Geometry(point), 14),
         (Scalar::from_sequence([]), 11),

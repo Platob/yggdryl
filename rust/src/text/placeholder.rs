@@ -485,7 +485,6 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
         Scalar::Code(text) => return Some(Cow::Borrowed(text.as_str())),
         Scalar::Uuid(value) => value.to_string(),
-        Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),
         Scalar::Int8(_)
         | Scalar::Int16(_)

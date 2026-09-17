@@ -35,7 +35,7 @@ NATIVE_TEMPORAL = Scalar.datetime(1_700_000_000_000_000, "us", "UTC")
 NATIVE_DECIMAL = Scalar.decimal("1234567890123456789012345678901234567890", 6)
 NATIVE_INTEGER = Scalar.from_(84)
 NATIVE_DIVISOR = Scalar.from_(2)
-NATIVE_ENUM = Scalar.from_enum("io_mode", "append")
+NATIVE_ENUM = Scalar.from_enum("IOMode", "append")
 PRICE_EXPRESSION = Term.column("price")
 ARROW_SCALAR = pa.scalar(12.5, pa.float32())
 NATIVE_SCALAR = Scalar.from_arrow_scalar(ARROW_SCALAR)
@@ -93,10 +93,8 @@ def main() -> None:
             ("scalar id", lambda: NATIVE_TEMPORAL.id, small),
             ("scalar family", lambda: NATIVE_TEMPORAL.family, small),
             ("stable hash", NATIVE_VALUE.stable_hash, small),
-            ("enum construction", lambda: Scalar.from_enum("io_mode", "append"), small),
-            ("enum kind", lambda: NATIVE_ENUM.enum_kind, small),
-            ("enum value", lambda: NATIVE_ENUM.enum_value, small),
-            ("enum ordinal", lambda: NATIVE_ENUM.enum_ordinal, small),
+            ("enum construction", lambda: Scalar.from_enum("IOMode", "append"), small),
+            ("enum text", NATIVE_ENUM.as_str, small),
             ("Python hash", lambda: hash(NATIVE_VALUE), small),
             ("exact Scalar repr", lambda: repr(NATIVE_VALUE), small),
             ("Scalar pickle dump", lambda: pickle.dumps(NATIVE_VALUE), small),

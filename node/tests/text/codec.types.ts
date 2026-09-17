@@ -50,10 +50,8 @@ const widePrice: Scalar = Scalar.decimal(-(2n ** 200n), 2)
 const half: Scalar = Scalar.float(1.5, 16)
 const single: Scalar = Scalar.float(1.5, 32)
 const double: Scalar = Scalar.float(1.5)
-const enumScalar: Scalar = Scalar.fromEnum('io_mode', 'append')
-const enumKind: string | null = enumScalar.enumKind
-const enumValue: string | null = enumScalar.enumValue
-const enumOrdinal: number | null = enumScalar.enumOrdinal
+const enumScalar: Scalar = Scalar.fromEnum('IOMode', 'append')
+const enumText: string | null = enumScalar.asStr()
 const kind: string = at.kind
 const scalarId: string = at.id
 const scalarFamily: string = at.family
@@ -104,9 +102,7 @@ void hasChild
 void replacedValue
 void removedValue
 void iteratedValues
-void enumKind
-void enumValue
-void enumOrdinal
+void enumText
 
 const arrowVector = vectorFromArray([1, 2], new Int32())
 const arrowValue: Scalar = Scalar.fromArrowArray(arrowVector)

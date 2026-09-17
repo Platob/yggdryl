@@ -283,14 +283,14 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(longDuration.asJs().kind, 'duration64')
   assert.equal(longDuration.asJs().count, longDuration.count)
 
-  const mode = Scalar.fromEnum('io_mode', 'append')
-  assert.equal(mode.kind, 'enum')
-  assert.equal(mode.enumKind, 'io_mode')
-  assert.equal(mode.enumValue, 'append')
-  assert.equal(mode.enumOrdinal, 1)
+  // An enum member's datatype is `string`, so the value is its canonical
+  // name and the vocabulary is what `fromEnum` validates against.
+  const mode = Scalar.fromEnum('IOMode', 'append')
+  assert.equal(mode.kind, 'string')
   assert.equal(mode.asJs(), 'append')
   assert.equal(mode.asStr(), 'append')
-  assert.throws(() => Scalar.fromEnum('io_mode', 'missing'), /unknown/)
+  assert.deepEqual(mode, Scalar.from('append'))
+  assert.throws(() => Scalar.fromEnum('IOMode', 'missing'), /unknown/)
 
   assert.deepEqual(Scalar.from(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
   assert.equal(Scalar.from('AAPL').asStr(), 'AAPL')

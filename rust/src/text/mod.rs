@@ -704,7 +704,6 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Timezone(_)
             | Scalar::MimeType(_)
             | Scalar::MediaType(_)
-            | Scalar::Enum(_)
             | Scalar::Bytes(_)
             | Scalar::Geometry(_)
             | Scalar::Geography(_) => {}
