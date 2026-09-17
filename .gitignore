@@ -44,3 +44,7 @@ rust/tests/docs_examples.rs
 # there.
 python/wheel-data/scripts/ygg
 python/wheel-data/scripts/ygg.exe
+
+# Merge-conflict leftovers: `.orig` and `.rej` are never sources.
+*.orig
+*.rej
