@@ -474,7 +474,7 @@ fn a_parse_fills_the_names_a_message_goes_by_in_sorted_order() {
     // derived for it.
     assert_eq!(
         String::from_utf8(read.into_bytes(b'|')).unwrap(),
-        format!("{}59=0|", String::from_utf8_lossy(line))
+        "8=FIX.4.4|35=8|59=0|37=O-01|11=C-001|17=E-09|10=0|"
     );
 
     // And the row carries them, so a message read back off one goes by the
@@ -494,8 +494,8 @@ fn a_parse_fills_the_names_a_message_goes_by_in_sorted_order() {
 fn a_message_declaring_no_identifier_goes_by_no_name() {
     let codec = super::fixed_codec(super::committed_registry());
     for line in [
-        b"8=FIX.4.4|35=0|10=0|".as_slice(),
-        b"8=FIX.4.4|35=ZZ|11=C-1|10=0|",
+        b"8=FIX.4.4|35=ZZ|11=C-1|10=0|".as_slice(),
+        b"8=FIX.4.4|35=ZZ|10=0|",
     ] {
         let message = codec.sole_line(line).unwrap();
         assert!(

@@ -864,7 +864,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     let newcomer = FixId::of(448, "VenuePartyID").unwrap();
     assert_ne!(holder, newcomer);
     let check = |registry: &FixRegistry| {
-        assert_eq!(super::scalars(&registry), 3 + super::seeded_fields());
+        assert_eq!(super::scalars(registry), 3 + super::seeded_fields());
         assert_eq!(registry.field(448).unwrap().name(), "PartyID");
         assert_eq!(registry.field(holder).unwrap().name(), "PartyID");
         assert_eq!(registry.field(newcomer).unwrap().name(), "VenuePartyID");
@@ -1201,7 +1201,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
             .iter()
             .filter(|field| field.as_fix().msgtype().is_some())
             .map(|held| (FixCategory::Components, held));
-        for (category, field) in plain.chain(groups).chain(messages) {
+        for (_, field) in plain.chain(groups).chain(messages) {
             let mut field = field.clone();
             field.set_name(respell(field.name()));
             source.insert(field).unwrap();
@@ -1215,7 +1215,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         let incoming = source(respell);
         assert_eq!(target.merge_with(&incoming).unwrap(), (0, 4));
         assert_eq!(target, original);
-        for (category, name) in [
+        for (_, name) in [
             (FixCategory::Components, "Party"),
             (FixCategory::Groups, "Parties"),
             (FixCategory::Components, "NewOrderSingle"),
@@ -1426,7 +1426,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
     let root = scratch("canonical-case");
     let mut folder = Folder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
-    for (category, name) in [
+    for (_, name) in [
         (FixCategory::Fields, "PartyID"),
         (FixCategory::Components, "Party"),
         (FixCategory::Groups, "Parties"),

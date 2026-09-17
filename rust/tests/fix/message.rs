@@ -37,21 +37,21 @@ fn a_set_value_is_typed_by_the_registry_field_and_appended_when_absent() {
     let (registry, reader) = reader();
     let mut message = reader.sole_line(ORDER).unwrap();
     let before = message.as_field().fields().len();
-    let declared = registry.get_field_by_tag(38).expect("OrderQty");
+    let declared = registry.get_field_by_tag(1).expect("Account");
 
-    message.set(38, Scalar::from("7")).unwrap();
+    message.set(1, Scalar::from("A-1")).unwrap();
 
     let fields = message.as_field().fields();
     assert_eq!(fields.len(), before + 1, "appended, not inserted");
     let child = fields.last().unwrap();
     assert_eq!(child.name(), declared.name(), "the dictionary's spelling");
     assert_eq!(child.dtype(), declared.dtype(), "the dictionary's type");
-    assert_eq!(child.as_fix().tag().unwrap(), Some(38));
+    assert_eq!(child.as_fix().tag().unwrap(), Some(1));
     assert!(!child.is_nullable(), "a stated value is non-null");
-    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(7.0));
+    assert_eq!(message.by_tag(1).unwrap().as_str(), Some("A-1"));
     assert_eq!(
-        message.by_name("OrderQty").unwrap().as_f64(),
-        Some(7.0),
+        message.by_name("Account").unwrap().as_str(),
+        Some("A-1"),
         "reached by name through the registry"
     );
 
@@ -110,7 +110,7 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     let parsed = reader.sole_line(ORDER).unwrap();
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
-    message.set(38, Scalar::from(100.0_f64)).unwrap();
+    message.set(1, Scalar::from("A-1")).unwrap();
     assert_eq!(message.remove(54).unwrap(), Some(Scalar::from("BUY")));
     let symbol = message
         .entries()
@@ -124,11 +124,11 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
             .entries()
             .last()
             .map(|entry| (entry.tag(), entry.value())),
-        Some((38, Some("100")))
+        Some((1, Some("A-1")))
     );
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|11=A1|55=MSFT|venuething=7|9999=x|10=0|59=0|38=100|"
+        b"8=FIX.4.4|35=D|59=0|11=A1|55=MSFT|venuething=7|9999=x|10=0|1=A-1|"
     );
     assert_ne!(message.digest(), parsed.digest());
     assert_ne!(message.entries(), parsed.entries());
@@ -201,17 +201,17 @@ fn several_values_land_with_one_rebuild_as_the_same_writes_would_one_at_a_time()
     let mut one = many.clone();
     let writes = [
         (55, Scalar::from("MSFT")),
-        (38, Scalar::from("7")),
+        (1, Scalar::from("A-1")),
         (7777, Scalar::from("first")),
         (7777, Scalar::from("second")),
-        (38, Scalar::from("8")),
+        (1, Scalar::from("A-2")),
     ];
     for (tag, value) in writes.clone() {
         one.set(tag, value).unwrap();
     }
     many.set_many(writes).unwrap();
     assert_eq!(many, one);
-    assert_eq!(many.by_tag(38).unwrap().as_f64(), Some(8.0));
+    assert_eq!(many.by_tag(1).unwrap().as_str(), Some("A-2"));
     assert_eq!(many.by_tag(7777).unwrap(), Scalar::from("second"));
 
     // One refused write refuses them all, and the message stands.
@@ -267,7 +267,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     // the dictionary derived for the order stays.
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|54=1|11=A1|10=0|59=0|"
+        b"8=FIX.4.4|35=D|54=1|59=0|11=A1|10=0|"
     );
 }
 
@@ -387,9 +387,14 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
         .find(|entry| entry.tag() == 96)
         .expect("the data field");
     assert_eq!(arrived.value(), Some("\u{ff}\u{fe} A"));
+    // `TimeInForce` is the dictionary's derivation for an order and one of
+    // the event's own facts, so it re-emits in the event's band rather than
+    // behind the entries.
     assert_eq!(
         parsed.into_bytes(1),
-        format!("{}59=0\u{1}", line.body()).as_bytes()
+        line.body()
+            .replace("35=D\u{1}", "35=D\u{1}59=0\u{1}")
+            .as_bytes()
     );
     assert_ne!(parsed.into_bytes(1), wire);
 
@@ -401,7 +406,7 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
 }
 
 #[test]
-fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
+fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
     let (registry, reader) = reader();
     // Nullable, because a message parsed on its own states none of them.
     let capture = DataType::from_fields([
@@ -413,38 +418,48 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     .required_field("line");
     let schema = fix_schema_carrying(&capture, &fix_schema(&registry, "fix").unwrap()).unwrap();
     let parsed = reader.sole_line(ORDER).unwrap();
-
-    // A parsed message has no capture columns: they are null in its row.
-    let row = parsed.into_row(&schema).unwrap();
     let at = |name: &str| schema.index_of(name).unwrap();
+
+    // A parsed message has no capture columns: they are null in its row, and
+    // a row read back off that one is the message it came from.
+    let row = parsed.into_row(&schema).unwrap();
     assert!(row.get(at("url")).unwrap().is_null());
     assert!(row.get(at("rownum")).unwrap().is_null());
-
-    // Read back, the message holds them as children, and a written one
-    // lands in its column: a column no tag names takes the child of its name.
-    let mut held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(held.entries(), parsed.entries());
     assert_eq!(held.into_row(&schema).unwrap(), row);
-    held.set("url", Scalar::from("file:///capture.log"))
-        .unwrap();
-    held.set("rownum", Scalar::from(42_i64)).unwrap();
-    let filled = held.into_row(&schema).unwrap();
-    assert_eq!(
-        filled.get(at("url")).unwrap().as_str(),
-        Some("file:///capture.log")
-    );
-    assert_eq!(filled.get(at("rownum")).unwrap().as_i128(), Some(42));
-    assert_eq!(filled.get(at("symbol")).unwrap().as_str(), Some("AAPL"));
-    // The fixed columns are untouched by it, entries included: the
-    // capture's own columns lead the row, so they lead the entries, and
-    // what the parse stated follows in its own order.
-    let again = FixMsg::from_row(Arc::clone(&registry), &schema, &filled).unwrap();
-    let names: Vec<&str> = again.entries().iter().map(FixEntry::name).collect();
-    assert_eq!(&names[..2], ["url", "rownum"]);
-    assert_eq!(&again.entries()[2..], parsed.entries());
+
+    // A row a reader put its own columns in front of says what the line was
+    // read from, not what the message states. Read back, those columns stay
+    // columns: each is a child of the row under its own name, none is an
+    // entry, and so none of them reaches a counterparty.
+    let mut columns = row.as_sequence().expect("a row").to_vec();
+    columns[at("url")] = Scalar::from("file:///capture.log");
+    columns[at("rownum")] = Scalar::from(42_i64);
+    columns[at("body")] = Scalar::from(ORDER.to_vec());
+    let carried = Scalar::from_sequence(columns);
+    let again = FixMsg::from_row(Arc::clone(&registry), &schema, &carried).unwrap();
+    assert_eq!(again.entries(), held.entries());
+    assert_eq!(again.into_bytes(b'|'), held.into_bytes(b'|'));
+    assert_eq!(again.by_tag(55).unwrap().as_str(), Some("AAPL"));
+    for carrier in ["url", "rownum", "body"] {
+        assert!(again.as_field().index_of(carrier).is_some(), "{carrier}");
+        assert!(
+            !again.entries().iter().any(|entry| entry.name() == carrier),
+            "{carrier}"
+        );
+        let wire = String::from_utf8_lossy(&again.into_bytes(b'|')).into_owned();
+        assert!(!wire.contains(&format!("{carrier}=")), "{wire}");
+    }
     assert_eq!(
         again.by_name("url").unwrap().as_str(),
         Some("file:///capture.log")
     );
+
+    // And the row returns to its schema whole: a column that is not content
+    // is still a column, so what the reader put in front of the row is
+    // where it was.
+    assert_eq!(again.into_row(&schema).unwrap(), carried);
 }
 
 #[test]

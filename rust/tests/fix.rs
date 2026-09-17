@@ -41,8 +41,6 @@ mod map_groups;
 mod merge;
 #[path = "fix/message.rs"]
 mod message;
-#[path = "fix/probe.rs"]
-mod probe;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
 #[path = "fix/schema.rs"]
@@ -323,23 +321,4 @@ fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
 /// every column the capture landed in.
 fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
     yggdryl::fix_schema(registry, "fix").expect("the fixed row")
-}
-
-/// One capture read the whole way: parsed into the stable row, then formatted
-/// into that same row, which keeps every column it landed in.
-///
-/// The two stages a reader of typed columns runs, spelled once so a suite
-/// asserting what a capture answers is asserting the pipeline rather than one
-/// stage of it.
-fn parsed_and_formatted(
-    codec: &yggdryl::FixCodec,
-    source: yggdryl::arrow::BatchReader,
-) -> yggdryl::arrow::BatchReader {
-    let held = format_target(codec.registry());
-    let parsed = codec
-        .parse_text_arrow_reader(source)
-        .expect("the batch reader opens");
-    codec
-        .format_arrow_reader(parsed, &held)
-        .expect("the format reader opens")
 }

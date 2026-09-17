@@ -19,8 +19,16 @@ fn codec() -> FixCodec {
     super::fixed_codec(registry())
 }
 
+/// The codec these fixtures are read under.
+///
+/// A fixture file of every shape a reader meets holds rows that state no
+/// type at all - a bridge row of marked keys, a bare FIXML element, a
+/// document - and `DEFAULT_REFUSED_MSGTYPES` is what keeps those out of a
+/// live session's read. A suite about the readers is asking for them, and
+/// says so here; what the default refuses is pinned by
+/// `the_default_refusals_are_the_session_traffic_and_the_typeless_row`.
 fn reader() -> FixCodec {
-    codec()
+    codec().with_exclude_msgtypes::<[&str; 0], &str>([])
 }
 
 /// Every shape a real capture holds, one row each.
@@ -119,7 +127,7 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
     // type are the header's, so what is left is the body length, the
     // checksum and the dictionary's own derivation for an order.
     let keys: Vec<&str> = framed.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["bodylength", "checksum", "timeinforce"], "{keys:?}");
+    assert_eq!(keys, ["bodylength", "checksum"], "{keys:?}");
     assert_eq!(framed.header().beginstring(), "FIX.4.2");
     assert_eq!(framed.header().msgtype(), "D");
 }
@@ -195,9 +203,12 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
         message.get_by_tag(448).is_none(),
         "members stay inside the component"
     );
+    // The order's `TimeInForce` is the dictionary's own derivation for a
+    // `D`, and it is one of the event's facts rather than a child of the
+    // content row, so it re-emits in the event's band ahead of the entries.
     assert_eq!(
-        message.into_bytes(b'|'),
-        [wire.as_slice(), b"59=0|"].concat()
+        String::from_utf8(message.into_bytes(b'|')).unwrap(),
+        "8=FIX.4.4|35=D|59=0|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|"
     );
 
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
@@ -241,7 +252,7 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
         assert_eq!(message.by_tag(453).unwrap(), Scalar::from(held), "{wire}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
-            format!("8=FIX.4.4|35=D|453={held}|{members}55=AAPL|10=0|59=0|"),
+            format!("8=FIX.4.4|35=D|59=0|453={held}|{members}55=AAPL|10=0|"),
             "{wire}"
         );
     }
@@ -267,12 +278,12 @@ fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
             .iter()
             .map(FixEntry::tag)
             .collect::<Vec<_>>(),
-        [453, 0, 447, 55, 10, 59]
+        [453, 0, 447, 55, 10]
     );
     assert_eq!(message.entries()[0].entries()[0].entries()[0].tag(), 448);
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|59=0|"
+        "8=FIX.4.4|35=D|59=0|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|"
     );
 }
 
@@ -527,7 +538,7 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
         // The row is what remains, and the entries are that row: the
         // dictionary's own column and the day order it derives.
         let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-        assert_eq!(keys, ["orderid", "timeinforce"], "{spelled}");
+        assert_eq!(keys, ["orderid"], "{spelled}");
 
         // Re-reading the emitted line answers the same message: the twin
         // judgment is idempotent.
@@ -561,10 +572,10 @@ fn a_hash_key_yields_to_its_bare_twin_and_drops_its_mark_alone() {
         );
         assert!(message.by_name("#orderid").is_err(), "{spelled}");
         let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-        assert_eq!(keys, ["orderid", "timeinforce"], "{spelled}");
+        assert_eq!(keys, ["orderid"], "{spelled}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
-            "8=FIX.4.4|35=D|37=123|59=0|",
+            "8=FIX.4.4|35=D|59=0|37=123|",
             "{spelled}"
         );
     }
@@ -650,7 +661,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.sole_line(row).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["parties", "timeinforce"], "{keys:?}");
+    assert_eq!(keys, ["parties"], "{keys:?}");
     assert_eq!(
         super::sequence(message.by_name("parties").unwrap()).len(),
         1
@@ -690,7 +701,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         let mut columns: Vec<&str> =
             message.as_field().fields().iter().map(Field::name).collect();
         columns.sort_unstable();
-        assert_eq!(columns, ["nopartyids", "parties", "timeinforce"], "{spelled}");
+        assert_eq!(columns, ["nopartyids", "parties"], "{spelled}");
     }
 
     // A marked group restating the bare group pair for pair goes pair for
@@ -787,8 +798,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
             "partysubidtype",
             "venueseq",
             "partyid",
-            "partyrole",
-            "timeinforce"
+            "partyrole"
         ]
     );
     let venue = message
@@ -866,7 +876,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let mut arrived = Vec::new();
     keys(message.entries(), &mut arrived);
     assert_eq!(&arrived[..3], ["parties", "party", "ptyssubgrp"]);
-    assert_eq!(arrived.last().map(String::as_str), Some("timeinforce"));
+    assert_eq!(arrived.last().map(String::as_str), Some("ptyssubgrp"));
     assert_eq!(
         arrived.iter().filter(|name| *name == "ptyssubgrp").count(),
         65,
@@ -975,14 +985,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
     assert_eq!(
         keys,
-        [
-            "xmldatalen",
-            "xmldata",
-            "symbol",
-            "orderid",
-            "checksum",
-            "timeinforce"
-        ]
+        ["xmldatalen", "xmldata", "symbol", "orderid", "checksum"]
     );
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
     assert_eq!(message.by_tag(37).unwrap().as_str(), Some("9"));
@@ -1000,7 +1003,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         .iter()
         .map(|entry| entry.name())
         .collect();
-    assert_eq!(keys, ["orderid", "timeinforce"]);
+    assert_eq!(keys, ["orderid"]);
     let beside = reader
         .sole_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345")
         .unwrap();
@@ -1011,7 +1014,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         .iter()
         .map(|f| f.name())
         .collect();
-    assert_eq!(columns, ["orderid", "timeinforce"]);
+    assert_eq!(columns, ["orderid"]);
     let alone = reader.sole_line(b"MSGTYPE=D|##ORDERID=345").unwrap();
     assert!(alone.get_by_tag(37).is_none());
     let at = alone
@@ -1096,11 +1099,11 @@ fn a_frame_reader_takes_the_frame_and_leaves_the_transports_own_pairs() {
     let line: &[u8] = b"ts=12|thread=7|8=FIX.4.4|35=D|11=A1|10=000|";
     let message = reader.parse_fix_line(line).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(|entry| entry.name()).collect();
-    assert_eq!(keys, ["clordid", "checksum", "timeinforce"]);
+    assert_eq!(keys, ["clordid", "checksum"]);
     assert!(message.get_by_name("ts").is_none());
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|11=A1|10=000|59=0|"
+        "8=FIX.4.4|35=D|59=0|11=A1|10=000|"
     );
 
     // A body that opens at its own first pair is bounded at zero, so nothing
@@ -1263,11 +1266,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
     // The row holds the content alone, in header/body/trailer order: the
     // version and the type are the header's, held typed beside it, and the
     // dictionary's own derivation closes the order.
-    assert_eq!(
-        names,
-        ["bodylength", "symbol", "checksum", "timeinforce"],
-        "{names:?}"
-    );
+    assert_eq!(names, ["bodylength", "symbol", "checksum"], "{names:?}");
     assert_eq!(message.header().beginstring(), "FIX.4.4");
     assert_eq!(message.header().msgtype(), "D");
 }
@@ -1282,7 +1281,7 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     // from: the header's tags lead, then the event's own, then the row -
     // the lane a buy of a hundred filled and the day order the dictionary
     // derives among them - each coded fact spelled as the wire spells it.
-    let emitted = "8=FIX.4.4|35=D|54=1|134=100|11=ORDER-1|55=AAPL|38=100|10=000|59=0|";
+    let emitted = "8=FIX.4.4|35=D|38=100|54=1|59=0|134=100|11=ORDER-1|55=AAPL|10=000|";
     let bytes = message.into_bytes(b'|');
     assert_eq!(String::from_utf8(bytes.clone()).unwrap(), emitted);
     assert_eq!(message.into_text('|').unwrap(), emitted);
@@ -1309,19 +1308,21 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
     // is a tag no two captures of one venue could be read together on.
     let at_42 = super::dated_line(&reader, b"8=FIX.4.2|35=8|32=100|10=0|", "4.2").unwrap();
     let at_new = super::dated_line(&reader, b"8=FIX.4.4|35=8|32=100|10=0|", "5.0.2").unwrap();
-    let column = |held: &yggdryl::FixMsg| {
-        let at = held
-            .as_field()
-            .index_of("lastqty")
-            .expect("the tag 32 column");
-        held.as_field().fields()[at].clone()
-    };
-    assert_eq!(column(&at_42).name(), column(&at_new).name());
-    assert_eq!(column(&at_42).dtype(), column(&at_new).dtype());
+    // Tag 32 is one of the facts the event holds typed, so neither reading
+    // puts a column of either spelling on the content row, and both answer
+    // the one fact - by its tag, by its current name, and by the name 4.2
+    // spelled it with.
+    for held in [&at_42, &at_new] {
+        assert!(held.as_field().index_of("lastqty").is_none());
+        assert!(held.as_field().index_of("lastshares").is_none());
+    }
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
-    // The 4.2 spelling still reaches it, as an alias the dictionary states,
-    // so nothing the version knew is lost.
-    assert!(at_42.get_by_name("lastshares").is_some());
+    assert_eq!(at_42.by_name("lastqty").unwrap(), at_42.by_tag(32).unwrap());
+    assert_eq!(
+        at_42.by_name("lastshares").unwrap(),
+        at_42.by_tag(32).unwrap(),
+        "nothing the version knew is lost"
+    );
 }
 
 #[test]
@@ -1528,7 +1529,7 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
             .collect();
         assert_eq!(
             columns,
-            ["nopartyids", "parties", "timeinforce"],
+            ["nopartyids", "parties"],
             "one counter, one group and the day order the dictionary derives"
         );
         assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
@@ -1560,7 +1561,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     // count, each one the declared component states nothing in.
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=D|453=2|59=0|"
+        "8=FIX.4.4|35=D|59=0|453=2|"
     );
 }
 
@@ -1819,7 +1820,7 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
     use yggdryl::fix_schema;
 
     let registry = registry();
-    let reader = super::fixed_codec(Arc::clone(&registry));
+    let reader = reader();
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let held = reader
         .sole_line(b"toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE")
@@ -2032,7 +2033,8 @@ fn every_reader_answers_for_the_one_row_shape_it_owns() {
 /// The door picks the reader, and picks the same one every time.
 #[test]
 fn read_line_picks_the_reader_the_row_shape_names() {
-    let codec = codec();
+    // The FIXML element states no type, so this fixture asks for it.
+    let codec = reader();
     let named = |row: &[u8]| {
         codec
             .sole_line(row)
@@ -2103,7 +2105,8 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         .expect("readable batches");
     assert_eq!(streamed.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
     // And the same rows back as messages, without a parse: the batch holds
-    // what the record read said.
+    // what the record read said, and the capture's own columns stay the
+    // capture's rather than becoming content of the message.
     let again: Vec<_> = codec
         .messages(yggdryl::arrow::batch_reader(
             streamed[0].schema(),
@@ -2114,6 +2117,7 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
     assert_eq!(again.len(), 2);
     assert_eq!(again[0].by_tag(11).unwrap(), read[0].by_tag(11).unwrap());
     assert_eq!(again[1].entries(), read[1].entries());
+    assert_eq!(again[1].into_bytes(b'|'), read[1].into_bytes(b'|'));
 }
 
 #[test]
@@ -2147,13 +2151,17 @@ fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
     // re-emits the message as the crate holds it: the frame's pairs, the
     // document among them, and the fields the document filled beside them.
     assert_eq!(message.by_tag(213).unwrap().as_bytes(), Some(&document[..]));
+    // The trade the document reported is the event's own fact, and a
+    // message that reports a trade and states no price or quantity of its
+    // own settles on the trade's, so the event band carries four numbers
+    // where the document spelled two.
     let mut emitted = Vec::new();
-    emitted.extend_from_slice(b"8=FIX.4.2|35=n|9=0|212=");
+    emitted.extend_from_slice(b"8=FIX.4.2|35=n|31=83.08|32=21|38=21|44=83.08|9=0|212=");
     emitted.extend_from_slice(document.len().to_string().as_bytes());
     emitted.push(b'|');
     emitted.extend_from_slice(b"213=");
     emitted.extend_from_slice(document);
-    emitted.extend_from_slice(b"|v=5.0 SP2|17=E1|11=ORDER-1|32=21|31=83.08|55=HOLN|10=0|");
+    emitted.extend_from_slice(b"|v=5.0 SP2|17=E1|11=ORDER-1|55=HOLN|10=0|");
     assert_eq!(
         String::from_utf8(message.into_bytes(b'|')).unwrap(),
         String::from_utf8(emitted).unwrap()
@@ -2161,130 +2169,55 @@ fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
 }
 
 #[test]
-fn zzz_probe() {
-    let reader = reader();
-    let show = |label: &str, m: &yggdryl::FixMsg| {
-        println!(
-            "PROBE {label} wire={}",
-            String::from_utf8_lossy(&m.into_bytes(b'|'))
-        );
-        println!("PROBE {label} field={:?}", m.as_field());
-        println!("PROBE {label} entries={:?}", m.entries());
-    };
-    for wire in [
-        "35=D|453=0|55=AAPL|10=0|",
-        "35=D|453=0|448=A|55=AAPL|10=0|",
-        "35=D|453=2|448=A|447=D|55=AAPL|10=0|",
-        "35=D|453=invalid|448=A|55=AAPL|10=0|",
-        "35=D|453=2147483648|448=A|55=AAPL|10=0|",
-        "35=D|453=-1|448=A|55=AAPL|10=0|",
+fn the_default_refusals_are_the_session_traffic_and_the_typeless_row() {
+    // Three types a codec refuses until a caller says otherwise: the two the
+    // session layer fills a capture with, and the row that states no type.
+    assert_eq!(yggdryl::DEFAULT_REFUSED_MSGTYPES, ["0", "1", "unknown"]);
+    let codec = codec();
+    assert_eq!(codec.exclude_msgtypes(), yggdryl::DEFAULT_REFUSED_MSGTYPES);
+    assert!(codec.include_msgtypes().is_empty());
+    for refused in ["0", "1", "unknown", "Heartbeat", "TestRequest"] {
+        assert!(!codec.reads_msgtype(refused), "{refused}");
+    }
+    for read in ["D", "8", "AE", "UL"] {
+        assert!(codec.reads_msgtype(read), "{read}");
+    }
+
+    // The filter runs on the type a row states, before a message is built:
+    // a heartbeat and a row that states no type are no row at all.
+    for body in [
+        &b"8=FIX.4.4|35=0|49=S|56=T|10=0|"[..],
+        b"8=FIX.4.4|35=1|112=T1|10=0|",
+        b"8=FIX.4.4|49=S|56=T|10=0|",
     ] {
-        let m = reader.parse_fix_line(wire.as_bytes()).unwrap();
-        println!(
-            "PROBE count {wire} -> wire={} c453={:?}",
-            String::from_utf8_lossy(&m.into_bytes(b'|')),
-            m.get_by_tag(453)
+        assert!(
+            codec
+                .parse_line(body)
+                .expect("a readable line")
+                .next()
+                .is_none(),
+            "{}",
+            String::from_utf8_lossy(body)
+        );
+        assert!(
+            reader()
+                .parse_line(body)
+                .expect("a readable line")
+                .next()
+                .is_some()
         );
     }
-    let m = reader
-        .sole_line(b"MSGTYPE=D|ORDERID=123|#ORDERID=345")
-        .unwrap();
-    show("twin", &m);
-    let m = reader
-        .sole_line(b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1")
-        .unwrap();
-    show("twinocc", &m);
-    let closed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2\
-|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03\
-|NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
-    show("closed", &reader.sole_line(closed).unwrap());
-    let m = reader
-        .sole_line(b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=VENUEFLAG=XSymbol=TTFPARTYROLE=1")
-        .unwrap();
-    show("residue", &m);
-    let m = reader
-        .sole_line(b"8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|")
-        .unwrap();
-    show("unknown", &m);
-    let m = reader
-        .sole_line(b"8=FIX.4.4|35=D|54=Buy|38=100|10=0|")
-        .unwrap();
-    show("translated", &m);
-    let m = reader.sole_line(b"MSGTYPE=U1|SYMBOL=AAPL|").unwrap();
-    show("msgcode", &m);
-    let m = reader
-        .sole_line(b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO")
-        .unwrap();
-    show("unnamedocc", &m);
-    let m = reader
-        .sole_line(b"ts=12|thread=7|8=FIX.4.4|35=D|11=A1|10=000|")
-        .unwrap();
-    show("frame", &m);
-    println!(
-        "PROBE f64 from i32 = {:?}",
-        DataType::Float64.scalar(Scalar::from(7_i32))
-    );
-    println!(
-        "PROBE f64 from text = {:?}",
-        DataType::Float64.scalar(Scalar::from("7"))
-    );
-    println!(
-        "PROBE f64 from i64 = {:?}",
-        DataType::Float64.scalar(Scalar::from(7_i64))
-    );
-    let ordered: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\x04\x03|NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3\x04\x03";
-    let m = reader.sole_line(ordered).unwrap();
-    println!(
-        "PROBE ordered wire={}",
-        String::from_utf8_lossy(&m.into_bytes(b'|'))
-    );
-    let two: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=A|NOPARTYIDS[1]=PARTYID=B";
-    let m = reader.sole_line(two).unwrap();
-    println!(
-        "PROBE ordered2 wire={}",
-        String::from_utf8_lossy(&m.into_bytes(b'|'))
-    );
-    let m = reader
-        .sole_line(b"MSGTYPE=D|#ORDERID=345|ORDERID=123")
-        .unwrap();
-    println!(
-        "PROBE twin2 wire={}",
-        String::from_utf8_lossy(&m.into_bytes(b'|'))
-    );
-    let m = reader
-        .sole_line(b"MSGTYPE=D|ORDERID=abc|#ORDERID=ABC")
-        .unwrap();
-    println!(
-        "PROBE cased wire={} names={:?}",
-        String::from_utf8_lossy(&m.into_bytes(b'|')),
-        m.as_field()
-            .fields()
-            .iter()
-            .map(|f| f.name())
-            .collect::<Vec<_>>()
-    );
-    let m = reader
-        .sole_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|")
-        .unwrap();
-    println!(
-        "PROBE twinned wire={} names={:?}",
-        String::from_utf8_lossy(&m.into_bytes(b'|')),
-        m.as_field()
-            .fields()
-            .iter()
-            .map(|f| f.name())
-            .collect::<Vec<_>>()
-    );
-    let rev: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYROLE=3\x04\x03|NOPARTYIDS[1]=PARTYID=A\x04\x03PARTYROLE=1\x04\x03";
-    let m = reader.sole_line(rev).unwrap();
-    println!(
-        "PROBE rev wire={}",
-        String::from_utf8_lossy(&m.into_bytes(b'|'))
-    );
-    let numrev = b"8=FIX.4.4|35=D|453=2|448=B|452=3|448=A|452=1|55=AAPL|10=0|";
-    let m = reader.parse_fix_line(numrev).unwrap();
-    println!(
-        "PROBE numrev wire={}",
-        String::from_utf8_lossy(&m.into_bytes(b'|'))
+
+    // Naming what a caller wants says what it does not: an include list
+    // clears the refusals, and an exclude list replaces them outright.
+    let only_orders = codec.clone().with_include_msgtypes(["D"]);
+    assert!(only_orders.exclude_msgtypes().is_empty());
+    assert!(only_orders.reads_msgtype("D"));
+    assert!(!only_orders.reads_msgtype("8"));
+    assert!(
+        codec
+            .clone()
+            .with_exclude_msgtypes(["8"])
+            .reads_msgtype("0")
     );
 }

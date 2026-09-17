@@ -252,6 +252,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "askunit",
             "crosscode",
             "metadata",
+            "prevpx",
+            "prevqty",
+            "tradable",
+            "symbolticker",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -292,6 +296,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("AskUnit"),
             Some("CrossCode"),
             Some("Metadata"),
+            Some("PrevPx"),
+            Some("PrevQty"),
+            Some("Tradable"),
+            Some("SymbolTicker"),
         ],
     );
 
@@ -421,7 +429,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     let registry = FixRegistry::new();
     for retired in [
         "version",
-        "symbolticker",
         "updatedat",
         "createdat",
         "msghash",

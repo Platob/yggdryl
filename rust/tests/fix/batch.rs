@@ -630,7 +630,7 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     // drains the source it was handed, once, and fuses it there.
     assert_eq!(pulls.get(), 4);
     let mut read = Vec::new();
-    while let Some(held) = pipeline.next() {
+    for held in pipeline.by_ref() {
         match held {
             // The source's own failure moves through as itself.
             Err(error) => same_source_failure(error, &marker),

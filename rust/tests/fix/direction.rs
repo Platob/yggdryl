@@ -283,7 +283,11 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
 
     // On the line door the bare document fills nothing; on the batch door
     // the pin fills it.
-    let codec = super::fixed_codec(super::committed_registry());
+    // A Jolokia answer states no message type, which a codec refuses until
+    // a caller asks for it; this one is about the direction a document
+    // carries, so it asks.
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let bare = codec
         .parse_line(ANSWERED.as_bytes())
         .unwrap()
@@ -604,7 +608,7 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
             .iter()
             .all(|entry| entry.tag() != MSGDIRECTION_TAG_NAME.0)
     );
-    assert_eq!(fixed.into_bytes(b'|'), b"8=FIX.4.2|35=D|10=0|59=0|");
+    assert_eq!(fixed.into_bytes(b'|'), b"8=FIX.4.2|35=D|59=0|10=0|");
 
     // The pin is a code of the set, any spelling, and a spelling outside the
     // set is refused naming the set.

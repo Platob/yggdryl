@@ -325,7 +325,10 @@ fn a_bridge_frame_carrying_a_row_is_the_type_that_row_states() {
     // A key the venue spelled under a namespace of its own is the bridge's
     // metadata rather than a child of the row, dot and all.
     assert_eq!(
-        message.metadata().get("metal.loco").map(smol_str::SmolStr::as_str),
+        message
+            .metadata()
+            .get("metal.loco")
+            .map(smol_str::SmolStr::as_str),
         Some("LN")
     );
 }
@@ -381,7 +384,9 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
     let masked = line_messages(&codec)
         .into_iter()
         .find(|message| {
-            message.get_by_tag(48).and_then(|held| held.as_str().map(ToOwned::to_owned))
+            message
+                .get_by_tag(48)
+                .and_then(|held| held.as_str().map(ToOwned::to_owned))
                 == Some("XX0000000001".to_owned())
         })
         .expect("the anonymized line");
@@ -391,4 +396,65 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
             "tag {tag} off a masked ISIN"
         );
     }
+}
+
+/// The rows whose parties nest a sub-group, which is the one shape
+/// `FixMsg::from_row` names as inexact: a repeating group whose occurrences
+/// nest a second group only some of them state comes back with the nested
+/// occurrences behind the parties rather than inside the one that stated
+/// them, so the wire moves `NoPartySubIDs(802)` and its members.
+const PARTIES_NESTING_A_SUBGROUP: [usize; 4] = [4, 6, 37, 64];
+
+#[test]
+fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
+    let codec = codec();
+    let mut written: Vec<u8> = Vec::new();
+    let filled = codec
+        .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    let rows = codec
+        .clone()
+        .with_separator(b'|')
+        .write_arrow_reader(filled, &mut written)
+        .expect("the capture writes");
+    assert_eq!(rows, ROWS as u64);
+
+    // A row in is a line out: every row's wire, the codec's separator, a
+    // newline - and the line door emits the same bytes for the same line.
+    let wires: Vec<String> = line_messages(&codec)
+        .iter()
+        .map(|message| String::from_utf8_lossy(&message.into_bytes(b'|')).into_owned())
+        .collect();
+    assert_eq!(wires.len(), ROWS);
+    let written: Vec<&str> = std::str::from_utf8(&written)
+        .expect("the wire is text here")
+        .lines()
+        .collect();
+    assert_eq!(written.len(), ROWS);
+    for (at, wire) in wires.iter().enumerate() {
+        // The capture's columns are the capture's: the body the line was
+        // read from, its place in the object and the bridge's row header
+        // are not content, so none of them reaches a counterparty.
+        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|threadId="] {
+            assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
+        }
+        if PARTIES_NESTING_A_SUBGROUP.contains(&at) {
+            // Named, not skipped: what moves is the nested occurrence, and
+            // the two wires still hold the same bytes elsewhere.
+            assert!(wire.contains("|802="), "row {at} nests a sub-group");
+            assert_ne!(written[at], wire, "row {at}");
+            continue;
+        }
+        assert_eq!(written[at], wire, "row {at} re-emits its own wire");
+    }
+
+    // Every frame the bridge wrote with `|` comes back byte for byte, the
+    // XmlData rows included, because the entries are the frame and nothing
+    // read inside one of its values was recorded as an arrival.
+    let framed = wires
+        .iter()
+        .enumerate()
+        .filter(|(at, wire)| !PARTIES_NESTING_A_SUBGROUP.contains(at) && wire.contains("|10="))
+        .count();
+    assert!(framed >= 11, "{framed} frames checked");
 }

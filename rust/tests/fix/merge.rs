@@ -912,7 +912,7 @@ fn arrivals() -> [Field; 4] {
 
 /// What every row of the fold table leaves behind, whichever verb folded it.
 fn assert_fold_table(registry: &FixRegistry) {
-    assert_eq!(super::scalars(&registry), 5 + super::seeded_fields());
+    assert_eq!(super::scalars(registry), 5 + super::seeded_fields());
 
     // Row 1: the same tag under the same folded name is the same field.
     // `Msg_Type`, `msgtype` and `MsgType` are one id, so the respelling

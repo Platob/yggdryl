@@ -509,11 +509,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
 /// `identifiers` and `metadata` - the shards are named nine digits wide,
 /// every member reference carries its `fix:tag`, and a field FIX Latest
-/// removed is marked `fix:deprecated`.
+/// removed is marked `fix:deprecated`. It last moved when the market numbers
+/// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
+/// being columns of their own and the crate's `px` and `qty` answer for them,
+/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 348_766_036_673_918_042);
+    assert_eq!(registry.stable_hash(), 7_181_957_206_944_849_792);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

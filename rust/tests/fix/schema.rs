@@ -43,7 +43,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 114);
+    assert_eq!(tags.len(), 119);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -189,7 +189,17 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         matches!(typed(60), DataType::DateTime64 { .. }),
         "TransactTime"
     );
-    assert_eq!(typed(44), DataType::Float64, "Price(44)");
+    // The price and the quantity a message is about are the crate's own
+    // columns at the crate's own scale, because the event holds one fact
+    // whichever of FIX's fields a message spelled it in.
+    assert_eq!(
+        typed(yggdryl::PX_TAG_NAME.0),
+        DataType::decimal128(38, 18).unwrap()
+    );
+    assert_eq!(
+        typed(yggdryl::QTY_TAG_NAME.0),
+        typed(yggdryl::PX_TAG_NAME.0)
+    );
     assert_eq!(
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
         typed(yggdryl::UNIX_TAG_NAME.0)
@@ -283,7 +293,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     assert_eq!(message.digest(), digest);
     assert_eq!(
         message.into_bytes(b'|'),
-        [wire.as_slice(), b"59=0|"].concat()
+        b"8=FIX.4.4|35=D|59=0|11=UUID-ORDER-1|55=AAPL|10=0|"
     );
 
     let schema = fix_schema(&registry, "fix").unwrap();
@@ -357,7 +367,10 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
             .unwrap(),
         1
     );
-    assert_eq!(encoded, [wire.as_slice(), b"59=0|\n"].concat());
+    assert_eq!(
+        encoded,
+        b"8=FIX.4.4|35=D|59=0|11=UUID-ORDER-1|55=AAPL|10=0|\n"
+    );
 }
 
 #[test]
@@ -409,17 +422,22 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     assert_eq!(at(&row, &schema, 11).as_str(), Some("ORDER-1"));
     assert_eq!(at(&row, &schema, 55).as_str(), Some("AAPL"));
     assert_eq!(at(&row, &schema, 15).as_str(), Some("USD"));
-    assert_eq!(at(&row, &schema, 44), &Scalar::from(12.5_f64));
+    // `Price(44)` has no column of its own: the price a message is about is
+    // the crate's `px`, at the crate column's own scale.
+    assert_eq!(
+        at(&row, &schema, yggdryl::PX_TAG_NAME.0).as_decimal(),
+        Some((yggdryl::i256::from_i128(12_500_000_000_000_000_000), 18))
+    );
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.
-    let bare = reader.sole_line(b"8=FIX.4.4|35=0|10=0|").unwrap();
+    let bare = reader.sole_line(b"8=FIX.4.4|35=D|10=0|").unwrap();
     let thin = bare.into_row(&schema).unwrap();
     assert_eq!(
         thin.as_sequence().map(<[Scalar]>::len),
         row.as_sequence().map(<[Scalar]>::len),
     );
-    assert_eq!(at(&thin, &schema, 35).as_str(), Some("0"));
+    assert_eq!(at(&thin, &schema, 35).as_str(), Some("D"));
     assert!(at(&thin, &schema, 55).is_null(), "no symbol, not a shift");
 }
 
@@ -490,10 +508,10 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let entries = held.last().unwrap().as_sequence().expect("the record");
 
     // The record is the content the message holds, in its order, so the wire
-    // is rebuilt from it and never from the columns: the version and the
-    // type are the header's, and the day order the dictionary derives for an
-    // order is a child like any other.
-    assert_eq!(entries.len(), 5);
+    // is rebuilt from it and never from the columns: the version, the type
+    // and the day order the dictionary derives for an order are facts the
+    // message holds typed, so none of the three is an entry.
+    assert_eq!(entries.len(), 4);
     // A key no dictionary explains is named after itself, folded as every
     // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries

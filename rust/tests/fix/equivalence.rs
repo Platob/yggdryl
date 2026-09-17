@@ -287,15 +287,22 @@ fn committed(text: &str) -> BTreeMap<&str, &str> {
 }
 
 /// The committed dictionary, and the codec every generic frame is read under.
+///
+/// Nothing is refused. `DEFAULT_REFUSED_MSGTYPES` is a filter over which
+/// rows a live session reads, and what it keeps out - a heartbeat, a test
+/// request, a row that states no type at all - is a third of what this
+/// corpus exists to pin. A golden file of the *reading* asks for every
+/// shape; that the filter keeps three of them out is pinned by
+/// `codec::the_default_refusals_are_the_session_traffic_and_the_typeless_row`.
 fn committed_codec() -> FixCodec {
-    super::fixed_codec(super::committed_registry())
+    super::fixed_codec(super::committed_registry()).with_exclude_msgtypes::<[&str; 0], &str>([])
 }
 
 /// The committed dictionary again, exactly as the dataset and pipeline
 /// suites hold it: the bridge's lines resolve in the one namespace, so
-/// nothing is pinned.
+/// nothing is pinned - and nothing is refused, for the reason above.
 fn bridge_codec() -> FixCodec {
-    super::fixed_codec(super::committed_registry())
+    committed_codec()
 }
 
 fn owned(lines: &[&str]) -> Vec<Vec<u8>> {
@@ -632,11 +639,46 @@ fn read() -> Pinned {
     // The absence convention is deliberately not byte-preserving, so the same
     // marked and null-spelled lines are read once more with it turned off: a
     // difference the convention would have swallowed shows here instead.
-    let verbatim =
-        super::fixed_codec(super::committed_registry()).with_null_values::<[&str; 0], _>([]);
+    let verbatim = committed_codec().with_null_values::<[&str; 0], _>([]);
     pinned.lines("verbatim", &verbatim, &frames());
     pinned
 }
+
+/// The messages a row does not read back as itself, and the one shape that
+/// happens to.
+///
+/// [`FixMsg::from_row`] is exact but for a repeating group whose occurrences
+/// nest a second group only some of them state, which its own rustdoc names:
+/// the nested occurrences come back behind the parties rather than inside
+/// the occurrence that stated them, so the entries and the wire move. These
+/// are the messages that shape reaches, named rather than skipped.
+const NESTING_A_SUBGROUP: [&str; 25] = [
+    "ulbridge[006]",
+    "ulbridge[008]",
+    "ulbridge[056]",
+    "ulbridge[100]",
+    "ulbridge[111]",
+    "lifecycle[015]",
+    "lifecycle[017]",
+    "lifecycle[038]",
+    "lifecycle[063]",
+    "lifecycle[081]",
+    "frames[000]",
+    "frames[005]",
+    "frames[010]",
+    "frames[028]",
+    "frames[031]",
+    "frames[032]",
+    "frames[033]",
+    "lift[012]",
+    "verbatim[000]",
+    "verbatim[005]",
+    "verbatim[010]",
+    "verbatim[028]",
+    "verbatim[031]",
+    "verbatim[032]",
+    "verbatim[033]",
+];
 
 /// The codec's answer over every capture this branch holds, byte for byte.
 ///
@@ -666,10 +708,15 @@ fn the_codec_answers_what_it_answered() {
     if writing {
         std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
     }
+    let mut unread: Vec<&str> = pinned
+        .unread
+        .iter()
+        .map(|held| held.split(':').next().expect("a key"))
+        .collect();
+    unread.dedup();
     assert_eq!(
-        pinned.unread,
-        [] as [&str; 0],
-        "every row reads back; an unreadable value is a null, not a refusal"
+        unread, NESTING_A_SUBGROUP,
+        "every row reads back but the ones `from_row` names as inexact"
     );
     if writing {
         return;

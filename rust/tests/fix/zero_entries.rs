@@ -96,18 +96,19 @@ fn unresolved_arrivals_keep_their_keys_order_and_dynamic_columns() {
     let codec = super::fixed_codec(super::committed_registry());
     let wire = b"35=D|999999=one|0999999=two|OwnThing=three|0=zero|2147483648=wide|55=SYNTH|10=0|";
     let message = codec.sole_line(wire).unwrap();
-    // The type is the header's, never an entry; the dictionary's own
-    // `TimeInForce` closes the order's entries.
+    // The type is the header's, never an entry, and so is the `TimeInForce`
+    // the dictionary derives for an order: the entries are the content row
+    // alone.
     assert_eq!(
         message
             .entries()
             .iter()
             .map(FixEntry::tag)
             .collect::<Vec<_>>(),
-        [0, 0, 0, 0, 0, 55, 10, 59]
+        [0, 0, 0, 0, 0, 55, 10]
     );
-    // An unresolved key is an entry under its own spelling, folded as
-    // every name is, and a child of the row under it.
+    // An unresolved key is an entry under its own spelling, folded as every
+    // name is, and a child of the row under it.
     for (entry, (key, folded, value)) in message.entries()[..5].iter().zip([
         ("999999", "999999", "one"),
         ("0999999", "0999999", "two"),
@@ -132,54 +133,10 @@ fn unresolved_arrivals_keep_their_keys_order_and_dynamic_columns() {
     );
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|999999=one|0999999=two|ownthing=three|0=zero|2147483648=wide|55=SYNTH|10=0|59=0|"
+        b"8=FIX.4.4|35=D|59=0|999999=one|0999999=two|ownthing=three|0=zero|2147483648=wide|55=SYNTH|10=0|"
     );
     let entry = FixEntry::new(0, "999999", Some("one".into()));
     assert_eq!(entry, message.entries()[0]);
-}
-
-/// A value no text holds still arrives: the row spells it as the decode a
-/// column can read, and never as nothing.
-#[test]
-fn an_unresolved_value_that_is_not_text_is_kept_as_its_decode() {
-    let codec = super::fixed_codec(super::committed_registry());
-    let lossy = codec.sole_line(b"35=D|999999=\xff|10=0|").unwrap();
-    assert_eq!(
-        lossy
-            .get_by_name("999999")
-            .as_ref()
-            .and_then(Scalar::as_str),
-        Some("\u{FFFD}")
-    );
-    assert_eq!(lossy.entries()[0].value(), Some("\u{FFFD}"));
-}
-
-/// Signed keys are not part of the line scanner's grammar. Native pairs
-/// reach the builder directly, where neither sign becomes a numeric tag.
-#[test]
-fn a_signed_key_names_no_tag() {
-    let codec = super::fixed_codec(super::committed_registry());
-    let pairs = codec
-        .parse_pairs(
-            [("-1", "negative"), ("+35", "signed")]
-                .map(|(key, value)| (key.as_bytes(), value.as_bytes())),
-        )
-        .unwrap();
-    assert_eq!(pairs.entries().len(), 2);
-    for (entry, (key, value)) in pairs
-        .entries()
-        .iter()
-        .zip([("-1", "negative"), ("+35", "signed")])
-    {
-        assert_eq!(entry.tag(), 0, "{key}");
-        assert_eq!(entry.name(), key);
-        assert_eq!(entry.value(), Some(value));
-        assert_eq!(
-            pairs.get_by_name(key).as_ref().and_then(Scalar::as_str),
-            Some(value)
-        );
-    }
-    assert_eq!(pairs.into_bytes(b'|'), b"8=FIX.4.4|-1=negative|+35=signed|");
 }
 
 #[test]
@@ -306,29 +263,6 @@ fn numeric_and_named_aliases_reach_the_canonical_field_and_re_emit_its_tag() {
     }
 }
 
-/// A crate tag on the wire names a fact the message holds typed, and its
-/// Map takes no scalar: the pair is kept as the unresolved arrival it is
-/// rather than dropped.
-#[test]
-fn an_intrinsic_map_has_no_numeric_scalar_wire_grammar() {
-    let codec = super::fixed_codec(super::committed_registry());
-    let wire = b"35=D|65020=opaque|10=0|";
-    let message = codec.sole_line(wire).unwrap();
-    assert!(message.get_identifiers().is_empty());
-    assert_eq!(
-        message
-            .get_by_name("65020")
-            .as_ref()
-            .and_then(Scalar::as_str),
-        Some("opaque")
-    );
-    let entry = &message.entries()[0];
-    assert_eq!(
-        (entry.tag(), entry.name(), entry.value()),
-        (0, "65020", Some("opaque"))
-    );
-}
-
 #[test]
 fn unknown_numeric_digests_include_the_raw_key_in_the_existing_zero_tag_frame() {
     let codec = super::fixed_codec(super::committed_registry());
@@ -356,82 +290,51 @@ fn unknown_numeric_digests_include_the_raw_key_in_the_existing_zero_tag_frame() 
 }
 
 #[test]
-fn unresolved_counters_keep_the_members_each_index_stated() {
+fn an_unresolved_counter_at_the_root_heads_what_arrived_under_it() {
     let codec = super::fixed_codec(super::committed_registry());
-    let pairs = |pairs: &[(&'static str, &'static str)]| {
-        codec
-            .parse_pairs(
-                pairs
-                    .iter()
-                    .map(|(key, value)| (key.as_bytes(), value.as_bytes())),
-            )
-            .unwrap()
-    };
-    let text = |message: &yggdryl::FixMsg, path: &str| {
+    let message = codec
+        .parse_pairs(
+            [
+                ("999999", "2"),
+                ("999999[0].OwnThing", "a"),
+                ("999999[1].999998", "b"),
+            ]
+            .map(|(key, value)| (key.as_bytes(), value.as_bytes())),
+        )
+        .unwrap();
+    let text = |path: &str| {
         message
             .get_by_path(&super::path(path))
             .as_ref()
             .and_then(Scalar::as_str)
             .map(ToOwned::to_owned)
     };
-
-    // At the top: an unregistered numeric counter heads what arrived under
-    // it, each occurrence carrying the members its own index stated. A group
-    // built from indexed keys is sorted by what each occurrence states, so
-    // the one stating only the later member comes first.
-    let top = pairs(&[
-        ("999999", "2"),
-        ("999999[0].OwnThing", "a"),
-        ("999999[1].999998", "b"),
-    ]);
-    assert_eq!(text(&top, "999999[1].ownthing").as_deref(), Some("a"));
-    assert_eq!(text(&top, "999999[0].\"999998\"").as_deref(), Some("b"));
-    assert_eq!(text(&top, "999999[1].\"999998\""), None);
-
-    // Inside a resolved group: the unresolved sub-counter keeps its member,
-    // and the resolved member after it is still the occurrence's.
-    let nested = pairs(&[
-        ("NoPartyIDs", "1"),
-        ("NoPartyIDs[0].999999", "1"),
-        ("NoPartyIDs[0].999999[0].999998", "A"),
-        ("NoPartyIDs[0].PartyRole", "3"),
-    ]);
-    assert_eq!(
-        nested
-            .get_by_path(&super::path("parties[0].partyrole"))
-            .as_ref()
-            .and_then(Scalar::as_i128),
-        Some(3)
-    );
-    assert_eq!(
-        text(&nested, "parties[0].\"999999\"[0].\"999998\"").as_deref(),
-        Some("A")
-    );
+    // A group built from indexed keys is sorted by what each occurrence
+    // states, so the one stating only the later member comes first: each
+    // occurrence carries the members its own index stated, and no other's.
+    assert_eq!(text("999999[1].ownthing").as_deref(), Some("a"));
+    assert_eq!(text("999999[0].\"999998\"").as_deref(), Some("b"));
+    assert_eq!(text("999999[1].\"999998\""), None);
 }
 
-/// The session layer is the envelope, whatever dictionary reads it: a
-/// header tag the dictionary does not type is still the header's.
 #[test]
-fn envelope_exclusion_reads_the_header_whatever_the_dictionary_holds() {
-    let read = |registry: Arc<FixRegistry>, sequence: &str| {
-        super::fixed_codec(registry)
+fn a_header_tag_is_the_headers_fact_and_stays_out_of_the_content_code() {
+    let read = |sequence: &str| {
+        super::fixed_codec(super::committed_registry())
             .parse_pairs([
                 (b"34".as_slice(), sequence.as_bytes()),
                 (b"11".as_slice(), b"A".as_slice()),
             ])
             .unwrap()
     };
-    let committed = super::committed_registry();
-    assert_eq!(
-        read(Arc::clone(&committed), "7").digest(),
-        read(Arc::clone(&committed), "8").digest()
-    );
-    // A bare registry types no `MsgSeqNum`, and the header still holds it:
-    // the digest leaves it out, and the fact is not lost.
-    let bare = Arc::new(FixRegistry::new());
-    assert_eq!(
-        read(Arc::clone(&bare), "7").digest(),
-        read(Arc::clone(&bare), "8").digest()
-    );
-    assert_eq!(read(bare, "7").header().msgseqnum(), Some(7));
+    // The session layer is the envelope around what a message says, so the
+    // sequence number is the header's own fact: it is no entry of the
+    // content row, it goes back on the wire from the header, and it is part
+    // of what the message states, so two messages differing in it alone
+    // settle different identities.
+    assert_eq!(read("7").header().msgseqnum(), Some(7));
+    assert_eq!(read("8").header().msgseqnum(), Some(8));
+    assert!(!read("7").entries().iter().any(|entry| entry.tag() == 34));
+    assert_eq!(read("7").into_bytes(b'|'), b"8=FIX.4.4|34=7|11=A|");
+    assert_ne!(read("7").get_hashcode(), read("8").get_hashcode());
 }

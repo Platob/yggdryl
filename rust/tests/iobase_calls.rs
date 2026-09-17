@@ -102,13 +102,19 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// reader answers.
     const LINES: usize = 144;
     /// How many FIX rows they read as: a row for every message the capture
-    /// carries - one a line, the JSON documents included, each of which is
-    /// one entry-less `unknown` whatever it holds, a wildcard answer no
-    /// more than an error answer or the statistics line - and none for the
-    /// bridge's own prose, which carries no message at all. Eighty-two of
-    /// the capture's first 129 lines, and twelve of the fifteen lines of the
-    /// cancel/reject flow the capture ends on, whose other three are prose.
-    const ROWS: usize = 94;
+    /// carries that the codec reads - none for the bridge's own prose, which
+    /// carries no message at all, and none for the session traffic and the
+    /// documents `DEFAULT_REFUSED_MSGTYPES` keeps out of a live read, which
+    /// is what this codec is. What a row costs is the same either way; the
+    /// count is here so that a reader knows what was drained.
+    const ROWS: usize = 79;
+    /// How many messages the lifecycle walk answers for those rows: a
+    /// message arriving under the identity the live one arrived under is the
+    /// same message logged at another hop, so it restates that one rather
+    /// than joining the chain behind it. This codec reads through a bare
+    /// registry, which types almost nothing, so most of the capture's rows
+    /// state the same little and collapse onto each other.
+    const WALKED: usize = 16;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it.
     const DECODE: &str =
@@ -169,7 +175,7 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
                     |read, message: yggdryl::Result<yggdryl::FixMsg>| message.map(|_| read + 1),
                 )
                 .expect("a walked message");
-            assert_eq!(read, ROWS);
+            assert_eq!(read, WALKED);
         },
     );
 }

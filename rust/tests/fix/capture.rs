@@ -161,7 +161,6 @@ fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
         .collect()
 }
 
-
 /// A Jolokia answer as a log line writes it: prose in front, prose behind.
 ///
 /// The shape a bridge actually prints - a timestamp, the reader that logged
@@ -577,5 +576,50 @@ fn a_json_document_is_one_unknown_and_any_other_unreadable_body_is_none() {
                 .is_none(),
             "{body:?} states a message",
         );
+    }
+}
+
+#[test]
+fn a_capture_writes_back_what_each_message_emits() {
+    let source = handle();
+    let codec = codec().with_separator(b'|');
+
+    let reader = codec
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens");
+
+    // The wire is rebuilt from each row's arrival record and the facts it
+    // holds typed, which is what the line read emits for the same line.
+    let mut written: Vec<u8> = Vec::new();
+    let rows = codec
+        .write_arrow_reader(reader, &mut written)
+        .expect("the capture writes");
+    // One line written per message, and the two lines that state none reach
+    // the writer as no row at all, so the capture comes back two lines
+    // shorter than it went in.
+    assert_eq!(rows, MESSAGES as u64);
+
+    let held = String::from_utf8(written).expect("the wire is text here");
+    let lines: Vec<&str> = held.lines().collect();
+    assert_eq!(lines.len(), MESSAGES);
+    for line in [WORKING, FILLED] {
+        let emitted = codec
+            .sole_line(line.as_bytes())
+            .expect("a report")
+            .into_text('|')
+            .unwrap();
+        assert!(lines.contains(&emitted.as_str()), "{emitted}\n{lines:?}");
+    }
+    for silent in [PROSE, CHATTER] {
+        assert!(
+            !lines.contains(&silent),
+            "a line that stated no message writes back none",
+        );
+    }
+    // And the capture's own columns are the capture's: a row read back off
+    // a capture states the message, never the body it was read from.
+    for line in &lines {
+        assert!(!line.contains("|body="), "{line}");
+        assert!(!line.contains("|url="), "{line}");
     }
 }

@@ -42,8 +42,17 @@ fn format_messages_answers_one_row_per_message_under_the_field() {
         .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(at(&rows[0], &target, "symbol").as_str(), Some("AAPL"));
-    assert_eq!(at(&rows[0], &target, "price").as_f64(), Some(12.5));
-    assert_eq!(at(&rows[0], &target, "orderqty").as_f64(), Some(100.0));
+    // `Price(44)` and `OrderQty(38)` are the event's own facts and have no
+    // columns of their own: the crate's `px` and `qty` answer for them, at
+    // the crate column's own scale.
+    assert_eq!(
+        at(&rows[0], &target, "px").as_decimal(),
+        Some((yggdryl::i256::from_i128(12_500_000_000_000_000_000), 18))
+    );
+    assert_eq!(
+        at(&rows[0], &target, "qty").as_decimal(),
+        Some((yggdryl::i256::from_i128(100_000_000_000_000_000_000), 18))
+    );
     // The record closes a formatted row exactly as it closes a parsed one.
     assert!(!at(&rows[0], &target, "fixentries").is_null());
 }
@@ -80,7 +89,7 @@ fn a_format_target_is_any_message_field_a_caller_names() {
     assert_eq!(rows[0].as_sequence().expect("a row").len(), wanted.len());
     assert_eq!(at(&rows[0], &narrow, "symbol").as_str(), Some("AAPL"));
     assert!(
-        narrow.index_of("price").is_none(),
+        narrow.index_of("px").is_none(),
         "what it did not name is gone"
     );
 }
@@ -132,12 +141,14 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         .unwrap()
         .unwrap();
     assert_eq!(at(&row, &schema, "symbol").as_str(), Some("AAPL"));
-    assert_eq!(at(&row, &schema, "price").as_f64(), Some(12.5));
     assert_eq!(at(&row, &schema, "securityexchange").as_str(), Some("XLON"));
-    // The side is the event's own, held typed and never in the record: a
-    // row that dropped its column dropped the fact, where the parse had it.
+    // The side and the price are the event's own, held typed and never in
+    // the record: a row that dropped their columns dropped the facts, where
+    // the parse had both.
     assert_eq!(parsed.by_tag(54).unwrap().as_str(), Some("BUY"));
+    assert!(!parsed.by_tag(yggdryl::PX_TAG_NAME.0).unwrap().is_null());
     assert!(at(&row, &schema, "side").is_null());
+    assert!(at(&row, &schema, "px").is_null());
 }
 
 /// A group comes back off the record whole, occurrence by occurrence.

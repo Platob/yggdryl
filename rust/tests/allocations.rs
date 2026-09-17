@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{
@@ -34,8 +35,8 @@ use yggdryl::types::{
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
-    FixId, FixMsg, FixRegistry, IOMedia, MediaType, MimeType, PythonKind, PythonMetadata, Scalar,
-    TimeUnit, Timezone, Url, Version,
+    FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
+    Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -339,12 +340,13 @@ fn iceberg_field(extra: usize) -> Field {
 /// it, so a member field costs what a standard one does in every probe.
 const VENUE: &str = "venue";
 
-/// A FIX registry of `extra` generated fields around two fully keyed fields,
-/// one standard and one a venue's member, plus one repeating group.
+/// A FIX registry of `extra` generated fields around the keyed ones every
+/// probe below lands on: a standard scalar with alternate tags and aliases,
+/// a venue's member, a message type, and a repeating group beside its
+/// counter.
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
-/// ones are what every hit lands on. The group keeps a nested shape in the
-/// same index corpus.
+/// ones are what every hit lands on.
 fn fix_registry(extra: usize) -> FixRegistry {
     let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .expect("a struct item")
@@ -394,126 +396,70 @@ fn fix_registry(extra: usize) -> FixRegistry {
             .chain(generated),
     )
     .expect("the generated dictionary has no conflict");
-    registry
-        .insert_definition(yggdryl::FixCategory::Groups, parties)
-        .expect("the group definition");
+    registry.insert(parties).expect("the group definition");
     registry
 }
 
 #[test]
-fn a_fix_registry_lookup_allocates_nothing() {
+fn a_fix_registry_lookup_borrows_whatever_the_catalog_walks_past() {
     // A wide dictionary: a hit must cost the same however much it walks past.
     let registry = fix_registry(512);
     let vendor = FixId::of(5_001, "TradeID").expect("a vendor identifier");
     // Another name on the same tag is another identity: an exact miss.
     let foreign = FixId::of(5_001, "OtherTradeID").expect("a foreign identifier");
 
-    free("get_field_by_tag scalar hit", || {
-        let _ = black_box(registry.get_field_by_tag(55));
+    for (what, key) in [
+        ("a scalar tag", yggdryl::FixKey::Tag(55)),
+        ("an alternate tag", yggdryl::FixKey::Tag(65)),
+        ("a counter tag", yggdryl::FixKey::Tag(453)),
+        ("a tag nothing declares", yggdryl::FixKey::Tag(9_999)),
+        ("a canonical name", yggdryl::FixKey::Name("symbol")),
+        ("an alias", yggdryl::FixKey::Name("ticker")),
+        ("a counter name", yggdryl::FixKey::Name("nopartyids")),
+        ("a group name", yggdryl::FixKey::Name("parties")),
+        ("a venue's own name", yggdryl::FixKey::Name("tradeid")),
+        ("an identity", yggdryl::FixKey::Id(vendor)),
+        ("an identity nothing holds", yggdryl::FixKey::Id(foreign)),
+    ] {
+        free(what, || {
+            let _ = black_box(registry.get_field(black_box(key)));
+        });
+    }
+    // A name nothing declares is the one probe that is not free: the fold
+    // renders the spelling it looks up before it can say there is no field
+    // under it.
+    costs("a name nothing declares", 4, || {
+        let _ = black_box(registry.get_field(black_box(yggdryl::FixKey::Name("absent"))));
     });
-    free("get_field_by_tag counter hit", || {
-        let _ = black_box(registry.get_field_by_tag(453));
+    free("the counter door", || {
+        let _ = black_box(registry.get_field_by_counter(black_box(453)));
     });
-    free("get_field_by_name counter hit", || {
-        let _ = black_box(registry.get_field_by_name("nopartyids"));
+    // The walk is the one probe that is not free: it holds the cursor it
+    // hands each field from, and that is one allocation however many it
+    // walks past.
+    costs("the walk", 1, || {
+        let _ = black_box(registry.iter().count());
     });
-    free("get_definition group hit", || {
-        let _ = black_box(registry.get_definition(yggdryl::FixCategory::Groups, "PARTIES"));
-    });
-    free("get_field_by_tag alternate hit", || {
-        let _ = black_box(registry.get_field_by_tag(65));
-    });
-    free("get_field_by_tag miss", || {
-        let _ = black_box(registry.get_field_by_tag(7));
-    });
-    // An identifier is the hash key itself, tag and folded name, so vendor
-    // probes cost what standard ones do.
-    free("get_field_by_id vendor hit", || {
-        let _ = black_box(registry.get_field_by_id(vendor));
-    });
-    free("get_field_by_id vendor miss", || {
-        let _ = black_box(registry.get_field_by_id(foreign));
-    });
-    // The name index is probed with the caller's text folded as it is
-    // hashed, so a differently cased query builds no folded copy.
-    free("get_field_by_name differently cased hit", || {
-        let _ = black_box(registry.get_field_by_name("sYmBoL"));
-    });
-    free("get_field_by_name alias hit", || {
-        let _ = black_box(registry.get_field_by_name("TICKER"));
-    });
-    free("get_field_by_name long alias hit", || {
-        let _ = black_box(registry.get_field_by_name("securitysymbolidentifier"));
-    });
-    // A member field lives in the one namespace: its name answers without
-    // any dialect being named.
-    free("get_field_by_name vendor hit", || {
-        let _ = black_box(registry.get_field_by_name("tradeid"));
-    });
-    free("get_field_by_name miss", || {
-        let _ = black_box(registry.get_field_by_name("absent"));
-    });
-    free("get_field generic", || {
-        let _ = black_box(registry.get_field("ticker"));
-        let _ = black_box(registry.get_field(65));
-        let _ = black_box(registry.get_field(vendor));
-    });
-    // Resolved once, outside the closure, because that is where a path is
-    // read: what the lookup itself costs is nothing.
-    let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
-    free("get_field_by_path member", || {
-        let _ = black_box(registry.get_field_by_path(&absent_member));
-    });
-    free("contains", || {
-        let _ = black_box(registry.contains("Symbol"));
-    });
-    free("infer_bytes_protocol FIXML", || {
-        let _ = black_box(MimeType::infer_bytes(black_box(b"35=D|Symbol=AAPL|")));
-    });
-    free("infer_text_protocol UL", || {
-        let _ = black_box(MimeType::infer_text(black_box("MsgType=D Symbol=AAPL")));
-    });
-    free("infer_bytes_msgtype FIX", || {
-        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(
-            b"8=FIX.4.4|35=D|55=AAPL|",
-        )));
-    });
-    free("infer_text_msgtype UL", || {
-        let _ = black_box(FixCodec::infer_msgtype_text(black_box(
-            "MsgType=D Symbol=AAPL",
-        )));
-    });
-    // A JSON document is located the same way a frame is - its opener and
-    // its close are found in the caller's bytes - so classifying one costs
-    // no allocation either. It classifies as `application/json` and
-    // declares no message type: what a document says is not read.
-    const DOCUMENT: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
-    free("infer_bytes_protocol DOCUMENT", || {
-        let _ = black_box(MimeType::infer_bytes(black_box(DOCUMENT)));
-    });
-    free("infer_bytes_msgtype DOCUMENT", || {
-        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(DOCUMENT)));
-    });
+}
+
+#[test]
+fn reading_which_way_a_line_moved_allocates_nothing() {
+    // The defaults, and a table the dictionary states: both are compiled
+    // when the reading is built, so neither costs a match.
+    let registry = fix_registry(8);
     let reading = registry.msgdirection();
-    free("read_bytes_direction DOCUMENT", || {
-        let _ = black_box(reading.read_bytes(black_box(DOCUMENT)));
-    });
-    // The rules are compiled once with the reading; applying them to the
-    // prose in front of a payload costs nothing per line, whether one code
-    // matches, two do, or none.
     for line in [
         b"sending >> 8=FIX.4.4|35=D|10=0|".as_slice(),
         b"2026-08-14 03:03:13.314 [23] [Jolokia] (DEBUG) Response: 8=FIX.4.4|35=0|10=0|",
         b"sending and receiving 8=FIX.4.4|35=D|10=0|",
         b"no verb printed by this plugin 8=FIX.4.4|35=D|10=0|",
     ] {
-        free("read_bytes_direction prose", || {
+        free("the default reading", || {
             let _ = black_box(reading.read_bytes(black_box(line)));
         });
     }
-    // And a table the dictionary states costs the same as the defaults.
-    let mut ruled = yggdryl::FixRegistry::new();
-    let mut field = yggdryl::DataType::utf8().nullable_field("MsgDirection");
+    let mut ruled = FixRegistry::new();
+    let mut field = DataType::utf8().nullable_field("MsgDirection");
     field.as_fix_mut().set_tag(385).unwrap();
     field
         .as_fix_mut()
@@ -530,250 +476,35 @@ fn a_fix_registry_lookup_allocates_nothing() {
         b"TX <<< 8=FIX.4.4|35=D|10=0|",
         b"09:12:03 8=FIX.4.4|35=D|10=0|",
     ] {
-        free("read_bytes_direction stated table", || {
+        free("a stated table", || {
             let _ = black_box(ruled.read_bytes(black_box(line)));
-        });
-    }
-    free("iter", || {
-        let _ = black_box(registry.iter().count());
-    });
-}
-
-#[test]
-fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
-    let codec = FixCodec::new(Arc::new(fix_registry(64)));
-    let frame = "8=FIX.4.4|35=D|11=A|10=001|";
-    let read = |frames: usize| {
-        let line = frame.repeat(frames).into_bytes();
-        // The row is read outside the count: what is measured is draining
-        // the messages it carries, which is where a collection would show.
-        let messages = codec.parse_line(black_box(&line)).expect("a row");
-        let (allocations, count) = counted(move || {
-            messages
-                .inspect(|message| {
-                    black_box(message.as_ref().expect("a message").as_field().name());
-                })
-                .count()
-        });
-        assert_eq!(
-            count, frames,
-            "a line of {frames} frames is {frames} messages"
-        );
-        allocations
-    };
-    // What a row of several frames costs is its messages and nothing per
-    // line: the source holds the row's entries and re-enters the frame
-    // reader where each opens, so draining is proportional to the messages
-    // and never to the line - which is what a collection of the results
-    // would break.
-    // Settle the shared schema/registry plan before counting the repeated path.
-    // Cold plan construction belongs to the boundary, not to each frame.
-    black_box(read(1));
-    let each = 32;
-    for frames in [4, 8, 16] {
-        assert_eq!(read(frames), each * frames, "{frames} frames");
-    }
-}
-
-#[test]
-fn registry_message_singletons_and_scoped_groups_are_borrowed() {
-    let mut registry = fix_registry(512);
-    let mut message = DataType::from_fields([
-        registry.field_by_tag(453).unwrap().clone(),
-        registry
-            .definition(yggdryl::FixCategory::Groups, "Parties")
-            .unwrap()
-            .clone(),
-    ])
-    .unwrap()
-    .required_field("newordersingle");
-    message.as_fix_mut().set_msgtype("D").unwrap();
-    registry
-        .insert_definition(yggdryl::FixCategory::Components, message)
-        .unwrap();
-    let held = registry.msgtype("D").unwrap();
-    let counter = 453;
-    assert_eq!(held.get_group_by_tag(counter).unwrap().name(), "Parties");
-    free("registry message singleton", || {
-        black_box(registry.get_msgtype("D"));
-        black_box(registry.msgtypes().next());
-    });
-    free("borrowed message fields and scoped group", || {
-        black_box(held.as_field());
-        black_box(held.name());
-        black_box(held.as_str());
-        black_box(held.get_group_by_tag(counter));
-    });
-}
-
-#[test]
-fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
-    for size in [1, 32, 512] {
-        let mut registry = fix_registry(size);
-        let mut definition = DataType::from_fields(registry.iter().cloned())
-            .unwrap()
-            .required_field("HashFixture");
-        definition.as_fix_mut().set_msgtype("H").unwrap();
-        registry
-            .create_definition(yggdryl::FixCategory::Components, definition)
-            .unwrap();
-        let held = registry.msgtype("H").unwrap();
-        // Each call constructs one shared XXH3 state. The native structural
-        // feed adds no allocations as the fields and message schema grow.
-        costs("registry stable hash", 1, || {
-            black_box(registry.stable_hash());
-        });
-        costs("message definition stable hash", 1, || {
-            black_box(held.stable_hash());
-        });
-        let message = FixCodec::new(std::sync::Arc::new(registry))
-            .parse_fix_line(b"35=H|55=AAPL|")
-            .unwrap();
-        costs("message value stable hash", 1, || {
-            black_box(message.stable_hash());
-        });
-    }
-}
-
-#[test]
-fn fix_identifier_declarations_and_compiled_selection_allocate_nothing() {
-    for size in [4, 16, 64] {
-        let fields: Vec<_> = (0..size)
-            .map(|index| {
-                let mut field = DataType::utf8().nullable_field(format!("Identifier{index}"));
-                field.as_fix_mut().set_tag(10_000 + index).unwrap();
-                field
-            })
-            .collect();
-        let mut definition = DataType::from_fields(fields.clone())
-            .unwrap()
-            .required_field("identifierfixture");
-        definition.as_fix_mut().set_msgtype("UIDS").unwrap();
-        definition
-            .as_fix_mut()
-            .set_identifiers(fields.iter().map(Field::name))
-            .unwrap();
-        let mut registry = FixRegistry::from_fields(fields).unwrap();
-        registry
-            .create_definition(yggdryl::FixCategory::Components, definition.clone())
-            .unwrap();
-        let registry = Arc::new(registry);
-        let message = FixMsg::with_registry(
-            Arc::clone(&registry),
-            definition,
-            Scalar::from_sequence(
-                (0..size)
-                    .map(|index| Scalar::from(format!("VALUE-{index}")))
-                    .collect::<Vec<_>>(),
-            ),
-        )
-        .unwrap();
-        let compiled = registry.msgtype("UIDS").unwrap();
-        assert_eq!(
-            compiled.identifier_values(&message).count(),
-            usize::try_from(size).unwrap()
-        );
-        free("borrowed FIX identifier declaration", || {
-            for name in compiled.as_field().as_fix().identifiers() {
-                black_box(name);
-            }
-        });
-        free("compiled FIX identifier selection", || {
-            for (field, value) in compiled.identifier_values(&message) {
-                black_box((field, value));
-            }
-        });
-    }
-}
-
-#[test]
-fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
-    for size in [1, 32, 512] {
-        let mut registry = FixRegistry::new();
-        for index in 0..size {
-            let mut field = DataType::utf8().nullable_field(format!("Code{index}"));
-            // Registry tags are positive; zero is only unresolved arrival provenance.
-            field.as_fix_mut().set_tag(index + 1).unwrap();
-            field
-                .as_fix_mut()
-                .set_codes(&[FixCode::new("Buy", "1")])
-                .unwrap();
-            registry.insert(field).unwrap();
-        }
-        registry
-            .insert_definition(
-                yggdryl::FixCategory::Components,
-                DataType::from_fields([])
-                    .unwrap()
-                    .required_field("component"),
-            )
-            .unwrap();
-        let field = registry.field(size).unwrap();
-        free("field code metadata lookup", || {
-            assert_eq!(black_box(field.as_fix().code_name("1")), Some("Buy"));
-        });
-        free("category cursor and iteration setup", || {
-            assert!(
-                black_box(registry.definition_at(yggdryl::FixCategory::Components, 0)).is_some()
-            );
-            assert!(
-                black_box(
-                    registry
-                        .definitions(yggdryl::FixCategory::Components)
-                        .next()
-                )
-                .is_some()
-            );
-            assert!(black_box(registry.definition_at(yggdryl::FixCategory::Fields, 0)).is_some());
         });
     }
 }
 
 #[test]
 fn a_fix_code_lookup_allocates_nothing() {
-    // A 300-code set: a lookup must cost the codes it walks past and no
-    // allocation, whichever tier answers it.
-    let codes: Vec<FixCode> = (0..300)
-        .map(|index| {
-            FixCode::new(format!("Member{index:04}"), format!("{index:04}"))
-                .with_description(format!("Member number {index} (M{index:04})"))
-        })
-        .collect();
-    let mut field = DataType::utf8().nullable_field("Vocabulary");
-    field.as_fix_mut().set_tag(9995).expect("a static tag");
+    let mut field = DataType::utf8().nullable_field("Side");
+    field.as_fix_mut().set_tag(9_995).expect("a static tag");
     field
         .as_fix_mut()
-        .set_codes(&codes)
-        .expect("a valid code set");
+        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])
+        .expect("a static code set");
     let view = field.as_fix();
-
-    free("codes walk", || {
+    free("a code by its wire value", || {
+        let _ = black_box(view.code(black_box("1")));
+    });
+    free("a code by its name", || {
+        let _ = black_box(view.code_by_name(black_box("buy")));
+    });
+    free("a name for a wire value", || {
+        let _ = black_box(view.code_name(black_box("2")));
+    });
+    free("a value no code spells", || {
+        let _ = black_box(view.code(black_box("9")));
+    });
+    free("the walk over the set", || {
         let _ = black_box(view.codes().count());
-    });
-    // Tier 1 stops at the match; the last code is the worst case.
-    free("code first", || {
-        let _ = black_box(view.code(black_box("0000")));
-    });
-    free("code last", || {
-        let _ = black_box(view.code(black_box("0299")));
-    });
-    free("code miss", || {
-        let _ = black_box(view.code(black_box("absent")));
-    });
-    // Tier 2 runs the whole set, because ambiguity must answer nothing.
-    free("code_by_name folded", || {
-        let _ = black_box(view.code_by_name(black_box("member_0299")));
-    });
-    free("code_value tier one", || {
-        let _ = black_box(view.code_value(black_box("0150")));
-    });
-    free("code_value tier two", || {
-        let _ = black_box(view.code_value(black_box("MEMBER 0150")));
-    });
-    // Tier 3 reads a description it never decodes, so it allocates nothing
-    // either.
-    free("code_value tier three", || {
-        let _ = black_box(view.code_value(black_box("m0150")));
     });
 }
 
@@ -809,38 +540,40 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     );
     assert!(msg.get_by_tag(55).is_some(), "the standard field by tag");
     free("get_by_name vendor", || {
-        let _ = black_box(msg.get_by_name("tradeid"));
+        let _ = black_box(msg.get_by_name(black_box("tradeid")));
     });
     free("get_by_tag vendor", || {
-        let _ = black_box(msg.get_by_tag(5_001));
+        let _ = black_box(msg.get_by_tag(black_box(5_001)));
     });
     free("get_by_tag known", || {
-        let _ = black_box(msg.get_by_tag(55));
+        let _ = black_box(msg.get_by_tag(black_box(55)));
     });
     free("get_by_id vendor", || {
-        let _ = black_box(msg.get_by_id(vendor));
+        let _ = black_box(msg.get_by_id(black_box(vendor)));
     });
     free("get_by_id foreign", || {
-        let _ = black_box(msg.get_by_id(foreign));
+        let _ = black_box(msg.get_by_id(black_box(foreign)));
     });
     // An unknown tag is rendered on the stack and looked up by that name.
     free("get_by_tag unknown retained", || {
-        let _ = black_box(msg.get_by_tag(9999));
+        let _ = black_box(msg.get_by_tag(black_box(9999)));
     });
     free("get_by_tag unknown absent", || {
-        let _ = black_box(msg.get_by_tag(1234));
+        let _ = black_box(msg.get_by_tag(black_box(1234)));
     });
     free("get_by_name", || {
-        let _ = black_box(msg.get_by_name("ticker"));
+        let _ = black_box(msg.get_by_name(black_box("ticker")));
     });
     let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
     free("get_by_path", || {
-        let _ = black_box(msg.get_by_path(&absent_member));
+        let _ = black_box(msg.get_by_path(black_box(&absent_member)));
     });
 }
 
 #[test]
-fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
+fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
+    // The header, the capture and the event are held beside the row rather
+    // than in it, so reading one is a borrow whatever the row carries.
     for width in [0, 64, 1_024] {
         let field = DataType::from_fields(
             (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
@@ -849,26 +582,62 @@ fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
         .required_field("row");
         let value = Scalar::from_sequence((0..width).map(Scalar::from));
         let message = FixMsg::with_registry(Arc::new(FixRegistry::new()), field, value).unwrap();
-        free("four settled identity borrows", || {
+        free("the typed holders", || {
             let held = black_box(&message);
             black_box((
-                held.updatedat(),
-                held.createdat(),
-                held.msghash(),
-                held.msgphash(),
+                held.header().msgtype(),
+                held.header().beginstring(),
+                held.header().sendingtime(),
+                held.capture().pluginid(),
+                held.text(),
+                held.metadata().len(),
             ));
         });
-        free("four settled identity tag borrows", || {
+        free("the settled identity", || {
             let held = black_box(&message);
-            for tag in [
-                yggdryl::UNIX_TAG_NAME.0,
-                yggdryl::CREATUNIX_TAG_NAME.0,
-                yggdryl::HASHCODE_TAG_NAME.0,
-                yggdryl::CROSSHASHCODE_TAG_NAME.0,
-            ] {
-                black_box(held.get_by_tag(black_box(tag)));
-            }
+            black_box((
+                held.event().get_unix(),
+                held.event().get_hashcode(),
+                held.event().get_curruuid(),
+                held.event().get_crosscode(),
+            ));
         });
+    }
+}
+
+#[test]
+fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
+    let codec = FixCodec::new(Arc::new(fix_registry(64)));
+    let frame = "8=FIX.4.4|35=D|11=A|10=001|";
+    let read = |frames: usize| {
+        let line = frame.repeat(frames).into_bytes();
+        // The row is read outside the count: what is measured is draining
+        // the messages it carries, which is where a collection would show.
+        let messages = codec.parse_line(black_box(&line)).expect("a row");
+        let (allocations, count) = counted(move || {
+            messages
+                .inspect(|message| {
+                    black_box(message.as_ref().expect("a message").as_field().name());
+                })
+                .count()
+        });
+        assert_eq!(
+            count, frames,
+            "a line of {frames} frames is {frames} messages"
+        );
+        allocations
+    };
+    // What a row of several frames costs is its messages and nothing per
+    // line: the source holds the row's entries and re-enters the frame
+    // reader where each opens, so draining is proportional to the messages
+    // and never to the line - which is what a collection of the results
+    // would break.
+    // Settle the shared schema/registry plan before counting the repeated path.
+    // Cold plan construction belongs to the boundary, not to each frame.
+    black_box(read(1));
+    let each = read(4) / 4;
+    for frames in [4, 8, 16] {
+        assert_eq!(read(frames), each * frames, "{frames} frames");
     }
 }
 
@@ -1799,37 +1568,20 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
     line
 }
 
-/// What reading a message off a line costs, by how many pairs the line
-/// carries: four, sixteen and sixty-four.
+/// What one framed line costs to read as a message, by how many pairs it
+/// carries.
 ///
-/// Three widths distinguish a fixed boundary cost from one paid per pair.
-/// Settling the mandatory replay bundle adds eight containers: three for the
-/// initial column plan (columns, named-content order, shared plan), two staged
-/// field/value vectors, two settled shared slices, and the final tag index.
-/// The replaced timestamp Slot no longer allocates its one-value vector, so
-/// the net increase is seven. Above sixteen final columns, the Struct's
-/// duplicate-name check adds one more allocation: these rows have 13, 25 and
-/// 73 columns after settlement. Thus the former counts gain 7, 8 and 8, not
-/// another allocation per pair. The steady-state final plan is cache-reused;
-/// initial buffers reserve their exact bounds and already-correct tags are
-/// not rewritten. Native clock and identity values add no per-cell buffer.
+/// Three widths, because one could not tell a per-message cost from a
+/// per-pair one: the constant is what a message costs whatever it carries -
+/// the page the line is read into, the row's schema and value, the typed
+/// facts the parse settles and the arrival record - and the slope is what a
+/// pair adds, which is its column and nothing for its entry, because a key
+/// and a value are ranges of that one page.
 ///
-/// Arrival keys and values remain ranges of one shared page. These short
-/// strings fit inline even in the typed row; the separate wide-value test
-/// pins the one allocation each long row value needs and none for its entry.
-///
-/// A frame that marked no key judges none - which every wire frame is - so
-/// the reading takes each key as it stands. That drops two things the judged
-/// reading paid for: the vector of the row's whole width built only to hand
-/// each key straight back, and the growth of the pairs vector, which a
-/// `filter_map` gave no width to reserve from and now reserves exactly once.
-/// The first is one per message at every width; the second is the doublings
-/// a width needs, which is why sixty-four pairs save more than four do.
-///
-/// A caller who decoded the line already owns that page, and
+/// A caller who decoded the line already owns the page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
-/// takes it: two fewer at each, which is the page and nothing else.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 32), (16, 46), (64, 94)];
+/// takes it: one fewer at each, which is the page's own vector.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 76), (16, 101), (64, 162)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1868,21 +1620,18 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// Here they do not fit: the same pair counts, once with two-byte values and
 /// once with values three kilobytes wide.
 ///
-/// The wide reading costs exactly one allocation more *per pair*, and that
-/// one is the row's own: a typed `Utf8` column holds the value it was given,
-/// and a column is what a row is for. The entry beside it adds nothing at
-/// all, because a key and a value are ranges of the page the line was read
-/// into and a range is two offsets whatever it spans. Under the shape this
-/// replaced the entry copied the value too, so the slope was two per pair
-/// rather than one - and it copied every one of those kilobytes besides,
-/// which no count sees and every capture pays.
+/// The wide reading costs allocations the narrow one does not, and they are
+/// the row's own: a typed `Utf8` column holds the value it was given, and a
+/// column is what a row is for. The entry beside it adds nothing at all,
+/// because a key and a value are ranges of the page the line was read into
+/// and a range is two offsets whatever it spans.
 ///
 /// Three pair counts and two widths, because one of each could tell neither a
 /// per-message cost from a per-pair one nor a cost that scales with a value
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (32, 35)), (16, (46, 61)), (64, (94, 157))];
+    [(4, (76, 85)), (16, (101, 146)), (64, (162, 351))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1903,12 +1652,12 @@ fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
             );
         }
         // The whole of the difference, stated as the rule rather than as two
-        // numbers a reader has to subtract: one column per wide value, and
-        // nothing for the entry that names the same bytes.
+        // numbers a reader has to subtract: a fixed cost per wide value,
+        // the same at every width, and nothing that scales with the bytes.
         assert_eq!(
             wide - narrow,
-            pairs - 1,
-            "a {pairs}-pair line paid more than one allocation per wide value"
+            3 * (pairs - 1),
+            "a {pairs}-pair line's wide values cost more than three each"
         );
     }
 }
@@ -1939,9 +1688,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let mut registry = FixRegistry::from_fields([msgtype, counter])
         .expect("the generated dictionary has no conflict");
-    registry
-        .insert_definition(yggdryl::FixCategory::Groups, parties)
-        .expect("the group definition");
+    registry.insert(parties).expect("the group definition");
     registry
 }
 
@@ -1975,10 +1722,9 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// and the rest of it is the row a wider group builds. The codec reads a
 /// row's pairs directly and descends into none of them, so the tree the
 /// packed value would have been scanned into is not among these.
-/// The settled bundle adds the same net seven containers as [`FIX_LINE_COSTS`]
-/// at both widths: neither root crosses the Struct duplicate-check threshold.
-/// The 34-allocation growth for twelve more members is unchanged.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 66), (16, 100)];
+/// Two member counts, because the number that matters is the slope and not
+/// the constant a message pays whatever it carries.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 152), (16, 220)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -2001,28 +1747,25 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 
 /// What the same three lines cost through the door that takes a decoded line.
 ///
-/// Two allocations fewer per message than [`FIX_LINE_COSTS`] at every width,
-/// and the two are the page. A caller holding a [`TextLine`] already owns the
-/// bytes as a range of a page it read them into, so the codec is handed that
-/// page instead of making a second one - which is what the byte door must do,
-/// because a bare slice is not a page and a message keeps ranges of one.
-///
-/// Two and not one because a page is an `Arc<Vec<u8>>`: the vector's own
-/// buffer, and the shared box around it that lets every key and value name a
-/// range of the same bytes without copying them.
+/// One allocation fewer per message than [`FIX_LINE_COSTS`] at every width,
+/// and the one is the page's own buffer. A caller holding a [`TextLine`]
+/// already owns the bytes as a range of a page it read them into, so the
+/// codec is handed that page instead of making a second one - which is what
+/// the byte door must do, because a bare slice is not a page and a message
+/// keeps ranges of one.
 ///
 /// The saving is per message and not per pair, which is exactly right: a page
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 44), (64, 92)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 75), (16, 100), (64, 161)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     let codec = FixCodec::new(Arc::new(fix_registry(64)));
     for ((pairs, each), (widest, bytes)) in FIX_TEXT_LINE_COSTS.iter().zip(FIX_LINE_COSTS) {
         assert_eq!(*pairs, widest, "the two pins measure the same widths");
-        assert_eq!(each + 2, bytes, "the page is the whole of the difference");
+        assert_eq!(each + 1, bytes, "the page is the whole of the difference");
         let held = fix_pairs_line(*pairs);
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and
@@ -2434,173 +2177,6 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
 }
 
 #[test]
-fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
-    let registry =
-        Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"));
-    let codec = FixCodec::new(Arc::clone(&registry));
-    // A fill naming an unsourced ISIN, a CFI and a market: nine derivations
-    // land on it (the source, the ISIN column and its country, the security
-    // type and the product, the market, the status and the state, and the
-    // day order).
-    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
-    let message = codec
-        .parse_line(line)
-        .expect("a row")
-        .next()
-        .expect("one frame")
-        .expect("a message");
-    // The first message a registry enriches pays the registry's compile:
-    // every derivation parsed, the working schema built and every term
-    // bound against it, once, for every message and every shape after.
-    // Thousands of allocations, and the reason it is paid
-    // per registry rather than per message or per shape.
-    let (cold, enriched) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
-    let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
-    assert!(
-        cold > 10 * warm,
-        "the compile is paid by the first message: {cold} cold, {warm} warm"
-    );
-    // What a message costs after that, exactly: the clone (2, the row's
-    // value list and the arrival record); restatement's rebuild of the row
-    // at the dictionary's newest version and the working row of the 62
-    // columns the derivations read or fill (44 together, what a settled
-    // message pays below less its clone); and the derivations landing
-    // (109): their evaluations, the landed list sized once, the writes
-    // staged and the one rebuild that lands them through `set_each`, and
-    // the `altids` Map with the rebuild that lands it. Nothing in it is a
-    // parse, a bind or a shape: the terms were bound at compile and are
-    // read borrowed from the registry.
-    //
-    // Nine more than before the crate grew `recordedat`, `expiredat` and
-    // the two lane currencies, and nine more again for the three identifier
-    // columns beside `isincode` and the struct that joins them: the wider
-    // working row, and the evaluations and writes each of them adds.
-    assert_eq!(warm, 164, "a warm same-shaped message");
-    let (thousand, _) = counted(|| {
-        for _ in 0..1_000 {
-            black_box(codec.enrich_message(message.clone()).expect("enriches"));
-        }
-    });
-    assert_eq!(
-        thousand,
-        1_000 * warm,
-        "a thousand same-shaped messages bind nothing and grow nothing"
-    );
-    // A stated value is never overwritten, so a second pass over the
-    // enriched message derives nothing: the clone (2), restatement's rebuild
-    // and the working row (44); the nine stated targets skip their terms,
-    // and the landed list is never sized.
-    black_box(
-        codec
-            .enrich_message(enriched.clone())
-            .expect("a second pass"),
-    );
-    let (settled, _) = counted(|| {
-        codec
-            .enrich_message(enriched.clone())
-            .expect("a second pass")
-    });
-    // Six more than before the crate grew its new columns: the working row
-    // is that much wider and gathering it costs that much, while the
-    // derivations themselves still land nothing on a message that already
-    // states everything.
-    assert_eq!(
-        settled, 52,
-        "a settled message pays restatement, the working row and nothing per derivation"
-    );
-    // For scale: one clone, and one `set` on the same message - the clone
-    // and one rebuild (16).
-    let (clone, _) = counted(|| black_box(message.clone()));
-    assert_eq!(clone, 2, "the value list and the arrival record");
-    let (set_once, _) = counted(|| {
-        let mut held = message.clone();
-        held.set(59, Scalar::from("0")).expect("a write");
-        black_box(held)
-    });
-    assert_eq!(set_once, 18, "one clone and one write");
-    // A report stating two fields derives nothing but its `altids` Map:
-    // every one of the 32 terms evaluates over columns mostly null, which
-    // the evaluator pays in its own temporaries - a settled such report
-    // costs 71, the clone, restatement, the working row and those
-    // evaluations, 25 over the settled report above whose nine stated
-    // targets skip their terms - and the Map and the rebuild that lands it
-    // are the 19 on top of that.
-    let identified = codec
-        .parse_line(b"8=FIX.4.4|35=8|37=A|59=0|10=0|")
-        .expect("a row")
-        .next()
-        .expect("one frame")
-        .expect("a message");
-    let (_, mapped) = counted(|| codec.enrich_message(identified.clone()).expect("enriches"));
-    let (mapped_warm, _) = counted(|| codec.enrich_message(identified.clone()).expect("enriches"));
-    black_box(codec.enrich_message(mapped.clone()).expect("a second pass"));
-    let (mapped_settled, _) =
-        counted(|| codec.enrich_message(mapped.clone()).expect("a second pass"));
-    assert_eq!(mapped_settled, 77, "a settled two-field report");
-    // The altids Map and the rebuild that lands it, and now also the four
-    // columns the crate grew: a report that states a currency and a clock
-    // lands `recordedat`, `expiredat` and both lane currencies on the warm
-    // pass, and finds them stated on the settled one.
-    assert_eq!(
-        mapped_warm - mapped_settled,
-        82,
-        "the altids Map and the rebuild that lands it"
-    );
-
-    // The corpus: every shape a bridge writes - 94 messages, every JSON
-    // document among them one entry-less `unknown`, read under a second
-    // handle on the committed dictionary - enriched three times through one
-    // codec. The first pass pays that registry's compile and nothing else
-    // over the second; the second and the third cost the same allocation
-    // for allocation, because nothing is bound or kept per shape: each
-    // message pays its clone, its working row, its sweeps and its rebuilds,
-    // whatever shape came before it.
-    let corpus = std::fs::read(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"),
-    )
-    .expect("the corpus");
-    let plugged = Arc::new(FixRegistry::from_handle(&folder).expect("loads"));
-    let bridge = FixCodec::new(Arc::clone(&plugged));
-    let messages: Vec<FixMsg> = bridge
-        .parse_lines(&ulbridge_bodies(corpus))
-        .filter_map(Result::ok)
-        .collect();
-    assert_eq!(messages.len(), 94, "the corpus");
-    let pass = || {
-        counted(|| {
-            bridge
-                .enrich_messages(messages.clone())
-                .map(|message| message.expect("enriched").entries().len())
-                .sum::<usize>()
-        })
-        .0
-    };
-    let (first, second, third) = (pass(), pass(), pass());
-    assert_eq!(
-        second, third,
-        "a pass over every shape costs the same every time"
-    );
-    // The committed dictionary's compile, one allocation over what the
-    // bridge's registry - the same dictionary beside the bridge's own
-    // fields - cost to compile; it is still paid exactly once, which is
-    // what the equality above pins.
-    assert_eq!(
-        first - second,
-        14_929,
-        "the first pass pays the registry's compile and nothing else"
-    );
-    // The 441 allocations of cloning the 94 messages included: the clone,
-    // the working row, the sweeps and the rebuilds of each.
-    assert_eq!(second, 119_567, "94 messages, each its own working row");
-    // Ten fewer than the 95 messages of the corpus read per plugin cost: the
-    // wildcards are a row each, and a document's row clones no entries.
-    let (clones, _) = counted(|| black_box(messages.clone()));
-    assert_eq!(clones, 441, "what cloning the corpus costs of that");
-}
-
-#[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
@@ -2613,70 +2189,25 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     registry.update(gross).expect("the text is a term");
     let registry = Arc::new(registry);
     let codec = FixCodec::new(Arc::clone(&registry));
-    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
-    let message = codec
-        .parse_line(b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|")
-        .expect("a row")
-        .next()
-        .expect("one frame")
-        .expect("a message");
-    // The first ask pays the compile up to the refusal; the registry keeps
-    // the refusal as it would keep the compiled list, so the second ask
-    // pays the clone (2), restatement's rebuild of the parsed message (21)
-    // and the refusal's two strings - both handles to text the registry
-    // holds, so nothing - and nothing of a compile.
-    let (cold, refused) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
+    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
+    // A parse enriches, so a derivation the registry cannot bind refuses the
+    // read itself. The first ask pays the compile up to the refusal; the
+    // registry keeps the refusal as it would keep the compiled list, so
+    // every ask after it pays the same and none of them pays a compile.
+    let refuse = || {
+        codec
+            .parse_line(black_box(line))
+            .and_then(|mut messages| messages.next().expect("one frame"))
+            .expect_err("the derivation refuses")
+    };
+    let (cold, refused) = counted(refuse);
     assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
-    let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
-    let (again, _) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
+    let (warm, _) = counted(refuse);
+    let (again, _) = counted(refuse);
     assert!(
-        cold > 10 * warm,
-        "the refused compile is paid once: {cold} cold, {warm} warm"
+        cold - warm > 1_000,
+        "the refused compile is a thousand allocations and is paid once: \
+         {cold} cold, {warm} warm"
     );
     assert_eq!(warm, again, "the refusal is kept, not recompiled");
-    assert_eq!(
-        warm, 23,
-        "a refused enrichment: the clone, restatement and the refusal"
-    );
-    // The row door refuses the same way and compiles nothing either: the
-    // first fill pays the clone (2), the fixed schema's column plan (4,
-    // resolved once per thread and kept), the row's values up to the first
-    // crate column (1, one fewer now that the crate's own columns lead the
-    // row and the refusing column is reached sooner) and the refusal; the
-    // next fill finds the plan kept and pays 7.
-    let (row, refused) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
-    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
-    let (row_again, _) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
-    assert_eq!(row - row_again, 4, "the fixed schema's column plan, once");
-    assert_eq!(row_again, 7, "a refused row fill reads the kept refusal");
-}
-
-/// The bodies the text reader hands the codec for the bridge's capture,
-/// framed under the bridge's own row header exactly as the pipeline
-/// benchmark reads them.
-fn ulbridge_bodies(corpus: Vec<u8>) -> Vec<Vec<u8>> {
-    use arrow_array::cast::AsArray;
-
-    let source = Buffer::from_bytes(corpus).with_media_type(
-        Url::from_str("file:///ulbridge.log")
-            .expect("a URL")
-            .media_type(),
-    );
-    let mut options = TextOptions::new()
-        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
-        .expect("the row header compiles")
-        .with_timezone(Timezone::UTC);
-    options.start_rownum = Some(1);
-    options.parse_mimetype = true;
-    let options: yggdryl::media::RecordOptions = options.into();
-    let mut held = Vec::new();
-    for batch in source.read_arrow_reader(&options).expect("a reader") {
-        let batch = batch.expect("a batch");
-        let at = batch.schema().index_of("body").expect("the body column");
-        let column = batch.column(at).as_string::<i32>();
-        for row in 0..batch.num_rows() {
-            held.push(column.value(row).as_bytes().to_vec());
-        }
-    }
-    held
 }

@@ -13,8 +13,7 @@ use yggdryl::holder::local::Folder;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{Isin, State};
 use yggdryl::{
-    DataType, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url,
-    fix_schema,
+    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url, fix_schema,
 };
 
 fn reader() -> FixCodec {
@@ -658,7 +657,7 @@ fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
     // fill landed in is what the pair says.
     assert_eq!(
         String::from_utf8(nulled.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=25|10=0|59=0|"
+        "8=FIX.4.4|35=8|31=2.5|32=10|38=10|44=2.5|59=0|37=A|381=25|10=0|"
     );
 }
 
@@ -734,7 +733,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
         });
     }
     // The dictionary's own rules and the crate's own columns.
-    assert_eq!(carried, 42);
+    assert_eq!(carried, 43);
     for (tag, _) in [
         yggdryl::ISINCODE_TAG_NAME,
         yggdryl::MICCODE_TAG_NAME,
@@ -1112,7 +1111,8 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // stream door twice, over what the stream already enriched - and the
     // stream answers exactly what the one-message door answers, because it
     // carries nothing from one message to the next.
-    let reader = super::fixed_codec(super::committed_registry());
+    let reader = super::fixed_codec(super::committed_registry())
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let source = Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec()).with_media_type(
         Url::from_str("file:///ulbridge.log")
             .expect("a URL")
@@ -1139,12 +1139,8 @@ fn a_stream_of_every_shape_costs_nothing_between_messages() {
     // statistics line - is one `unknown` row, never one per plugin it named
     // and never none.
     assert_eq!(messages.len(), 94, "the corpus");
-    let forward: Vec<FixMsg> = messages.iter().map(|message| message.clone()).collect();
-    let mut backward: Vec<FixMsg> = messages
-        .iter()
-        .rev()
-        .map(|message| message.clone())
-        .collect();
+    let forward: Vec<FixMsg> = messages.to_vec();
+    let mut backward: Vec<FixMsg> = messages.iter().rev().cloned().collect();
     backward.reverse();
     assert_eq!(forward, backward, "order changes nothing a message derives");
     // A parse fills as it reads, so the stream is the messages themselves:

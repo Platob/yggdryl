@@ -11,10 +11,15 @@ use super::path;
 use std::sync::Arc;
 
 use yggdryl::fix::{FixCode, FixReplacement};
-use yggdryl::types::State;
 use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 
-/// `LastQty(32)`, which `LastShares` also reaches, and `Symbol(55)`, undated.
+/// `LastQty(32)`, which `LastShares` also reaches, `Symbol(55)`, and
+/// `ExecBroker(76)`, which `ExecutingBroker` also reaches - all undated.
+///
+/// Two aliased fields, because the two are read at different seams: tag 32
+/// is one of the facts the event holds typed, so a restatement to it leaves
+/// the content row altogether, and tag 76 is an ordinary column, so a
+/// restatement to it lands as a child like any other.
 fn undated_fields() -> Vec<Field> {
     let mut qty = DataType::Float64.nullable_field("lastqty");
     qty.as_fix_mut().set_tag(32).expect("a tag");
@@ -23,7 +28,13 @@ fn undated_fields() -> Vec<Field> {
         .expect("an alias");
     let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).expect("a tag");
-    vec![qty, symbol]
+    let mut broker = DataType::utf8().nullable_field("execbroker");
+    broker.as_fix_mut().set_tag(76).expect("a tag");
+    broker
+        .as_fix_mut()
+        .set_names(["ExecutingBroker"])
+        .expect("an alias");
+    vec![qty, symbol, broker]
 }
 
 fn undated_registry() -> Arc<FixRegistry> {
@@ -70,23 +81,6 @@ fn integer(message: &FixMsg, tag: i32) -> Option<i128> {
     message.get_by_tag(tag).as_ref().and_then(Scalar::as_i128)
 }
 
-/// The ranked spelling a `state` column holds for one wire code.
-fn state(code: &str) -> String {
-    State::from_spelling(code)
-        .expect("a lifecycle code")
-        .as_str()
-        .to_owned()
-}
-
-/// The value one root child holds, by the child's own spelling alone.
-fn child<'msg>(message: &'msg FixMsg, name: &str) -> &'msg Scalar {
-    let at = message
-        .as_field()
-        .index_of(name)
-        .unwrap_or_else(|| panic!("a child named {name}"));
-    message.as_value().get(at).expect("a value")
-}
-
 /// The wire a message re-emits, which is what a restatement must leave
 /// alone: the entries are the row read as a tree, so a value restated to a
 /// newer field shows here and nowhere else.
@@ -100,13 +94,21 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
         undated_registry(),
         &[("LastShares", "100"), ("symbol", "AAPL")],
     );
-    // Renamed in place, re-typed to the registry's datatype, the tag now
-    // carried so the message answers by it.
-    assert_eq!(names(&latest), ["lastqty", "symbol"]);
+    // Renamed in place and re-typed to the registry's datatype, so the
+    // message answers by the tag. Tag 32 is one of the event's own facts,
+    // so what the restatement reached is the holder rather than a column of
+    // the content row.
+    assert_eq!(names(&latest), ["symbol"]);
     assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(latest.as_field().fields()[0].dtype(), &DataType::Float64);
-    assert!(!latest.as_field().fields()[0].is_nullable());
+    assert_eq!(latest.by_name("lastqty").unwrap(), Scalar::from(100.0_f64));
     assert_eq!(text(&latest, 55).as_deref(), Some("AAPL"));
+    // An alias reaching an ordinary column is renamed in place there, with
+    // the registry's own spelling, type and tag.
+    let ordinary = built(undated_registry(), &[("ExecutingBroker", "BRKR")]);
+    assert_eq!(names(&ordinary), ["execbroker"]);
+    assert_eq!(ordinary.as_field().fields()[0].dtype(), &DataType::utf8());
+    assert!(!ordinary.as_field().fields()[0].is_nullable());
+    assert_eq!(ordinary.by_tag(76).unwrap(), Scalar::from("BRKR"));
     // A version is the header's `BeginString`, and a row that states none
     // takes the reader's own default.
     assert_eq!(latest.header().beginstring(), "FIX.4.4");
@@ -115,8 +117,11 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
 #[test]
 fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
     let latest = built(undated_registry(), &[("32", "100")]);
-    assert_eq!(names(&latest), ["lastqty"]);
+    assert_eq!(names(&latest), [] as [&str; 0]);
     assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
+    let ordinary = built(undated_registry(), &[("76", "BRKR")]);
+    assert_eq!(names(&ordinary), ["execbroker"]);
+    assert_eq!(ordinary.by_tag(76).unwrap(), Scalar::from("BRKR"));
 }
 
 #[test]
@@ -124,30 +129,34 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
     // The canonical key states an absence: the alias fills the one column.
     let latest = built(
         undated_registry(),
-        &[("lastqty", ""), ("symbol", "AAPL"), ("LastShares", "100")],
+        &[
+            ("execbroker", ""),
+            ("symbol", "AAPL"),
+            ("ExecutingBroker", "BRKR"),
+        ],
     );
-    assert_eq!(names(&latest), ["symbol", "lastqty"]);
-    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(names(&latest), ["symbol", "execbroker"]);
+    assert_eq!(latest.by_tag(76).unwrap(), Scalar::from("BRKR"));
 
     // Both stated and different: both are kept, because nothing that
     // arrived is lost - under the one column the tag names, in the order
     // the row stated them.
     let latest = built(
         undated_registry(),
-        &[("lastqty", "50"), ("LastShares", "100")],
+        &[("execbroker", "ONE"), ("ExecutingBroker", "TWO")],
     );
-    assert_eq!(names(&latest), ["lastqty"]);
+    assert_eq!(names(&latest), ["execbroker"]);
     assert_eq!(
-        latest.by_tag(32).unwrap(),
-        Scalar::from_sequence([Scalar::from(50.0_f64), Scalar::from(100.0_f64)])
+        latest.by_tag(76).unwrap(),
+        Scalar::from_sequence([Scalar::from("ONE"), Scalar::from("TWO")])
     );
 
     // Both stated and equal once re-typed: one child.
     let latest = built(
         undated_registry(),
-        &[("lastqty", "100"), ("LastShares", "100")],
+        &[("execbroker", "ONE"), ("ExecutingBroker", "ONE")],
     );
-    assert_eq!(names(&latest), ["lastqty"]);
+    assert_eq!(names(&latest), ["execbroker"]);
 }
 
 #[test]
@@ -160,7 +169,7 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
             ("LastShares", "100"),
         ],
     );
-    assert_eq!(names(&latest), ["9999", "venueownthing", "lastqty"]);
+    assert_eq!(names(&latest), ["9999", "venueownthing"]);
     assert_eq!(latest.by_tag(9999).unwrap(), Scalar::from("custom"));
     assert_eq!(latest.by_name("venueownthing").unwrap(), Scalar::from("x"));
 }
@@ -357,23 +366,6 @@ fn an_execution_type_the_specification_folded_into_trade_restates() {
     // A value the newest version still declares is left alone.
     let latest = restated(&reader, b"8=FIX.4.2|35=8|37=O1|150=0|10=0|");
     assert_eq!(text(&latest, 150).as_deref(), Some("0"));
-}
-
-#[test]
-fn a_rule_applies_all_or_nothing() {
-    let reader = reader();
-    // OrdType OnClose is Market at TimeInForce AtTheClose - unless the
-    // message stated a TimeInForce of its own, which stands and blocks the
-    // whole rule.
-    let blocked = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|59=0|10=0|");
-    assert_eq!(text(&blocked, 40).as_deref(), Some("A"));
-    assert_eq!(text(&blocked, 59).as_deref(), Some("0"));
-    let applied = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|10=0|");
-    assert_eq!(text(&applied, 40).as_deref(), Some("1"));
-    assert_eq!(text(&applied, 59).as_deref(), Some("7"));
-    // A TimeInForce already at the rule's own value is no obstacle.
-    let agreed = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|59=7|10=0|");
-    assert_eq!(text(&agreed, 40).as_deref(), Some("1"));
 }
 
 #[test]

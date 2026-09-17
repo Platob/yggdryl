@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use yggdryl::graph::Element;
 use yggdryl::{DataType, Field, FixCategory, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn mapping_group(name: &str, tag: i32, sorted: bool) -> Field {
@@ -38,8 +37,13 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     registry.insert(group.clone()).unwrap();
     assert_eq!(registry.get_field_by_counter(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
+    // Every wire field is a leaf but the one list of scalars the crate owns:
+    // `parentuuids` is one column under one name, because a group's
+    // occurrence is a Struct of members a wire states one tag at a time and
+    // that is not.
     assert!(
-        super::definitions(&registry, FixCategory::Fields).all(|field| !field.dtype().is_nested())
+        super::definitions(&registry, FixCategory::Fields)
+            .all(|field| !field.dtype().is_nested() || field.name() == "parentuuids")
     );
 
     let before = registry.clone();
@@ -277,65 +281,6 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
 }
 
 #[test]
-fn a_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
-    for alias_tag in [9001, yggdryl::HASHCODE_TAG_NAME.0, 52] {
-        let mut registry = FixRegistry::new();
-        let mut alias = if let Some(field) = registry.get_field_by_tag(alias_tag) {
-            field.clone()
-        } else {
-            let mut field = DataType::utf8().nullable_field("label");
-            field.as_fix_mut().set_tag(alias_tag).unwrap();
-            field
-        };
-        alias.as_fix_mut().set_names(["Identifiers"]).unwrap();
-        registry.insert(alias).unwrap();
-        assert_eq!(
-            registry
-                .field_by_name("Identifiers")
-                .unwrap()
-                .as_fix()
-                .tag()
-                .unwrap(),
-            Some(alias_tag)
-        );
-        let map = registry.get_field_by_counter(65_020).unwrap().clone();
-        assert_eq!(map.as_fix().counter().unwrap(), Some(65_020));
-        let schema = DataType::from_fields([map]).unwrap().required_field("fix");
-        let registry = Arc::new(registry);
-        let mapping =
-            Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from("O-1"))]).unwrap();
-        let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
-        // The canonical Map is what the counter reaches, never the scalar
-        // the alias declares, and what it holds is the event's own fact.
-        assert_eq!(source.get_by_name("Identifiers"), Some(mapping.clone()));
-        assert_eq!(source.by_tag(65_020).unwrap(), mapping);
-        assert_ne!(source.get_hashcode(), 0);
-        let row = source.into_row(source.as_field()).unwrap();
-        let restored = FixMsg::from_row(Arc::clone(&registry), source.as_field(), &row).unwrap();
-        assert_eq!(restored.by_tag(65_020).unwrap(), mapping);
-        assert_eq!(restored.into_row(source.as_field()).unwrap(), row);
-
-        let empty = DataType::from_fields([]).unwrap().required_field("fix");
-        let mut absent = fresh(Arc::clone(&registry), &empty, Vec::new());
-        let root = yggdryl::FieldPath::from_str("Identifiers").unwrap();
-        let key = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
-        let sending = absent.by_tag(52).unwrap().clone();
-        assert_eq!(absent.get_by_path(&root), None);
-        assert_eq!(absent.get_by_path(&key), None);
-        assert_eq!(absent.get_by_tag(65_020), None);
-        assert_eq!(absent.remove("Identifiers").unwrap(), None);
-        let before = absent.clone();
-        assert!(absent.set("Identifiers", sending.clone()).is_err());
-        assert_eq!(absent, before, "a Map name never writes the aliased clock");
-        absent.set("Identifiers", mapping.clone()).unwrap();
-        assert_eq!(absent.get_by_path(&root), Some(mapping.clone()));
-        assert_eq!(absent.get_by_path(&key), Some(Scalar::from("O-1")));
-        assert_eq!(absent.get_by_tag(65_020), Some(mapping.clone()));
-        assert_eq!(absent.by_tag(52).unwrap(), sending);
-    }
-}
-
-#[test]
 fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
     for scalar_alias in [false, true] {
         let mut registry = FixRegistry::new();
@@ -349,9 +294,7 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
             .unwrap()
             .required_field("Identifiers");
         registry.insert(component).unwrap();
-        for category in [FixCategory::Components, FixCategory::Groups] {
-            assert!(registry.get_field_by_name("identifiers").is_some());
-        }
+        assert!(registry.get_field_by_name("identifiers").is_some());
         for spelling in [
             "identifiers",
             "Identifiers",

@@ -124,9 +124,17 @@ fn text() -> RecordOptions {
     text_options().into()
 }
 
-/// The codec: over the committed dictionary, with nothing pinned.
+/// The codec: over the committed dictionary, with nothing pinned and
+/// nothing refused.
+///
+/// Four of this capture's five messages are session traffic or a document -
+/// two heartbeats and a Jolokia answer - which is what a live read refuses
+/// through `DEFAULT_REFUSED_MSGTYPES`. A capture written to interleave every
+/// shape a bridge writes is asking for all of them, and says so here; what
+/// the default leaves out is pinned by
+/// `the_default_read_answers_only_the_two_business_messages`.
 fn codec() -> FixCodec {
-    super::fixed_codec(registry())
+    super::fixed_codec(registry()).with_exclude_msgtypes::<[&str; 0], &str>([])
 }
 
 /// The first stage alone, as one batch: what the text reader hands the codec.
@@ -143,12 +151,11 @@ fn text_stage(lines: &[&str]) -> RecordBatch {
 /// The whole path, as the batches it answers - which is none where the lines
 /// carry no message at all.
 fn read_batches(lines: &[&str]) -> Vec<RecordBatch> {
-    super::parsed_and_formatted(
-        &codec(),
-        corpus(lines).read_arrow_reader(&text()).expect("a reader"),
-    )
-    .map(|batch| batch.expect("a batch"))
-    .collect()
+    codec()
+        .parse_text_arrow_reader(corpus(lines).read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect()
 }
 
 /// The whole path, as one batch: the capture is far under the byte target.
@@ -520,10 +527,16 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // The fill's body: symbol, side, quantities and prices, typed.
     assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
     assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("BUY"));
-    assert_eq!(tag_column(&read, 38)[FILL_ROW].as_f64(), Some(982.0));
+    // `OrderQty(38)` and `Price(44)` are the event's own facts and have no
+    // column of their own; the crate's `qty` and `px` are where the row
+    // carries them, at the scale a crate column declares.
     assert_eq!(
-        tag_column(&read, 44)[FILL_ROW].as_f64(),
-        Some(547.771791547861)
+        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[FILL_ROW].as_decimal(),
+        Some((yggdryl::i256::from_i128(982_000_000_000_000_000_000), 18))
+    );
+    assert_eq!(
+        tag_column(&read, yggdryl::PX_TAG_NAME.0)[FILL_ROW].as_decimal(),
+        Some((yggdryl::i256::from_i128(547_771_791_547_861_000_000), 18))
     );
     assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
     // The dictionary's own column holds the code the wire wrote; the crate's
@@ -545,7 +558,10 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         tag_text(&read, 11)[ROUTED_ROW].as_deref(),
         Some("20260814_TP1_CLIENT_1003")
     );
-    assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
+    assert_eq!(
+        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[ROUTED_ROW],
+        tag_column(&read, yggdryl::QTY_TAG_NAME.0)[FILL_ROW]
+    );
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
     // Every projected row carries the code it settled on its content.
@@ -687,8 +703,7 @@ const ROWHEADER_WIDTH: usize = "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) "
 
 #[test]
 fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
-    let registry = registry();
-    let codec = super::fixed_codec(Arc::clone(&registry));
+    let codec = codec();
     let read = read(&CAPTURE);
 
     // The text reader's bodies are what the codec reads, so the line read
@@ -710,7 +725,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .map_or_else(|| format!("{held:?}"), ToString::to_string),
         ),
     };
-    for tag in [8, 35, 49, 56, 34, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
+    for tag in [8, 35, 49, 56, 34, 11, 55, 54, 150, 151, 60] {
         let held = tag_column(&read, tag);
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_str().expect("a body").as_bytes();
@@ -782,12 +797,12 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         );
     }
 
-    // The wire is rebuilt from each row's arrival record: every framed line
-    // comes back byte for byte behind the prose the text reader left in
-    // front of it - the routed row too, because what the row filled from its
-    // header is not an entry and so is not re-emitted. One line is written
-    // per message, not per source line, so the six lines that
-    // carried none write nothing and eleven lines come back as five.
+    // Written back out, the wire is rebuilt from each row's arrival record
+    // and the facts it holds typed: what the row filled from its header is
+    // not an entry, and the capture's own columns are the capture's, so
+    // neither is re-emitted. One line is written per message, not per
+    // source line, so the six lines that carried none write nothing and
+    // eleven lines come back as five.
     let mut written: Vec<u8> = Vec::new();
     let emitting = codec.clone().with_separator(b'|');
     let source = emitting
@@ -806,17 +821,29 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         .lines()
         .collect();
     assert_eq!(lines.len(), MESSAGES, "{lines:?}");
-    // The document's row arrived with no entries, so it re-emits nothing:
-    // an empty line, in its place.
-    assert_eq!(lines[RESPONSE_ROW], "");
-    for (row, line, opens) in [
-        (HEARTBEAT_ROW, HEARTBEAT, "8=FIX"),
-        (FILL_ROW, FILL, "8=FIX"),
-        (ROUTED_ROW, ROUTED, "ACCOUNT="),
-    ] {
-        let frame = &line[line.find(opens).expect("a frame")..];
-        assert_eq!(lines[row], frame, "row {row} re-emits its frame");
+    // The document's row arrived with no entries and stated no type, so it
+    // re-emits nothing but the version every built message states.
+    assert_eq!(lines[RESPONSE_ROW], "8=FIX.4.4|");
+    // The prose the text reader framed the line in is gone, and so are the
+    // columns the capture put in front of the row.
+    for line in &lines {
+        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "Receiving :"] {
+            assert!(!line.contains(carried), "{line}");
+        }
     }
+    // Every message states its own header band first, then its entries: a
+    // `BodyLength(9)` the frame opened with is an entry like any other, so
+    // it re-emits behind the header rather than where the frame wrote it.
+    assert_eq!(
+        lines[HEARTBEAT_ROW],
+        "8=FIX.4.4|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|9=68|10=159|"
+    );
+    assert!(
+        lines[ROUTED_ROW].starts_with("8=FIX.4.4|35=8|"),
+        "{}",
+        lines[ROUTED_ROW]
+    );
+    assert!(lines[FILL_ROW].contains("|11=20260814_TP1_CLIENT_1003|"));
 }
 
 /// A relay that batched two frames into one log write, and a sentence the
@@ -825,12 +852,6 @@ const BATCHED: [&str; 2] = [
     "2026-08-14 06:46:30.947 [402-e7254b20:9f015ed023:935] [ULMSG_BROKER_TO_DMZ] (DEBUG) Receiving : 8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|8=FIX.4.2|9=55|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|10=186|",
     "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Filtering - Message for RiskMonitor",
 ];
-
-/// The two frames of that one line, as the bytes each carries.
-const FIRST_FRAME: &str =
-    "8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|";
-const SECOND_FRAME: &str =
-    "8=FIX.4.2|9=55|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|10=186|";
 
 #[test]
 fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
@@ -909,7 +930,16 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
         .expect("text")
         .lines()
         .collect();
-    assert_eq!(lines, [FIRST_FRAME, SECOND_FRAME]);
+    // Each frame re-emits its own bytes with its header band in front: the
+    // `BodyLength(9)` the frame opened with is an entry, so it follows the
+    // header rather than leading it.
+    assert_eq!(
+        lines,
+        [
+            "8=FIX.4.4|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|9=68|10=159|",
+            "8=FIX.4.2|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|9=55|10=186|"
+        ]
+    );
 
     // The single-frame door refuses a body holding a second: a caller
     // holding two frames has a row, not a frame.
@@ -923,5 +953,41 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
             .to_string()
             .contains("expected one frame, got a second"),
         "{refused}"
+    );
+}
+
+#[test]
+fn the_default_read_answers_only_the_two_business_messages() {
+    // A live read of this capture answers two rows, not five: the two
+    // heartbeats are `Heartbeat`, the Jolokia answer states no type, and
+    // those are three of the types `DEFAULT_REFUSED_MSGTYPES` names.
+    let default = super::fixed_codec(registry());
+    let batches: Vec<RecordBatch> = default
+        .parse_text_arrow_reader(
+            corpus(&CAPTURE)
+                .read_arrow_reader(&text())
+                .expect("a reader"),
+        )
+        .expect("the batch reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect();
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    assert_eq!(rows, 2);
+    assert_eq!(
+        tag_text(&batches[0], 35),
+        vec![Some("8".to_owned()); 2],
+        "the fill and the row it was routed as"
+    );
+    // The line door refuses the same lines the batch door did.
+    assert_eq!(
+        column(&text_stage(&CAPTURE), "body")
+            .iter()
+            .filter(|body| default
+                .parse_line(body.as_str().expect("a body").as_bytes())
+                .expect("the line reads")
+                .next()
+                .is_some())
+            .count(),
+        rows
     );
 }
