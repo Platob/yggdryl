@@ -879,6 +879,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code; a name reaches the message of that name)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
+  the seven category doors below are Rust-only and stay so: a binding reaches every definition through the field doors (`.api-bindings.txt`: "no category argument and no definition door of its own"), while a tool that is told which category it was handed - `ygg fix fields|components|groups` - states it and has it checked, because `insert_definition` validates the stated category against the shape where `insert` derives it
   pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field>  (one category's folded name; Fields answers the scalar of that name)
   pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field>  (absence reported with its category)
   pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>  (one category in the registry's own order, nothing collected; the field doors above reach a definition whatever category it is filed under, and these are the same definitions scoped to one)
