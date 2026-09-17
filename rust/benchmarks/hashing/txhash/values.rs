@@ -65,7 +65,9 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(value).into_bytes());
     });
     let projected = value.into_uuid().expect("the instant fits nanoseconds");
-    assert_eq!(projected.into_bytes()[6] >> 4, 8);
+    // `into_uuid` projects a TxHash as a UUIDv7: the instant in front, the
+    // digest behind it, and the RFC 4122 variant.
+    assert_eq!(projected.into_bytes()[6] >> 4, 7);
     assert_eq!(projected.into_bytes()[8] >> 6, 2);
     group.bench_function("into_uuid", |bencher| {
         bencher.iter(|| {

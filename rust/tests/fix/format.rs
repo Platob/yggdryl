@@ -42,15 +42,14 @@ fn format_messages_answers_one_row_per_message_under_the_field() {
         .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(at(&rows[0], &target, "symbol").as_str(), Some("AAPL"));
-    // `Price(44)` and `OrderQty(38)` are the event's own facts and have no
-    // columns of their own: the crate's `px` and `qty` answer for them, at
-    // the crate column's own scale.
+    // `Price(44)` and `OrderQty(38)` are FIX's own fields and columns of
+    // their own, exact at the one width this crate keeps a number at.
     assert_eq!(
-        at(&rows[0], &target, "px").as_decimal(),
+        at(&rows[0], &target, "price").as_decimal(),
         Some((yggdryl::i256::from_i128(12_500_000_000_000_000_000), 18))
     );
     assert_eq!(
-        at(&rows[0], &target, "qty").as_decimal(),
+        at(&rows[0], &target, "orderqty").as_decimal(),
         Some((yggdryl::i256::from_i128(100_000_000_000_000_000_000), 18))
     );
     // The record closes a formatted row exactly as it closes a parsed one.
@@ -65,9 +64,9 @@ fn a_format_target_is_any_message_field_a_caller_names() {
     let wanted = [
         "symbol",
         "side",
-        "unix",
+        "currunix",
         "creatunix",
-        "hashcode",
+        "currhashcode",
         "crosshashcode",
         "crosscode",
         "snapunix",
@@ -105,9 +104,9 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     let keep = [
         "beginstring",
         "msgtype",
-        "unix",
+        "currunix",
         "creatunix",
-        "hashcode",
+        "currhashcode",
         "crosshashcode",
         "curruuid",
         "crossuuid",
@@ -142,13 +141,14 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         .unwrap();
     assert_eq!(at(&row, &schema, "symbol").as_str(), Some("AAPL"));
     assert_eq!(at(&row, &schema, "securityexchange").as_str(), Some("XLON"));
-    // The side and the price are the event's own, held typed and never in
-    // the record: a row that dropped their columns dropped the facts, where
-    // the parse had both.
+    // The side is an ordinary child, so it comes back off the record like
+    // the symbol did; the price is a fact the message lifted and holds, so
+    // a row that dropped its column dropped the fact, where the parse had
+    // both.
     assert_eq!(parsed.by_tag(54).unwrap().as_str(), Some("BUY"));
-    assert!(!parsed.by_tag(yggdryl::PX_TAG_NAME.0).unwrap().is_null());
-    assert!(at(&row, &schema, "side").is_null());
-    assert!(at(&row, &schema, "px").is_null());
+    assert!(!parsed.by_tag(44).unwrap().is_null());
+    assert_eq!(at(&row, &schema, "side").as_str(), Some("BUY"));
+    assert!(at(&row, &schema, "price").is_null());
 }
 
 /// A group comes back off the record whole, occurrence by occurrence.
@@ -162,9 +162,9 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
     let keep = [
         "beginstring",
         "msgtype",
-        "unix",
+        "currunix",
         "creatunix",
-        "hashcode",
+        "currhashcode",
         "crosshashcode",
         "curruuid",
         "crossuuid",

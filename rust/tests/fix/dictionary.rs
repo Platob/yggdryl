@@ -45,7 +45,7 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
     // 4.2, and `LastQty` from 4.3 on.
     let last_qty = registry.field_by_tag(32).expect("tag 32");
     assert_eq!(last_qty.name(), "lastqty");
-    assert_eq!(last_qty.dtype(), &DataType::Float64);
+    assert_eq!(last_qty.dtype(), &DataType::DECIMAL);
     assert_eq!(last_qty.as_metadata().get("display"), Some("LastQty"));
 
     // The dictionary holds one reading of the tag, under one name and one
@@ -183,13 +183,6 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
         assert!(state.as_fix().codes().count() > 5, "tag {tag}");
     }
     assert_eq!(
-        registry
-            .field_by_tag(yggdryl::STATE_TAG_NAME.0)
-            .unwrap()
-            .dtype(),
-        &DataType::State
-    );
-    assert_eq!(
         registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
         Some("PartiallyFilled")
     );
@@ -207,9 +200,15 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     assert!(source.as_metadata().get("fix:codes").is_some());
     assert!(source.as_metadata().get("fix:codeset").is_none());
 
-    // The float family is what the specification says it is.
+    // A price, a quantity, a price offset and an amount are exact numbers,
+    // at the one decimal width this crate keeps them at; a percentage and
+    // FIX's own `float` stay the floating count the specification names.
     for tag in [31, 38, 44, 6] {
-        let field = registry.field_by_tag(tag).expect("a float-family tag");
+        let field = registry.field_by_tag(tag).expect("an exact-number tag");
+        assert_eq!(field.dtype(), &DataType::DECIMAL, "tag {tag}");
+    }
+    for tag in [155, 231, 211] {
+        let field = registry.field_by_tag(tag).expect("a float tag");
         assert_eq!(field.dtype(), &DataType::Float64, "tag {tag}");
     }
     // And the ones it types otherwise keep those types.
@@ -410,7 +409,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus the crate's six clocks: `unix`,
+    // Sixty-eight shipped fields, plus the crate's six clocks: `currunix`,
     // `creatunix`, `prevunix`, `snapunix`, `recordedat` and `expirunix`.
     let crated = registry
         .iter()
@@ -424,7 +423,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
                     .is_some_and(yggdryl::is_crate_tag)
         })
         .count();
-    assert_eq!(crated, 6, "the crate's own clocks");
+    assert_eq!(crated, 5, "the crate's own clocks");
     assert_eq!(utc, 68 + crated, "instants stated in UTC");
 }
 
@@ -505,18 +504,36 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// in name order, so a change to that walk or to any shipped document moves
 /// this number on purpose, in the commit that says why. It last moved when
 /// the message became a typed market event: the crate's columns are the
-/// event's facts - `unix`, `creatunix`, `hashcode`, `crosshashcode`,
+/// event's facts - `currunix`, `creatunix`, `currhashcode`, `crosshashcode`,
 /// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
 /// `identifiers` and `metadata` - the shards are named nine digits wide,
 /// every member reference carries its `fix:tag`, and a field FIX Latest
 /// removed is marked `fix:deprecated`. It last moved when the market numbers
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
-/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block.
+/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
+/// last moved when the capture's own columns stopped being facts of a
+/// message: `recordedat` states no `fix:derivation`, because when a capture
+/// wrote a line down is whoever read it to say and never the message's own
+/// `SendingTime`. It last moved when the event's instant and its own digest
+/// took the names their columns carry: `unix` became `currunix` and
+/// `hashcode` became `currhashcode`, so the crate's tags 65003 and 65017
+/// read as the current instant and the current code next to `crosshashcode`.
+/// It last moved when every FIX quantity, price, price offset and amount
+/// became an exact number: 478 fields are `decimal128(38, 18)` where they
+/// were `float64`, a percentage and FIX's own `float` stay floating, and
+/// the seven derivations that multiply or add across the two state each
+/// operand's exact scale. It last moved when the crate stopped owning a
+/// market column: eighteen of its thirty-eight definitions are gone - the
+/// price, the quantity, the unit, the instrument's codes, the market, the
+/// state, the lanes' currencies and units, what a price moved from, whether
+/// it could trade and the ticker - because every one of them restated a FIX
+/// field the traits now read, and the two rules that read `isincode` read
+/// `SecurityID(48)` under its source and the `SecurityAltID` group instead.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_181_957_206_944_849_792);
+    assert_eq!(registry.stable_hash(), 16_003_086_087_026_197_915);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

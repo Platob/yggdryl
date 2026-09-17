@@ -15,6 +15,16 @@ use crate::{
 };
 
 /// One path, resolved once, as every FIX navigator now takes it.
+/// One exact number, spelled the way a wire spells it.
+///
+/// Every FIX quantity, price, price offset and amount is
+/// `decimal128(38, 18)`, so a pin states the number in text and never as a
+/// float: `82.5` is a value a `f64` holds approximately and a decimal holds
+/// exactly.
+fn decimal(text: &str) -> Scalar {
+    Scalar::from(crate::types::Decimal::parse(text).expect("an exact number"))
+}
+
 fn fpath(spelling: &str) -> crate::FieldPath {
     crate::FieldPath::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"))
 }
@@ -2954,24 +2964,24 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|")
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(60.0_f64));
-    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(420.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), decimal("60"));
+    assert_eq!(held.by_tag(381).unwrap(), decimal("420"));
     // One fill, so the average is that fill's price.
-    assert_eq!(held.by_tag(6).unwrap(), Scalar::from(10.5_f64));
+    assert_eq!(held.by_tag(6).unwrap(), decimal("10.5"));
 
     // A closed order leaves nothing, whatever the arithmetic of the other two
     // would say: Appendix D shows zero on every terminal row.
     let closed = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|")
         .expect("a readable report");
-    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(151).unwrap(), decimal("0"));
 
     // The same identity read backwards: what was ordered is what is left plus
     // what was done.
     let ordered = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
         .expect("a readable report");
-    assert_eq!(ordered.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(ordered.by_tag(38).unwrap(), decimal("100"));
 }
 
 #[test]
@@ -2982,31 +2992,30 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|55=BRN|54=1|44=82.5|38=300|31=82.5|59=1|326=17|10=0|")
         .expect("a readable report");
-    // The price and the quantity have one home. `Price(44)`, `OrderQty(38)`
-    // and `Quantity(53)` are read and written through the crate's own
-    // columns, so the row carries `px` and `qty` and no column of its own
-    // for any of the three.
+    // Every number is FIX's own field and has a column of its own:
+    // `Price(44)`, `OrderQty(38)` and `Quantity(53)` alike, each exact.
     let columns = super::fix_schema_tags();
-    assert!(columns.contains(&super::PX_TAG_NAME.0) && columns.contains(&super::QTY_TAG_NAME.0));
     for tag in [44, 38, 53] {
-        assert!(!columns.contains(&tag), "{tag} is px or qty, not a column");
+        assert!(columns.contains(&tag), "{tag} is a column");
     }
-    assert_eq!(
-        held.by_tag(super::PX_TAG_NAME.0).unwrap(),
-        Scalar::from(crate::types::Decimal::parse("82.5").unwrap())
-    );
-    // Read back under FIX's own tag it answers as that tag's field types it,
-    // which is the float the dictionary gives every `Price`.
-    assert_eq!(held.by_tag(44).unwrap(), Scalar::from(82.5_f64));
-    assert_eq!(held.by_tag(38).unwrap(), Scalar::from(300.0_f64));
-    // `Quantity(53)` is the retired spelling of the same fact: a line
-    // stating it fills the quantity, and every reading answers under the
-    // spelling the dictionary keeps, exactly as a restatement leaves it.
+    assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
+    assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
+    // And what the message is *about* is what the trait reads off them.
+    assert_eq!(held.get_px(), crate::types::Decimal::parse("82.5").unwrap());
+    assert_eq!(held.get_qty(), crate::types::Decimal::parse("300").unwrap());
+    // `Quantity(53)` is the newer spelling and its own slot: a line that
+    // said `53=` holds it there, and `OrderQty` stays empty.
     assert!(held.get_by_tag(53).is_none());
     let spelled = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|53=300|10=0|")
         .expect("a readable report");
-    assert_eq!(spelled.by_tag(38).unwrap(), Scalar::from(300.0_f64));
+    assert_eq!(spelled.by_tag(53).unwrap(), decimal("300"));
+    assert!(spelled.get_by_tag(38).is_none());
+    assert_eq!(
+        spelled.get_qty(),
+        crate::types::Decimal::parse("300").unwrap(),
+        "and the quantity the message is about reads either spelling"
+    );
     // The last trade is its own fact beside them, under FIX's own tag.
     assert_eq!(held.get_lastpx(), crate::types::Decimal::parse("82.5").ok());
     // How long it stands, as the message spelled it: what `1` names is the
@@ -3016,10 +3025,6 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     // What the market said about trading it, read off the status it stated:
     // `ReadyToTrade` trades.
     assert_eq!(held.get_tradable(), Some(true));
-    assert_eq!(
-        held.by_tag(super::TRADABLE_TAG_NAME.0).unwrap(),
-        Scalar::from(true)
-    );
     // And the ticker, off `Symbol`.
     assert_eq!(held.get_symbolticker(), Some("BRN"));
 
@@ -3067,7 +3072,7 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|")
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(999.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), decimal("999"));
 
     // Idempotent: a value derived once is a stated value the second time, so
     // the message read back from its own wire - which spells what it derived
@@ -3121,10 +3126,10 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
             b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
         )
         .expect("a readable report");
-    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(125.0_f64));
+    assert_eq!(held.by_tag(381).unwrap(), decimal("125"));
     assert_eq!(
         held.by_tag(119).unwrap(),
-        Scalar::from(137.5_f64),
+        decimal("137.5"),
         "the traded amount at the stated rate",
     );
     let settled = held.by_tag(120).unwrap();
@@ -3135,6 +3140,44 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
         .parse_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|")
         .expect("a readable report");
     assert_eq!(stated.by_tag(120).unwrap().as_str(), Some("USD"));
+}
+
+#[test]
+fn the_published_typed_tags_are_exactly_the_ones_a_message_holds() {
+    // A binding walking a message's typed facts reads `FIX_TYPED_TAGS`, so
+    // the listing has to be the whole of what `is_typed_tag` answers outside
+    // the crate's own block - nothing missing, because a tag missing here is
+    // a fact no column holds either, and nothing extra, because a tag the
+    // message never lifted would read as a fact it does not have.
+    let published: Vec<i32> = super::FIX_TYPED_TAGS.to_vec();
+    let answered: Vec<i32> = (1..10_000)
+        .filter(|tag| !(super::CRATE_TAG_MIN..super::CRATE_TAG_MAX).contains(tag))
+        .filter(|tag| super::identity::is_typed_tag(*tag))
+        .collect();
+    let mut sorted = published.clone();
+    sorted.sort_unstable();
+    assert_eq!(sorted, answered, "published {published:?}");
+    // And it is stated in the order the wire states it: the header, the
+    // lifted band in tag order, the trailer, then the text.
+    assert_eq!(&published[..8], [8, 35, 49, 56, 34, 43, 52, 385]);
+    assert_eq!(&published[25..], [93, 89, 10, 58]);
+    assert!(
+        published[8..25].windows(2).all(|pair| pair[0] < pair[1]),
+        "the lifted band is swept in tag order: {:?}",
+        &published[8..25]
+    );
+    // Every one of them is a tag no content row keeps.
+    let registry = committed();
+    let codec = FixCodec::new(registry);
+    let held = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=A1|44=10.5|38=100|55=AAPL|58=note|10=0|")
+        .expect("a readable order");
+    for tag in super::FIX_TYPED_TAGS {
+        assert!(
+            !held.entries().iter().any(|entry| entry.tag() == tag),
+            "{tag} is typed, so it is no entry"
+        );
+    }
 }
 
 #[test]
@@ -3167,7 +3210,8 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     assert_eq!(message.get_by_tag(99), Some(Scalar::Null));
     assert!(!message.entries().iter().any(|held| held.tag() == 99));
 
-    // A value the list does not name is read as the price it is.
+    // A value the list does not name is read as the price it is - a float
+    // here, because the field this registry holds for the tag is one.
     let message = super::FixCodec::new(registry)
         .parse_fix_line(b"99=12.5|")
         .expect("a readable frame");
@@ -4305,7 +4349,7 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         codec
             .parse_fix_line(
                 format!(
-                    "8=FIX.4.4|35=D|11=ORDER-1|453=1|448=BUYSIDE|452=1|802=1|523={value}|10=0|"
+                    "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|453=1|448=BUYSIDE|452=1|802=1|523={value}|10=0|"
                 )
                 .as_bytes(),
             )
@@ -4370,8 +4414,9 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     assert_eq!(level5[2].as_str(), Some("x"));
 
     // A flat sibling's child list is empty: nothing arrived under it and
-    // nothing was folded for it.
-    let flat = entry_tagged(entries, 11);
+    // nothing was folded for it. `Symbol(55)` is an ordinary child, where
+    // `ClOrdID(11)` is a fact the message lifts and holds.
+    let flat = entry_tagged(entries, 55);
     assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
 
     // Wire emission walks the whole tree pre-order, so what comes back is
@@ -4409,7 +4454,14 @@ fn a_nested_group_states_its_counter_once() {
     let order = codec
         .parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|453=1|448=BUYSIDE|802=1|523=x|10=0|")
         .expect("a readable order");
-    let party = &order.entries()[1].entries()[0];
+    // `ClOrdID(11)` is a fact the message lifts and holds, so the entries
+    // open at the group.
+    let at = order
+        .entries()
+        .iter()
+        .position(|held| held.name() == "parties")
+        .expect("the parties group");
+    let party = &order.entries()[at].entries()[0];
     assert_eq!(party.name(), "party");
     assert_eq!(
         party
@@ -4480,13 +4532,13 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 74, "{names:?}");
+    assert_eq!(names.len(), 48, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
         "securityid",
         "secaltidgrp",
-        "isincode",
+        "countryofissue",
         "possdupflag",
         "tradingunitperiodmultiplier",
     ] {
@@ -4501,8 +4553,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        43,
-        "29 shipped fields and the crate's fourteen columns"
+        29,
+        "every derivation is a shipped field's own; no crate column derives"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -4530,7 +4582,13 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let mut gross = edited.field_by_tag(381).unwrap().clone();
     gross
         .as_fix_mut()
-        .set_derivation(&"lastqty * lastpx * settlcurrfxrate".parse().unwrap())
+        // Three exact operands at a third of the scale each, so the product
+        // lands back at eighteen digits with room in front of the point.
+        .set_derivation(
+            &"try_cast(lastqty as decimal128(38,6)) * try_cast(lastpx as decimal128(38,6)) * try_cast(settlcurrfxrate as decimal128(38,6))"
+                .parse()
+                .unwrap(),
+        )
         .unwrap();
     let before = edited.derivations().unwrap();
     edited.update(gross).unwrap();
@@ -4546,39 +4604,20 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
     // The edit reads a column another rule already read, so the working
     // schema is no wider.
-    assert_eq!(names.len(), 74, "the edit reads a column another rule read");
+    assert_eq!(names.len(), 48, "the edit reads a column another rule read");
 }
 
 #[test]
-fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states() {
-    // A registry holding none of the standard's fields widens what the
-    // crate columns read as null columns of the working schema: every
-    // crate term compiles, none refuses, and what does not bind over
-    // nothing is silent rather than a refusal.
+fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
+    // The crate owns no derived column, so a registry holding only the
+    // crate's own fields compiles an empty list rather than a handful of
+    // terms over columns no message states.
     let registry = FixRegistry::new();
     let compiled = registry.derivations().unwrap();
-    let derived: Vec<(i32, bool)> = compiled.derived().collect();
-    assert_eq!(
-        derived.iter().map(|(tag, _)| *tag).collect::<Vec<_>>(),
-        [
-            super::ISINCODE_TAG_NAME.0,
-            super::MICCODE_TAG_NAME.0,
-            super::STATE_TAG_NAME.0,
-            super::RECORDEDAT_TAG_NAME.0,
-            super::EXPIRUNIX_TAG_NAME.0,
-            super::BIDCURRENCY_TAG_NAME.0,
-            super::ASKCURRENCY_TAG_NAME.0,
-            super::BLOOMBERGCODE_TAG_NAME.0,
-            super::CUSIPCODE_TAG_NAME.0,
-            super::SEDOLCODE_TAG_NAME.0,
-            super::UNIT_TAG_NAME.0,
-            super::PREVPX_TAG_NAME.0,
-            super::TRADABLE_TAG_NAME.0,
-            super::SYMBOLTICKER_TAG_NAME.0,
-        ]
-    );
-    // A stated crate column is never overwritten and never re-derived, and
-    // a refusal of nothing enriches: the handful of fields fills nothing.
+    assert_eq!(compiled.derived().count(), 0);
+    // And a message still answers its market, because the traits read the
+    // FIX fields rather than a column: nothing here was filled, and the
+    // ISIN is the one the line stated under the source that names it.
     let codec = FixCodec::new(Arc::new(registry));
     let held = codec
         .parse_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|10=0|")
@@ -4586,8 +4625,8 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
         .next()
         .unwrap()
         .unwrap();
-    assert!(
-        held.get_by_tag(super::ISINCODE_TAG_NAME.0)
-            .is_none_or(|held| held.is_null())
+    assert_eq!(
+        crate::graph::MarketElement::get_isincode(&held).map(crate::types::Isin::as_str),
+        Some("US0378331005")
     );
 }

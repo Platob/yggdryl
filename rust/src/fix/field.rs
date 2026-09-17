@@ -56,8 +56,6 @@ const DERIVATION: &str = "derivation";
 const COUNTER: &str = "counter";
 /// Whether this field travels from one message of a chain to the next.
 const TRANSIENT: &str = "transient";
-/// Whether this column is the capture's own rather than the message's.
-const CAPTURED: &str = "captured";
 const DEPRECATED: &str = "deprecated";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
@@ -145,33 +143,6 @@ impl<'field> FixField<'field> {
             Some("true") => Ok(true),
             Some("false") => Ok(false),
             Some(stored) => Err(self.invalid(TRANSIENT, "true or false", stored)),
-        }
-    }
-
-    /// Whether this column is the capture's own rather than something the
-    /// message said, `false` where the field says nothing.
-    ///
-    /// A captured column is the body a line was read from, its place in the
-    /// object, a bridge's row header: facts about the reading and not about
-    /// the message. A message holds them so a row it was read from returns
-    /// to its schema whole, and they are never its content - no entry, no
-    /// digest, nothing on the wire - because a message that carried `body=`
-    /// to a counterparty would be a message this crate invented.
-    ///
-    /// Only [`FixMsg::from_row`](super::FixMsg::from_row) states it, on the
-    /// columns no tag and no counter names; nothing reads it back off a
-    /// store, because a stored definition is a field and this is a fact
-    /// about one row's shape.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the full `fix:captured` key when the stored
-    /// text is not `true` or `false`.
-    pub fn is_captured(&self) -> Result<bool> {
-        match self.get(CAPTURED) {
-            None | Some("false") => Ok(false),
-            Some("true") => Ok(true),
-            Some(stored) => Err(self.invalid(CAPTURED, "true or false", stored)),
         }
     }
 
@@ -640,21 +611,6 @@ impl FixFieldMut<'_> {
     /// # Errors
     ///
     /// Returns the metadata layer's refusal when the write does not land.
-    /// Records that this column is the capture's own; `false` clears it,
-    /// because a column every field would carry identically is not a
-    /// property worth writing on every field.
-    ///
-    /// # Errors
-    ///
-    /// Returns the metadata layer's refusal when the write does not land.
-    pub fn set_captured(&mut self, captured: bool) -> Result<()> {
-        if captured {
-            return self.store(CAPTURED, "true".to_owned());
-        }
-        self.remove(CAPTURED);
-        Ok(())
-    }
-
     pub fn set_transient(&mut self, transient: bool) -> Result<()> {
         if transient {
             self.remove(TRANSIENT);

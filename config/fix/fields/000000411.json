@@ -38,7 +38,9 @@
   {
     "name": "marketdisruptionfallbackopenunits",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2514,7 +2516,9 @@
   {
     "name": "paymentschedulesettlperiodprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3676,7 +3680,9 @@
   {
     "name": "paymentstreamflatrateamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3700,7 +3706,9 @@
   {
     "name": "paymentstreammaximumpaymentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3724,7 +3732,9 @@
   {
     "name": "paymentstreammaximumtransactionamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4242,7 +4252,9 @@
   {
     "name": "paymentstreamtotalfixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4266,7 +4278,9 @@
   {
     "name": "paymentstreamcontractprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4372,7 +4386,9 @@
   {
     "name": "paymentstreamrateindexlevel",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

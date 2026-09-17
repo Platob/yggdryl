@@ -647,22 +647,35 @@ fn read() -> Pinned {
 /// The messages a row does not read back as itself, and the one shape that
 /// happens to.
 ///
-/// [`FixMsg::from_row`] is exact but for a repeating group whose occurrences
-/// nest a second group only some of them state, which its own rustdoc names:
-/// the nested occurrences come back behind the parties rather than inside
-/// the occurrence that stated them, so the entries and the wire move. These
-/// are the messages that shape reaches, named rather than skipped.
-const NESTING_A_SUBGROUP: [&str; 25] = [
+/// [`FixMsg::from_row`] is exact but for two shapes, and these are the
+/// messages they reach - named rather than skipped.
+///
+/// A repeating group whose occurrences nest a second group only some of
+/// them state, which `from_row`'s own rustdoc names: the nested occurrences
+/// come back behind the parties rather than inside the occurrence that
+/// stated them, so the entries and the wire move.
+///
+/// And a coded value a venue spelled in its own words: this capture's
+/// bridge writes `TIMEINFORCE=day` where FIX's code set says `0`, so the
+/// arrival record keeps the word while the column holds the code, and only
+/// the line the word came on still has it to re-emit.
+const NESTING_A_SUBGROUP: [&str; 31] = [
     "ulbridge[006]",
     "ulbridge[008]",
     "ulbridge[056]",
     "ulbridge[100]",
     "ulbridge[111]",
+    "ulbridge[138]",
+    "ulbridge[140]",
+    "ulbridge[141]",
     "lifecycle[015]",
     "lifecycle[017]",
     "lifecycle[038]",
     "lifecycle[063]",
     "lifecycle[081]",
+    "lifecycle[089]",
+    "lifecycle[090]",
+    "lifecycle[091]",
     "frames[000]",
     "frames[005]",
     "frames[010]",

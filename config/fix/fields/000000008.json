@@ -2,7 +2,9 @@
   {
     "name": "orderbookingqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1495,7 +1497,9 @@
   {
     "name": "underlyingpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2552,7 +2556,9 @@
   {
     "name": "thresholdamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2680,13 +2686,15 @@
   {
     "name": "peggedprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
       "description": "The price the order is currently pegged at",
       "display": "PeggedPrice",
-      "fix:derivation": "peggedrefprice + pegoffsetvalue",
+      "fix:derivation": "peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))",
       "fix:tag": "839"
     }
   },
@@ -2838,7 +2846,9 @@
   {
     "name": "discretionprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3655,7 +3665,9 @@
   {
     "name": "sharedcommission",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3679,7 +3691,9 @@
   {
     "name": "avgparpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3691,7 +3705,9 @@
   {
     "name": "reportedpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3715,7 +3731,9 @@
   {
     "name": "ordercapacityqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3916,7 +3934,9 @@
   {
     "name": "eventpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4378,7 +4398,9 @@
   {
     "name": "underlyingqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4415,7 +4437,9 @@
   {
     "name": "underlyingdirtyprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4427,7 +4451,9 @@
   {
     "name": "underlyingendprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4439,7 +4465,9 @@
   {
     "name": "underlyingstartvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4451,7 +4479,9 @@
   {
     "name": "underlyingcurrentvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4463,7 +4493,9 @@
   {
     "name": "underlyingendvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -5048,7 +5080,9 @@
   {
     "name": "maturitynetmoney",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -5290,7 +5324,9 @@
   {
     "name": "marginexcess",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

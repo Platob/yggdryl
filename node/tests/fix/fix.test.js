@@ -232,7 +232,9 @@ test('a derivation crosses as canonical text', () => {
   registry.update(leaves)
   const codec = fixedCodec(registry)
   const held = codec.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|')).next().value
-  assert.equal(held.byTag(151).toJSON(), 200)
+  // An exact column renders as its own text, at the one scale this crate
+  // keeps a number at.
+  assert.equal(held.byTag(151).toJSON(), '200.000000000000000000')
 
   field.fix.derivation = null
   assert.equal(field.fix.derivation, null)
@@ -490,10 +492,9 @@ test('the registry resolves every key the way the core does', () => {
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
   assert.equal(registry.fieldByTag(150).name, 'exectype')
   // `OrdStatus` and `ExecType` keep the text the wire spells: the ranked
-  // state is the crate's own column, and the one typed `state` field.
+  // The two the ranked state is read off are the dictionary's own text.
   assert.ok(registry.fieldByTag(39).dtype.equals(DataType.from('utf8')))
   assert.ok(registry.fieldByTag(150).dtype.equals(DataType.from('utf8')))
-  assert.ok(registry.fieldByTag(65015).dtype.equals(DataType.from('state')))
   // A name answers the canonical spelling whatever case it was asked in.
   assert.equal(registry.fieldByName('symbol').name, 'symbol')
   assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
@@ -1075,7 +1076,7 @@ const ORDER_VALUE = {
   msgtype: 'D',
   clordid: 'C-1',
   symbol: 'AAPL',
-  orderqty: Scalar.float(100),
+  orderqty: Scalar.decimal(100n * 10n ** 18n, 18),
   side: '1',
   nopartyids: 1,
   parties: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
@@ -1084,8 +1085,9 @@ const ORDER_VALUE = {
 }
 
 // The content row a built order keeps: every child that is not a typed fact,
-// in the root's order.
-const CONTENT = ['clordid', 'symbol', 'nopartyids', 'parties', '9999']
+// in the root's order. `ClOrdID(11)` and `OrderQty(38)` are facts the message
+// lifts and holds; the side is an ordinary child and stays.
+const CONTENT = ['symbol', 'side', 'nopartyids', 'parties', '9999']
 
 // The nanosecond instant `SENDING` is, as the typed facts state it.
 const SENDING_NS = 1_704_190_530_000_000_000n
@@ -1108,16 +1110,17 @@ test('a message holds its typed facts beside the content row it resolves through
   const root = order(registry)
   const message = new fix.FixMsg(root, ORDER_VALUE, registry)
 
-  // A child stating a typed fact - the type, the side, the sending clock -
-  // fills the holder that owns it and leaves the row, so the row is what
-  // the root declared beyond them, in its order.
+  // A child stating a typed fact - the type, the identifier, the quantity,
+  // the sending clock - fills the holder that owns it and leaves the row, so
+  // the row is what the root declared beyond them, in its order.
   assert.ok(message.registry.equals(registry))
   assert.equal(message.field.equals(root), false)
   assert.deepEqual([...message.field.dtype.keys()], CONTENT)
   assert.equal(message.size, CONTENT.length)
   assert.equal(message.value.kind, 'sequence')
   assert.equal(message.value.length, CONTENT.length)
-  // The header states what the root stated: no version, the type, the clock.
+  // The header states what the root stated: no version, the type, the
+  // clock, and none of the trailer the frame never carried.
   assert.deepEqual(message.header(), {
     beginstring: '',
     msgtype: 'D',
@@ -1127,13 +1130,16 @@ test('a message holds its typed facts beside the content row it resolves through
     sendingtime: SENDING_NS,
     possdupflag: null,
     msgdirection: null,
+    signaturelength: null,
+    signature: null,
+    checksum: null,
   })
   // The side is the event's; the event happened at the sending clock, which
   // is where its chain was created too; the cross code is the client's
   // order identifier, the first stated of the tags a chain is named by.
   assert.equal(message.side, 'BUY')
   assert.equal(message.crosscode, 'C-1')
-  assert.equal(message.unix, SENDING_NS)
+  assert.equal(message.currunix, SENDING_NS)
   assert.equal(message.event().creatunix, SENDING_NS)
   assert.equal(message.state, '00UNKNOWN')
   assert.equal(message.seqnum, 0)
@@ -1146,10 +1152,9 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.equal(message.currency, 'XXX')
   assert.equal(message.text, null)
   assert.deepEqual(message.metadata, {})
-  // Nothing was captured: no line, no plugin, no context.
+  // Nothing was captured: no plugin, no context, no session. Where the line
+  // came from is the reader's statement, on the row, and never here.
   assert.deepEqual(message.capture(), {
-    sourceurl: null,
-    recordedat: null,
     pluginid: null,
     msgctxid: null,
     msgsessionid: null,
@@ -1164,17 +1169,17 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.ok(message.byTag(52).equals(SENDING))
   assert.ok(message.byTag(65003).equals(SENDING), 'unix, as the clock its column holds')
   assert.equal(message.byTag(65039).asJs(), message.curruuid)
-  assert.equal(message.byTag(65017).asJs(), message.hashcode)
+  assert.equal(message.byTag(65017).asJs(), message.currhashcode)
   assert.equal(message.byTag(65048).asJs(), 'C-1')
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
   assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
-  assert.equal(message.byTag(38).toString(), '100.0')
+  assert.equal(message.byTag(38).toString(), '"100.000000000000000000"')
   assert.equal(message.byPath('parties[0].partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // A fact the message states nothing for is absent, not null.
-  assert.equal(message.getByTag(65043), null, 'no price')
+  assert.equal(message.getByTag(44), null, 'no price')
   assert.equal(message.getByTag(58), null, 'no text')
   assert.equal(message.getByTag(65049), null, 'no metadata')
   // An identifier is exact: one the dictionary holds no field under misses,
@@ -1218,8 +1223,8 @@ test('the entries are the content row read as a tree, and the wire is the header
   // dictionary explains carries tag 0 and its own spelling.
   const entries = message.entries()
   assert.deepEqual(entries.map((entry) => [entry.tag, entry.name, entry.value]), [
-    [11, 'clordid', 'C-1'],
     [55, 'symbol', 'AAPL'],
+    [54, 'side', '1'],
     [453, 'parties', '1'],
     [0, '9999', 'custom'],
   ])
@@ -1239,12 +1244,12 @@ test('the entries are the content row read as a tree, and the wire is the header
   // Iterating the message walks the entries.
   assert.deepEqual([...message], entries)
   // The typed facts are not entries: the wire puts the header and the
-  // event's own tags in front of them, coded facts as their wire code, and
-  // `SendingTime` only because the root stated it.
-  // A buy of a hundred fills the bid lane it implies, so `BidSize(134)` is
-  // on the wire beside the quantity it was read off.
+  // fields the message lifted in front of them, coded facts as their wire
+  // code, and `SendingTime` only because the root stated it. What the
+  // message merely *implies* about its market - the bid lane a buy of a
+  // hundred fills - reaches no byte of it.
   const wire =
-    '35=D|52=20240102-10:15:30|38=100|54=1|134=100|11=C-1|55=AAPL|453=1|448=BROKER|447=D|452=1|9999=custom|'
+    '35=D|52=20240102-10:15:30|11=C-1|38=100|55=AAPL|54=1|453=1|448=BROKER|447=D|452=1|9999=custom|'
   assert.equal(message.intoBytes(124).toString(), wire)
   assert.equal(message.intoText('|'), wire)
   assert.equal(message.intoText(), wire.replaceAll('|', '\x01'))
@@ -1271,15 +1276,15 @@ test('the identity is settled on every message and follows what it says', () => 
   // A UUID crosses as its hyphenated text, a hash as a bigint.
   assert.match(message.curruuid, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
   assert.match(message.crossuuid, /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-  assert.equal(typeof message.hashcode, 'bigint')
+  assert.equal(typeof message.currhashcode, 'bigint')
   assert.equal(typeof message.crosshashcode, 'bigint')
-  assert.notEqual(message.hashcode, 0n)
+  assert.notEqual(message.currhashcode, 0n)
   assert.notEqual(message.crosshashcode, 0n)
   // Two builds of one statement are one identity; other content is another
   // message of the same chain.
-  assert.equal(message.hashcode, same.hashcode)
+  assert.equal(message.currhashcode, same.currhashcode)
   assert.equal(message.curruuid, same.curruuid)
-  assert.notEqual(other.hashcode, message.hashcode)
+  assert.notEqual(other.currhashcode, message.currhashcode)
   assert.notEqual(other.curruuid, message.curruuid)
   assert.equal(other.crossuuid, message.crossuuid)
   assert.equal(other.crosshashcode, message.crosshashcode)
@@ -1287,12 +1292,12 @@ test('the identity is settled on every message and follows what it says', () => 
   const event = message.event()
   assert.equal(event.curruuid, message.curruuid)
   assert.equal(event.crossuuid, message.crossuuid)
-  assert.equal(event.hashcode, message.hashcode)
+  assert.equal(event.currhashcode, message.currhashcode)
   assert.equal(event.crosshashcode, message.crosshashcode)
   assert.equal(event.crosscode, message.crosscode)
   assert.deepEqual(event.identifiers, message.identifiers)
   assert.equal(event.side, message.side)
-  assert.equal(event.unix, message.unix)
+  assert.equal(event.currunix, message.currunix)
   assert.equal(event.state, message.state)
   assert.equal(event.seqnum, message.seqnum)
   assert.equal(event.prevuuid, message.prevuuid)
@@ -1347,7 +1352,7 @@ test('a message is a value: equality, hash, clone and JSON', () => {
   const document = message.toJSON()
   assert.deepEqual(Object.keys(document), ['field', 'value'])
   assert.equal(document.field.metadata['fix:tag'], undefined, 'the root carries no tag')
-  assert.equal(document.value[0], 'C-1')
+  assert.equal(document.value[0], 'AAPL')
   assert.equal(document.value.length, CONTENT.length)
   assert.ok(JSON.stringify(message).includes('"NewOrderSingle"'))
 })
@@ -1551,7 +1556,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.4')
   assert.equal(pairs.header().sendingtime, SENDING_NS)
   assert.ok(pairs.byTag(52).equals(SENDING))
-  assert.equal(pairs.unix, SENDING_NS)
+  assert.equal(pairs.currunix, SENDING_NS)
   assert.equal(pairs.event().creatunix, SENDING_NS)
   assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
   assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
@@ -1559,12 +1564,12 @@ test('a reader parses every frame shape the core reads', () => {
   // transaction time where the message states one with a clock.
   const dated = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|60=20260102-10:15:31.5|11=A|10=0|'))
   assert.equal(dated.header().sendingtime, SENDING_NS)
-  assert.equal(dated.unix, 1_767_348_931_500_000_000n)
+  assert.equal(dated.currunix, 1_767_348_931_500_000_000n)
   assert.equal(dated.intoText('|').startsWith('8=FIX.4.4|35=D|52=20240102-10:15:30|'), true)
   // A transaction time stating only a day sets no event instant: the
   // sending clock stands in.
   const day = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|60=20260814|11=A|10=0|'))
-  assert.equal(day.unix, SENDING_NS)
+  assert.equal(day.currunix, SENDING_NS)
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
@@ -1584,8 +1589,8 @@ test('a reader parses every frame shape the core reads', () => {
   ).next().value
   assert.ok(inferred.equals(bridge))
   assert.equal(bridge.byTag(55).toJSON(), 'TTF')
-  assert.equal(bridge.byTag(38).toJSON(), 1200)
-  assert.equal(bridge.byTag(44).toJSON(), 41.25)
+  assert.equal(bridge.byTag(38).toJSON(), '1200.000000000000000000')
+  assert.equal(bridge.byTag(44).toJSON(), '41.250000000000000000')
   assert.equal(bridge.side, 'BUY')
   assert.equal(bridge.byPath('parties[0].partyid').asJs(), 'BUYSIDE')
   // The counter said two occurrences and one arrived: the group entry
@@ -1630,19 +1635,19 @@ test('a parse derives what the dictionary derives and states it on the wire', ()
   const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
   const filled = reader.parseLine(Buffer.from(line)).next().value
   assert.equal(filled.byTag(22).toJSON(), '4')
-  assert.equal(filled.event().isincode, 'US0378331005')
-  assert.equal(filled.byTag(65013).toJSON(), 'US0378331005')
+  assert.equal(filled.isincode, 'US0378331005')
   assert.equal(filled.byTag(470).toJSON(), 'US')
   assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
-  // What the message now states is what it emits: the event's own tags
-  // lead, the day order among them, and the row follows.
+  // What the message now states is what it emits: the frame leads, the
+  // fields it lifted follow, then the row with the day order among it.
   assert.equal(
     filled.intoText('|'),
-    '8=FIX.4.4|35=D|59=0|11=A|48=US0378331005|10=0|22=4|470=US|',
+    '8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|59=0|470=US|10=0|',
   )
-  // `TimeInForce(59)` is one of the facts the event holds, so it is not an
-  // entry: the holder answers it.
-  assert.ok(!flat(filled).some(([tag]) => tag === 59))
+  // `TimeInForce(59)` is an ordinary column, so what the dictionary derived
+  // for it is an entry like any other, and the trait reads the standing off
+  // it.
+  assert.ok(flat(filled).some(([tag]) => tag === 59))
   assert.equal(filled.tif, '0')
 
   // A value no standard closes answers nothing rather than a guess.
@@ -1663,7 +1668,7 @@ test('a parse restates deprecated fields to their latest aliases', () => {
   assert.equal(latest.state, '40PARTFILL')
   assert.equal(latest.byTag(150).asJs(), 'F')
   assert.equal(latest.byTag(39).asJs(), '1')
-  assert.equal(latest.byTag(65015).asJs(), '40PARTFILL')
+
   // Rule80A A is an agency order.
   assert.equal(latest.byTag(528).toJSON(), 'A')
   // ExecBroker and ClientID are two parties, in tag order, counted.
@@ -1675,8 +1680,8 @@ test('a parse restates deprecated fields to their latest aliases', () => {
   // The fill under its newest spelling, reachable by the old one too, and
   // reachable is all it is: an alias is a way of asking rather than a child
   // to store.
-  assert.equal(latest.byTag(32).asJs(), 100)
-  assert.equal(latest.byName('LastShares').asJs(), 100)
+  assert.ok(latest.byTag(32).equals(Scalar.decimal(100n)))
+  assert.ok(latest.byName('LastShares').equals(Scalar.decimal(100n)))
   assert.equal(latest.lastqty, '100')
   const names = [...latest.field.dtype.keys()]
   assert.equal(names.filter((name) => name === 'lastqty').length, 0, 'the event holds it')
@@ -1691,8 +1696,8 @@ test('a parse restates deprecated fields to their latest aliases', () => {
   // in force is a day order, one fill's average is that fill's price, and what
   // it was worth is the quantity times the price.
   assert.equal(latest.byTag(59).toJSON(), '0')
-  assert.equal(latest.byTag(6).asJs(), 10.5)
-  assert.equal(latest.byTag(381).asJs(), 1050)
+  assert.ok(latest.byTag(6).equals(Scalar.decimal(105n, 1)))
+  assert.ok(latest.byTag(381).equals(Scalar.decimal(1050n)))
 })
 
 // A Jolokia answer as a bridge log line writes it: a timestamp and a reader
@@ -1743,7 +1748,7 @@ test('a row reads back into a message stating the same facts', () => {
   assert.deepEqual(held.entries(), message.entries())
   assert.equal(held.intoText('|'), message.intoText('|'))
   assert.deepEqual(held.digest(), message.digest())
-  assert.equal(held.hashcode, message.hashcode)
+  assert.equal(held.currhashcode, message.currhashcode)
   assert.equal(held.curruuid, message.curruuid)
   assert.equal(held.crossuuid, message.crossuuid)
   assert.deepEqual(held.header(), message.header())

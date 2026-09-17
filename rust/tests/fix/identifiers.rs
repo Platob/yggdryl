@@ -176,7 +176,7 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
     let held = definition.identifier_values(&message).collect::<Vec<_>>();
     assert_eq!(held.len(), 1);
     assert_eq!(held[0].0.name(), "orderid");
-    assert_eq!(*held[0].1, message.by_tag(37).unwrap());
+    assert_eq!(held[0].1, message.by_tag(37).unwrap());
     assert_eq!(held[0].1.as_str(), Some("O-01"));
 }
 
@@ -214,9 +214,20 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
         .msgtype("D")
         .unwrap()
         .identifier_values(&message)
-        .map(|(field, value)| (field.name(), value.as_str().unwrap()))
+        .map(|(field, value)| {
+            (
+                field.name().to_owned(),
+                value.as_str().expect("text").to_owned(),
+            )
+        })
         .collect::<Vec<_>>();
-    assert_eq!(selected, [("clordid", "C-1"), ("venueid", "V-1")]);
+    assert_eq!(
+        selected,
+        [
+            ("clordid".to_owned(), "C-1".to_owned()),
+            ("venueid".to_owned(), "V-1".to_owned())
+        ]
+    );
 
     let unnamed = FixMsg::with_registry(
         Arc::clone(&registry),
@@ -474,7 +485,7 @@ fn a_parse_fills_the_names_a_message_goes_by_in_sorted_order() {
     // derived for it.
     assert_eq!(
         String::from_utf8(read.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=8|59=0|37=O-01|11=C-001|17=E-09|10=0|"
+        "8=FIX.4.4|35=8|11=C-001|17=E-09|37=O-01|59=0|10=0|"
     );
 
     // And the row carries them, so a message read back off one goes by the

@@ -243,7 +243,7 @@ try {
   benchmark('fix/message_identifiers', () => parsed.identifiers)
   benchmark('fix/message_metadata', () => parsed.metadata)
   benchmark('fix/message_curruuid', () => parsed.curruuid)
-  benchmark('fix/message_hashcode', () => parsed.hashcode)
+  benchmark('fix/message_currhashcode', () => parsed.currhashcode)
   benchmark('fix/message_entries', () => parsed.entries())
   benchmark('fix/message_get_by_tag', () => message.getByTag(55))
   benchmark('fix/message_get_by_id', () => message.getById(SYMBOL_ID))

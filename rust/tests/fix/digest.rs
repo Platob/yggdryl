@@ -22,12 +22,22 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
     assert_eq!(one.stable_hash(), one.clone().stable_hash());
 
     // Order carries meaning inside a repeating group, so it is never sorted
-    // away: the same pairs in another order are another message.
+    // away: the same pairs in another order are another message. The pairs
+    // have to be the row's own - `ClOrdID(11)` is a fact the message lifts
+    // and holds, and a held fact has no place in the row to have moved.
+    let ordered = reader
+        .sole_line(b"8=FIX.4.4|35=D|1=ACCT|55=AAPL|10=0|")
+        .unwrap();
     let reordered = reader
+        .sole_line(b"8=FIX.4.4|35=D|55=AAPL|1=ACCT|10=0|")
+        .unwrap();
+    assert_ne!(ordered.digest(), reordered.digest());
+    assert_ne!(ordered.stable_hash(), reordered.stable_hash());
+    // And a lifted fact is held, so where the line put it changes nothing.
+    let moved = reader
         .sole_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|")
         .unwrap();
-    assert_ne!(one.digest(), reordered.digest());
-    assert_ne!(one.stable_hash(), reordered.stable_hash());
+    assert_eq!(one.digest(), moved.digest());
 
     // Two calls are the same walk twice, because nothing was stored.
     assert_eq!(one.digest(), one.digest());
@@ -215,16 +225,19 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
+    // Twenty definitions, and every one a fact no dictionary publishes: the
+    // instants, the identities and the codes, the chain, what a bridge's own
+    // log said, and what the reader said about the line. Nothing about the
+    // *market* is here - the price, the quantity, the instrument's codes,
+    // the state and the lanes are FIX's own fields, and the traits answer
+    // them off those.
     assert_eq!(
         names,
         [
-            "unix",
+            "currunix",
             "msgctxid",
             "pluginid",
-            "isincode",
-            "miccode",
-            "state",
-            "hashcode",
+            "currhashcode",
             "crosshashcode",
             "identifiers",
             "prevunix",
@@ -234,41 +247,23 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "sourceurl",
             "nofixentries",
             "recordedat",
-            "expirunix",
-            "bidcurrency",
-            "askcurrency",
             "msgsessionid",
-            "bloombergcode",
-            "cusipcode",
-            "sedolcode",
             "curruuid",
             "crossuuid",
             "parentuuids",
             "seqnum",
-            "px",
-            "qty",
-            "unit",
-            "bidunit",
-            "askunit",
             "crosscode",
             "metadata",
-            "prevpx",
-            "prevqty",
-            "tradable",
-            "symbolticker",
-        ],
+        ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
     assert_eq!(
         displays,
         [
-            Some("Unix"),
+            Some("CurrUnix"),
             Some("MsgCtxId"),
             Some("PluginId"),
-            Some("ISINCode"),
-            Some("MICCode"),
-            Some("State"),
-            Some("HashCode"),
+            Some("CurrHashCode"),
             Some("CrossHashCode"),
             Some("Identifiers"),
             Some("PrevUnix"),
@@ -278,31 +273,15 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("SourceUrl"),
             Some("NoFixEntries"),
             Some("RecordedAt"),
-            Some("ExpirUnix"),
-            Some("BidCurrency"),
-            Some("AskCurrency"),
             Some("MsgSessionId"),
-            Some("BloombergCode"),
-            Some("CUSIPCode"),
-            Some("SEDOLCode"),
             Some("CurrUuid"),
             Some("CrossUuid"),
             Some("ParentUuids"),
             Some("SeqNum"),
-            Some("Px"),
-            Some("Qty"),
-            Some("Unit"),
-            Some("BidUnit"),
-            Some("AskUnit"),
             Some("CrossCode"),
             Some("Metadata"),
-            Some("PrevPx"),
-            Some("PrevQty"),
-            Some("Tradable"),
-            Some("SymbolTicker"),
         ],
     );
-
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in: the codes are
     // sixty-four-bit digests, the identities UUIDs, the clocks one instant.
@@ -316,27 +295,24 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         unit: yggdryl::TimeUnit::Nanosecond,
         timezone: yggdryl::Timezone::UTC,
     };
-    assert_eq!(typed("isincode"), &DataType::Isin);
-    assert_eq!(typed("miccode"), &DataType::Mic);
-    assert_eq!(typed("state"), &DataType::State);
-    for name in ["hashcode", "crosshashcode", "seqnum"] {
+    for name in ["currhashcode", "crosshashcode", "seqnum"] {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }
     for name in ["curruuid", "crossuuid", "prevuuid"] {
         assert_eq!(typed(name), &DataType::Uuid, "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
-    for name in ["unix", "creatunix"] {
+    for name in ["currunix", "creatunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "expirunix", "recordedat"] {
+    for name in ["prevunix", "snapunix", "recordedat"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
-    for name in ["hashcode", "crosshashcode", "curruuid", "crossuuid"] {
+    for name in ["currhashcode", "crosshashcode", "curruuid", "crossuuid"] {
         assert!(!field(name).is_nullable(), "{name}");
     }
     assert_eq!(typed("crosscode"), &DataType::utf8());
@@ -358,7 +334,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
     }
     // No partition column: how a layout is cut is the target's - an Iceberg
-    // table takes an `hour` transform over `unix` - and a materialized copy
+    // table takes an `hour` transform over `currunix` - and a materialized copy
     // of that instant was a second owner of it.
     assert!(held.iter().all(|field| !field.is_partition()));
     assert!(held.iter().all(|field| field.name() != "timepartition"));
@@ -394,10 +370,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
+    assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
     assert_eq!(
-        [yggdryl::HASHCODE_TAG_NAME, yggdryl::CROSSHASHCODE_TAG_NAME],
-        [(65_017, "hashcode"), (65_018, "crosshashcode")]
+        [
+            yggdryl::CURRHASHCODE_TAG_NAME,
+            yggdryl::CROSSHASHCODE_TAG_NAME
+        ],
+        [(65_017, "currhashcode"), (65_018, "crosshashcode")]
     );
     assert_eq!(
         [yggdryl::PREVUNIX_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
@@ -513,6 +492,11 @@ fn every_registry_registers_the_crates_fields_without_warning() {
 /// so it must not move when only the object does - otherwise a replay
 /// deduplicates against nothing and every archived day re-enters a table as
 /// new rows.
+///
+/// The object is not a fact a message can hold at all: writing one is
+/// refused, the row a message writes states none, and a row a reader stated
+/// one on reads back as the same message. So the code cannot move, rather
+/// than being kept from moving.
 #[test]
 fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     let registry = super::committed_registry();
@@ -522,8 +506,8 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
 
     let at =
         yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("a sourceurl column");
-    let hashcode_at =
-        yggdryl::fix_column_of(&schema, yggdryl::HASHCODE_TAG_NAME.0).expect("a hashcode column");
+    let hashcode_at = yggdryl::fix_column_of(&schema, yggdryl::CURRHASHCODE_TAG_NAME.0)
+        .expect("a hashcode column");
     let mut identities = Vec::new();
     for url in [
         "file:///capture/2026-08-14/part-0.txt.gz",
@@ -531,12 +515,26 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     ] {
         let stated = yggdryl::Scalar::from(yggdryl::Url::from_str(url).unwrap());
         let mut message = reader.sole_line(line).unwrap();
-        message
-            .set(yggdryl::SOURCEURL_TAG_NAME.0, stated.clone())
-            .unwrap();
+        // The message will not hold it: the column is the reader's.
+        assert!(
+            message
+                .set(yggdryl::SOURCEURL_TAG_NAME.0, stated.clone())
+                .is_err(),
+            "a message states no source object"
+        );
         let row = message.into_row(&schema).unwrap();
-        let held = row.as_sequence().expect("a row");
-        assert_eq!(held[at], stated, "the column still states it");
+        let mut held = row.as_sequence().expect("a row").to_vec();
+        assert!(held[at].is_null(), "and its row states none either");
+        // As a reader states it, on the row.
+        held[at] = stated.clone();
+        let carried = yggdryl::Scalar::from_sequence(held.clone());
+        let again =
+            yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &carried).unwrap();
+        assert_eq!(
+            held[hashcode_at].as_u64(),
+            Some(yggdryl::graph::Element::get_currhashcode(&again)),
+            "the row read back is the message that wrote it",
+        );
         identities.push(held[hashcode_at].clone());
     }
     assert_eq!(

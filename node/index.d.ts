@@ -1393,6 +1393,12 @@ export declare class FixCodec {
    * lead and the fixed FIX columns follow. Every row is parsed as the
    * line door parses one, and batches close on the raw bytes of
    * the payload column against `batchByteSize`. The source is consumed.
+   *
+   * The capture's own columns fill nothing: the carried ones, and the two
+   * the crate tags - a `sourceurl` column and a `recordedat` one - are
+   * read off the source row and written straight into the row this
+   * answers. This is the one door that can state them, and it is why
+   * they survive a parse without a message holding one.
    */
   parseTextArrowReader(source: JsBatchReader): JsBatchReader
   /**
@@ -1402,6 +1408,12 @@ export declare class FixCodec {
    * `FixMsg.fromRow`, stated as the one after the live message it follows,
    * and written back under the **same** schema, so a carried column
    * returns to its place. Nothing is parsed again. The source is consumed.
+   *
+   * A carried column returns to its place because the door keeps it, not
+   * because the message does: each row's own cells travel beside the
+   * message it made and are stated again where that message lands. The
+   * pairing is by message and never by position - a walk answers messages
+   * in their own order, which a capture's lines are routinely not in.
    */
   lifecycleArrowReader(source: JsBatchReader): JsBatchReader
   /**
@@ -1412,6 +1424,11 @@ export declare class FixCodec {
    * `parseTextArrowReader` wrote comes back as the messages that made it
    * without a parse. One half of what the Arrow twins compose;
    * `arrowReader` is the other. The source is consumed.
+   *
+   * The capture's own columns are not carried: a message holds none of
+   * them, so `arrowReader(schema, messages(reader))` answers them null
+   * where `lifecycleArrowReader(reader)` keeps them. A stage that has to
+   * keep them runs as one pass instead.
    */
   messages(source: JsBatchReader): FixMessages
   /**
@@ -1420,7 +1437,9 @@ export declare class FixCodec {
    * The Arrow twin of `formatMessages`, and the last stage of the pipeline
    * a capture runs. The schema is answered before a row is read, from the
    * source's carried columns and `field`, and the capture's own columns
-   * still lead the row. A source carrying no arrival record is a
+   * still lead the row - restated from the source batch, not asked of the
+   * message, which holds none of them. A source carrying no arrival
+   * record is a
    * projection already and is cast batch by batch instead of read back as
    * messages. The source is consumed.
    */
@@ -1498,9 +1517,9 @@ export type JsFixMessages = FixMessages
  * A FIX message: its typed facts, and the content row the registry types.
  *
  * The typed facts live beside the row: the event the message is - the
- * graph traits' facts - the standard header, what the capture said about
- * the line, the `Text(58)` and the metadata a bridge spelled under its own
- * namespaces. The row holds everything else the message states: the
+ * graph traits' facts - the standard header, what the line said about the
+ * capture it was written for, the `Text(58)` and the metadata a bridge
+ * spelled under its own namespaces. The row holds everything else the message states: the
  * dictionary fields, groups as lists beside their counter, components as
  * structs. The schema is one non-null Struct `Field` - the only row schema -
  * and a plain object crosses as the record the core canonicalizes into that
@@ -1512,7 +1531,7 @@ export type JsFixMessages = FixMessages
  *
  * Every message carries its identity settled: the cross code read off the
  * first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
- * over it, the `hashcode` over everything the message says, the `curruuid`
+ * over it, the `currhashcode` over everything the message says, the `curruuid`
  * over its instant and that hash, and the `crossuuid` over the cross hash -
  * or the `curruuid` itself when no cross code names a chain. Every write
  * settles it again.
@@ -1523,9 +1542,9 @@ export declare class FixMsg {
    *
    * The loader widens `value`: anything `Scalar.fromJs` reads becomes the
    * native value first, and the core alone validates and canonicalizes it
-   * against `field`. A child stating a typed fact - a header tag, a
-   * crate column, one of the event's own tags, `Text(58)` - fills the
-   * holder that owns it and leaves the row. `SendingTime` reads UTC now
+   * against `field`. A child stating a typed fact - a header or trailer
+   * tag, a crate column, one of the FIX fields a message lifts,
+   * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
    * when the value states none; the event's instant is `TransactTime(60)`
    * where it states one with a clock, else the sending time; the creation
    * instant is `OrigSendingTime(122)` else that instant. The identity is
@@ -1542,9 +1561,13 @@ export declare class FixMsg {
    * the content is rebuilt from the `fixentries` column, each entry typed
    * through the dictionary exactly as the builder types a pair, so
    * `intoBytes` re-emits the line the row was read from; a row without
-   * that column has the typed facts and no content. A column no tag names
-   * is a capture's own and stays a child. Nothing is parsed again and no
-   * clock is read. The process default is the registry when none is named.
+   * that column has the typed facts and no content. Every capture column
+   * is read past - the two the crate tags, `sourceurl` and `recordedat`,
+   * and every column no tag and no counter names - so nothing on the
+   * message holds one; a column whose name holds a `.` is a bridge's own
+   * statement and lands in the metadata. They stay the row's, and
+   * whoever writes rows back restates them. Nothing is parsed again and
+   * no clock is read. The process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
@@ -1570,7 +1593,12 @@ export declare class FixMsg {
   event(): FixEventView
   /** The standard header, typed, as one plain object read once. */
   header(): FixHeaderView
-  /** What the capture said about the line, as one plain object read once. */
+  /**
+   * What the line said about the capture it was written for, as one plain
+   * object read once: the plugin, the message context and the session
+   * instance. Not where the line was read from and not when it was
+   * recorded - those are the reader's, held nowhere on a message.
+   */
   capture(): FixCaptureView
   /** `Text(58)`: the free text the message carries, or `null`. */
   get text(): string | null
@@ -1590,11 +1618,11 @@ export declare class FixMsg {
   /** The code the chain is named by, or empty. */
   get crosscode(): string
   /** The XXH3-64 over everything this message says. */
-  get hashcode(): bigint
+  get currhashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   get crosshashcode(): bigint
   /** When the event happened, nanoseconds since the Unix epoch, UTC. */
-  get unix(): bigint
+  get currunix(): bigint
   /**
    * The order state the message reached, ranked: `00UNKNOWN` where it
    * states none.
@@ -1653,6 +1681,27 @@ export declare class FixMsg {
    */
   get symbolticker(): string | null
   /**
+   * The instrument's ISIN, read off `SecurityID(48)` under its source or
+   * the `SecurityAltID` group, or `null` where no check digit closes one.
+   */
+  get isincode(): string | null
+  /** The instrument's CUSIP, read the same way, or `null`. */
+  get cusipcode(): string | null
+  /** The instrument's SEDOL, read the same way, or `null`. */
+  get sedolcode(): string | null
+  /** The instrument's Bloomberg identifier, read the same way, or `null`. */
+  get bloombergcode(): string | null
+  /**
+   * The instrument's classification, read off `CFICode(461)` and what the
+   * message says about the security, or `null` where nothing does.
+   */
+  get cficode(): string | null
+  /**
+   * The market, read off `SecurityExchange(207)`, `ExDestination(100)` or
+   * `LastMkt(30)`, the first that names an ISO 10383 MIC.
+   */
+  get miccode(): string | null
+  /**
    * The value the root child an identifier names, or `null`.
    *
    * An identifier is exact and does not fold: `id` is the number
@@ -1665,11 +1714,12 @@ export declare class FixMsg {
   /**
    * The value a tag names, or `null`.
    *
-   * A tag the typed holders own - a header tag, a crate column, one of
-   * the event's own tags, `Text(58)` - answers the fact the holder states
-   * as the `Scalar` its column types: `byTag(35)` is the type's text,
-   * `byTag(52)` the sending clock as `datetime64(ns, UTC)`, `byTag(54)`
-   * the side as `BUY` or `SELL`, a crate tag its column's own type - a
+   * A tag the typed holders own - a header or trailer tag, a crate
+   * column, one of the FIX fields a message lifts, `Text(58)` - answers
+   * the fact the holder states as the `Scalar` its column types:
+   * `byTag(35)` is the type's text, `byTag(52)` the sending clock as
+   * `datetime64(ns, UTC)`, `byTag(44)` an exact price, a crate tag its
+   * column's own type - a
    * `uuid`, a `uint64`, a `decimal128(38, 18)`. Any other tag reaches
    * the row through the dictionary: the canonical holder first, then an
    * alternate, then a child spelled by the tag's decimal.
@@ -1722,7 +1772,10 @@ export declare class FixMsg {
    * row, and the identity is settled again. No clock is read.
    *
    * A key reaching no field and no child, or a value the field refuses,
-   * throws the core's refusal and leaves the message as it was.
+   * throws the core's refusal and leaves the message as it was. So does a
+   * key reaching one of the capture's own columns - `sourceurl` (65026),
+   * `recordedat` (65028), by tag or by name: a message holds no fact for
+   * one, and a row child would put it on the wire.
    */
   set(key: number | string, value: unknown): void
   /**
@@ -1741,7 +1794,8 @@ export declare class FixMsg {
    * Derived on the first ask and kept until a write. The typed facts are
    * not entries: the header, the event and the capture are the holders'
    * to answer, and the wire `intoBytes` emits puts the header and the
-   * event's own tags in front of these. The loader wires
+   * lifted FIX fields in front of these and the trailer behind them. The
+   * loader wires
    * `Symbol.iterator` over this.
    */
   entries(): Array<FixEntryView>
@@ -1759,9 +1813,11 @@ export declare class FixMsg {
    * the tag its field carries - never by its spelling - so a message that
    * carried nothing at a column answers null there rather than shifting its
    * neighbours. A typed fact fills its column from its holder, a group's
-   * column from the message's own occurrences, and a column no tag names
-   * is the capture's: it takes the child of that name where the message
-   * has one, else null. The arrival record closes the row under
+   * column from the message's own occurrences, and the capture's own
+   * columns answer null - the two the crate tags, `sourceurl` and
+   * `recordedat`, and every column no tag and no counter names - because
+   * a message holds no fact for any of them; the capture readers state
+   * them on the row instead. The arrival record closes the row under
    * `fixentries`, unresolved keys at tag 0.
    *
    * A value a column will not hold is that column's null; a column that
@@ -5712,20 +5768,15 @@ export interface FileSelector {
  * What the capture stated about the line a message was read from, as
  * plain values.
  *
- * Facts about the capture and not about the message: none of them is FIX,
- * none is content, and none reaches the code the message digests to.
+ * What the line itself said about the capture it was written for: a
+ * bridge's own row header. None of it is FIX, none is content, and none
+ * reaches the code the message digests to.
+ *
+ * What the *reader* said about the line - the object it came out of, when
+ * it was recorded - is held nowhere on a message: those are the capture's
+ * own columns, and they are read off the row.
  */
 export interface FixCaptureView {
-  /**
-   * The URL of the object the line was read from, where the capture
-   * named it.
-   */
-  sourceurl: string | null
-  /**
-   * When the capture recorded the line, nanoseconds since the Unix
-   * epoch, UTC, where it dated it.
-   */
-  recordedat: bigint | null
   /**
    * The plugin that logged the line inside a bridge, as the bridge names
    * it.
@@ -5788,15 +5839,18 @@ export interface FixCodecOptions {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `unix` and the chain's `creatunix`, `expirunix`,
- * `prevunix` and `snapunix`; the identities `hashcode`, `crosshashcode`,
+ * The event's instant `currunix` and the chain's `creatunix`, `prevunix`
+ * and `snapunix`; the identities `currhashcode`, `crosshashcode`,
  * `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
- * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map groups;
- * the `state`, `px`, `qty`, `unit` and the two lanes' currencies and units;
- * the instrument's ISIN, MIC, Bloomberg, CUSIP and SEDOL codes; what a
- * bridge's capture states - `msgctxid`, `pluginid`, `msgsessionid`,
- * `sourceurl`, `recordedat`; and the `nofixentries` that counts the content
- * record. `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and
+ * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
+ * groups; what a bridge's capture states - `msgctxid`, `pluginid`,
+ * `msgsessionid`; the capture's own columns, `sourceurl` and `recordedat`,
+ * which whoever read the line states on the row and no message holds; and
+ * the `nofixentries` that counts the content record. Nothing about the
+ * market is here: every market fact is FIX's own field, and the graph
+ * traits answer it off those.
+ *
+ * `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null. Every registry already holds them, so this is
  * the listing a schema or a document walks rather than something a caller
  * registers.
@@ -5850,7 +5904,7 @@ export interface FixEntryView {
 export interface FixEventView {
   /**
    * This message's own identity: a time UUID over its instant and its
-   * `hashcode`.
+   * `currhashcode`.
    */
   curruuid: string
   /**
@@ -5869,7 +5923,7 @@ export interface FixEventView {
    * The XXH3-64 of the event, the text, the metadata, the header and the
    * row.
    */
-  hashcode: bigint
+  currhashcode: bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   crosshashcode: bigint
   /** The identifiers the message is known by, scheme to value, sorted. */
@@ -5880,7 +5934,7 @@ export interface FixEventView {
    * When the event happened: `TransactTime(60)` where the message states
    * one with a clock, else its sending time.
    */
-  unix: bigint
+  currunix: bigint
   /** The order state the message reached, ranked: `20NEW`, `80FILLED`. */
   state: string
   /** The message's place in its chain, `0` until a lifecycle states it. */
@@ -5974,6 +6028,18 @@ export interface FixHeaderView {
    * the line or the caller stated which way the message moved.
    */
   msgdirection: string | null
+  /**
+   * `SignatureLength(93)`: how many bytes the signature runs to, where
+   * the frame carried one.
+   */
+  signaturelength: number | null
+  /** `Signature(89)`: the bytes the frame was signed with, where it was. */
+  signature: Buffer | null
+  /**
+   * `CheckSum(10)` as the wire spelled it. Always a frame's last pair,
+   * and the last one `intoBytes` emits.
+   */
+  checksum: string | null
 }
 
 /**
@@ -5986,8 +6052,8 @@ export interface FixHeaderView {
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `fix:tag`,
- * and is what fills it. `beginstring` and the settled identity - `unix`,
- * `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * and is what fills it. `beginstring` and the settled identity - `currunix`,
+ * `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */
@@ -6005,6 +6071,11 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
  * so each value reaches its column rather than leading the row, and never
  * over a reading the message stated itself.
+ *
+ * A carried column is nullable whatever the capture declared it: a capture's
+ * own column is the *reading's* statement and no message holds one, so a
+ * pass that has no source row in hand writes null there rather than
+ * refusing per row. The one-pass readers state every one of them.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 

@@ -392,8 +392,8 @@ fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
     // has stated what is left and what the fill was worth - filled as it is
     // read, with no second pass.
     let filled = codec.sole_line(WORKING.as_bytes()).expect("a report");
-    assert_eq!(filled.by_tag(151).unwrap(), Scalar::from(60.0_f64));
-    assert_eq!(filled.by_tag(381).unwrap(), Scalar::from(420.0_f64));
+    assert_eq!(filled.by_tag(151).unwrap(), super::decimal("60"));
+    assert_eq!(filled.by_tag(381).unwrap(), super::decimal("420"));
 
     // A date arrives compact and reads as that day's midnight, stating no zone
     // because a local market date has none.
@@ -402,7 +402,7 @@ fn a_parse_fills_the_columns_and_the_wire_re_emits_them() {
     // The closing fill settles in the currency it was dealt in, at the rate it
     // stated - Appendix O read as the implication it is.
     let closed = codec.sole_line(FILLED.as_bytes()).expect("a report");
-    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(151).unwrap(), super::decimal("0"));
     assert_eq!(closed.by_tag(120).unwrap().as_str(), Some("EUR"));
 
     // What was derived is the message's, so the wire carries it beside what

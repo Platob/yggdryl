@@ -38,7 +38,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert_eq!(message.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?.as_str(), Some("BROKER"));
     // The message re-emits what it now states: what arrived, and the day
     // order its dictionary derived from an order stating no TimeInForce.
-    assert_eq!(message.into_text('|')?, "8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|");
+    assert_eq!(message.into_text('|')?, "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|");
     ```
 
 === "Python"
@@ -54,7 +54,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
     # The message re-emits what it now states: what arrived, and the day order
     # its dictionary derived from an order stating no TimeInForce.
-    assert message.into_text("|") == "8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|"
+    assert message.into_text("|") == "8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|"
     ```
 
 === "JavaScript"
@@ -71,7 +71,7 @@ One frame, read against the dictionary. A line can carry more than one, and
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     // The message re-emits what it now states: what arrived, and the day order
     // its dictionary derived from an order stating no TimeInForce.
-    assert.equal(message.intoText('|'), '8=FIX.4.4|35=D|59=0|453=1|448=BROKER|452=1|10=000|')
+    assert.equal(message.intoText('|'), '8=FIX.4.4|35=D|453=1|448=BROKER|452=1|59=0|10=000|')
     ```
 
 ## A line yields none, one or many messages
@@ -179,8 +179,8 @@ a line that stated no frame.
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(read.len(), 2);
     // Each re-emits its own bytes, and the day order its dictionary derived.
-    assert_eq!(read[0], b"8=FIX.4.4|35=D|59=0|11=A|10=001|");
-    assert_eq!(read[1], b"8=FIX.4.4|35=8|59=0|37=O1|10=002|");
+    assert_eq!(read[0], b"8=FIX.4.4|35=D|11=A|59=0|10=001|");
+    assert_eq!(read[1], b"8=FIX.4.4|35=8|37=O1|59=0|10=002|");
 
     // A sentence states no message, whatever `=` it happens to hold.
     assert!(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")?.next().is_none());
@@ -212,8 +212,8 @@ a line that stated no frame.
     both = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|"
     # Each re-emits its own bytes, and the day order its dictionary derived.
     assert [message.into_text("|") for message in codec.parse_line(both)] == [
-        "8=FIX.4.4|35=D|59=0|11=A|10=001|",
-        "8=FIX.4.4|35=8|59=0|37=O1|10=002|",
+        "8=FIX.4.4|35=D|11=A|59=0|10=001|",
+        "8=FIX.4.4|35=8|37=O1|59=0|10=002|",
     ]
     # A sentence states no message, whatever `=` it happens to hold.
     assert list(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")) == []
@@ -241,7 +241,7 @@ a line that stated no frame.
     const both = Buffer.from('8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O1|10=002|')
     // Each re-emits its own bytes, and the day order its dictionary derived.
     const read = [...codec.parseLine(both)].map((message) => message.intoText('|'))
-    assert.deepEqual(read, ['8=FIX.4.4|35=D|59=0|11=A|10=001|', '8=FIX.4.4|35=8|59=0|37=O1|10=002|'])
+    assert.deepEqual(read, ['8=FIX.4.4|35=D|11=A|59=0|10=001|', '8=FIX.4.4|35=8|37=O1|59=0|10=002|'])
     // A sentence states no message, whatever `=` it happens to hold.
     assert.equal([...codec.parseLine(Buffer.from('After Enrichment -> ACCOUNT=A1 SIDE=1'))].length, 0)
     // The same pairs behind a separator the line named are a bridge row, and a
@@ -300,7 +300,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 - A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired - the committed capture's cancel reject states `#NOTRDREGTIMESTAMPS=4` and indexes five occurrences, and reads as five occurrences under a counter of four, the count the entries state being the one the group holds - and an ambiguous group context needs a message definition to select the layout.
 - A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
-- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is silence rather than an error - except a stated clock the identity is settled against (`SendingTime(52)`, `TransactTime(60)`, `unix`, `creatunix`), whose unreadable value is a located error item.
+- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is silence rather than an error - except a stated clock the identity is settled against (`SendingTime(52)`, `TransactTime(60)`, `currunix`, `creatunix`), whose unreadable value is a located error item.
 - Every message states a `BeginString(8)` on its [typed header](message.md#typed-tags): what the line itself said, else the crate's own `FIX.4.4`, so a bridge row and the row a JSON document is say which FIX they were read as exactly as a frame does. A read never rewrites what arrived.
 - A key the dictionary does not name is looked for in the message it arrived in before it is kept unexplained: the message root's own children for a flat key, the occurrence's declared members for a packed one. A dialect that spelled one name over two tags has named neither of them in the dictionary, and this is where its own grammar says which of them a key means.
 - `XmlData(213)` is read into the line that carried it, whichever of the two things a bridge writes into it: a row of its own pairs, or the FIXML the tag is named for. Either becomes real fields resolved to real tags rather than one opaque value, a nested element's attributes flattening the way a packed occurrence already does. The field still holds the bytes it arrived as and the wire re-emits them exactly, because a reading of a value is not a second arrival; a document that will not parse fills nothing and the value stays whole.

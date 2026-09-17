@@ -598,18 +598,36 @@ where
     I: Iterator<Item = Result<FixMsg>>,
 {
     pub(super) fn new(source: I) -> Self {
-        let failures: Failures = Arc::new(Mutex::new(VecDeque::new()));
-        let sieve = Sieve {
-            source,
-            failures: Arc::clone(&failures),
-        };
         // Collected and sorted by instant, not streamed: a capture's order is
         // the order its lines were written, and a message's instant is the
         // clock it states, so two messages of one chain routinely arrive out
         // of their own order and a walk over the stream would refuse to chain
         // them.
+        Self::over(source, false)
+    }
+
+    /// The walk over messages that already arrive in their own order - none
+    /// [`Element::is_before`](crate::graph::Element::is_before) one before
+    /// it - which it therefore streams rather than collecting and sorting.
+    ///
+    /// One answer per message, in the order it got them, which is what lets
+    /// a caller holding something *beside* each message - the batch door
+    /// holds the cells of the row each came out of - put its messages in
+    /// that order itself and keep the pairing across the walk. A stream that
+    /// is not in that order chains less than it should rather than failing,
+    /// so this is the door for a caller that sorted, never a shortcut.
+    pub(super) fn sorted(source: I) -> Self {
+        Self::over(source, true)
+    }
+
+    fn over(source: I, sorted: bool) -> Self {
+        let failures: Failures = Arc::new(Mutex::new(VecDeque::new()));
+        let sieve = Sieve {
+            source,
+            failures: Arc::clone(&failures),
+        };
         Self {
-            walk: EventIterator::new(sieve, false),
+            walk: EventIterator::new(sieve, sorted),
             failures,
             pending: None,
         }

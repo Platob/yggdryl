@@ -62,9 +62,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             let held = black_box(&identifier_message);
             black_box((
-                held.get_unix(),
+                held.get_currunix(),
                 held.get_creatunix(),
-                held.get_hashcode(),
+                held.get_currhashcode(),
                 held.get_crosshashcode(),
             ))
         });

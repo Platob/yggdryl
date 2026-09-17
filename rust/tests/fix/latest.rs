@@ -21,7 +21,7 @@ use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 /// the content row altogether, and tag 76 is an ordinary column, so a
 /// restatement to it lands as a child like any other.
 fn undated_fields() -> Vec<Field> {
-    let mut qty = DataType::Float64.nullable_field("lastqty");
+    let mut qty = DataType::DECIMAL.nullable_field("lastqty");
     qty.as_fix_mut().set_tag(32).expect("a tag");
     qty.as_fix_mut()
         .set_names(["LastShares"])
@@ -99,8 +99,8 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
     // so what the restatement reached is the holder rather than a column of
     // the content row.
     assert_eq!(names(&latest), ["symbol"]);
-    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(latest.by_name("lastqty").unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), super::decimal("100"));
+    assert_eq!(latest.by_name("lastqty").unwrap(), super::decimal("100"));
     assert_eq!(text(&latest, 55).as_deref(), Some("AAPL"));
     // An alias reaching an ordinary column is renamed in place there, with
     // the registry's own spelling, type and tag.
@@ -118,7 +118,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
 fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
     let latest = built(undated_registry(), &[("32", "100")]);
     assert_eq!(names(&latest), [] as [&str; 0]);
-    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32).unwrap(), super::decimal("100"));
     let ordinary = built(undated_registry(), &[("76", "BRKR")]);
     assert_eq!(names(&ordinary), ["execbroker"]);
     assert_eq!(ordinary.by_tag(76).unwrap(), Scalar::from("BRKR"));
@@ -343,11 +343,8 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
         Scalar::from(3)
     );
     // The fill itself, untouched and under its newest spelling.
-    assert_eq!(latest.by_tag(32).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(
-        latest.by_name("LastShares").unwrap(),
-        Scalar::from(100.0_f64)
-    );
+    assert_eq!(latest.by_tag(32).unwrap(), super::decimal("100"));
+    assert_eq!(latest.by_name("LastShares").unwrap(), super::decimal("100"));
     assert_eq!(
         text(&latest, 8).as_deref(),
         Some("FIX.4.2"),
@@ -485,16 +482,17 @@ fn a_multiple_value_field_matches_by_token() {
 #[test]
 fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
     let reader = reader();
-    // OrderID on an OrderMassActionReport is the MassActionReportID.
+    // ClearingBusinessDate inside an allocation instruction is scoped to
+    // the group and never applies at the root.
     let report = restated(&reader, b"8=FIX.5.0|35=r|37=O1|1373=1|10=0|");
-    assert_eq!(text(&report, 1369).as_deref(), Some("O1"));
+    assert_eq!(text(&report, 37).as_deref(), Some("O1"));
     let execution = restated(&reader, b"8=FIX.5.0|35=8|37=O1|10=0|");
     assert_eq!(execution.get_by_tag(1369), None);
 
     // SettlCurrAmt inside an allocation is AllocSettlCurrAmt; at the root
     // it is what it was.
     let root = restated(&reader, b"8=FIX.4.2|35=J|70=A1|119=1000|10=0|");
-    assert_eq!(root.by_tag(119).unwrap(), Scalar::from(1000.0_f64));
+    assert_eq!(root.by_tag(119).unwrap(), super::decimal("1000"));
     assert_eq!(root.get_by_tag(737), None);
     let grouped = restated(
         &reader,
@@ -504,11 +502,11 @@ fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
         grouped
             .by_path(&path("allocgrp[0].allocsettlcurramt"))
             .unwrap(),
-        Scalar::from(1000.0_f64)
+        super::decimal("1000")
     );
     assert_eq!(
         grouped.by_path(&path("allocgrp[0].settlcurramt")).unwrap(),
-        Scalar::from(1000.0_f64),
+        super::decimal("1000"),
         "the source stays"
     );
     assert_eq!(grouped.get_by_tag(737), None, "nothing at the root");
@@ -522,7 +520,7 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
     assert!(!latest.by_tag(51).unwrap().is_null());
     // A catch-all rule fills its target from the source's own value.
     let floor = restated(&reader, b"8=FIX.4.4|35=D|11=A|111=50|10=0|");
-    assert_eq!(floor.by_tag(1138).unwrap(), Scalar::from(50.0_f64));
+    assert_eq!(floor.by_tag(1138).unwrap(), super::decimal("50"));
     // `MaxFloor` is a field FIX Latest removed, so the column it was read
     // into is nulled once its value stands under the field that replaced it.
     assert_eq!(floor.get_by_tag(111), Some(Scalar::Null));
@@ -635,9 +633,9 @@ fn a_rule_stops_where_the_message_already_stated_one_of_its_targets() {
     assert_eq!(text(&filled, 40).as_deref(), Some("1"));
     assert_eq!(text(&filled, 59).as_deref(), Some("7"));
 
-    // `TimeInForce` is one of the facts the event holds, so what blocks the
-    // rule is the holder and not a column: the row carries no `timeinforce`
-    // child either way.
-    assert!(!names(&held).contains(&"timeinforce"));
-    assert!(!names(&filled).contains(&"timeinforce"));
+    // `TimeInForce` is an ordinary child of the row, so the rule's answer
+    // and the message's own statement land in the same column - and the
+    // column is there either way.
+    assert!(names(&held).contains(&"timeinforce"));
+    assert!(names(&filled).contains(&"timeinforce"));
 }
