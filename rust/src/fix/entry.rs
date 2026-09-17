@@ -186,7 +186,16 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
             let nanos = count.checked_mul(nanos_per(unit)?)?;
             Some(fix_date(nanos.div_euclid(NANOS_PER_DAY)))
         }
-        // Every number and duration writes its leaf's own canonical text.
+        // A decimal writes the number it is rather than the scale it is
+        // stored at: this crate keeps a price and a quantity exact, at
+        // `decimal128(38, 18)`, and a wire that spelled `12.5` as
+        // `12.500000000000000000` would be stating the storage.
+        Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => crate::types::Decimal::from_scalar(value)
+            .map(|held| smol_str::format_smolstr!("{held}")),
+        // Every other number and duration writes its leaf's own canonical text.
         other => other
             .leaf_display()
             .map(|held| smol_str::format_smolstr!("{held}")),
