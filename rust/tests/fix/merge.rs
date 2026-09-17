@@ -248,8 +248,9 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
             "{name}"
         );
     }
-    // A definition is not a field, and the category verb redirects a scalar.
-    assert!(registry.get_field("Party").is_none());
+    // A definition is a field of the registry, reached through the one set
+    // of field doors, and the insert verb files a scalar as a scalar.
+    assert!(registry.get_field("Party").is_some());
     assert!(
         registry
             .add_field(tagged("Symbol", 55, DataType::utf8()))
@@ -321,7 +322,9 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
     let before = registry.clone();
     assert!(!registry.add_field(extended.clone()).unwrap());
     assert_eq!(registry, before);
-    assert!(registry.insert(extended).is_err());
+    // The strict verb replaces the definition the name holds rather than
+    // refusing it, and replacing it by itself leaves the registry as it was.
+    assert!(registry.insert(extended).unwrap().is_some());
     assert_eq!(registry, before);
 
     // A message extends the same way, keeping its code.
@@ -588,14 +591,20 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
     assert_eq!(registry, before);
-    let error = registry
+    // A definition insert replaces what the fold names, and the stored
+    // spelling stays whatever the incoming one spelled.
+    let replaced = registry
         .insert(DataType::from_fields([]).unwrap().required_field("plain"))
-        .unwrap_err();
-    assert!(error.is_conflict(), "{error}");
-    assert_eq!(registry, before);
+        .unwrap();
+    assert_eq!(
+        replaced.as_ref().map(Field::name),
+        Some("Plain"),
+        "the definition it replaced"
+    );
+    assert_eq!(registry.field_by_name("Plain").unwrap().name(), "Plain");
 
-    // `insert_definition` replaces the members wholesale, where the lenient
-    // verb would have kept `Count`.
+    // `insert` replaces the members wholesale, where the lenient verb would
+    // have kept `Count`.
     registry
         .insert(
             DataType::from_fields([DataType::utf8().nullable_field("Other")])

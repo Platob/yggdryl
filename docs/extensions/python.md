@@ -1195,8 +1195,9 @@ assert value.unix == 1_700_000_000_000_000
 assert int(value.digest) == xxhash.xxh3(b"abc")
 assert bytes(value)[:8] == value.unix.to_bytes(8, "big", signed=True)
 assert txhash.TxHash(str(value)) == value
-# The instant restated to nanoseconds, then the digest's low 58 bits.
-assert value.into_uuid().as_py() == "97979cfe-362a-8000-80af-5f94892f3950"
+# RFC 9562 UUIDv7: the instant floored to the microsecond, then the
+# digest's low 62 bits.
+assert value.into_uuid().as_py() == "018bcfe5-6800-7000-b8af-5f94892f3950"
 ```
 
 ## Watching what the core does
@@ -1258,7 +1259,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `global_registry()`, and `install_global_registry()`. The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `identifiers`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `tag`, `tags` and `counter` take positive tags only, and `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, the three holder views `FixHeader`, `FixCapture` and `MarketEventData`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `global_registry()`, and `install_global_registry()`. The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `identifiers`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `tag`, `tags` and `counter` take positive tags only, and `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1269,19 +1270,19 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | direction rules | `field.fix.directions` is the `list[FixDirection]` a tag-385 field carries as `fix:directions`, each a TypedDict `{"code": str, "patterns": list[str]}` - one record per code of the set, the patterns decoded, `[]` when the property is absent - assignable from any iterable of such mappings, an empty one removing the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling is a `ValueError` that leaves the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix_crate_fields()` answers 36 definitions: 34 scalar fields on tags 65001-65003, 65005-65015, 65017-65019, 65021-65035 and 65037-65038, plus the `altids` Map group at 65020 and the `instids` Struct at 65036; `FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so it holds 36 scalar fields; `len(registry)` and registry iteration count scalar fields only, while `definitions("groups")` includes `altids` and `definitions("components")` includes `instids` |
-| CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
+| crate inventory | `fix_crate_fields()` answers 34 definitions: 32 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035 and 65039-65048, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so it holds 34 fields and the two groups and its `len()` is 36; `len(registry)` counts all three categories, while iterating a registry walks its fields alone |
+| CRUD | one door per verb, filing by shape: `insert(field)`, `update(field)`, `remove(key)` and `remove_by_id(id)` take a scalar, a Struct component or a List/Map group alike, and `add_field` / `add_fields` are the lenient twins that fold a field into a stored one rather than replacing it |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a store is `fields/<shard>.json` beside `components/` and `groups/`, one file per name, with membership inside each field's metadata |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
-| `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them; a key no field resolves, named or numeric, carries tag 0 with its raw key |
-| `FixMsg` | `FixMsg(field, value, registry=None)` appends each settled field the root lacks - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `msghash()` and `msgphash()` answer those settled `Scalar` values; equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field is a `ValueError` that changes nothing; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row carrying the settled fields back, entries included |
+| `FixMsg.entries()` | `(tag, name, value, entries)` tuples, the content row read as a tree: a group is one entry under its counter valued the count, over one valueless entry per occurrence heading the members, and a key no field resolves, named or numeric, carries tag 0 with its own spelling |
+| `FixMsg` | `FixMsg(field, value, registry=None)` lifts every [typed fact](../fix/message.md#typed-tags) out of the children stating it, settles the clocks and derives the identity, reading the clock once only for a SendingTime nothing states; `event()`, `header()` and `capture()` answer the holders, and `text`, `metadata`, `curruuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `unix`, `state`, `seqnum`, `prevuuid`, `parentuuids`, `identifiers`, `px`, `qty`, `side` and `currency` the facts a reader asks for by name; `field`, `value`, `len()` and iteration are the content row alone; equality over holders, row and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` reach a holder for a typed tag and the row for everything else, settling the identity again; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; `field` answers a read-only `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifier_values(message)` | takes a `FixMsg` and answers `list[tuple[Field, Scalar]]` in declaration order, omitting absent or null values; each field is a read-only declaration clone, each scalar retains its native datatype and width, and binary values remain bytes until enrichment needs UTF-8 |
-| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect; `default_sending_time` (a `Scalar`, a `datetime`, or `None`, read back as a nanosecond UTC `Scalar` or `None`) is the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the crate's own 4.4, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line` and `parse_text_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
-| Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`; incoming readers cross C Stream, outgoing readers use the shared lazy [Arrow export](#arrow-values); `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
-| `FixCodec.lifecycle`, `FixLifecycle` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec and `snapshots(messages)`, one at a time for `fill(message)`, and `FixMsg` or `None` for `snapshot(message)`, which answers only a chain's first off-grid arrival in a new bucket; `FixLifecycle(registry=None, *, interval_ns=FixLifecycle.DEFAULT_INTERVAL_NS)` sets the grid, one second by default, read back as `interval_ns`; `set_interval_ns` repeating it is a no-op, while a nonpositive interval or a change while a chain is live is a `ValueError` that changes nothing; `alive()` counts the chains no terminal state has closed, `clear()` forgets them, and the lifecycle is mutable, so unhashable |
-| output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
+| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect; `default_sending_time` (a `Scalar`, a `datetime`, or `None`, read back as a nanosecond UTC `Scalar` or `None`) is the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the crate's own 4.4, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line` and `parse_text_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `lifecycle` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` answer one `FixMsg`; no reader takes a flag, and there is no enriching door - a parse restates the row, fills what the message implies and settles the identity |
+| Arrow twins | `parse_text_arrow_reader`, `lifecycle_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`; incoming readers cross C Stream, outgoing readers use the shared lazy [Arrow export](#arrow-values); `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
+| `FixCodec.lifecycle` | the one walk, over `FixMsg`: any iterable in and a lazy `FixMessages` out, each message stated as the one after the live message of its chain, a twin restating the live one rather than chaining behind it; `lifecycle_arrow_reader` is the same walk over batches, each row read back through `FixMsg.from_row` and written back under the same schema |
+| output | `FixMsg.into_row(field)` projects a fixed row; `into_bytes(separator=1)` and `into_text(separator="\x01")` re-emit the message as it now stands - the header from its holder, then the event's own tags, then the text, then the entries pre-order - and a message with no content emits its version alone |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
@@ -1329,9 +1330,9 @@ with pytest.raises(TypeError, match="not bool"):
     registry.field_by_id(True)
 assert registry.field_by_name("SYMBOL").name == "symbol"
 assert registry.field_by_path("Parties.PartyID").fix.tag == 448
-assert registry.definition("fields", "NoPartyIDs").dtype == DataType("int32")
-assert registry.definition("groups", "Parties").fix.counter == 453
-assert registry.definition("components", "Party").dtype.kind == "nested"
+assert registry.field_by_name("NoPartyIDs").dtype == DataType("int32")
+assert registry.field_by_counter(453).name == "parties"
+assert registry.field_by_name("Party").is_struct
 
 # Absence is a KeyError carrying the native message; a refusal is a ValueError.
 with pytest.raises(KeyError) as absent:
@@ -1373,20 +1374,21 @@ message = FixMsg(root, {"symbol": "AAPL"}, registry)
 with pytest.raises(ValueError, match="shared with a message"):
     registry.remove(55)
 
-# The root gained the settled fields every message holds, after its own.
-assert [name for name, _ in message] == [
-    "symbol", "updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime",
-]
+# The row holds what no holder owns; the typed facts are the holders'.
+assert [name for name, _ in message] == ["symbol"]
+assert message.header().beginstring == "", "a built message states no version"
+assert message.hashcode != 0
 
 # The message is a value: it hashes, copies and pickles, registry included,
 # and its settled clocks and identities rebuild it equal.
 assert copy.deepcopy(message) == message
-assert pickle.loads(pickle.dumps(message)) == message
-assert pickle.loads(pickle.dumps(message)).registry == registry
+unpickled = pickle.loads(pickle.dumps(message))
+assert unpickled.entries() == message.entries()
+assert unpickled.hashcode == message.hashcode and unpickled.curruuid == message.curruuid
+assert unpickled.registry == registry
 assert hash(message) == hash(FixMsg(message.field, message.value, registry))
 assert message.by_id(symbol.fix.id).as_py() == "AAPL"
 assert message.get_by_id(vendor.fix.id) is None
-assert message.lift_source("symbol") == 55
 
 # Generic intake is lazy even when the source yields one message, and an
 # undated one takes the codec's default SendingTime rather than the clock.
@@ -1395,12 +1397,11 @@ codec = FixCodec(registry, default_sending_time=dt.datetime(2026, 9, 14, tzinfo=
 messages = codec.parse_line(wire)
 parsed = next(messages)
 assert next(messages, None) is None
-assert parsed.into_bytes(ord("|")) == wire
-assert parsed.updatedat() == parsed.createdat() == codec.default_sending_time
-with pytest.raises(ValueError, match="mandatory"):
-    parsed.remove("msghash")
+assert parsed.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|10=0|59=0|"
+assert parsed.by_tag(52) == codec.default_sending_time
+assert parsed.unix == parsed.event().creatunix
 table_field = fix_schema(registry)
-assert len(parsed.into_row(table_field)) == len(table_field.dtype)
+assert len(parsed.into_row(table_field)) == len(list(table_field))
 ```
 
 Which way a captured line moved is tag 385, read off the prose in front of the payload by the rules the dictionary carries on that field. A bridge that logs `TX`/`RX` is read by editing the dictionary, never the crate, and the codec compiles the rules of the registry it is built over, once.
@@ -1442,7 +1443,7 @@ direction.fix.directions = []
 assert "fix:directions" not in direction.metadata
 ```
 
-A `dict` is the Python spelling of a named row under a Struct field, while a Map field such as `altids` keeps the ordinary mapping input; neither needs a FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
+A `dict` is the Python spelling of a named row under a Struct field, while a Map field such as `identifiers` keeps the ordinary mapping input; neither needs a FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and the fill a parse runs, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
 ## Edges
 
@@ -1506,10 +1507,10 @@ A `dict` is the Python spelling of a named row under a Struct field, while a Map
 - `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all three categories, a field's `fix:branches` included like any other metadata.
 - a registry linked by a `FixMsg`, `MsgType`, live iterator or process default -> mutations raise `ValueError`; copy the registry for independent edits.
 - `remove(key)` -> reads an `int` as a tag, so it reaches the tag's holder; `remove_by_id` is how a field sharing its tag with the holder leaves on its own.
-- `msg.by_id` / `msg.get_by_id` -> take the `int` a field's `fix.id` answers and match it exactly, no alias, alternate tag or fold consulted; `msg.lift_source(facet)` answers the `int` tag a facet was read from.
+- `msg.by_id` / `msg.get_by_id` -> take the `int` a field's `fix.id` answers and match it exactly, no alias, alternate tag or fold consulted.
 - `field.fix.tag`, `tags`, `counter` -> positive `i32` tags only; 0 is a `ValueError`, because tag 0 marks an unresolved arrival and names no field. The id follows the tag, since nothing gates a tag on the dictionary that speaks it.
 - `TextLine`'s Arrow converters (`into_arrow_batch`, `into_arrow_reader`, `from_arrow_batch`, `from_arrow_reader`) -> Rust-only.
-- iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.
+- iterating a `FixMsg` -> `(name, Scalar)` pairs of the content row in its declared order, the typed facts left to their holders; `value` answers a `Scalar`, `field` a `Field`, and `entries()` the row read as a tree.
 - a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's occurrence.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
 

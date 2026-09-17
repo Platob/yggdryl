@@ -352,12 +352,9 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     // The lifted facets answered.
     let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
-    // The content identity's UUID storage is sixteen bytes, not a string.
+    // The content code's storage is the `uint64` it is, not a string.
     let digest = tag_column(&batch, yggdryl::HASHCODE_TAG_NAME.0);
-    assert_eq!(
-        digest.data_type(),
-        &arrow_schema::DataType::FixedSizeBinary(16)
-    );
+    assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch
     // lossless rather than one reader's summary.
@@ -484,7 +481,7 @@ fn messages_to_batches_close_on_the_arrival_records_raw_bytes() {
 
     // A bound of about ten lines of pairs cuts the stream into batches of
     // about ten, and every row survives the cut.
-    let bounded = codec.clone().with_batch_byte_size(10 * 450);
+    let bounded = codec.clone().with_batch_byte_size(10 * 115);
     let many = batches(
         bounded
             .arrow_reader(schema.clone(), codec.parse_lines(lines.clone()))
@@ -757,15 +754,21 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     });
     let mut pipeline = codec.lifecycle(codec.parse_text_lines(source));
     drop(codec);
-    assert_eq!(pulls.get(), 0);
-    let first = pipeline.next().unwrap().unwrap();
-    assert_eq!(pulls.get(), 1);
-    same_source_failure(pipeline.next().unwrap().unwrap_err(), &marker);
-    assert_eq!(pulls.get(), 2);
-    let last = pipeline.next().unwrap().unwrap();
-    assert_eq!(pulls.get(), 3);
-    assert_eq!(last.get_prevuuid(), Some(first.get_curruuid()));
-    assert_eq!(last.get_creatunix(), first.get_creatunix());
+    // The parse is lazy; the walk is not, because a chain is read in instant
+    // order and no order is known until the last message is in - so the walk
+    // drains the source it was handed, once, and fuses it there.
+    assert_eq!(pulls.get(), 4);
+    let mut read = Vec::new();
+    while let Some(held) = pipeline.next() {
+        match held {
+            // The source's own failure moves through as itself.
+            Err(error) => same_source_failure(error, &marker),
+            Ok(message) => read.push(message),
+        }
+    }
+    assert_eq!(read.len(), 2);
+    assert_eq!(read[1].get_prevuuid(), Some(read[0].get_curruuid()));
+    assert_eq!(read[1].get_creatunix(), read[0].get_creatunix());
     assert!(pipeline.next().is_none());
     assert!(pipeline.next().is_none());
     assert_eq!(pulls.get(), 4);
@@ -1314,8 +1317,15 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
             [first.clone()],
         ))
         .unwrap();
-    let error = again.next().unwrap().unwrap_err();
-    assert!(error.to_string().contains("$.msghash"), "{error}");
+    // The identity is settled by the read rather than carried in from the
+    // row, so the same body under the projected row answers its rows again.
+    assert_eq!(
+        again
+            .by_ref()
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum::<usize>(),
+        2
+    );
     assert!(again.next().is_none());
     // An explicit body-only projection is a fresh capture, with no stale claim.
     let bodies = first.project(&[schema.index_of("body").unwrap()]).unwrap();

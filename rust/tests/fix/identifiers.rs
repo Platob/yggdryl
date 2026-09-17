@@ -469,8 +469,13 @@ fn a_parse_fills_the_names_a_message_goes_by_in_sorted_order() {
             ("orderid", "O-01")
         ]
     );
-    // Filling them is not an arrival: the record and the wire are the line's.
-    assert_eq!(read.into_bytes(b'|'), line);
+    // Filling them is not an arrival: the identifiers are the event's own
+    // fact, so the wire is the line's own pairs beside what the dictionary
+    // derived for it.
+    assert_eq!(
+        String::from_utf8(read.into_bytes(b'|')).unwrap(),
+        format!("{}59=0|", String::from_utf8_lossy(line))
+    );
 
     // And the row carries them, so a message read back off one goes by the
     // same names.

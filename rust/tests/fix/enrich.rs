@@ -883,8 +883,8 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
         ("lastqty", Scalar::from(10.0_f64)),
     ])
     .expect("a record");
-    let read = FixMsg::with_registry(Arc::clone(reader.registry()), root, value)
-        .expect("a built message");
+    let read =
+        FixMsg::with_registry(Arc::clone(reader.registry()), root, value).expect("a built message");
     let names = |rendered: String| {
         assert!(rendered.contains("grosstradeamt"), "{rendered}");
         assert!(rendered.contains("nosuchfield"), "{rendered}");

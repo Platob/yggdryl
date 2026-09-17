@@ -139,7 +139,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     let columns: Vec<_> = schema
         .fields()
         .iter()
-        .filter(|field| field.name() == "altids")
+        .filter(|field| field.name() == "identifiers")
         .collect();
     assert_eq!(columns.len(), 1);
     let column = columns[0];
@@ -147,7 +147,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     assert_eq!(column.as_fix().tag().unwrap(), Some(65_020));
     assert_eq!(column.as_fix().counter().unwrap(), Some(65_020));
     let DataType::Map(map) = column.dtype() else {
-        panic!("altids is a Map")
+        panic!("identifiers is a Map")
     };
     assert!(map.keys_sorted());
     assert!(registry.get_field_by_tag(65_020).is_none());
@@ -168,9 +168,12 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
             (Scalar::from("execid"), Scalar::from("E-1")),
         ],
     ] {
+        let empty = pairs.is_empty();
         let mapping = Scalar::from_mapping(pairs).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
-        assert_eq!(source.by_tag(65_020).unwrap(), mapping);
+        // The identifiers are the event's own fact: a map stating none is
+        // no fact, and one stating pairs answers them.
+        assert_eq!(source.get_by_tag(65_020), (!empty).then(|| mapping.clone()));
         let schema = source.as_field();
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
@@ -184,15 +187,15 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 }
 
 #[test]
-fn map_paths_distinguish_present_null_missing_and_absent_maps() {
+fn map_paths_distinguish_present_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
     let schema = DataType::from_fields([registry.get_field_by_counter(65_020).unwrap().clone()])
         .unwrap()
         .required_field("fix");
-    let key = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
-    let missing = yggdryl::FieldPath::from_str("altids['missing']").unwrap();
-    let named_child = yggdryl::FieldPath::from_str("altids.clordid").unwrap();
-    let indexed_child = yggdryl::FieldPath::from_str("altids[0]").unwrap();
+    let key = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
+    let missing = yggdryl::FieldPath::from_str("identifiers['missing']").unwrap();
+    let named_child = yggdryl::FieldPath::from_str("identifiers.clordid").unwrap();
+    let indexed_child = yggdryl::FieldPath::from_str("identifiers[0]").unwrap();
     let value_field = registry.field_by_path(&key).unwrap();
     assert_eq!(value_field.dtype(), &DataType::utf8());
     assert!(value_field.is_nullable());
@@ -200,16 +203,21 @@ fn map_paths_distinguish_present_null_missing_and_absent_maps() {
     for invalid in [&named_child, &indexed_child] {
         assert!(registry.get_field_by_path(invalid).is_none());
     }
-    for value in [Scalar::from("O-1"), Scalar::Null] {
-        let mapping = Scalar::from_mapping([(Scalar::from("clordid"), value.clone())]).unwrap();
-        let message = fresh(Arc::clone(&registry), &schema, vec![mapping]);
-        assert_eq!(message.get_by_path(&key), Some(value.clone()));
-        assert_eq!(message.get("altids['clordid']"), Some(value));
-        assert_eq!(message.get_by_path(&missing), None);
-        for invalid in [&named_child, &indexed_child] {
-            assert_eq!(message.get_by_path(invalid), None);
-        }
+    // The identifiers a message goes by are names beside values, so a key
+    // stating nothing is a key it does not go by: present and missing are
+    // the two answers a path has.
+    let value = Scalar::from("O-1");
+    let mapping = Scalar::from_mapping([(Scalar::from("clordid"), value.clone())]).unwrap();
+    let message = fresh(Arc::clone(&registry), &schema, vec![mapping]);
+    assert_eq!(message.get_by_path(&key), Some(value.clone()));
+    assert_eq!(message.get("identifiers['clordid']"), Some(value));
+    assert_eq!(message.get_by_path(&missing), None);
+    for invalid in [&named_child, &indexed_child] {
+        assert_eq!(message.get_by_path(invalid), None);
     }
+    let nulled = Scalar::from_mapping([(Scalar::from("clordid"), Scalar::Null)]).unwrap();
+    let message = fresh(Arc::clone(&registry), &schema, vec![nulled]);
+    assert_eq!(message.get_by_path(&key), None);
     for mapping in [Scalar::Null, Scalar::from_mapping([]).unwrap()] {
         let message = fresh(Arc::clone(&registry), &schema, vec![mapping]);
         assert_eq!(message.get_by_path(&key), None);
@@ -221,7 +229,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let mut registry = FixRegistry::new();
     let mut label = DataType::utf8().nullable_field("label");
     label.as_fix_mut().set_tag(9001).unwrap();
-    label.as_fix_mut().set_names(["AltIds"]).unwrap();
+    label.as_fix_mut().set_names(["Identifiers"]).unwrap();
     registry.insert(label.clone()).unwrap();
     let map = registry.get_field_by_counter(65_020).unwrap().clone();
     let schema = DataType::from_fields([label, map])
@@ -236,9 +244,12 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
         &schema,
         vec![Scalar::from("stated-label"), mapping("O-1")],
     );
-    let root = yggdryl::FieldPath::from_str("AltIds").unwrap();
-    let path = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
-    assert_eq!(registry.field_by_name("AltIds").unwrap().name(), "label");
+    let root = yggdryl::FieldPath::from_str("Identifiers").unwrap();
+    let path = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
+    assert_eq!(
+        registry.field_by_name("Identifiers").unwrap().name(),
+        "label"
+    );
     let declared = registry.field_by_path(&root).unwrap();
     assert_eq!(declared, registry.get_field_by_counter(65_020).unwrap());
     let DataType::Map(map) = declared.dtype() else {
@@ -248,10 +259,10 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
         registry.field_by_path(&path).unwrap(),
         &map.entries().fields()[1]
     );
-    assert_eq!(message.get_by_name("AltIds"), Some(mapping("O-1")));
+    assert_eq!(message.get_by_name("Identifiers"), Some(mapping("O-1")));
     assert_eq!(message.get_by_path(&root), Some(mapping("O-1")));
     assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-1")));
-    message.set("ALTIDS", mapping("O-2")).unwrap();
+    message.set("IDENTIFIERS", mapping("O-2")).unwrap();
     assert_eq!(message.get_by_path(&root), Some(mapping("O-2")));
     assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-2")));
     assert_eq!(
@@ -260,13 +271,13 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     );
     assert_eq!(
         message.as_field().fields().len(),
-        9,
-        "two business fields and the replay bundle"
+        1,
+        "the one business field; the map is the event's own"
     );
 }
 
 #[test]
-fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
+fn a_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
     for alias_tag in [9001, yggdryl::HASHCODE_TAG_NAME.0, 52] {
         let mut registry = FixRegistry::new();
         let mut alias = if let Some(field) = registry.get_field_by_tag(alias_tag) {
@@ -276,48 +287,47 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
             field.as_fix_mut().set_tag(alias_tag).unwrap();
             field
         };
-        alias.as_fix_mut().set_names(["AltIds"]).unwrap();
+        alias.as_fix_mut().set_names(["Identifiers"]).unwrap();
         registry.insert(alias).unwrap();
         assert_eq!(
             registry
-                .field_by_name("AltIds")
+                .field_by_name("Identifiers")
                 .unwrap()
                 .as_fix()
                 .tag()
                 .unwrap(),
             Some(alias_tag)
         );
-        let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
-        map.remove_metadata("fix:tag");
+        let map = registry.get_field_by_counter(65_020).unwrap().clone();
         assert_eq!(map.as_fix().counter().unwrap(), Some(65_020));
         let schema = DataType::from_fields([map]).unwrap().required_field("fix");
         let registry = Arc::new(registry);
         let mapping =
             Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from("O-1"))]).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
+        // The canonical Map is what the counter reaches, never the scalar
+        // the alias declares, and what it holds is the event's own fact.
+        assert_eq!(source.get_by_name("Identifiers"), Some(mapping.clone()));
         assert_eq!(source.by_tag(65_020).unwrap(), mapping);
         assert_ne!(source.get_hashcode(), 0);
         let row = source.into_row(source.as_field()).unwrap();
         let restored = FixMsg::from_row(Arc::clone(&registry), source.as_field(), &row).unwrap();
         assert_eq!(restored.by_tag(65_020).unwrap(), mapping);
-        assert_eq!(restored.get_by_name("AltIds"), Some(mapping.clone()));
         assert_eq!(restored.into_row(source.as_field()).unwrap(), row);
 
         let empty = DataType::from_fields([]).unwrap().required_field("fix");
         let mut absent = fresh(Arc::clone(&registry), &empty, Vec::new());
-        let root = yggdryl::FieldPath::from_str("AltIds").unwrap();
-        let key = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
+        let root = yggdryl::FieldPath::from_str("Identifiers").unwrap();
+        let key = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
         let sending = absent.by_tag(52).unwrap().clone();
-        assert_eq!(absent.get_by_name("AltIds"), None);
         assert_eq!(absent.get_by_path(&root), None);
         assert_eq!(absent.get_by_path(&key), None);
         assert_eq!(absent.get_by_tag(65_020), None);
-        assert_eq!(absent.remove("AltIds").unwrap(), None);
+        assert_eq!(absent.remove("Identifiers").unwrap(), None);
         let before = absent.clone();
-        assert!(absent.set("AltIds", sending.clone()).is_err());
+        assert!(absent.set("Identifiers", sending.clone()).is_err());
         assert_eq!(absent, before, "a Map name never writes the aliased clock");
-        absent.set("AltIds", mapping.clone()).unwrap();
-        assert_eq!(absent.get_by_name("AltIds"), Some(mapping.clone()));
+        absent.set("Identifiers", mapping.clone()).unwrap();
         assert_eq!(absent.get_by_path(&root), Some(mapping.clone()));
         assert_eq!(absent.get_by_path(&key), Some(Scalar::from("O-1")));
         assert_eq!(absent.get_by_tag(65_020), Some(mapping.clone()));
@@ -332,17 +342,22 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
         if scalar_alias {
             let mut label = DataType::utf8().nullable_field("label");
             label.as_fix_mut().set_tag(9001).unwrap();
-            label.as_fix_mut().set_names(["AltIds"]).unwrap();
+            label.as_fix_mut().set_names(["Identifiers"]).unwrap();
             registry.insert(label).unwrap();
         }
         let component = DataType::from_fields([DataType::utf8().nullable_field("note")])
             .unwrap()
-            .required_field("AltIds");
+            .required_field("Identifiers");
         registry.insert(component).unwrap();
         for category in [FixCategory::Components, FixCategory::Groups] {
-            assert!(registry.get_field_by_name("altids").is_some());
+            assert!(registry.get_field_by_name("identifiers").is_some());
         }
-        for spelling in ["altids", "AltIds", "altids['clordid']", "AltIds.note"] {
+        for spelling in [
+            "identifiers",
+            "Identifiers",
+            "identifiers['clordid']",
+            "Identifiers.note",
+        ] {
             let path = yggdryl::FieldPath::from_str(spelling).unwrap();
             assert!(
                 registry.get_field_by_path(&path).is_none(),

@@ -225,7 +225,7 @@ fn crated_fields() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| !field.dtype().is_nested())
+        .filter(|field| category_of(field) == yggdryl::FixCategory::Fields)
         .count()
 }
 
@@ -247,7 +247,7 @@ fn crated_components() -> usize {
 fn scalars(registry: &yggdryl::FixRegistry) -> usize {
     registry
         .iter()
-        .filter(|field| !field.dtype().is_nested())
+        .filter(|field| category_of(field) == yggdryl::FixCategory::Fields)
         .count()
 }
 
@@ -263,9 +263,19 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 /// Which category a registry field is filed under: a definition is filed by
 /// the shape it has - a Struct is a component, a List or a Map a group - and
 /// everything else is a wire field.
+///
+/// One nested shape is a field rather than a definition: a list of non-null
+/// scalars under one of this crate's own tags is one column under one name -
+/// `parentuuids` is that - because a group's occurrence is a Struct of
+/// members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
         yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
+        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item)
+            if !item.is_nullable() && !item.dtype().is_nested() =>
+        {
+            yggdryl::FixCategory::Fields
+        }
         dtype if dtype.is_nested() => yggdryl::FixCategory::Groups,
         _ => yggdryl::FixCategory::Fields,
     }

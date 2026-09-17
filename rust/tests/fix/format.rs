@@ -221,5 +221,17 @@ fn format_arrow_reader_answers_the_batches_format_messages_answers_rows() {
         .next()
         .unwrap()
         .unwrap();
-    assert_eq!(batched, &direct, "the two doors answer one row");
+    let differing: Vec<String> = target
+        .fields()
+        .iter()
+        .zip(batched.as_sequence().expect("a row"))
+        .zip(direct.as_sequence().expect("a row"))
+        .filter(|((_, left), right)| left != right)
+        .map(|((column, left), right)| format!("{}: {left:?} != {right:?}", column.name()))
+        .collect();
+    assert_eq!(
+        differing,
+        Vec::<String>::new(),
+        "the two doors answer one row"
+    );
 }

@@ -764,14 +764,15 @@ assert.equal(value.digest.value(), xxhash.xxh3('abc'))
 assert.equal(Buffer.from(value.bytes()).readBigInt64BE(0), value.unix)
 assert.ok(TxHash.from(value.toString()).equals(value))
 assert.strictEqual(txhash.TxHash, TxHash)
-// The instant restated to nanoseconds, then the digest's low 58 bits.
-assert.equal(value.intoUuid().asJs(), '97979cfe-362a-8000-80af-5f94892f3950')
+// RFC 9562 UUIDv7: the instant floored to the microsecond, then the
+// digest's low 62 bits.
+assert.equal(value.intoUuid().asJs(), '018bcfe5-6800-7000-b8af-5f94892f3950')
 ```
 
 ## FIX is a namespace
 
 `fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
-`fix.FixMessages`, `fix.FixLifecycle`, `fix.schema()`, `fix.schemaCarrying()`,
+`fix.FixMessages`, `fix.schema()`, `fix.schemaCarrying()`,
 `fix.schemaTags()`, `fix.crateFields()`, `fix.globalRegistry()` and
 `fix.installGlobalRegistry()` are the whole surface: the registry, message
 definitions, codec, messages and lazy iterators. The namespace holds no
@@ -789,7 +790,7 @@ enumeration, which is written as the raw `fix:codes` metadata.
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
 | identifier | a `number`: the signed 32-bit digest of a tag and a name, what `field.fix.id` answers; `fieldById`, `getFieldById`, `removeById`, `message.byId` and `getById` take it exactly - no fold, no tiering - and a fractional or out-of-`i32` number is refused rather than narrowed. A bare number anywhere else is a tag, never an identifier |
-| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; a key no field resolves, named or numeric, carries tag 0 with its raw key |
+| `FixMsg.entries()` | `FixEntryView[]`, the content row read as a tree: each view is `{ tag, name, value, entries }`, a group one entry under its counter valued the count over one valueless entry per occurrence, and a key no field resolves, named or numeric, carrying tag 0 with its own spelling. Iterating a message walks the same views |
 | name or path key | a `string`, folded once - ASCII case, `_`, `-` and space dropped; a bare string is a name, never an identifier |
 | membership | `field.fix.branches` is a `string[]`, sorted and lowercase, `[]` where `fix:branches` is absent; assigning an array replaces the list, folded and deduplicated, and `[]` removes the property; `addBranch(name)` is idempotent under the fold and `hasBranch(name)` folds the same way; a name that is empty or carries a comma is refused. `registry.dialects()` lists the distinct names any field or definition carries. Membership is provenance a caller filters on; no lookup consults it |
 | identifier declaration | `field.fix.identifiers` answers `string[]` and accepts an array only, not an arbitrary iterable; the core resolves selectors to direct scalar member names in component order, with no nested-group flattening; `[]` removes the property, and a refusal leaves the field unchanged |
@@ -800,20 +801,20 @@ enumeration, which is written as the raw `fix:codes` metadata.
 | `fromCfbFile(location, dialect?)` | answers `[registry, roots]`; `dialect` stamps every field, group, component and message the file produces on its `fix:branches`, standard tags included, and with none named nothing is stamped; the root element's version is read past |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
-| `FixCodec.lifecycle`, `FixLifecycle` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec and `snapshots(messages)`, one at a time for `fill(message)`, and a `FixMsg` or `null` for `snapshot(message)`, which answers only a chain's first off-grid arrival in a new bucket; `new FixLifecycle(registry?, { intervalNs })` sets the grid, `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) by default, read back as the `bigint` `intervalNs`; `setIntervalNs` repeating it is a no-op, while a nonpositive interval or a change while a chain is live throws and changes nothing; `FixLifecycle.alive` is a read-only number and `clear()` forgets every chain |
-| iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
+| `FixCodec.lifecycle` | the one walk, over `FixMsg`: any iterable in and a lazy `FixMessages` out, each message stated as the one after the live message of its chain, a twin restating the live one rather than chaining behind it; `lifecycleArrowReader` is the same walk over batches, each row read back through `FixMsg.fromRow` and written back under the same schema |
+| iteration | a registry walks every field, component and group it holds, tag-major with the tag's holder first, then by identifier, and `size` counts the same three categories; a message walks its entries |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix.crateFields()` answers 36 definitions: 34 scalar fields on tags 65001-65003, 65005-65015, 65017-65019, 65021-65035 and 65037-65038, plus the `altids` Map group at 65020 and the `instids` Struct at 65036; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 36; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` and `definitions('components')` includes `instids` |
-| CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
+| crate inventory | `fix.crateFields()` answers 34 definitions: 32 fields on tags 65003, 65008-65009, 65013-65015, 65017-65018, 65021-65023, 65025-65035 and 65039-65048, plus the sorted Map groups `identifiers` at 65020 and `metadata` at 65049; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 36 |
+| CRUD | one door per verb, filing by shape: `insert(field)`, `update(field)`, `remove(key)` and `removeById(id)` take a scalar, a Struct component or a List/Map group alike, and `addField` is the lenient twin, answering `true` when the field arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
-| `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until enrichment needs UTF-8 |
-| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine` and `parseTextLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
-| Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
-| `FixMsg` | `new FixMsg(field, value, registry)` appends each settled field the root lacks - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `msghash()` and `msgphash()` answer those settled `Scalar` values |
-| `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field throws and changes nothing; `FixMsg.fromRow(schema, row, registry)` reads a fixed row carrying the settled fields back, entries included |
-| output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
+| `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until a fill needs UTF-8 |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine` and `parseTextLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `lifecycle` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine` and `parsePairs` answer one `FixMsg`; no reader takes a flag, and there is no enriching door - a parse restates the row, fills what the message implies and settles the identity |
+| Arrow twins | `parseTextArrowReader`, `lifecycleArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
+| `FixMsg` | `new FixMsg(field, value, registry)` lifts every [typed fact](../fix/message.md#typed-tags) out of the children stating it, settles the clocks and derives the identity, reading the clock once only for a SendingTime nothing states; `event()`, `header()` and `capture()` answer the holder views, and the getters `text`, `metadata`, `curruuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `unix`, `state`, `seqnum`, `prevuuid`, `parentuuids`, `identifiers`, `px`, `qty`, `side` and `currency` the facts a reader asks for by name - a UUID as hyphenated text, a hash or an instant as a `bigint`, a decimal as text; `field`, `value` and `size` are the content row alone |
+| `FixMsg` writes | `set(key, value)` and `remove(key)` reach a holder for a typed tag and the row for everything else, settling the identity again; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included, and answers a message whose `field` is the content rather than the schema - a row that stated no sending clock settles its own, so the message's `hashcode` and `curruuid` are its own while its entries, content and chain facts round-trip |
+| output | `FixMsg.intoRow(field)` projects a fixed row; `intoBytes(separator = 1)` and `intoText(separator?)` re-emit the message as it now stands - the header from its holder, then the event's own tags, then the text, then the entries pre-order - and a message with no content emits its version alone |
 
-`altids` uses ordinary `Map` input and answers a `Map` through `Scalar.asJs()`, with no FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
+`identifiers` uses ordinary `Map` input and answers a `Map` through `Scalar.asJs()`, with no FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and the fill a parse runs, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -841,9 +842,9 @@ assert.throws(() => registry.get(55n), {
 // Names are folded once, so a caller spells one however they have it.
 assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
 assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
-assert.equal(registry.definition('fields', 'NoPartyIDs').dtype.id, 'int32')
-assert.equal(registry.definition('groups', 'Parties').fix.counter, 453)
-assert.equal(registry.definition('components', 'Party').dtype.kind, 'nested')
+assert.equal(registry.fieldByName('NoPartyIDs').dtype.id, 'int32')
+assert.equal(registry.fieldByCounter(453).name, 'parties')
+assert.equal(registry.fieldByName('Party').dtype.kind, 'nested')
 
 // An identifier is a number - the signed 32-bit digest of a tag and a name,
 // what `field.fix.id` answers - and the `ById` doors take it exactly. A bare
@@ -920,20 +921,18 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// Symbol remains beside what every registry holds: the crate's 34 scalar
-// fields and the seeded SendingTime and TransactTime; `altids` is a group and
-// `instids` a component, so neither is a field.
+// Symbol remains beside what every registry holds: the crate's 32 fields, the
+// seeded SendingTime and TransactTime, and the `identifiers` and `metadata`
+// Map groups, which a registry sizes like any other definition.
 assert.equal(new fix.FixRegistry().size, 36)
 assert.equal(venue.size, 37)
 assert.deepEqual(venue.dialects(), [])
 
-// Both collections are lazy native iterators the loader gives the protocol,
-// and the message root gained the settled fields every message holds.
+// Both collections are lazy native iterators the loader gives the protocol:
+// a registry walks every definition it holds, a message its entries.
 assert.equal([...registry].length, registry.size)
-assert.deepEqual(
-  [...message].map(([name]) => name),
-  ['symbol', 'updatedat', 'createdat', 'msghash', 'msgphash', 'code', 'snapshotat', 'sendingtime'],
-)
+assert.deepEqual([...message].map((entry) => [entry.tag, entry.name, entry.value]), [[55, 'symbol', 'AAPL']])
+assert.equal(message.size, 1, 'the row holds what no holder owns')
 assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.byId(symbolId).asJs(), 'AAPL')
 assert.equal(message.getById(vendorId), null)
@@ -945,10 +944,9 @@ const codec = new fix.FixCodec(registry, { defaultSendingTime: new Date('2026-09
 const messages = codec.parseLine(wire)
 const parsed = messages.next().value
 assert.equal(messages.next().done, true)
-assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
-assert.ok(parsed.updatedat().equals(codec.defaultSendingTime))
-assert.ok(parsed.createdat().equals(parsed.updatedat()))
-assert.throws(() => parsed.remove('msghash'), /mandatory/)
+assert.equal(parsed.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|10=0|59=0|')
+assert.ok(parsed.byTag(52).equals(codec.defaultSendingTime))
+assert.equal(parsed.unix, parsed.event().creatunix)
 // A message root the codec builds is not a dictionary member.
 assert.deepEqual(parsed.field.fix.branches, [])
 const tableField = fix.schema(registry)
@@ -1122,8 +1120,6 @@ and validates a plain object. Resolution and merging are the core's, on the
   does not take without it.
 - `message.field.fix.branches` -> `[]` for a root the codec built: a message
   is not a dictionary member.
-- `message.liftSource(facet)` -> the tag a lifted facet was read from, a
-  `number`, or `null`; the field that tag names is the registry's to answer.
 - Registry mutation while a `FixMsg`, `MsgType`, the process default, or a live
   native iterator holds it -> throws; `registry.clone()` is the mutable deep copy.
 - A `keys()` walk -> stops sharing when drained, or when a `for...of` `break`
@@ -1134,10 +1130,11 @@ and validates a plain object. Resolution and merging are the core's, on the
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
 - A missing FIX folder -> a registry holding only the built-in definitions.
-- A registry write -> `fields/<shard>.json` with the shard a tag's hundred,
-  and `components/` and `groups/` with every definition directly below its
-  category, a message among the components; membership travels inside each field's metadata, and
-  the built-in definitions are never written.
+- A registry write -> `fields/<shard>.json` with the shard a tag's hundred
+  under a nine-digit name, and `components/` and `groups/` with every
+  definition directly below its category, a message among the components;
+  membership travels inside each field's metadata, and the crate's own
+  definitions are written beside them so a store states the whole row.
 - `message.getById`/`byId` -> exact: no fold, no tiering; a field the
   dictionary does not hold under the identifier misses.
 

@@ -200,7 +200,7 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert.deepEqual(
       ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 4, 10, 8, 32],
+      [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32],
     )
 
     // A securities identifier is closed by its own check digit: a column of

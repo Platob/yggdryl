@@ -120,7 +120,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let snapshot = registry.into_json().unwrap();
     // The dump states it - a snapshot is the whole dictionary - and reading
     // one back takes the held declaration over the document's.
-    assert!(snapshot.contains("altids"));
+    assert!(snapshot.contains("identifiers"));
     assert_eq!(FixRegistry::from_json(&snapshot).unwrap(), registry);
 
     let document = Scalar::from_record([
@@ -138,9 +138,9 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let root = scratch("crate-map");
     let mut folder = Folder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert!(root.join("groups/altids.json").exists());
+    assert!(root.join("groups/identifiers.json").exists());
     folder
-        .child_by_path("groups/altids.json")
+        .child_by_path("groups/identifiers.json")
         .unwrap()
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
@@ -153,7 +153,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
     let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
-    map.as_fix_mut().set_group("altids").unwrap();
+    map.as_fix_mut().set_group("identifiers").unwrap();
     let component = DataType::from_fields([map])
         .unwrap()
         .required_field("identified");
@@ -165,7 +165,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     let root = scratch("crate-map-reference");
     let mut folder = Folder::new(&root).unwrap();
     registry.write_into(&mut folder).unwrap();
-    assert!(root.join("groups/altids.json").exists());
+    assert!(root.join("groups/identifiers.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -437,7 +437,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let root = scratch("crate-map-substitution");
     let folder = Folder::new(&root).unwrap();
     folder
-        .child_by_path("groups/altids.json")
+        .child_by_path("groups/identifiers.json")
         .unwrap()
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
@@ -556,13 +556,17 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
             registry
         );
         let before = registry.clone();
-        for duplicate in [
-            current.clone(),
-            tagged("quoteackstatus", 1866, DataType::Int32),
-        ] {
-            assert!(registry.insert(duplicate).is_err());
-            assert_eq!(registry, before);
-        }
+        // The canonical field is what the tag and the fold both answer, so
+        // restating it replaces it by itself and a second tag under the
+        // held name is refused.
+        assert!(registry.insert(current.clone()).unwrap().is_some());
+        assert_eq!(registry, before);
+        assert!(
+            registry
+                .insert(tagged("quoteackstatus", 1866, DataType::Int32))
+                .is_err()
+        );
+        assert_eq!(registry, before);
         // Another name on the held tag is a field of its own beside the
         // holder, which lends nothing but learns the name; the bare tag
         // keeps answering the holder.
@@ -602,15 +606,25 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(&loaded, registry.as_ref());
     assert_eq!(loaded.stable_hash(), registry.stable_hash());
     assert_eq!(loaded.into_json().unwrap(), document);
-    assert_eq!(loaded.len(), 6241 + super::crated_fields());
+    // Every field the registry holds, the definitions included: the
+    // dictionary's own scalars and the crate's, then its components and
+    // groups.
+    assert_eq!(
+        loaded.len(),
+        super::scalars(&loaded)
+            + super::definitions(&loaded, FixCategory::Components).count()
+            + super::definitions(&loaded, FixCategory::Groups).count()
+    );
+    assert_eq!(super::scalars(&loaded), 6241 + super::crated_fields());
     assert_eq!(
         super::definitions(&loaded, FixCategory::Components).count(),
         928 + super::crated_components()
     );
     assert_eq!(super::msgtypes(&loaded).count(), 181);
+    // The generated groups, and the crate's two Map groups beside them.
     assert_eq!(
         super::definitions(&loaded, FixCategory::Groups).count(),
-        581
+        580 + 2
     );
 }
 
@@ -751,7 +765,9 @@ fn categories_round_trip_compact_references_and_counter_fields() {
         Some("Broker")
     );
     assert!(loaded.field(448).unwrap().as_fix().get("codes").is_some());
-    assert!(loaded.get_field("Parties").is_none());
+    // A definition is a field of the registry: the one namespace answers it
+    // under the name it is stored by.
+    assert!(loaded.get_field("Parties").is_some());
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -968,9 +984,11 @@ fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
     registry.insert(group).unwrap();
     assert!(registry.get_field_by_counter(453).is_none());
     assert!(registry.field_by_counter(453).is_err());
+    // The catalog's two groups, the renamed one beside them, and the
+    // crate's own `metadata` Map.
     assert_eq!(
         super::definitions(&registry, FixCategory::Groups).count(),
-        3
+        4
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
 }
@@ -1085,12 +1103,18 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
 fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
-    assert_eq!(registry.len(), 6241 + super::crated_fields());
+    assert_eq!(
+        registry.len(),
+        super::scalars(&registry)
+            + super::definitions(&registry, FixCategory::Components).count()
+            + super::definitions(&registry, FixCategory::Groups).count()
+    );
+    assert_eq!(super::scalars(&registry), 6241 + super::crated_fields());
     // The census the one namespace rests on: 747 components and 181 messages fold
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
         (FixCategory::Components, 928 + super::crated_components()),
-        (FixCategory::Groups, 581),
+        (FixCategory::Groups, 580 + 2),
     ] {
         assert_eq!(
             super::definitions(&registry, category).count(),
@@ -1141,7 +1165,16 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
     // over the group - a message is a component, so name order
     // alone would put `NewOrderSingle` before the `Parties` it references.
     let source = |respell: fn(&str) -> String| {
-        let mut source = FixRegistry::from_fields(original.iter().cloned()).unwrap();
+        // The scalars alone: `iter` answers the definitions beside them now,
+        // and a definition handed to `from_fields` ahead of what it
+        // references has nothing to resolve against.
+        let mut source = FixRegistry::from_fields(
+            original
+                .iter()
+                .filter(|field| super::category_of(field) == FixCategory::Fields)
+                .cloned(),
+        )
+        .unwrap();
         let plain = super::definitions(&original, FixCategory::Components)
             .filter(|field| field.as_fix().msgtype().is_none())
             // The crate's own components - `instids` - are already in the

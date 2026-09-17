@@ -356,7 +356,7 @@ fn unknown_numeric_digests_include_the_raw_key_in_the_existing_zero_tag_frame() 
 }
 
 #[test]
-fn unresolved_counters_keep_their_members_in_arrival_order() {
+fn unresolved_counters_keep_the_members_each_index_stated() {
     let codec = super::fixed_codec(super::committed_registry());
     let pairs = |pairs: &[(&'static str, &'static str)]| {
         codec
@@ -376,15 +376,17 @@ fn unresolved_counters_keep_their_members_in_arrival_order() {
     };
 
     // At the top: an unregistered numeric counter heads what arrived under
-    // it, each occurrence where its index put it.
+    // it, each occurrence carrying the members its own index stated. A group
+    // built from indexed keys is sorted by what each occurrence states, so
+    // the one stating only the later member comes first.
     let top = pairs(&[
         ("999999", "2"),
         ("999999[0].OwnThing", "a"),
         ("999999[1].999998", "b"),
     ]);
-    assert_eq!(text(&top, "999999[0].ownthing").as_deref(), Some("a"));
-    assert_eq!(text(&top, "999999[1].\"999998\"").as_deref(), Some("b"));
-    assert_eq!(text(&top, "999999[0].\"999998\""), None);
+    assert_eq!(text(&top, "999999[1].ownthing").as_deref(), Some("a"));
+    assert_eq!(text(&top, "999999[0].\"999998\"").as_deref(), Some("b"));
+    assert_eq!(text(&top, "999999[1].\"999998\""), None);
 
     // Inside a resolved group: the unresolved sub-counter keeps its member,
     // and the resolved member after it is still the occurrence's.

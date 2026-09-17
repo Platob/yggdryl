@@ -61,14 +61,15 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Four documents and the three category roots: the store's own field
-    // shard, the crate's block on its own shard, its `altids` group and its
-    // `instids` component - a store states the whole row, so the crate's
-    // three documents are written beside the store's one.
+    // Five documents and the three category roots: the store's own field
+    // shard, the crate's block on its own shard, its `identifiers` and
+    // `metadata` groups and its `fixmsg` component - a store states the
+    // whole row, so the crate's four documents are written beside the
+    // store's one.
     costs(
-        "four documents, three categories",
+        "five documents, three categories",
         &calls,
-        "child_by_path=7",
+        "child_by_path=8",
         || {
             registry.write_into(&mut folder).unwrap();
         },
@@ -153,7 +154,7 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
         },
     );
     costs(
-        "the decoded capture composed through FIX enrichment",
+        "the decoded capture composed through the FIX lifecycle",
         &calls,
         LINE_DECODE,
         || {
@@ -162,9 +163,12 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
             };
             let lines = read_text_lines(&handle, options).expect("a text reader");
             let read = codec
-                .enrich_messages(codec.parse_text_lines(lines))
-                .try_fold(0_usize, |read, message| message.map(|_| read + 1))
-                .expect("an enriched message");
+                .lifecycle(codec.parse_text_lines(lines))
+                .try_fold(
+                    0_usize,
+                    |read, message: yggdryl::Result<yggdryl::FixMsg>| message.map(|_| read + 1),
+                )
+                .expect("a walked message");
             assert_eq!(read, ROWS);
         },
     );
