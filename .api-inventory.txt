@@ -5,7 +5,7 @@
 # this file too. Use it to check a name before writing it into the
 # documentation.
 
-### yggdryl::arrow  [rust\src\arrow\mod.rs]
+### yggdryl::arrow  [rust/src/arrow/mod.rs]
 pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
   pub enum Error
   pub fn external(error: impl std::error::Error + Send + Sync + 'static) -> Self
@@ -21,7 +21,7 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
   pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar>
   pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar>
 
-### yggdryl::arrow::scalars  [rust\src\arrow\scalars.rs]
+### yggdryl::arrow::scalars  [rust/src/arrow/scalars.rs]
 pub enum ArrowShape
   pub const ALL: [Self; 4] = [Self::Scalar, Self::Array, Self::Batch, Self::Stream]
   pub const fn as_str(self) -> &'static str
@@ -58,11 +58,11 @@ pub enum ArrowShape
   pub fn into_arrow_scalar(self) -> Result<arrow_array::Scalar<ArrayRef>>
   pub fn cast(self, field: &Field, options: ArrowCastOptions) -> Result<Self>
 
-### yggdryl::root::bytestream  [rust\src\bytestream.rs]
+### yggdryl::root::bytestream  [rust/src/bytestream.rs]
 pub struct ByteStream<'source>
   pub fn from_reader(reader: impl Read + 'source, batch_size: usize) -> Result<Self>
 
-### yggdryl::charset  [rust\src\charset.rs]
+### yggdryl::charset  [rust/src/charset.rs]
 pub enum Charset  (#[non_exhaustive])
   pub const ALL: [Self; 13] = [ Self::Utf8, Self::Utf16Le, Self::Utf16Be, Self::Ascii, Self::Latin1, Self::Latin2, Self::Latin9, Self::Cp1250, Self::Cp1251, Self::Cp1252, Self::Cp437, Self::Cp850, Self::MacRoman, ];
   pub const PARAMETER: &'static str = "charset";
@@ -94,7 +94,7 @@ pub enum Charset  (#[non_exhaustive])
   pub fn reader<'source, R: Read + 'source>(self, source: R) -> Box<dyn Read + 'source>
   pub fn writer<'target, W: Write + 'target>(self, target: W) -> Writer<'target>
 
-### yggdryl::charset::decoder  [rust\src\charset\decoder.rs]
+### yggdryl::charset::decoder  [rust/src/charset/decoder.rs]
 pub struct Decoder
   pub const fn charset(&self) -> Charset
   pub const fn consumed(&self) -> u64
@@ -103,18 +103,18 @@ pub struct Decoder
   pub fn push_bytes(&mut self, chunk: &[u8], target: &mut Vec<u8>) -> Result<()>
   pub fn finish(self) -> Result<()>
 
-### yggdryl::charset::reader  [rust\src\charset\reader.rs]
+### yggdryl::charset::reader  [rust/src/charset/reader.rs]
 pub struct Reader<R: Read>  (the source held unboxed, so `Send` follows from `R`; built by `Charset::reader` and, crate-privately, by the text record reader over a declared charset)
   pub const fn charset(&self) -> Charset
   impl<R: Read> Read for Reader<R>
 
-### yggdryl::charset::writer  [rust\src\charset\writer.rs]
+### yggdryl::charset::writer  [rust/src/charset/writer.rs]
 pub struct Writer<'target>
   pub const fn charset(&self) -> Charset
   pub fn finish(mut self) -> Result<()>
   impl Write for Writer<'_>
 
-### yggdryl::charset::transcoded  [rust\src\charset\transcoded.rs]
+### yggdryl::charset::transcoded  [rust/src/charset/transcoded.rs]
 pub struct Transcoded<H: IOBase>
   pub fn new(handle: H, charset: Charset) -> Self
   pub fn infer(handle: H) -> Self
@@ -123,7 +123,7 @@ pub struct Transcoded<H: IOBase>
   pub fn into_handle(mut self) -> Result<H>
   impl IOBase, IOMedia for Transcoded<H>  (decoded bytes, with resume points behind every positional read)
 
-### yggdryl::root::codec  [rust\src\codec.rs]
+### yggdryl::root::codec  [rust/src/codec.rs]
 pub struct Level(u8);
   pub const NONE: Self = Self(0);
   pub const FAST: Self = Self(1);
@@ -163,7 +163,7 @@ pub struct Encoder
   pub fn writer_with_level<'target, W: Write + 'target>( self, target: W, level: Level, ) -> Encoder<'target>
   pub fn finish(self) -> Result<()>
 
-### yggdryl::coding::coded  [rust\src\coding\coded.rs]
+### yggdryl::coding::coded  [rust/src/coding/coded.rs]
 pub enum Coded
   pub fn wrap(handle: impl Into<Holder>, codec: crate::Codec) -> Self
   pub fn infer(handle: impl Into<Holder>) -> Self
@@ -174,7 +174,7 @@ pub enum Coded
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
-### yggdryl::coding::gzip  [rust\src\coding\gzip.rs]
+### yggdryl::coding::gzip  [rust/src/coding/gzip.rs]
 pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub fn dump(input: &[u8]) -> Result<Vec<u8>>
   pub fn dump_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
@@ -188,7 +188,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
-### yggdryl::coding  [rust\src\coding\mod.rs]
+### yggdryl::coding  [rust/src/coding/mod.rs]
 pub struct Coding<H: IOBase>
   pub fn new(handle: H, codec: Codec) -> Self
   pub const fn with_level(mut self, level: Level) -> Self
@@ -197,7 +197,7 @@ pub struct Coding<H: IOBase>
   pub const fn handle(&self) -> &H
   pub fn into_handle(mut self) -> Result<H>
 
-### yggdryl::coding::zlib  [rust\src\coding\zlib.rs]
+### yggdryl::coding::zlib  [rust/src/coding/zlib.rs]
 pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub fn load_raw(input: &[u8]) -> Result<Vec<u8>>
   pub fn dump(input: &[u8]) -> Result<Vec<u8>>
@@ -217,7 +217,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
-### yggdryl::coding::zstd  [rust\src\coding\zstd.rs]
+### yggdryl::coding::zstd  [rust/src/coding/zstd.rs]
 pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub fn dump(input: &[u8]) -> Result<Vec<u8>>
   pub fn dump_with_level(input: &[u8], level: Level) -> Result<Vec<u8>>
@@ -231,7 +231,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
-### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
+### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
   pub const ALL: [Self; 66] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended)
   pub fn from_str(value: &str) -> Result<Self>
@@ -252,7 +252,7 @@ pub enum DataTypeId
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
   pub const fn code_width(self) -> Option<usize>  (the ten registered codes; the most bytes one value may be: cusip 9, sedol 7)
 
-### yggdryl::root::datatype_kind  [rust\src\datatype_kind.rs]
+### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
   pub const ALL: [Self; 12] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];
   pub fn from_str(value: &str) -> Result<Self>
@@ -263,7 +263,7 @@ pub enum DataTypeKind
   pub const fn is_bytes(self) -> bool
   pub const fn is_ordered(self) -> bool
 
-### yggdryl::root::digest  [rust\src\digest.rs]
+### yggdryl::root::digest  [rust/src/digest.rs]
 pub enum DigestAlgorithm
   pub const ALL: [Self; 4] = [Self::Xxh32, Self::Xxh64, Self::Xxh3, Self::Xxh128];
   pub fn from_str(value: &str) -> Result<Self>
@@ -296,17 +296,17 @@ pub enum DigestAlgorithm
   pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
   impl From<Xxh32>, From<Xxh64>, From<Xxh3>, From<Xxh128> for Digester  (a concrete state, fed bytes included, becomes the dispatcher)
 
-### yggdryl::root::edge_algorithm  [rust\src\edge_algorithm.rs]
+### yggdryl::root::edge_algorithm  [rust/src/edge_algorithm.rs]
 pub enum EdgeAlgorithm
   pub const ALL: [Self; 5] = [Self::Spherical, Self::Vincenty, Self::Thomas, Self::Andoyer, Self::Karney];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::error  [rust\src\error.rs]
+### yggdryl::error  [rust/src/error.rs]
 pub enum Error
   pub type Result<T> = std::result::Result<T, Error>;
 
-### yggdryl::expression::arrow  [rust\src\expression\arrow.rs]
+### yggdryl::expression::arrow  [rust/src/expression/arrow.rs]
 pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef>
   pub fn evaluate_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<ArrayRef>
   pub fn filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray>
@@ -321,7 +321,7 @@ pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef>
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> crate::Result<RecordBatch>
   pub fn apply_arrow_array(&self, array: &ArrayRef) -> crate::Result<ArrayRef>
 
-### yggdryl::expression::bind  [rust\src\expression\bind.rs]
+### yggdryl::expression::bind  [rust/src/expression/bind.rs]
 pub struct Bound
   pub const fn schema(&self) -> &Field
   pub const fn term(&self) -> &Term
@@ -341,7 +341,7 @@ pub struct Bound
   pub fn bind(&self, schema: &Field) -> Result<Bound>
   pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound>
 
-### yggdryl::expression  [rust\src\expression\mod.rs]
+### yggdryl::expression  [rust/src/expression/mod.rs]
 pub const RECURSION_LIMIT: usize = 32
   pub const NODE_LIMIT: usize = 100_000
   pub enum Comparison
@@ -388,10 +388,10 @@ pub const RECURSION_LIMIT: usize = 32
   pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
   fn into_expression(self) -> Result<Expression>
 
-### yggdryl::expression::parser  [rust\src\expression\parser.rs]
+### yggdryl::expression::parser  [rust/src/expression/parser.rs]
 pub fn needs_quoting(name: &str) -> bool
 
-### yggdryl::expression::pushdown  [rust\src\expression\pushdown.rs]
+### yggdryl::expression::pushdown  [rust/src/expression/pushdown.rs]
 pub struct ColumnBounds
   pub const fn minimum(&self) -> Option<&Scalar>
   pub const fn maximum(&self) -> Option<&Scalar>
@@ -415,7 +415,7 @@ pub struct ColumnBounds
   pub fn statistics_certainty(&self, bounds: &Bounds) -> Option<bool>
   pub fn partition_split(&self) -> Residual
 
-### yggdryl::expression::selector  [rust\src\expression\selector.rs]
+### yggdryl::expression::selector  [rust/src/expression/selector.rs]
 pub struct Projection
   pub fn new(term: Term) -> Self
   pub fn aliased(term: Term, alias: impl Into<SmolStr>) -> Self
@@ -479,7 +479,7 @@ pub struct Projection
   pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
   pub fn from_scalar(value: &Scalar) -> Result<Self>
 
-### yggdryl::expression::serde  [rust\src\expression\serde.rs]
+### yggdryl::expression::serde  [rust/src/expression/serde.rs]
 pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
   pub fn from_json(input: &str) -> Result<Self>
@@ -491,17 +491,17 @@ pub fn from_json(input: &str) -> Result<Self>
   pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::expression::typing  [rust\src\expression\typing.rs]
+### yggdryl::expression::typing  [rust/src/expression/typing.rs]
 pub fn field(&self, schema: &Field) -> Result<Field>
   pub fn is_predicate(&self, schema: &Field) -> Result<bool>
 
-### yggdryl::fix::cfb  [rust\src\fix\cfb.rs]
+### yggdryl::fix::cfb  [rust/src/fix/cfb.rs]
 impl FixRegistry
   pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)>  (every field, group, component and message root the file produces is stamped a member of `dialect` in `fix:branches`; the root element's version and session are read past)
 impl FixField<'_>
   pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<Vec<Field>>  (the handle's URL stem stands in for an absent dialect)
 
-### yggdryl::fix::field  [rust\src\fix\field.rs]
+### yggdryl::fix::field  [rust/src/fix/field.rs]
 impl<'field> FixField<'field>
   pub fn branches(&self) -> FixSpellings<'field>  (the dialects that contributed this field, folded and sorted; empty for a field the specification alone defines)
   pub fn has_branch(&self, dialect: &str) -> bool
@@ -563,7 +563,7 @@ impl<'field> FixField<'field>
   pub struct FixSpellings<'field>  (the comma-separated properties: branches, identifiers and nulls)
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
-### yggdryl::fix::codes  [rust\src\fix\codes.rs]
+### yggdryl::fix::codes  [rust/src/fix/codes.rs]
 pub struct FixCode  (one member of a code set as a caller states it, what `FixFieldMut::set_codes` takes; re-exported at the crate root beside FixCodeValue and FixCodes)
   pub fn new(name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
   pub fn with_description(mut self, description: impl Into<SmolStr>) -> Self
@@ -591,14 +591,14 @@ pub struct FixCodes<'field>  (the walk `FixField::codes` answers, in the specifi
   impl<'field> Iterator for FixCodes<'field>  (Item = Result<FixCodeValue<'field>>; also FusedIterator)
   impl Clone, Debug for FixCodes<'_>
 
-### yggdryl::fix::document  [rust\src\fix\document.rs]
+### yggdryl::fix::document  [rust/src/fix/document.rs]
 pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:replacements/fix:directions and the fix:names/fix:tags arrays as the JSON they are)
 pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
 pub struct Words<'doc>  (re-exported at the crate root; a code's aliases and a field's names alike)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
   impl Clone, Debug for Words<'_>
 
-### yggdryl::fix::replacements  [rust\src\fix\replacements.rs]
+### yggdryl::fix::replacements  [rust/src/fix/replacements.rs]
 pub struct FixReplacement  (one rule: a Plan whose `select` names the columns it fills and their terms and whose `where` is its condition - `:msgtype` and `:group` cross as parameters - beside the specification's `doc`; re-exported at the crate root)
   pub const fn new(plan: Plan) -> Self
   pub fn with_doc(mut self, doc: impl Into<SmolStr>) -> Self
@@ -616,7 +616,7 @@ pub struct FixReplacements<'field>  (the entries one field carries, in document 
   pub fn next_ok(&mut self) -> Option<FixReplacementEntry<'field>>
   impl<'field> Iterator for FixReplacements<'field>  (Item = Result<FixReplacementEntry<'field>>; also FusedIterator)
 
-### yggdryl::fix::directions  [rust\src\fix\directions.rs]
+### yggdryl::fix::directions  [rust/src/fix/directions.rs]
 pub struct FixDirection  (one rule of tag 385's fix:directions: a code of the set and the regex::bytes patterns that name it; re-exported at the crate root beside FixDirectionEntry, FixDirections and FixPatterns)
   pub fn new<I, S>(code: impl Into<SmolStr>, patterns: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
   pub fn code(&self) -> &str
@@ -637,12 +637,12 @@ pub struct FixDirections<'field>  (the walk FixField::directions answers; an abs
   impl<'field> Iterator for FixDirections<'field>  (Item = Result<FixDirectionEntry<'field>>; also FusedIterator)
   impl Clone, Debug for FixDirections<'_>
 
-### yggdryl::fix::global  [rust\src\fix\global.rs]
+### yggdryl::fix::global  [rust/src/fix/global.rs]
 impl FixRegistry
   pub fn global() -> Result<&'static Arc<Self>>
   pub fn install_global(registry: Self) -> Result<()>
 
-### yggdryl::fix  [rust\src\fix\mod.rs]
+### yggdryl::fix  [rust/src/fix/mod.rs]
 pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKey, FixMsg, FixRegistry; the signed XXH32 of a field's tag and its folded name, derived on every read and never stored)
   pub const DEFINITION_TAG_MIN: i32  (the block a named definition's derived tag is taken from)
   pub const DEFINITION_TAG_MAX: i32
@@ -659,7 +659,7 @@ pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKe
   impl<'a> From<&'a String> for FixKey<'a>
   impl fmt::Display for FixKey<'_>
 
-### yggdryl::fix::codec  [rust\src\fix\codec.rs]
+### yggdryl::fix::codec  [rust/src/fix/codec.rs]
 pub const SOH: u8 = 0x01;
 pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 pub struct FixCodec
@@ -704,7 +704,7 @@ pub struct FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the types a codec refuses until a caller says otherwise: Heartbeat, TestRequest, and a row stating no type)
 
-### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
+### yggdryl::fix::batch  [rust/src/fix/batch.rs]  (arrow feature)
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
   pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the walk `lifecycle` runs, each back through `FixMsg::into_row`; no re-parse, so a carried column returns to its place)
@@ -714,19 +714,19 @@ impl FixCodec
   pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `fixentries`)
 
-### yggdryl::fix::digest  [rust\src\fix\digest.rs]
+### yggdryl::fix::digest  [rust/src/fix/digest.rs]
 pub struct FixDedup<I>  (re-exported at the crate root; drops a message whose `FixMsg::digest` equals the one just yielded - an adjacent republished line - and counts what it dropped; a stage the caller composes)
   pub const fn new(inner: I) -> Self
   pub const fn dropped(&self) -> u64
   pub fn into_inner(self) -> I
   impl<I: Iterator<Item = FixMsg>> Iterator for FixDedup<I>  (Item = FixMsg; also FusedIterator)
 
-### yggdryl::fix::messages  [rust\src\fix\messages.rs]
+### yggdryl::fix::messages  [rust/src/fix/messages.rs]
 pub struct FixMessages
   impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one `unknown` for a document; nothing collected either way; fused after exhaustion or the first error)
   impl FusedIterator for FixMessages
 
-### yggdryl::fix::crated  [rust\src\fix\crated.rs]
+### yggdryl::fix::crated  [rust/src/fix/crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the last; the retired slots below 65050 are never reused)
 pub const UNIX_TAG_NAME: (i32, &str) = (65_003, "unix");  (non-null nanosecond UTC clock: when the message happened - a stated `unix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`)
@@ -775,7 +775,7 @@ pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 
-### yggdryl::fix::identity  [rust\src\fix\identity.rs]
+### yggdryl::fix::identity  [rust/src/fix/identity.rs]
 pub struct FixHeader  (the standard header facts a message holds typed, beside its row - tags 8, 35, 49, 56, 34, 52, 43 and 385; re-exported at the crate root beside FixCapture; no public constructor)
   pub fn beginstring(&self) -> &str  (empty where the message stated none)
   pub fn msgtype(&self) -> &str
@@ -795,7 +795,7 @@ pub struct FixCapture  (what a capture states about the line a message was read 
   pub fn msgsessionid(&self) -> Option<&str>
   impl Clone, Debug, Default, PartialEq, Eq for FixCapture
 
-### yggdryl::fix::msg  [rust\src\fix\msg.rs]
+### yggdryl::fix::msg  [rust/src/fix/msg.rs]
 pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventData` the graph traits answer, the typed `FixHeader`, the typed `FixCapture`, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once)
   impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
@@ -832,7 +832,7 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   impl Element, Event, MarketElement for FixMsg  (so MarketEvent; through the held `MarketEventData`: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg  (equal over the holders, the row and the registry - the same Arc or equal registries; hashed over the hashcode, the row's schema and its value)
 
-### yggdryl::fix::entry  [rust\src\fix\entry.rs]
+### yggdryl::fix::entry  [rust/src/fix/entry.rs]
 pub struct FixEntry  (one field a message states, beside what is nested under it; re-exported at the crate root)
   pub fn new(tag: i32, name: impl Into<SmolStr>, value: Option<SmolStr>) -> Self  (a negative tag is stored as 0)
   pub fn with_entries(mut self, entries: Vec<FixEntry>) -> Self
@@ -843,14 +843,14 @@ pub struct FixEntry  (one field a message states, beside what is nested under it
   pub const fn is_stated(&self) -> bool
   impl Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord for FixEntry
 
-### yggdryl::FixCategory  [rust\src\fix_category.rs]
+### yggdryl::FixCategory  [rust/src/fix_category.rs]
 pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype)
   pub const ALL: [Self; 3]
   pub const fn as_str(self) -> &'static str
   pub fn from_str(value: &str) -> Result<Self>
   impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
 
-### yggdryl::fix::MsgDirection  [rust\src\fix\direction.rs]
+### yggdryl::fix::MsgDirection  [rust/src/fix/direction.rs]
 pub const SEND_PATTERNS: [&str; 3]  (the default patterns naming the set's Send code where tag 385's field carries no fix:directions: the spelled verbs, the bracketed bare word, the Jolokia request: prose; re-exported at yggdryl::fix beside RECEIVE_PATTERNS)
 pub const RECEIVE_PATTERNS: [&str; 3]  (the mirror for the Receive code: the spelled verbs, the bracketed bare word, the Jolokia response: prose)
 pub struct MsgDirection  (the registry's reading of tag 385: its code set and the rules naming one code from the prose in front of a payload - the field's fix:directions, the defaults built in where it carries none. Built by FixRegistry::msgdirection, every pattern compiled once into a regex::bytes::Regex by FixRegistry::msgdirection / FixCodec::new; no public constructor)
@@ -864,7 +864,7 @@ pub struct MsgDirection  (the registry's reading of tag 385: its code set and th
   pub fn read_text(&self, line: &str) -> Option<&str>
   impl Clone, Debug for MsgDirection
 
-### yggdryl::fix::MsgType  [rust\src\fix\msgtype.rs]
+### yggdryl::fix::MsgType  [rust/src/fix/msgtype.rs]
 pub struct MsgType  (registry-owned non-null Struct Field with a compiled group path index; no public constructor; re-exported at the crate root)
   pub fn stable_hash(&self) -> u64
   pub const fn as_field(&self) -> &Field
@@ -874,7 +874,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (the direct scalar members fix:identifiers selects, read off the message's content row in declaration order, absent or null ones skipped; borrowed, no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
-### yggdryl::fix::catalog  [rust\src\fix\catalog.rs]
+### yggdryl::fix::catalog  [rust/src/fix/catalog.rs]
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code; a name reaches the message of that name)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
@@ -886,11 +886,11 @@ impl FixRegistry
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>  (replaces an existing definition and answers its previous value; refuses absence, and refuses a Fields replacement that changes the FIX identity)
   pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>  (None when absent; refused while another definition still references it)
 
-### yggdryl::fix::aliases  [rust\src\fix\aliases.rs]
+### yggdryl::fix::aliases  [rust/src/fix/aliases.rs]
 impl FixRegistry
   pub fn with_default_aliases(self) -> Result<Self>  (lends every shipped field the spellings a bridge writes it under, folded once; opt-in because the shipped dictionary re-registers every alias against every field and the pass is quadratic in the dictionary's size - minutes, not milliseconds)
 
-### yggdryl::fix::registry  [rust\src\fix\registry.rs]
+### yggdryl::fix::registry  [rust/src/fix/registry.rs]
 pub struct FixRegistry  (one namespace of scalar fields, components and groups, every one reached through the field doors below; a message is a component carrying fix:msgtype)
   pub fn stable_hash(&self) -> u64
   pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now - its set and its fix:directions rules, the defaults where the field carries none)
@@ -927,7 +927,7 @@ pub struct FixRegistry  (one namespace of scalar fields, components and groups, 
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
-### yggdryl::fix::schema  [rust\src\fix\schema.rs]
+### yggdryl::fix::schema  [rust/src/fix/schema.rs]
 pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 50]
@@ -939,7 +939,7 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a c
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own fix:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)
 
-### yggdryl::fix::store  [rust\src\fix\store.rs]
+### yggdryl::fix::store  [rust/src/fix/store.rs]
 impl FixRegistry
   pub fn from_json(input: &str) -> Result<Self>  (`{fields, components, groups}` and no other key)
   pub fn into_json(&self) -> Result<String>
@@ -947,10 +947,10 @@ impl FixRegistry
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>  (`fields/<shard>.json` arrays under nine-digit shard names - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - and one native Field document per component or group; a crate-tagged document and `components/fixmsg.json` are passed over, the crate's own definition being the one that types a row; references resolve once, missing names and cycles refused)
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (the three category directories, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory)
 
-### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
+### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
 pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `threadId`, `msgsessionid`, `msgctxid`, `msgseqnum`, `pluginid`, `level`, each capture named for the field it fills; kept ULBridge's because the line shape is the product's)
 
-### yggdryl::graph  [rust\src\graph\mod.rs]
+### yggdryl::graph  [rust/src/graph/mod.rs]
 pub mod element;
 pub mod event;
 pub mod iterator;
@@ -958,7 +958,7 @@ pub mod iterator;
   pub use event::{MarketElementData, MarketEventData};
   pub use iterator::EventIterator;
 
-### yggdryl::graph::element  [rust\src\graph\element.rs]
+### yggdryl::graph::element  [rust/src/graph/element.rs]
 pub trait Element  (one element of a graph: its own identity, the identity it has in another graph and the code that names it there, the codes it digests to, the names it goes by, its parents' identities and the order it stands in, all read and written; object-safe but for the order and the by-value readings)
   fn get_curruuid(&self) -> Uuid
   fn set_curruuid(&mut self, uuid: Uuid)
@@ -1047,7 +1047,7 @@ pub trait MarketEvent: Event + MarketElement  (blanket over every type that is b
   fn merging_market_event(self, other: &Self) -> Option<Self> where Self: Sized  (provided: `Event::merging`, then the later statement's price, quantity, unit and lane facts, and the currency, the side and each instrument code the better of the two, the later statement leading and the earlier filling what it leaves unknown; an equal instant keeps this event leading; nothing where the fold changes nothing; finalized)
   impl<E: Event + MarketElement + ?Sized> MarketEvent for E
 
-### yggdryl::graph::event  [rust\src\graph\event.rs]
+### yggdryl::graph::event  [rust/src/graph/event.rs]
 pub struct MarketElementData  (every fact `Element` and `MarketElement` name held as one field each, no instant; `finalize` is `sync_cross`, then `digest_market` for the code, then the identity UUIDv8 over the code, so two elements stating the same things are one identity; its order is lineage - after the elements it descends from - and it follows another by descending from it; a new one states nothing: a price and a quantity of nothing in no currency (`XXX`), no unit, a side of `UNKNOWN`, no instrument, no lane)
   impl Default, Clone, Debug, PartialEq for MarketElementData
   impl Element, MarketElement for MarketElementData
@@ -1061,7 +1061,7 @@ pub struct MarketEventData  (every fact `Element`, `Event` and `MarketElement` n
   impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData
   impl From<MarketElementData> for MarketEventData  (the element at the epoch; `set_unix` dates it and `finalize` then derives the identity)
 
-### yggdryl::graph::iterator  [rust\src\graph\iterator.rs]
+### yggdryl::graph::iterator  [rust/src/graph/iterator.rs]
 pub struct EventIterator<E, I>  (the one walk: events read in their order, each stated as the one after the live element it follows and yielded so; the live elements are kept under the identity every incarnation of one thing shares - the cross element, the element's own where it states no cross code - and an element arriving under a live identity, or, where its own is alive under nothing, under a name (scheme, value) a live element goes by, is stated as the one after it by its own `with_previous`; the yielded element stands as the live one where still alive (live state, not past its expiration) and retires the identity where not, so a filled order ends its chain and a later element under its identity starts afresh; one arriving under the identity the live element arrived under - the same instant and content, logged again - is yielded `Event::restating` it, so the chain grows by nothing; one before the live element is yielded as it came and changes nothing, one its reading refuses is yielded as it came and stands; Debug)
   impl<E: Event + Clone, I: Iterator<Item = E>> EventIterator<E, I>
   pub fn new(elements: impl IntoIterator<IntoIter = I>, sorted: bool) -> Self  (`sorted` takes the caller's word that the elements arrive in their own order and streams them; otherwise they are collected and stably sorted by `is_after` / `is_before` first)
@@ -1071,18 +1071,18 @@ pub struct EventIterator<E, I>  (the one walk: events read in their order, each 
   impl<E: Event + Clone, I: Iterator<Item = E>> Iterator for EventIterator<E, I>  (Item = E; size_hint is the source's)
   impl<E: Event + Clone, I: FusedIterator<Item = E>> FusedIterator for EventIterator<E, I>
 
-### yggdryl::hashing  [rust\src\hashing\mod.rs]
+### yggdryl::hashing  [rust/src/hashing/mod.rs]
 pub mod txhash;
   pub mod xxhash;
 
-### yggdryl::hashing::txhash::arrow  [rust\src\hashing\txhash\arrow.rs]
+### yggdryl::hashing::txhash::arrow  [rust/src/hashing/txhash/arrow.rs]
 pub fn unix_array(array: &dyn Array, unit: TimeUnit) -> Result<Int64Array>
   pub fn row_txhashes(batch: &RecordBatch, times: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn column_txhashes(times: &dyn Array, values: ArrayRef, field: &Field, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn compose(times: &dyn Array, digests: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn decompose(array: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<(ArrayRef, ArrayRef)>
 
-### yggdryl::hashing::txhash::field  [rust\src\hashing\txhash\field.rs]
+### yggdryl::hashing::txhash::field  [rust/src/hashing/txhash/field.rs]
 impl DigestField<'_>
   pub fn time(&self) -> Option<&str>
   pub fn unit(&self) -> Result<Option<TimeUnit>>
@@ -1094,7 +1094,7 @@ impl DigestField<'_>
   pub fn set_unit(&mut self, unit: TimeUnit) -> Result<()>
   pub fn remove_unit(&mut self) -> Option<String>
 
-### yggdryl::hashing::txhash::hasher  [rust\src\hashing\txhash\hasher.rs]
+### yggdryl::hashing::txhash::hasher  [rust/src/hashing/txhash/hasher.rs]
 pub struct TxHasher
   pub fn new(algorithm: DigestAlgorithm) -> Self
   pub fn new_in(unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<Self>
@@ -1112,23 +1112,23 @@ pub struct TxHasher
   pub fn row_txhashes(&self, batch: &arrow_array::RecordBatch, times: &dyn arrow_array::Array) -> crate::arrow::Result<arrow_array::ArrayRef>
   pub fn column_txhashes(&self, times: &dyn arrow_array::Array, values: arrow_array::ArrayRef, field: &crate::Field) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::hashing::txhash  [rust\src\hashing\txhash\mod.rs]
+### yggdryl::hashing::txhash  [rust/src/hashing/txhash/mod.rs]
 pub fn txh32(input: &[u8], unix: i64) -> TxHash
   pub fn txh64(input: &[u8], unix: i64) -> TxHash
   pub fn txh3(input: &[u8], unix: i64) -> TxHash
   pub fn txh128(input: &[u8], unix: i64) -> TxHash
   pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash
 
-### yggdryl::hashing::txhash::scalar  [rust\src\hashing\txhash\scalar.rs]
+### yggdryl::hashing::txhash::scalar  [rust/src/hashing/txhash/scalar.rs]
 pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
 
-### yggdryl::hashing::txhash::time  [rust\src\hashing\txhash\time.rs]
+### yggdryl::hashing::txhash::time  [rust/src/hashing/txhash/time.rs]
 pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
   pub fn restate_unix(count: i64, from: TimeUnit, into: TimeUnit) -> Result<i64>
   pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64>
   pub fn unix_now(unit: TimeUnit) -> Result<i64>
 
-### yggdryl::hashing::txhash::value  [rust\src\hashing\txhash\value.rs]
+### yggdryl::hashing::txhash::value  [rust/src/hashing/txhash/value.rs]
 pub const UNIX_WIDTH: usize = 8;
   pub const fn width(algorithm: DigestAlgorithm) -> usize
   pub const fn dtype(algorithm: DigestAlgorithm) -> DataType
@@ -1154,11 +1154,11 @@ pub const UNIX_WIDTH: usize = 8;
   pub struct TxHashBytes
   impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromStr, Serialize, Deserialize for TxHash  (Ord is unit-major, then signed count, then digest; instants are not normalized across units)
 
-### yggdryl::hashing::xxhash::arrow  [rust\src\hashing\xxhash\arrow.rs]
+### yggdryl::hashing::xxhash::arrow  [rust/src/hashing/xxhash/arrow.rs]
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn column_digests(array: ArrayRef, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
 
-### yggdryl::hashing::xxhash::field  [rust\src\hashing\xxhash\field.rs]
+### yggdryl::hashing::xxhash::field  [rust/src/hashing/xxhash/field.rs]
 impl DigestField<'_>
   pub fn is_holder(&self) -> bool
   pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
@@ -1179,7 +1179,7 @@ impl DigestField<'_>
   pub struct DigestFields<'field>
   pub struct DigestFieldNames<'field>(DigestFields<'field>);
 
-### yggdryl::hashing::xxhash::handle  [rust\src\hashing\xxhash\handle.rs]
+### yggdryl::hashing::xxhash::handle  [rust/src/hashing/xxhash/handle.rs]
 pub struct Hashed<H: IOBase>
   pub fn new(handle: H, algorithm: DigestAlgorithm) -> Self
   pub fn with_seed(mut self, seed: u64) -> Self
@@ -1188,7 +1188,7 @@ pub struct Hashed<H: IOBase>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> H
 
-### yggdryl::hashing::xxhash  [rust\src\hashing\xxhash\mod.rs]
+### yggdryl::hashing::xxhash  [rust/src/hashing/xxhash/mod.rs]
 pub const SECRET_MINIMUM_LENGTH: usize = 136;
   pub fn xxh32(input: &[u8]) -> u32
   pub fn xxh32_with_seed(input: &[u8], seed: u32) -> u32
@@ -1206,14 +1206,14 @@ pub const SECRET_MINIMUM_LENGTH: usize = 136;
   pub fn reader<R: std::io::Read>(source: R, algorithm: DigestAlgorithm) -> DigestReader<R>
   pub fn writer<W: std::io::Write>(target: W, algorithm: DigestAlgorithm) -> DigestWriter<W>
 
-### yggdryl::hashing::xxhash::scalar  [rust\src\hashing\xxhash\scalar.rs]
+### yggdryl::hashing::xxhash::scalar  [rust/src/hashing/xxhash/scalar.rs]
 pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
   pub fn stable_hash(&self) -> u64  (on Scalar and FieldRecord<'_>)
   pub fn write_bytes(&self, sink: &mut impl Hasher)
   pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
   pub struct ValueBytes<'a>
 
-### yggdryl::hashing::xxhash::state  [rust\src\hashing\xxhash\state.rs]
+### yggdryl::hashing::xxhash::state  [rust/src/hashing/xxhash/state.rs]
 pub struct Xxh32
   pub struct Xxh64
   pub struct Xxh3
@@ -1234,7 +1234,7 @@ pub struct Xxh32
   pub fn clear(&mut self)
   pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
-### yggdryl::hashing::xxhash::stream  [rust\src\hashing\xxhash\stream.rs]
+### yggdryl::hashing::xxhash::stream  [rust/src/hashing/xxhash/stream.rs]
 pub struct DigestReader<R: Read>
   pub struct DigestWriter<W: Write>
   pub fn new(source: R, algorithm: DigestAlgorithm) -> Self
@@ -1242,7 +1242,7 @@ pub struct DigestReader<R: Read>
   pub fn as_digest(&self) -> Digest
   pub fn into_inner(self) -> R
 
-### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
+### yggdryl::holder::buffer  [rust/src/holder/buffer.rs]
 pub struct Buffer
   pub fn new() -> Self
   pub fn with_capacity(capacity: usize) -> Self
@@ -1252,14 +1252,14 @@ pub struct Buffer
   pub fn as_mut_slice(&mut self) -> &mut [u8]
   pub fn into_bytes(self) -> Vec<u8>
 
-### yggdryl::holder::local::file  [rust\src\holder\local\file.rs]
+### yggdryl::holder::local::file  [rust/src/holder/local/file.rs]
 pub struct File
   pub fn new(path: impl AsRef<Path>) -> Result<Self>
   pub fn create(path: impl AsRef<Path>) -> Result<Self>
   pub fn path(&self) -> &Path
   pub fn exists(&self) -> bool
 
-### yggdryl::holder::local::folder  [rust\src\holder\local\folder.rs]
+### yggdryl::holder::local::folder  [rust/src/holder/local/folder.rs]
 pub struct Folder
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
@@ -1271,7 +1271,7 @@ pub struct Folder
   pub fn exists(&self) -> bool
   pub fn create(&self) -> Result<()>
 
-### yggdryl::holder::local::path  [rust\src\holder\local\path.rs]
+### yggdryl::holder::local::path  [rust/src/holder/local/path.rs]
 pub struct Path
   pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url(url: Url) -> Result<Self>
@@ -1281,7 +1281,7 @@ pub struct Path
   pub fn as_directory(&self) -> Result<Folder>
   pub fn as_file(&self) -> Result<File>
 
-### yggdryl::holder::zip::archive  [rust\src\holder\zip\archive.rs]
+### yggdryl::holder::zip::archive  [rust/src/holder/zip/archive.rs]
 pub struct Archive
   pub fn new(handle: Holder) -> Self
   pub fn from_path(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -1317,7 +1317,7 @@ pub struct Archive
   pub fn handle_writes(&self) -> u64
   pub const DEFAULT_RESTART_STRIDE: u64
 
-### yggdryl::holder::zip::entry  [rust\src\holder\zip\entry.rs]
+### yggdryl::holder::zip::entry  [rust/src/holder/zip/entry.rs]
 pub struct Entry
   pub fn name(&self) -> &str
   pub fn codec(&self) -> Result<Codec>
@@ -1332,7 +1332,7 @@ pub struct Entry
   pub const fn is_encrypted(&self) -> bool
   pub const fn has_data_descriptor(&self) -> bool
 
-### yggdryl::holder::zip::leaf  [rust\src\holder\zip\leaf.rs]
+### yggdryl::holder::zip::leaf  [rust/src/holder/zip/leaf.rs]
 pub struct Leaf
   pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
   pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
@@ -1341,7 +1341,7 @@ pub struct Leaf
   pub const fn url(&self) -> &Url
   pub fn get_entry(&self) -> Result<Option<Entry>>
 
-### yggdryl::holder::zip::node  [rust\src\holder\zip\node.rs]
+### yggdryl::holder::zip::node  [rust/src/holder/zip/node.rs]
 pub struct Node
   pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self
   pub const fn archive(&self) -> &Arc<Archive>
@@ -1351,7 +1351,7 @@ pub struct Node
   pub fn as_leaf(&self, path: &str) -> Result<Leaf>
   pub fn as_node(&self, path: &str) -> Result<Self>
 
-### yggdryl::holder::zip::path  [rust\src\holder\zip\path.rs]
+### yggdryl::holder::zip::path  [rust/src/holder/zip/path.rs]
 pub struct Path
   pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
   pub const fn archive(&self) -> &Arc<Archive>
@@ -1360,7 +1360,7 @@ pub struct Path
   pub fn as_node(&self) -> Node
   pub fn as_leaf(&self) -> &Leaf
 
-### yggdryl::holder::object  [rust\src\holder\object\mod.rs]
+### yggdryl::holder::object  [rust/src/holder/object/mod.rs]
   Behind the non-default `object` feature. Amazon S3, Google Cloud Storage,
   and Azure Blob Storage through one location/container/leaf trio.
   pub fn located(url: &str) -> Result<Holder>
@@ -1453,11 +1453,11 @@ pub struct Path
   pub struct CustomerKey
   pub fn new, from_base64, from_base64_checked, encoded, checksum, digest
 
-### yggdryl::holder::zip  [rust\src\holder\zip\mod.rs]
+### yggdryl::holder::zip  [rust/src/holder/zip/mod.rs]
   pub fn mount(handle: Holder) -> Holder
   pub fn from_url(url: &crate::Url) -> crate::Result<Holder>
 
-### yggdryl::holder  [rust\src\holder\mod.rs]
+### yggdryl::holder  [rust/src/holder/mod.rs]
 pub enum Holder
   pub const fn buffer(buffer: Buffer) -> Self
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -1477,7 +1477,7 @@ pub enum Holder
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
 
-### yggdryl::root::iobase  [rust\src\iobase.rs]
+### yggdryl::root::iobase  [rust/src/iobase.rs]
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub trait IOBase: Send + IOMedia
   fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>>
@@ -1500,7 +1500,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub struct Reader<'source>
   pub struct Writer<'target>
 
-### yggdryl::root::iocursor  [rust\src\iocursor.rs]
+### yggdryl::root::iocursor  [rust/src/iocursor.rs]
 pub trait IOCursor
   fn tell(&self) -> u64
   fn seek_to(&mut self, position: u64)
@@ -1515,12 +1515,12 @@ pub trait IOCursor
   pub const fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
 
-### yggdryl::root::iofolder  [rust\src\iofolder.rs]
+### yggdryl::root::iofolder  [rust/src/iofolder.rs]
 pub trait IOFolder: IOBase
   pub trait IOFile: IOBase
   pub trait IOPath: IOBase
 
-### yggdryl::root::iokind  [rust\src\iokind.rs]
+### yggdryl::root::iokind  [rust/src/iokind.rs]
 pub enum IOKind
   pub const ALL: [Self; 7] = [Self::Memory, Self::File, Self::Directory, Self::Table, Self::Namespace, Self::Catalog, Self::Unknown];
   pub fn from_str(value: &str) -> Result<Self>
@@ -1529,7 +1529,7 @@ pub enum IOKind
   pub const fn is_leaf(self) -> bool
   pub const fn is_known(self) -> bool
 
-### yggdryl::root::iomedia  [rust\src\iomedia.rs]
+### yggdryl::root::iomedia  [rust/src/iomedia.rs]
 pub trait IOMedia: Send
   fn row_size(&self) -> Result<u64>
   fn column_size(&self) -> Result<usize>
@@ -1553,14 +1553,14 @@ pub trait IOMedia: Send
   fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
   fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
 
-### yggdryl::root::iomode  [rust\src\iomode.rs]
+### yggdryl::root::iomode  [rust/src/iomode.rs]
 pub enum IOMode
   pub const ALL: [Self; 5] = [Self::Overwrite, Self::Append, Self::Merge, Self::ReadOnly, Self::Random];
   pub const WRITE: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::root::media_type  [rust\src\media_type.rs]
+### yggdryl::root::media_type  [rust/src/media_type.rs]
 // `DataType::MediaType` and its field/scalar live in types\media_type\; the value stays here.
 pub use types::{MediaTypeField, MediaTypeType};  (`DataType::MediaType` over Utf8, extension `yggdryl.mediatype`; default application/octet-stream; Scalar::MediaType holds Arc<MediaType>; intake is total - unrecognized text infers the default base)
 pub struct MediaType
@@ -1610,7 +1610,7 @@ pub struct MediaType
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::media::avro::batch  [rust\src\media\avro\batch.rs]
+### yggdryl::media::avro::batch  [rust/src/media/avro/batch.rs]
 pub const DEFAULT_ROOT_NAME: &str = "row";
   pub struct AvroOptions
   pub fn new() -> Self
@@ -1631,7 +1631,7 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
 
-### yggdryl::media::avro::container  [rust\src\media\avro\container.rs]
+### yggdryl::media::avro::container  [rust/src/media/avro/container.rs]
 pub struct Container
   pub fn get(&self, key: &str) -> Option<&str>
   pub fn read_container<H: IOBase + ?Sized>(handle: &H) -> Result<Container>
@@ -1654,11 +1654,11 @@ pub struct Container
   pub fn rows(&self) -> Result<Vec<Scalar>>
   pub fn rows_resolved(&self, resolution: &Resolution) -> Result<Vec<Scalar>>
 
-### yggdryl::media::avro::resolve  [rust\src\media\avro\resolve.rs]
+### yggdryl::media::avro::resolve  [rust/src/media/avro/resolve.rs]
 pub struct Resolution
   pub fn from_schemas(writer: &Schema, reader: &Schema) -> Result<Self>
 
-### yggdryl::media::avro::schema  [rust\src\media\avro\schema.rs]
+### yggdryl::media::avro::schema  [rust/src/media/avro/schema.rs]
 pub const MAX_SCHEMA_DEPTH: usize = 384;
   pub struct Schema
   pub fn from_json(document: &Scalar) -> Result<Self>
@@ -1670,12 +1670,12 @@ pub const MAX_SCHEMA_DEPTH: usize = 384;
   pub fn into_canonical_form(self) -> String
   pub fn fingerprint(&self) -> u64
 
-### yggdryl::media::avro::single  [rust\src\media\avro\single.rs]
+### yggdryl::media::avro::single  [rust/src/media/avro/single.rs]
 pub fn into_single_object_vec(schema: &Schema, value: &Scalar) -> Result<Vec<u8>>
   pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Scalar>
   pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Scalar>
 
-### yggdryl::media::iceberg::catalog  [rust\src\media\iceberg\catalog\catalogs.rs]
+### yggdryl::media::iceberg::catalog  [rust/src/media/iceberg/catalog/catalogs.rs]
 pub struct Catalog<H: IOBase>
   pub const fn new(warehouse: H) -> Self
   pub const fn warehouse(&self) -> &H
@@ -1686,7 +1686,7 @@ pub struct Catalog<H: IOBase>
   pub fn table(&self, name: &str) -> Result<Table<Holder>>
   pub fn namespace(&self, name: &str) -> Result<Namespace<'_, H>>
 
-### yggdryl::media::iceberg::catalog::tables  [rust\src\media\iceberg\catalog\tables.rs]
+### yggdryl::media::iceberg::catalog::tables  [rust/src/media/iceberg/catalog/tables.rs]
 pub fn get(&self, name: &str) -> Result<Table<Holder>>
   pub fn create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
   pub fn open_or_create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
@@ -1697,7 +1697,7 @@ pub fn get(&self, name: &str) -> Result<Table<Holder>>
   pub fn overwrite_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
   pub fn overwrite_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: Option<IcebergOptions>) -> Result<Table<Holder>>
 
-### yggdryl::media::iceberg::evolve  [rust\src\media\iceberg\evolve.rs]
+### yggdryl::media::iceberg::evolve  [rust/src/media/iceberg/evolve.rs]
 pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
   pub struct SchemaUpdate
   pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
@@ -1709,7 +1709,7 @@ pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
   pub fn update_type(&mut self, path: &str, dtype: DataType)
   pub fn into_field(self) -> Result<Field>
 
-### yggdryl::media::iceberg::field  [rust\src\media\iceberg\field.rs]
+### yggdryl::media::iceberg::field  [rust/src/media/iceberg/field.rs]
 impl<'field> IcebergField<'field>
   pub fn schema_id(&self) -> Result<Option<i32>>
   pub fn identifier_field_ids(&self) -> Result<Vec<i32>>
@@ -1729,7 +1729,7 @@ impl<'field> IcebergField<'field>
   pub fn set_partition_source_id(&mut self, id: i32) -> Result<()>
   pub fn set_transform(&mut self, transform: &Transform) -> Result<()>
 
-### yggdryl::media::iceberg::manifest  [rust\src\media\iceberg\manifest.rs]
+### yggdryl::media::iceberg::manifest  [rust/src/media/iceberg/manifest.rs]
 pub enum ManifestContent
   pub const fn code(self) -> i32
   pub fn from_code(code: i64) -> Result<Self>
@@ -1748,7 +1748,7 @@ pub enum ManifestContent
   pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<ManifestFile>>
   pub fn write_manifest_list<H: IOBase + ?Sized>(handle: &mut H, version: FormatVersion, snapshot_id: i64, parent_snapshot_id: Option<i64>, sequence_number: i64, manifests: &[ManifestFile]) -> Result<()>
 
-### yggdryl::media::iceberg::metadata  [rust\src\media\iceberg\metadata.rs]
+### yggdryl::media::iceberg::metadata  [rust/src/media/iceberg/metadata.rs]
 pub enum FormatVersion
   pub const fn number(self) -> i32
   pub fn from_number(number: i64) -> Result<Self>
@@ -1775,7 +1775,7 @@ pub enum FormatVersion
   pub fn into_json(self) -> Result<Scalar>
   pub fn set_current_snapshot(&mut self, snapshot: Snapshot)
 
-### yggdryl::media::iceberg::metadata (additions)  [rust\src\media\iceberg\metadata.rs]
+### yggdryl::media::iceberg::metadata (additions)  [rust/src/media/iceberg/metadata.rs]
 pub fn set_property(&mut self, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Result<Option<SmolStr>>
   pub fn remove_property(&mut self, key: &str) -> Option<SmolStr>
   pub fn set_location(&mut self, location: impl Into<SmolStr>)
@@ -1791,7 +1791,7 @@ pub fn set_property(&mut self, key: impl Into<SmolStr>, value: impl Into<SmolStr
   pub fn remove_snapshots(&mut self, ids: &[i64]) -> Result<()>
   pub fn validate(&self) -> Result<()>
 
-### yggdryl::media::iceberg::metadata (refs and retention)  [rust\src\media\iceberg\metadata.rs]
+### yggdryl::media::iceberg::metadata (refs and retention)  [rust/src/media/iceberg/metadata.rs]
 pub fn ref_by_name(&self, name: &str) -> Option<&SnapshotRef>
   pub fn create_branch(&mut self, name: impl Into<SmolStr>, snapshot_id: i64) -> Result<()>
   pub fn create_tag(&mut self, name: impl Into<SmolStr>, snapshot_id: i64) -> Result<()>
@@ -1799,7 +1799,7 @@ pub fn ref_by_name(&self, name: &str) -> Option<&SnapshotRef>
   pub fn fast_forward_branch(&mut self, name: &str, to_snapshot_id: i64) -> Result<()>
   pub fn expire_snapshots_older_than(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
 
-### yggdryl::media::iceberg::options  [rust\src\media\iceberg\options.rs]
+### yggdryl::media::iceberg::options  [rust/src/media/iceberg/options.rs]
 pub struct IcebergOptions
   pub const COMMIT_RETRIES_KEY: &'static str = "commit.retry.num-retries";
   pub const COMMIT_MIN_BACKOFF_MS_KEY: &'static str = "commit.retry.min-wait-ms";
@@ -1862,7 +1862,7 @@ pub enum WriteStaging
   impl std::str::FromStr for WriteStaging
   impl std::fmt::Display for WriteStaging
 
-### yggdryl::media::iceberg::partition  [rust\src\media\iceberg\partition.rs]
+### yggdryl::media::iceberg::partition  [rust/src/media/iceberg/partition.rs]
 pub const FIRST_PARTITION_ID: i32 = 1000;
   pub enum Transform
   pub fn from_str(value: &str) -> Result<Self>
@@ -1888,7 +1888,7 @@ pub const FIRST_PARTITION_ID: i32 = 1000;
   pub fn into_json(self) -> Result<Scalar>
   pub fn into_v1_json(self) -> Result<Scalar>
 
-### yggdryl::media::iceberg::scan  [rust\src\media\iceberg\scan.rs]
+### yggdryl::media::iceberg::scan  [rust/src/media/iceberg/scan.rs]
 pub struct ScanTask
   pub fn stable_hash(&self) -> u64
   pub struct ScanPlan
@@ -1897,13 +1897,13 @@ pub struct ScanTask
   pub fn files_skipped(&self) -> usize
   pub fn manifests_skipped(&self) -> usize
 
-### yggdryl::media::iceberg::schema  [rust\src\media\iceberg\schema.rs]
+### yggdryl::media::iceberg::schema  [rust/src/media/iceberg/schema.rs]
 pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field>
   pub fn schema_into_json(root: &Field) -> Result<Scalar>
   pub fn assign_field_ids(root: &mut Field, start: i32) -> Result<i32>
   pub fn last_column_id(root: &Field) -> Result<i32>
 
-### yggdryl::media::iceberg::snapshot  [rust\src\media\iceberg\snapshot.rs]
+### yggdryl::media::iceberg::snapshot  [rust/src/media/iceberg/snapshot.rs]
 pub const MAIN_BRANCH: &str = "main";
   pub struct Snapshot
   pub fn summary_value(&self, key: &str) -> Option<&str>
@@ -1915,7 +1915,7 @@ pub const MAIN_BRANCH: &str = "main";
   pub fn from_json(document: &Scalar) -> Result<Self>
   pub fn into_json(self) -> Result<Scalar>
 
-### yggdryl::media::iceberg::snapshot (refs and retention)  [rust\src\media\iceberg\snapshot.rs]
+### yggdryl::media::iceberg::snapshot (refs and retention)  [rust/src/media/iceberg/snapshot.rs]
 pub fn tag(snapshot_id: i64) -> Self
   pub fn is_branch(&self) -> bool
   pub fn is_tag(&self) -> bool
@@ -1923,7 +1923,7 @@ pub fn tag(snapshot_id: i64) -> Self
   pub fn with_max_snapshot_age_ms(mut self, age_ms: i64) -> Result<Self>
   pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
 
-### yggdryl::media::iceberg::table  [rust\src\media\iceberg\table.rs]
+### yggdryl::media::iceberg::table  [rust/src/media/iceberg/table.rs]
 pub struct Table<H: IOBase>
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
@@ -1943,7 +1943,7 @@ pub struct Table<H: IOBase>
   pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
 
-### yggdryl::media::iceberg::table (additions)  [rust\src\media\iceberg\table.rs]
+### yggdryl::media::iceberg::table (additions)  [rust/src/media/iceberg/table.rs]
 pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
   pub fn snapshot_by_ref(&self, name: &str) -> Result<&Snapshot>
   pub fn plan_at(&self, snapshot_id: i64, filters: &[(&str, &str)]) -> Result<ScanPlan>
@@ -1953,7 +1953,7 @@ pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
   pub fn inspect_snapshots(&self) -> Result<BatchReader>
   pub fn inspect_files(&self) -> Result<BatchReader>
 
-### yggdryl::media::iceberg::table (options, refs, concurrency)  [rust\src\media\iceberg\table.rs]
+### yggdryl::media::iceberg::table (options, refs, concurrency)  [rust/src/media/iceberg/table.rs]
 pub fn set_options(&mut self, options: IcebergOptions)
   pub fn options(&self) -> Result<IcebergOptions>
   pub fn write_staging(&self) -> Result<WriteStaging>
@@ -1965,24 +1965,24 @@ pub fn set_options(&mut self, options: IcebergOptions)
   pub fn scan_ref(&self, name: &str, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
   pub struct CommitConflict { pub expected_version: u32, pub beaten: u32, pub last_seen_version: u32 }
 
-### yggdryl::media::iceberg::table (size and compaction)  [rust\src\media\iceberg\table.rs]
+### yggdryl::media::iceberg::table (size and compaction)  [rust/src/media/iceberg/table.rs]
 pub fn target_file_size_bytes(&self) -> Result<u64>
   pub fn compact(&mut self) -> Result<Compaction>
   pub struct Compaction { pub files_before: usize, pub files_after: usize, pub bytes_rewritten: i64 }
 
-### yggdryl::media::iceberg::types  [rust\src\media\iceberg\types.rs]
+### yggdryl::media::iceberg::types  [rust/src/media/iceberg/types.rs]
 pub enum PrimitiveType
   pub fn from_str(value: &str) -> Result<Self>
   pub fn into_dtype(self) -> Result<DataType>
   pub fn from_dtype(dtype: &DataType) -> Result<Self>
 
-### yggdryl::media::inference  [rust\src\media\inference.rs]
+### yggdryl::media::inference  [rust/src/media/inference.rs]
 pub fn dtype(&self) -> Result<DataType>
   pub fn inferred_scalar_field(&self) -> Result<Field>
   pub fn inferred_array_field(&self) -> Result<Field>
   pub fn inferred_struct_field(&self) -> Result<Field>
 
-### yggdryl::media::ipc  [rust\src\media\ipc\mod.rs]
+### yggdryl::media::ipc  [rust/src/media/ipc/mod.rs]
 pub const DEFAULT_ROOT_NAME: &str = "row";
   pub struct IpcOptions
   pub fn new() -> Self
@@ -2001,14 +2001,14 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
 
-### yggdryl::media::magic  [rust\src\media\magic.rs]
+### yggdryl::media::magic  [rust/src/media/magic.rs]
 pub const MAGIC_PROBE_LEN: usize = 64;
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
   pub fn from_text_bytes(input: &[u8]) -> Option<Self>
   pub fn from_bytes(input: &[u8]) -> Option<Self>
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
 
-### yggdryl::media  [rust\src\media\mod.rs]
+### yggdryl::media  [rust/src/media/mod.rs]
 pub enum Media
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
@@ -2022,7 +2022,7 @@ pub enum Media
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
-### yggdryl::media::options  [rust\src\media\options.rs]
+### yggdryl::media::options  [rust/src/media/options.rs]
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub trait IORecordOptions: Sized
   fn declared(&self) -> Option<&Field>
@@ -2109,14 +2109,14 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub fn for_mime_type(base: &MimeType) -> Result<Self>
   pub const fn mime_type(&self) -> MimeType
 
-### yggdryl::media::parquet::metadata  [rust\src\media\parquet\metadata.rs]
+### yggdryl::media::parquet::metadata  [rust/src/media/parquet/metadata.rs]
 pub struct ColumnStatistics
   pub struct RowGroupStatistics
   pub struct FileStatistics
   pub fn split_offsets(&self) -> Vec<i64>
   pub fn null_count(&self, path: &str) -> Option<u64>
 
-### yggdryl::media::parquet  [rust\src\media\parquet\mod.rs]
+### yggdryl::media::parquet  [rust/src/media/parquet/mod.rs]
 pub struct ParquetOptions
   pub fn new() -> Self
   pub fn with_compression(mut self, compression: Compression) -> Self
@@ -2141,14 +2141,14 @@ pub struct ParquetOptions
   pub fn read_statistics(&self) -> Result<FileStatistics>
   pub fn read_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics>
 
-### yggdryl::media::partition  [rust\src\media\partition.rs]
+### yggdryl::media::partition  [rust/src/media/partition.rs]
 pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr>
   pub fn with_partitions( batch: &RecordBatch, partitions: &[(String, String)], field: Option<&Field>, ) -> Result<RecordBatch>
   pub fn without_partitions( batch: &RecordBatch, partitions: &[(String, String)], ) -> Result<RecordBatch>
   pub fn partitioned_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, field: Option<Field>, ) -> Result<crate::arrow::BatchReader>
   pub fn narrowed_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, schema: Arc<Schema>, ) -> crate::arrow::BatchReader
 
-### yggdryl::expression::path  [rust\src\expression\path.rs]
+### yggdryl::expression::path  [rust/src/expression/path.rs]
 pub enum FieldSegment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
@@ -2181,7 +2181,7 @@ pub enum FieldSegment
   pub fn apply_scalar(&self, root: &Field, value: &Scalar) -> Result<Scalar>
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::media::text::bytes  [rust\src\media\text\bytes.rs]
+### yggdryl::media::text::bytes  [rust/src/media/text/bytes.rs]
 pub struct TextBytes
   pub const fn new() -> Self
   pub fn from_page(page: &Arc<Vec<u8>>, start: usize, end: usize) -> Result<Self>
@@ -2197,7 +2197,7 @@ pub struct TextBytes
   pub fn as_str(&self) -> Option<&str>
   pub fn into_bytes(self) -> Vec<u8>
 
-### yggdryl::media::text::entry  [rust\src\media\text\entry.rs]
+### yggdryl::media::text::entry  [rust/src/media/text/entry.rs]
 pub struct TextEntry
   pub const fn new(key: TextBytes, value: TextBytes) -> Self
   pub fn with_entries(self, entries: TextEntries) -> Self
@@ -2227,7 +2227,7 @@ pub struct TextEntries
   pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
 
-### yggdryl::media::text::line  [rust\src\media\text\line.rs]
+### yggdryl::media::text::line  [rust/src/media/text/line.rs]
 pub struct TextLine
   pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
@@ -2261,18 +2261,18 @@ pub struct TextLine
   pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
 
-### yggdryl::media::text::arrow  [rust\src\media\text\arrow.rs]
+### yggdryl::media::text::arrow  [rust/src/media/text/arrow.rs]
 pub struct TextLines
   impl Iterator for TextLines { type Item = Result<TextLine>; }
   pub fn read_text_lines(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<TextLines>
 
-### yggdryl::media::text::batch  [rust\src\media\text\batch.rs]
+### yggdryl::media::text::batch  [rust/src/media/text/batch.rs]
   pub fn into_arrow_batch<I>(lines: I, options: &TextOptions) -> Result<arrow_array::RecordBatch> where I: IntoIterator, I::Item: Into<Result<TextLine>>
   pub fn into_arrow_reader<I>(lines: I, options: &TextOptions) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<TextLine>>, I::IntoIter: Send + 'static
   pub fn from_arrow_batch(batch: &arrow_array::RecordBatch, options: &TextOptions) -> Result<Vec<TextLine>>
   pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl FusedIterator<Item = Result<TextLine>> + Send + 'static>  (one resolved intake, one batch and row cursor; schema/row/source error fuses; rownum subtracts configured start, absent rownum uses continuous stream ordinal; typed captures render canonically and retain index holes)
 
-### yggdryl::media::text::handle  [rust\src\media\text\handle.rs]
+### yggdryl::media::text::handle  [rust/src/media/text/handle.rs]
 pub struct Text<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(self, options: TextOptions) -> Self
@@ -2286,20 +2286,20 @@ pub struct Text<H: IOBase>
   pub fn into_text_with(self, options: TextOptions) -> Self
   pub fn read_text_lines(&self) -> Result<super::TextLines>
 
-### yggdryl::types::url  [rust\src\types\url\mod.rs]
+### yggdryl::types::url  [rust/src/types/url/mod.rs]
 pub use fields::{UrlField, UrlType};
   pub type UrlField = TypedField<UrlType>;
   pub struct UrlType
   impl Value for Url
   impl From<Url> for Scalar
 
-### yggdryl::media::text::leading  [rust\src\media\text\leading.rs]
+### yggdryl::media::text::leading  [rust/src/media/text/leading.rs]
 pub enum LeadingFragment
   pub const ALL: [Self; 3] = [Self::Keep, Self::Drop, Self::Error];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::media::text::options  [rust\src\media\text\options.rs]
+### yggdryl::media::text::options  [rust/src/media/text/options.rs]
 pub struct TextOptions
   pub start_rownum: Option<i64>
   pub parse_mtime: bool
@@ -2341,14 +2341,14 @@ pub struct TextOptions
   pub fn with_renamed_column(self, from: impl Into<SmolStr>, to: impl Into<SmolStr>) -> Self
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::media::text::sep  [rust\src\media\text\sep.rs]
+### yggdryl::media::text::sep  [rust/src/media/text/sep.rs]
 pub struct LineSep
   pub fn new(terminator: impl AsRef<[u8]>) -> Result<Self>
   pub fn as_bytes(&self) -> &[u8]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
 
-### yggdryl::metadata  [rust\src\metadata.rs]
+### yggdryl::metadata  [rust/src/metadata.rs]
 pub struct Metadata(Arc<MetadataMap>);
   pub fn new() -> Self
   pub fn from_entries<I, K, V>(values: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
@@ -2412,7 +2412,7 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn display(&self) -> Option<&'metadata str>
   pub fn merge_with(&self, other: &ProtocolMetadata<'_>) -> Result<Metadata>
 
-### yggdryl::root::mime_type  [rust\src\mime_type.rs]
+### yggdryl::root::mime_type  [rust/src/mime_type.rs]
 // `DataType::MimeType` and its field/scalar live in types\mime_type\; the value stays here.
 pub use types::{MimeTypeField, MimeTypeType};  (`DataType::MimeType` over Utf8, extension `yggdryl.mimetype`; default application/octet-stream; Scalar::MimeType holds the value inline)
 pub struct MimeType(MimeTypeValue);
@@ -2517,7 +2517,7 @@ pub struct MimeType(MimeTypeValue);
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::root::scheme  [rust\src\scheme.rs]
+### yggdryl::root::scheme  [rust/src/scheme.rs]
 pub struct Scheme(SchemeValue);
   pub const HTTP: Self = Self(SchemeValue::Http);
   pub const HTTPS: Self = Self(SchemeValue::Https);
@@ -2551,11 +2551,11 @@ pub struct Scheme(SchemeValue);
   pub const fn is_compatibility_target(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::text::codec  [rust\src\text\codec.rs]
+### yggdryl::text::codec  [rust/src/text/codec.rs]
 pub trait TextCodec: Copy
   pub struct Limited<C: TextCodec>
 
-### yggdryl::text::format  [rust\src\text\format.rs]
+### yggdryl::text::format  [rust/src/text/format.rs]
 pub enum Format
   pub fn from_str(value: &str) -> Result<Self>
   pub fn from_extension(extension: &str) -> Result<Self>
@@ -2564,7 +2564,7 @@ pub enum Format
   pub const fn extension(self) -> &'static str
   pub const fn mime_type(self) -> MimeType
 
-### yggdryl::text::io  [rust\src\text\io.rs]
+### yggdryl::text::io  [rust/src/text/io.rs]
 pub struct Plan
   pub const fn new(format: Format, codec: Codec) -> Self
   pub fn from_media_type(media_type: &MediaType) -> Result<Self>
@@ -2580,7 +2580,7 @@ pub struct Plan
   pub fn dump_with_level(target: &mut impl IOBase, value: &Scalar, level: Level) -> Result<()>
   pub fn dump_all(target: &mut impl IOBase, values: &[Scalar]) -> Result<()>
 
-### yggdryl::text::json  [rust\src\text\json\mod.rs]
+### yggdryl::text::json  [rust/src/text/json/mod.rs]
 pub const MAX_PARSER_DEPTH: usize = 384;
   pub fn from_json_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
@@ -2642,7 +2642,7 @@ pub const MAX_PARSER_DEPTH: usize = 384;
   pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
-### yggdryl::text::limits  [rust\src\text\limits.rs]
+### yggdryl::text::limits  [rust/src/text/limits.rs]
 pub struct Limits
   pub const fn new( max_depth: usize, max_input_bytes: usize, max_nodes: usize, max_documents: usize, ) -> Self
   pub const fn max_depth(self) -> usize
@@ -2650,7 +2650,7 @@ pub struct Limits
   pub const fn max_nodes(self) -> usize
   pub const fn max_documents(self) -> usize
 
-### yggdryl::text  [rust\src\text\mod.rs]
+### yggdryl::text  [rust/src/text/mod.rs]
 pub struct ScalarIter<'a>
   pub fn from_utf8(input: &str, format: Format) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Scalar>
@@ -2703,7 +2703,7 @@ pub struct ScalarIter<'a>
   pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(Format, Scalar)>
   pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Scalar)>
 
-### yggdryl::text::structured  [rust\src\text\structured.rs]
+### yggdryl::text::structured  [rust/src/text/structured.rs]
 pub enum Structured
   pub const fn from_format(format: Format) -> Self
   pub fn for_mime_type(mime_type: &MimeType) -> Result<Self>
@@ -2711,7 +2711,7 @@ pub enum Structured
   pub fn for_url(url: &Url) -> Result<Self>
   pub fn for_handle<H: IOBase + ?Sized>(handle: &H) -> Result<Self>
 
-### yggdryl::text::toml  [rust\src\text\toml\mod.rs]
+### yggdryl::text::toml  [rust/src/text/toml/mod.rs]
 pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
   pub fn into_toml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
@@ -2763,7 +2763,7 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
-### yggdryl::text::yaml  [rust\src\text\yaml\mod.rs]
+### yggdryl::text::yaml  [rust/src/text/yaml/mod.rs]
 pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
   pub fn into_yaml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
@@ -2814,7 +2814,7 @@ pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Scalar>,
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: std::borrow::Borrow<Scalar>,
 
-### yggdryl::root::time_unit  [rust\src\time_unit.rs]
+### yggdryl::root::time_unit  [rust/src/time_unit.rs]
 pub enum TimeUnit
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn from_arrow_time(value: arrow_schema::TimeUnit) -> Self
@@ -2825,7 +2825,7 @@ pub enum TimeUnit
   pub const fn is_interval(self) -> bool
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::types::timezone  [rust\src\types\timezone\mod.rs]
+### yggdryl::types::timezone  [rust/src/types/timezone/mod.rs]
 pub use types::timezone::{Timezone, TimezoneField, TimezoneType};  (`DataType::Timezone` over Utf8, extension `yggdryl.timezone`; default NAIVE; merges only with itself)
 pub struct Timezone
   pub const NAIVE: Self
@@ -2851,14 +2851,14 @@ pub struct Timezone
   pub fn stable_hash(&self) -> u64
   pub fn from_smol_str(value: SmolStr) -> Result<Self>
 
-### yggdryl::types::arrow  [rust\src\types\arrow.rs]
+### yggdryl::types::arrow  [rust/src/types/arrow.rs]
 pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
   pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowDataType>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::arrow::field  [rust\src\types\arrow\field.rs]
+### yggdryl::types::arrow::field  [rust/src/types/arrow/field.rs]
 pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self>
   pub fn from_arrow(value: &ArrowField) -> Result<Self>
   pub fn from_arrow_ref(value: FieldRef) -> Result<Self>
@@ -2873,7 +2873,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::bytes  [rust\src\types\bytes\mod.rs]
+### yggdryl::types::bytes  [rust/src/types/bytes/mod.rs]
 pub enum BytesLayout  (#[non_exhaustive]; Binary, FixedSizeBinary, LargeBinary, BinaryView; Display and serde as the name)
   pub const ALL: [Self; 4] = [ Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, ];
   pub const fn as_str(self) -> &'static str  // binary, fixed_size_binary, large_binary, binary_view
@@ -2885,7 +2885,7 @@ pub enum BytesLayout  (#[non_exhaustive]; Binary, FixedSizeBinary, LargeBinary, 
   pub const fn is_large(self) -> bool
 pub use fields::*;  pub use parameters::{BYTES_EXTENSION_NAME, BytesParameters};  pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types; Bytes also at the crate root)
 
-### yggdryl::types::bytes::parameters  [rust\src\types\bytes\parameters.rs]
+### yggdryl::types::bytes::parameters  [rust/src/types/bytes/parameters.rs]
 pub const BYTES_EXTENSION_NAME: &str = "yggdryl.bytes";
 pub struct BytesParameters  (Copy; Default = plain binary; From<BytesLayout>; Display = binary, binary(16), fixed_size_binary(16), large_binary, binary_view(64); serde {layout, fixed|max})
   pub const fn new(layout: BytesLayout) -> Self
@@ -2904,7 +2904,7 @@ pub struct BytesParameters  (Copy; Default = plain binary; From<BytesLayout>; Di
   pub fn extension_json(self) -> String
   pub fn from_extension_json(value: &str) -> Result<Self>
 
-### yggdryl::types::bytes::dtypes  [rust\src\types\bytes\dtypes.rs]
+### yggdryl::types::bytes::dtypes  [rust/src/types/bytes/dtypes.rs]
 impl DataType
   pub fn bytes(parameters: impl Into<BytesParameters>) -> Result<Self>
   pub const fn binary() -> Self
@@ -2913,7 +2913,7 @@ impl DataType
   pub fn fixed_size_binary(width: u32) -> Result<Self>
   pub const fn bytes_parameters(&self) -> Option<BytesParameters>
 
-### yggdryl::types::bytes::scalars  [rust\src\types\bytes\scalars.rs]
+### yggdryl::types::bytes::scalars  [rust/src/types/bytes/scalars.rs]
 pub const INLINE_BYTES: usize = 30;
 pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence, or {layout, fixed?, bytes} when not default; Value; Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Bytes)
   pub const fn new_static(payload: &'static [u8]) -> Self
@@ -2929,11 +2929,11 @@ pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/O
   pub fn into_shared(self) -> Arc<[u8]>
   pub fn dtype(&self) -> Result<DataType>
 
-### yggdryl::types::bytes::fields  [rust\src\types\bytes\fields.rs]
+### yggdryl::types::bytes::fields  [rust/src/types/bytes/fields.rs]
 pub struct BytesType  (field marker "bytes" over DataType::Bytes(_); re-exported at the crate root)
   pub type BytesField = TypedField<BytesType>;
 
-### yggdryl::types::cast  [rust\src\types\cast.rs]
+### yggdryl::types::cast  [rust/src/types/cast.rs]
 pub trait ArrowFieldType: FieldType
   pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array>
   pub fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<Scalar<K::Array>>
@@ -2945,7 +2945,7 @@ pub trait ArrowCast
   fn cast_arrow_batch(&self, batch: RecordBatch, options: ArrowCastOptions) -> Result<RecordBatch>
   fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<ArrowScalar<ArrayRef>>
 
-### yggdryl::types::cast::options  [rust\src\types\cast\options.rs]
+### yggdryl::types::cast::options  [rust/src/types/cast/options.rs]
 pub enum Nullability
   pub const ALL: [Self; 2]
   pub fn from_str(value: &str) -> Result<Self>
@@ -2965,7 +2965,7 @@ pub struct ArrowCastOptions
   pub const fn nullability(self) -> Nullability
   pub const fn representation(self) -> Representation
 
-### yggdryl::types::cast::plan  [rust\src\types\cast\plan.rs]
+### yggdryl::types::cast::plan  [rust/src/types/cast/plan.rs]
 pub struct ArrowCastPlan
   pub fn compile(source: &Schema, target: &Field, options: ArrowCastOptions) -> Result<Self>
   pub const fn as_field(&self) -> &Field
@@ -2975,11 +2975,11 @@ pub struct ArrowCastPlan
   pub fn preflight(&self) -> Result<()>
   pub fn apply(&self, batch: RecordBatch) -> Result<RecordBatch>
 
-### yggdryl::types::compatibility  [rust\src\types\compatibility.rs]
+### yggdryl::types::compatibility  [rust/src/types/compatibility.rs]
 pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
-### yggdryl::types::decimal::fixed  [rust\src\types\decimal\fixed.rs]
+### yggdryl::types::decimal::fixed  [rust/src/types/decimal/fixed.rs]
 pub struct Decimal  (one exact decimal at eighteen fractional digits and thirty-eight digits of precision - `decimal128(38, 18)` preapplied - as one i128 of units; Copy, Default (zero), Eq, Ord, Hash, Display (no trailing zero behind the point), Debug, FromStr; Add/Sub/Mul/Div and their assign forms refuse an overflow as the integers' do, Neg, Sum; From<i64>; From<Decimal> for Decimal128 and for Scalar (a `Decimal128` at scale 18); re-exported at yggdryl::Decimal)
   pub const SCALE: i8 = 18
   pub const PRECISION: u8 = 38
@@ -2999,7 +2999,7 @@ pub struct Decimal  (one exact decimal at eighteen fractional digits and thirty-
 impl DataType
   pub const DECIMAL: Self  (`decimal128(38, 18)`, what every Decimal is)
 
-### yggdryl::types::decimal  [rust\src\types\decimal\scalars.rs]
+### yggdryl::types::decimal  [rust/src/types/decimal/scalars.rs]
 pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn d128(unscaled: i128, scale: i8) -> Self
   pub const fn d256(unscaled: i256, scale: i8) -> Self
@@ -3011,13 +3011,13 @@ pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<i256>
   pub fn into_decimal_utf8(&self) -> Option<String>
 
-### yggdryl::types::default  [rust\src\types\default.rs]
+### yggdryl::types::default  [rust/src/types/default.rs]
 pub fn default_value(&self) -> Result<Scalar>
   pub fn is_default_value(&self, value: &Scalar) -> Result<bool>
   pub fn validate_bounded(&self) -> Result<()>
   pub fn default_union_type_id(&self) -> Result<Option<i8>>
 
-### yggdryl::types::diff  [rust\src\types\diff.rs]
+### yggdryl::types::diff  [rust/src/types/diff.rs]
 pub fn equals(&self, other: &Self, with_metadata: bool) -> bool
   pub fn show_diffs<'schema>( &'schema self, other: &'schema Self, with_metadata: bool, return_equal: bool, ) -> Differences<'schema>
   pub fn show_diff(&self, other: &Self, with_metadata: bool, return_equal: bool) -> String
@@ -3026,7 +3026,7 @@ pub struct Differences<'schema>
   pub fn from_fields( left: &Field, right: &Field, with_metadata: bool, return_equal: bool, ) -> Self
   pub fn from_dtypes( left: &DataType, right: &DataType, with_metadata: bool, return_equal: bool, ) -> Self
 
-### yggdryl::types::dtype  [rust\src\types\dtype.rs]
+### yggdryl::types::dtype  [rust/src/types/dtype.rs]
 pub enum DataType
   pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar>
   pub fn stable_hash(&self) -> u64
@@ -3041,14 +3041,7 @@ pub enum DataType
   pub fn required_field(self, name: impl Into<SmolStr>) -> Field
   pub fn validate(&self) -> Result<()>
 
-### yggdryl::types::enum_scalar  [rust\src\types\enum_scalar.rs]
-pub enum EnumScalar
-  pub fn from_parts(kind: &str, value: &str) -> Result<Self>
-  pub const fn kind(self) -> &'static str
-  pub const fn as_str(self) -> &'static str
-  pub fn ordinal(self) -> u8
-
-### yggdryl::types::field  [rust\src\types\field.rs]
+### yggdryl::types::field  [rust/src/types/field.rs]
 pub type NullField = TypedField<scalar::Null>;
   pub type BooleanField = TypedField<scalar::Boolean>;
   pub type Int8Field = TypedField<integer::Int8>;
@@ -3260,14 +3253,14 @@ pub type NullField = TypedField<scalar::Null>;
   pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
   pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
 
-### yggdryl::types::i256  [rust\src\types\i256.rs]
+### yggdryl::types::i256  [rust/src/types/i256.rs]
 pub struct u256([u64; 4]);  (unsigned magnitude; ZERO, MAX; from_u128, from_le_bytes, into_le_bytes, as_u128, is_zero, checked_add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
   pub fn stable_hash(&self) -> u64
 pub struct i256([u64; 4]);  (signed two's complement; ZERO; from_i128, from_u128, from_le_bytes, into_le_bytes, as_i128, as_u128, is_negative, is_zero, unsigned_abs -> u256, checked_neg/abs/add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
   pub fn stable_hash(&self) -> u64
   pub const fn unsigned_abs(self) -> u256
 
-### yggdryl::types::geospatial  [rust\src\types\geospatial\scalars.rs]
+### yggdryl::types::geospatial  [rust/src/types/geospatial/scalars.rs]
 pub trait GeospatialValue: Value
   pub fn as_bytes(&self) -> &[u8]
   pub fn storage(&self) -> &Arc<[u8]>
@@ -3277,14 +3270,14 @@ pub trait GeospatialValue: Value
   pub fn storage(&self) -> &Arc<[u8]>
   pub fn into_inner(self) -> Arc<[u8]>
 
-### yggdryl::types::floating  [rust\src\types\floating\dtypes.rs]
+### yggdryl::types::floating  [rust/src/types/floating/dtypes.rs]
 pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal64(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal128(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal256(precision: u8, scale: i8) -> Result<Self>
 
-### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
+### yggdryl::types::uuid  [rust/src/types/uuid/scalars.rs]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; Value)
   pub const fn new(value: u128) -> Self
   pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
@@ -3293,7 +3286,7 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub const fn get(self) -> u128
   pub const fn into_bytes(self) -> [u8; 16]
 
-### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
+### yggdryl::types::uuid  [rust/src/types/uuid/scalars.rs]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; Value)
   pub const TEXT_LEN: usize = 36;
   pub const fn new(value: u128) -> Self
@@ -3304,7 +3297,7 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub const fn into_bytes(self) -> [u8; 16]
   pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str  (the canonical spelling into the caller's slot; allocates nothing)
 
-### yggdryl::types::version  [rust\src\types\version\mod.rs]
+### yggdryl::types::version  [rust/src/types/version/mod.rs]
 pub struct Version
   pub const MAX_PARTS: usize = 3;
   pub const MIN: Self
@@ -3316,13 +3309,13 @@ pub struct Version
   pub struct VersionType
   pub type VersionField = TypedField<VersionType>;
 
-### yggdryl::types::integer  [rust\src\types\integer\dtypes.rs]
+### yggdryl::types::integer  [rust/src/types/integer/dtypes.rs]
 pub const fn is_integer(&self) -> bool
 
-### yggdryl::types  [rust\src\types\mod.rs]
+### yggdryl::types  [rust/src/types/mod.rs]
 pub enum DataType
 
-### yggdryl::types::nested  [rust\src\types\nested\dtypes.rs]
+### yggdryl::types::nested  [rust/src/types/nested/dtypes.rs]
 pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn len(&self) -> usize
@@ -3376,17 +3369,17 @@ pub const fn new() -> Self
   pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field>
   pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field>
 
-### yggdryl::types::parser  [rust\src\types\parser.rs]
+### yggdryl::types::parser  [rust/src/types/parser.rs]
 pub const PARSE_RECURSION_LIMIT: usize = 64;
   pub fn from_str(input: &str) -> Result<Self>
 
-### yggdryl::types::regex  [rust\src\types\regex.rs]
+### yggdryl::types::regex  [rust/src/types/regex.rs]
 pub fn from_regex(pattern: &str, autotype: bool) -> Result<Self>
 
-### yggdryl::types::parser::field  [rust\src\types\parser\field.rs]
+### yggdryl::types::parser::field  [rust/src/types/parser/field.rs]
 pub fn from_str(value: &str) -> Result<Self>
 
-### yggdryl::types::protocol::http  [rust\src\types\protocol\http.rs]
+### yggdryl::types::protocol::http  [rust/src/types/protocol/http.rs]
 impl<'field> HttpField<'field>
   pub fn accept(&self) -> Option<&'field str>
   pub fn accept_encoding(&self) -> Option<&'field str>
@@ -3450,7 +3443,7 @@ impl<'field> HttpField<'field>
   pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_vary(&mut self) -> Option<String>
 
-### yggdryl::types::protocol::python  [rust\src\types\protocol\python.rs]
+### yggdryl::types::protocol::python  [rust/src/types/protocol/python.rs]
 pub enum PythonKind
   pub const ALL: [Self; 8]
   pub const fn as_str(self) -> &'static str
@@ -3486,7 +3479,7 @@ pub enum PythonKind
   pub fn set_kind(&mut self, value: PythonKind) -> Result<()>
   pub fn remove_class(&mut self) -> Option<PythonMetadata>
 
-### yggdryl::types::protocol  [rust\src\types\protocol\mod.rs]
+### yggdryl::types::protocol  [rust/src/types/protocol/mod.rs]
 pub struct ProtocolField<'field>
   pub const fn as_field(&self) -> &'field Field
   pub fn as_properties(&self) -> ProtocolMetadata<'field>
@@ -3590,7 +3583,7 @@ pub struct ProtocolField<'field>
   pub struct PythonFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> PythonField<'_>
 
-### yggdryl::types::scalar  [rust\src\types\scalar.rs]
+### yggdryl::types::scalar  [rust/src/types/scalar.rs]
 pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (no associated consts: a leaf's identity is its dtype; no Family type - a leaf widens through into_scalar)
   fn dtype(&self) -> Result<DataType>
   fn into_family(self) -> Self::Family
@@ -3643,15 +3636,15 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   pub fn from_arrow(value: crate::arrow::ArrowScalar) -> Self
   pub fn as_arrow(&self) -> Option<&crate::arrow::ArrowScalar>
 
-### yggdryl::types::serde  [rust\src\types\serde.rs]
+### yggdryl::types::serde  [rust/src/types/serde.rs]
 pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::types::serde::field  [rust\src\types\serde\field.rs]
+### yggdryl::types::serde::field  [rust/src/types/serde/field.rs]
 pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::types::temporal  [rust\src\types\temporal\scalars.rs]
+### yggdryl::types::temporal  [rust/src/types/temporal/scalars.rs]
 pub enum TemporalFamily
   pub const fn as_str(self) -> &'static str
   pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
@@ -3685,7 +3678,7 @@ pub enum TemporalFamily
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
 
-### yggdryl::types::temporal  [rust\src\types\temporal\scalars.rs]
+### yggdryl::types::temporal  [rust/src/types/temporal/scalars.rs]
 pub enum TemporalFamily
   pub const fn as_str(self) -> &'static str
   pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
@@ -3719,7 +3712,7 @@ pub enum TemporalFamily
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
 
-### yggdryl::types::string  [rust\src\types\string.rs]
+### yggdryl::types::string  [rust/src/types/string.rs]
 pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, LargeString, LargeStringView; Display and serde as the general name)
   pub const ALL: [Self; 5] = [ Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, ];
   pub const fn as_str(self) -> &'static str  // string, fixed_string, string_view, large_string, large_string_view
@@ -3733,7 +3726,7 @@ pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, Larg
   pub const fn is_large(self) -> bool
 pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};  pub use code::{Bloomberg, Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
 
-### yggdryl::types::string::parameters  [rust\src\types\string\parameters.rs]
+### yggdryl::types::string::parameters  [rust/src/types/string/parameters.rs]
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
 pub struct StringParameters  (Copy; Default = utf8; From<Charset>, From<StringLayout>; Display = utf8, utf8(32), fixed_utf8(8), ascii, fixed_ascii(4), string(windows-1252), fixed_string(windows-1252,8); serde {layout, charset, fixed|max})
   pub const fn new(layout: StringLayout, charset: Charset) -> Self
@@ -3757,7 +3750,7 @@ pub struct StringParameters  (Copy; Default = utf8; From<Charset>, From<StringLa
   pub fn extension_json(self) -> String
   pub fn from_extension_json(value: &str) -> Result<Self>
 
-### yggdryl::types::string::dtypes  [rust\src\types\string\dtypes.rs]
+### yggdryl::types::string::dtypes  [rust/src/types/string/dtypes.rs]
 impl DataType
   pub fn string(parameters: impl Into<StringParameters>) -> Result<Self>
   pub const fn utf8() -> Self
@@ -3771,7 +3764,7 @@ impl DataType
   pub const fn charset(&self) -> Option<Charset>
   pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width; None for a code)
 
-### yggdryl::types::string::scalars  [rust\src\types\string\scalars.rs]
+### yggdryl::types::string::scalars  [rust/src/types/string/scalars.rs]
 pub const INLINE_CAPACITY: usize = 23;
 pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, charset, fixed?, text} when not default; Value; Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
   pub const fn new_static(text: &'static str) -> Self
@@ -3791,7 +3784,7 @@ pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<
   pub fn into_inner(self) -> SmolStr
   pub fn dtype(&self) -> Result<DataType>
 
-### yggdryl::types::string::code  [rust\src\types\string\code.rs]
+### yggdryl::types::string::code  [rust/src/types/string/code.rs]
 pub trait CodeValue: Value
   const WIDTH: usize;
   fn as_str(&self) -> &str
@@ -3843,7 +3836,7 @@ pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sed
   pub const fn identifier(&self) -> DataTypeId
   pub const fn datatype(&self) -> DataType
 
-### yggdryl::types::string::codes  [rust\src\types\string\codes.rs]
+### yggdryl::types::string::codes  [rust/src/types/string/codes.rs]
 impl DataType
   pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::Bloomberg, 32)];
   pub const fn country() -> Self
@@ -3859,7 +3852,7 @@ impl DataType
   pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>  (a fixed US-ASCII string of at most sixteen bytes, or a code; padded to that width by the packing, never by a column)
   pub fn ascii_value(&self, packed: i128) -> Result<Str>
 
-### yggdryl::types::string::dictionary  [rust\src\types\string\dictionary.rs]
+### yggdryl::types::string::dictionary  [rust/src/types/string/dictionary.rs]
 pub struct StringEnum  (re-exported at the crate root; error kind "string-enum")
   pub fn new(name: impl Into<Str>) -> Result<Self>
   pub fn from_members<I, N, V>(name: impl Into<Str>, members: I) -> Result<Self> where I: IntoIterator<Item = (N, V)>, N: Into<Str>, V: Into<Str>,
@@ -3876,7 +3869,7 @@ pub struct StringEnum  (re-exported at the crate root; error kind "string-enum")
   pub fn member_name(value: &str) -> Str
   pub fn into_members(&self, width: &DataType) -> Result<Vec<(Str, i128)>>  (accepted on a fixed US-ASCII string of at most sixteen bytes or a code; refused by name elsewhere)
 
-### yggdryl::types::string::registries  [rust\src\types\string\registries.rs]
+### yggdryl::types::string::registries  [rust/src/types/string/registries.rs]
 impl StringEnum
   pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
@@ -3888,7 +3881,7 @@ impl StringEnum
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
 
-### yggdryl::types::string::fields  [rust\src\types\string\fields.rs]
+### yggdryl::types::string::fields  [rust/src/types/string/fields.rs]
 pub struct StringType  (field marker "string" over DataType::String(_); re-exported at the crate root)
   pub type StringField = TypedField<StringType>;
 pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, CusipType, SedolType, SideType, StateType, TimeInForceType: the ten code markers (country, currency, mic, cfi, isin, cusip, sedol, side, state, timeinforce)
@@ -3908,7 +3901,7 @@ impl Field
   pub fn try_with_string_enum(mut self, value: &StringEnum) -> Result<Self>
   pub fn remove_string_enum(&mut self) -> Result<Option<StringEnum>>
 
-### yggdryl::types::typed  [rust\src\types\typed.rs]
+### yggdryl::types::typed  [rust/src/types/typed.rs]
 pub struct FieldScalar<'a>
   pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Result<Self>
   pub fn parse_str(field: &'a Field, text: &str) -> Result<Self>
@@ -3940,7 +3933,7 @@ pub struct UncheckedFieldScalar<'a>
   pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_decimal: the field's reading of the held value
   pub fn into_value(self) -> Scalar
 
-### yggdryl::types::typed::record  [rust\src\types\typed\record.rs]
+### yggdryl::types::typed::record  [rust/src/types/typed/record.rs]
 pub struct FieldRecord<'a>
   pub fn new(field: &'a Field, row: impl Into<Scalar>) -> Result<Self>
   pub fn from_arrow_batch( field: &'a Field, batch: &arrow_array::RecordBatch, row: usize, ) -> crate::arrow::Result<Self>
@@ -3960,7 +3953,7 @@ pub struct FieldRecord<'a>
   impl Index<usize> for FieldRecord<'a>  // and Index<&str>
   impl From<FieldRecord<'_>> for Scalar
 
-### yggdryl::types::typed::shared  [rust\src\types\typed\shared.rs]
+### yggdryl::types::typed::shared  [rust/src/types/typed/shared.rs]
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
@@ -3989,15 +3982,15 @@ pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataTyp
   pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self
   pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
 
-### yggdryl::types::vocabulary  [rust\src\types\vocabulary.rs]
+### yggdryl::types::vocabulary  [rust/src/types/vocabulary.rs]
 pub const LOGICAL_NAMES: &'static [(&'static str, DataType)]
   pub fn from_logical_name(name: &str) -> Result<Self>
 
-### yggdryl::root::union_mode  [rust\src\union_mode.rs]
+### yggdryl::root::union_mode  [rust/src/union_mode.rs]
 pub enum UnionMode
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::uri  [rust\src\uri\mod.rs]
+### yggdryl::uri  [rust/src/uri/mod.rs]
 pub struct Authority(SmolStr);
   pub fn from_str(value: &str) -> Result<Self>
   pub fn as_str(&self) -> &str
@@ -4149,7 +4142,7 @@ pub struct Authority(SmolStr);
   pub fn clear_extensions(&mut self) -> bool
   pub fn stable_hash(&self) -> u64
 
-### yggdryl::expression::user  [rust\src\expression\user.rs]
+### yggdryl::expression::user  [rust/src/expression/user.rs]
 pub struct UserRef
   pub fn new(namespace: &str, name: &str) -> Result<Self>
   pub fn parse(text: &str) -> Result<Self>
@@ -4179,7 +4172,7 @@ pub struct UserRef
   pub fn user(namespace: &str, name: &str) -> Result<Self>
   pub fn resolve(name: &str) -> Result<Self>
 
-### yggdryl::expression::filter  [rust\src\expression\filter.rs]
+### yggdryl::expression::filter  [rust/src/expression/filter.rs]
 pub struct Filter(Term)
   pub const fn new(term: Term) -> Self
   pub fn always_true() -> Self
@@ -4215,7 +4208,7 @@ pub struct Filter(Term)
   pub fn holder_carries_partition(column: &str, value: &str) -> Self
   pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>( pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
 
-### yggdryl::expression::plan  [rust\src\expression\plan.rs]
+### yggdryl::expression::plan  [rust/src/expression/plan.rs]
 pub enum Location
   pub fn parts<I, S>(parts: I) -> Self where
   pub fn url(&self, base: Option<&Url>) -> Result<Url>
@@ -4301,7 +4294,7 @@ pub enum Location
   pub fn execute(&self) -> Result<BatchReader>
   pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
 
-### yggdryl::expression::term  [rust\src\expression\term.rs]
+### yggdryl::expression::term  [rust/src/expression/term.rs]
 pub enum Term
   pub fn stable_hash(&self) -> u64
   pub fn always_true() -> Self
@@ -4368,7 +4361,7 @@ pub enum Term
   pub fn col(name: impl Into<SmolStr>) -> Term
   pub fn lit(value: impl Into<Scalar>) -> Term
 
-### yggdryl::expression::records  [rust\src\expression\records.rs]
+### yggdryl::expression::records  [rust/src/expression/records.rs]
 pub struct Records
   pub const fn field(&self) -> &Field
   pub fn collect_rows(self) -> Result<Vec<Scalar>>
@@ -4378,7 +4371,7 @@ pub struct Records
   pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
   pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
 
-### yggdryl::expression::attribute  [rust\src\expression\attribute.rs]
+### yggdryl::expression::attribute  [rust/src/expression/attribute.rs]
 pub enum Cost
   pub const fn as_str(self) -> &'static str
   pub enum Attribute
@@ -4395,7 +4388,7 @@ pub enum Cost
   pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H)
   pub fn read_handle<H: IOBase + ?Sized>(handle: &H, attribute: &Attribute) -> Result<Scalar>
 
-### yggdryl::expression::explain  [rust\src\expression\explain.rs]
+### yggdryl::expression::explain  [rust/src/expression/explain.rs]
 pub fn explain(&self) -> String
   pub fn explain(&self) -> String
   pub fn explain(&self) -> String
@@ -4403,7 +4396,7 @@ pub fn explain(&self) -> String
   pub fn explain(&self) -> String
   pub fn explain(&self) -> String
 
-### yggdryl::expression::transform  [rust\src\expression\transform.rs]
+### yggdryl::expression::transform  [rust/src/expression/transform.rs]
 pub fn term(&self) -> Result<Option<Term>>
   pub fn function(&self) -> Result<Option<Function>>
   pub fn sources(&self) -> Result<Option<Vec<String>>>
@@ -4414,7 +4407,7 @@ pub fn term(&self) -> Result<Option<Term>>
   pub fn remove_term(&mut self) -> Option<String>
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
 
-### yggdryl::expression::literal  [rust\src\expression\literal.rs]
+### yggdryl::expression::literal  [rust/src/expression/literal.rs]
 pub struct Literal
   pub fn new(dtype: DataType, value: impl Into<Scalar>) -> Result<Self>
   pub fn infer(value: Scalar) -> Result<Self>
@@ -4424,7 +4417,7 @@ pub struct Literal
   pub const fn is_null(&self) -> bool
   pub fn into_parts(self) -> (DataType, Scalar)
 
-### yggdryl::iomedia  [rust\src\iomedia.rs]
+### yggdryl::iomedia  [rust/src/iomedia.rs]
 pub trait IOMedia: Send
   fn as_io_base(&self) -> &dyn IOBase
   fn as_io_base_mut(&mut self) -> &mut dyn IOBase

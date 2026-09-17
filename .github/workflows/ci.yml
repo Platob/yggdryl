@@ -434,6 +434,8 @@ jobs:
         run: |
           npm ci --prefix node
           npm run --prefix node build:debug
+      - name: Check the API inventories name files that exist
+        run: python scripts/check_api_inventory.py
       - name: Compile and run every Rust example
         run: python scripts/check_docs_examples.py --lang rust
       - name: Run every Python example

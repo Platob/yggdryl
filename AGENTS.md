@@ -89,6 +89,7 @@ passes.
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section names a source file that still exists |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
 The measured costs that shape the loop: an already-built theme suite is under a
