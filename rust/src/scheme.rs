@@ -201,10 +201,7 @@ impl Scheme {
     /// before selecting the S3 backend, so the three never drift apart into
     /// separate scheme comparisons.
     pub const fn is_s3(&self) -> bool {
-        matches!(
-            self.0,
-            SchemeWire::S3 | SchemeWire::S3a | SchemeWire::S3n
-        )
+        matches!(self.0, SchemeWire::S3 | SchemeWire::S3a | SchemeWire::S3n)
     }
 
     /// Return whether the scheme addresses Google Cloud Storage.

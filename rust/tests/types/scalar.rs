@@ -12,9 +12,7 @@ use std::sync::Arc;
 
 use yggdryl::types::floating::FloatingValue;
 use yggdryl::types::{Float16, Float32, Float64, Scalar};
-use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, Value, TimeUnit, Timezone, i256,
-};
+use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -478,10 +476,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     let integer = integer::UInt128::new(u128::MAX);
     assert_eq!(IntegerValue::as_i128(&integer), None);
     assert_eq!(IntegerValue::as_u128(&integer), Some(u128::MAX));
-    assert_eq!(
-        Value::dtype(&integer).unwrap().id(),
-        DataTypeId::Decimal256
-    );
+    assert_eq!(Value::dtype(&integer).unwrap().id(), DataTypeId::Decimal256);
 
     let decimal = decimal::Decimal32::new(1_251, 2);
     assert_eq!(DecimalValue::coefficient(&decimal), i256::from_i128(1_251));
@@ -520,18 +515,12 @@ fn every_scalar_family_exposes_its_leaf_contract() {
         GeospatialValue::as_bytes(&geometry),
         POINT_EMPTY_WKB.as_slice()
     );
-    assert_eq!(
-        Value::dtype(&geometry).unwrap().id(),
-        DataTypeId::Geometry
-    );
+    assert_eq!(Value::dtype(&geometry).unwrap().id(), DataTypeId::Geometry);
 
     let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
-    assert_eq!(
-        Value::dtype(&sequence).unwrap().id(),
-        DataTypeId::List
-    );
+    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
     assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);

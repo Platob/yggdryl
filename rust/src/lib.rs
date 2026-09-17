@@ -125,8 +125,8 @@ pub use types::timezone::Timezone;
 pub use types::{
     Bytes, Children, Code, CodeValue, Decimal, DecimalValue, Differences, Enum, Field, FieldRecord,
     FieldRef, FieldScalar, FieldType, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
-    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar,
-    Value, Str, TemporalFamily, TemporalValue, TypedField, TypedFieldRef,
+    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, Str, TemporalFamily,
+    TemporalValue, TypedField, TypedFieldRef, Value,
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,

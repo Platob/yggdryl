@@ -119,8 +119,14 @@ fn borrowing_the_arrow_projection_builds_it_once() {
     assert!(Arc::ptr_eq(first, second));
 
     // Borrowing and consuming agree, and the field survives the borrow.
-    assert_eq!(field.as_arrow_ref().unwrap(), &field.clone().into_arrow_ref().unwrap());
-    assert_eq!(Field::from_arrow(field.as_arrow_ref().unwrap().as_ref()).unwrap(), field);
+    assert_eq!(
+        field.as_arrow_ref().unwrap(),
+        &field.clone().into_arrow_ref().unwrap()
+    );
+    assert_eq!(
+        Field::from_arrow(field.as_arrow_ref().unwrap().as_ref()).unwrap(),
+        field
+    );
 }
 
 #[test]

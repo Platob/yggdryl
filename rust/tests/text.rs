@@ -8,10 +8,10 @@ mod format;
 mod json;
 #[path = "text/placeholder.rs"]
 mod placeholder;
-#[path = "text/structured.rs"]
-mod structured;
 #[path = "text/runtime_format.rs"]
 mod runtime_format;
+#[path = "text/structured.rs"]
+mod structured;
 #[path = "text/toml.rs"]
 mod toml;
 #[path = "text/value.rs"]

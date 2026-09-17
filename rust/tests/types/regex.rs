@@ -69,4 +69,3 @@ fn malformed_and_over_nested_regexes_are_typed_errors() {
         Err(Error::InvalidDataType { kind: "regex", .. })
     ));
 }
-

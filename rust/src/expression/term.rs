@@ -1489,7 +1489,6 @@ impl From<super::FieldPath> for Term {
     }
 }
 
-
 /// Build a column reference. The free spelling of [`Term::column`].
 #[must_use]
 pub fn col(name: impl Into<SmolStr>) -> Term {

@@ -897,7 +897,6 @@ impl From<Term> for Expression {
     }
 }
 
-
 /// The one scalar conversion, for the datatypes that expose it.
 pub(crate) fn convert_scalar(
     target: &crate::DataType,
