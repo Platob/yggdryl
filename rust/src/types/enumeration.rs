@@ -16,7 +16,7 @@ use crate::{
 /// Every payload fits in one byte. The outer discriminant preserves which
 /// vocabulary the member belongs to even when two enums share a spelling.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+#[serde(tag = "kind", content = "value")]
 pub enum Enum {
     /// A content codec.
     Codec(Codec),
@@ -48,14 +48,14 @@ impl Enum {
             };
         }
         let parsed = match kind.trim() {
-            "codec" => parse!(Codec, Codec),
-            "data_type_id" => parse!(DataTypeId, DataTypeId),
-            "data_type_kind" => parse!(DataTypeKind, DataTypeKind),
-            "edge_algorithm" => parse!(EdgeAlgorithm, EdgeAlgorithm),
-            "io_kind" => parse!(IOKind, IOKind),
-            "io_mode" => parse!(IOMode, IOMode),
-            "time_unit" => parse!(TimeUnit, TimeUnit),
-            "union_mode" => parse!(UnionMode, UnionMode),
+            "Codec" => parse!(Codec, Codec),
+            "DataTypeId" => parse!(DataTypeId, DataTypeId),
+            "DataTypeKind" => parse!(DataTypeKind, DataTypeKind),
+            "EdgeAlgorithm" => parse!(EdgeAlgorithm, EdgeAlgorithm),
+            "IOKind" => parse!(IOKind, IOKind),
+            "IOMode" => parse!(IOMode, IOMode),
+            "TimeUnit" => parse!(TimeUnit, TimeUnit),
+            "UnionMode" => parse!(UnionMode, UnionMode),
             _ => None,
         };
         parsed.ok_or_else(|| Error::Parse {
@@ -68,14 +68,14 @@ impl Enum {
     /// Return the enum vocabulary name.
     pub const fn kind(self) -> &'static str {
         match self {
-            Self::Codec(_) => "codec",
-            Self::DataTypeId(_) => "data_type_id",
-            Self::DataTypeKind(_) => "data_type_kind",
-            Self::EdgeAlgorithm(_) => "edge_algorithm",
-            Self::IOKind(_) => "io_kind",
-            Self::IOMode(_) => "io_mode",
-            Self::TimeUnit(_) => "time_unit",
-            Self::UnionMode(_) => "union_mode",
+            Self::Codec(_) => "Codec",
+            Self::DataTypeId(_) => "DataTypeId",
+            Self::DataTypeKind(_) => "DataTypeKind",
+            Self::EdgeAlgorithm(_) => "EdgeAlgorithm",
+            Self::IOKind(_) => "IOKind",
+            Self::IOMode(_) => "IOMode",
+            Self::TimeUnit(_) => "TimeUnit",
+            Self::UnionMode(_) => "UnionMode",
         }
     }
 
@@ -166,10 +166,40 @@ mod tests {
     };
 
     #[test]
+    fn the_serde_tag_is_the_name_kind_answers() {
+        // The vocabulary name is the Rust type name, so there is one
+        // spelling and no casing rule to disagree with. Every vocabulary is
+        // checked, not just the two an acronym once broke.
+        for (kind, value) in [
+            ("Codec", "identity"),
+            ("DataTypeId", "null"),
+            ("DataTypeKind", "null"),
+            ("EdgeAlgorithm", "spherical"),
+            ("IOKind", "file"),
+            ("IOMode", "append"),
+            ("TimeUnit", "s"),
+            ("UnionMode", "dense"),
+        ] {
+            let member = Enum::from_parts(kind, value).expect("a known member");
+            assert_eq!(member.kind(), kind);
+
+            let json = serde_json::to_string(&member).expect("Enum serializes");
+            assert!(
+                json.contains(&format!("\"kind\":\"{kind}\"")),
+                "serde wrote {json}, but kind() answers {kind}"
+            );
+            assert_eq!(
+                Enum::from_parts(kind, value).expect("a known member"),
+                serde_json::from_str::<Enum>(&json).expect("Enum round-trips")
+            );
+        }
+    }
+
+    #[test]
     fn identity_and_compact_ordinal_survive_scalar_conversion() {
-        let member = Enum::from_parts("io_mode", "append").unwrap();
+        let member = Enum::from_parts("IOMode", "append").unwrap();
         assert_eq!(member, Enum::IOMode(IOMode::Append));
-        assert_eq!(member.kind(), "io_mode");
+        assert_eq!(member.kind(), "IOMode");
         assert_eq!(member.as_str(), "append");
         assert_eq!(member.ordinal(), 1);
         assert!(size_of::<Enum>() <= 2);
@@ -199,6 +229,6 @@ mod tests {
         }
 
         assert!(Enum::from_parts("missing", "append").is_err());
-        assert!(Enum::from_parts("io_mode", "missing").is_err());
+        assert!(Enum::from_parts("IOMode", "missing").is_err());
     }
 }

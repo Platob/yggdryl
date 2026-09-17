@@ -776,3 +776,21 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
         .to_string();
     assert!(refused.contains("extension storage"), "{refused}");
 }
+
+#[test]
+fn zz_probe_missing_leaves() {
+    for dtype in [
+        DataType::Side,
+        DataType::State,
+        DataType::TimeInForce,
+        DataType::Bloomberg,
+        DataType::Timezone,
+        DataType::MimeType,
+        DataType::MediaType,
+    ] {
+        for scheme in [&Scheme::SPARK, &Scheme::POLARS, &Scheme::PANDAS, &Scheme::ICEBERG] {
+            let got = dtype.clone().into_scheme_compat(scheme);
+            println!("{:?} / {} -> {:?}", dtype, scheme, got.map(|d| d.to_string()));
+        }
+    }
+}

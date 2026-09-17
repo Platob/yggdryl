@@ -188,10 +188,10 @@ def test_exact_width_factories_are_private_reconstruction_details() -> None:
 
 
 def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
-    value = Scalar.from_enum("io_mode", "append")
+    value = Scalar.from_enum("IOMode", "append")
 
     assert value.kind == "enum"
-    assert value.enum_kind == "io_mode"
+    assert value.enum_kind == "IOMode"
     assert value.enum_value == "append"
     assert value.enum_ordinal == 1
     assert value.as_py() == "append"
@@ -199,7 +199,7 @@ def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
     assert hash(value) == hash(copy.copy(value))
     assert pickle.loads(pickle.dumps(value)) == value
     with pytest.raises(ValueError, match="unknown"):
-        Scalar.from_enum("io_mode", "missing")
+        Scalar.from_enum("IOMode", "missing")
 
 
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:

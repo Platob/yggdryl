@@ -64,7 +64,7 @@ One spelling per member at every boundary.
     let value = Scalar::from(IOMode::Append);
     let member = value.as_enum().expect("an enum scalar");
     assert_eq!(member, &Enum::IOMode(IOMode::Append));
-    assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("io_mode", "append", 1));
+    assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("IOMode", "append", 1));
     ```
 
 === "Python"
@@ -72,8 +72,8 @@ One spelling per member at every boundary.
     ```python
     from yggdryl import Scalar
 
-    value = Scalar.from_enum("io_mode", "append")
-    assert (value.enum_kind, value.enum_value, value.enum_ordinal) == ("io_mode", "append", 1)
+    value = Scalar.from_enum("IOMode", "append")
+    assert (value.enum_kind, value.enum_value, value.enum_ordinal) == ("IOMode", "append", 1)
     assert value.as_py() == "append"
     ```
 
@@ -83,8 +83,8 @@ One spelling per member at every boundary.
     const assert = require('node:assert/strict')
     const { Scalar } = require('yggdryl')
 
-    const value = Scalar.fromEnum('io_mode', 'append')
-    assert.deepEqual([value.enumKind, value.enumValue, value.enumOrdinal], ['io_mode', 'append', 1])
+    const value = Scalar.fromEnum('IOMode', 'append')
+    assert.deepEqual([value.enumKind, value.enumValue, value.enumOrdinal], ['IOMode', 'append', 1])
     assert.equal(value.asJs(), 'append')
     ```
 
