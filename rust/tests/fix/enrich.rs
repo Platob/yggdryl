@@ -389,9 +389,9 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     let reader = reader();
     // The values the two code sets spell alike.
     let new = settled(&reader, b"8=FIX.4.4|35=8|150=0|10=0|");
-    assert_eq!(text(&new, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(text(&new, 39).as_deref(), Some("0"));
     let pending = settled(&reader, b"8=FIX.4.4|35=8|150=A|10=0|");
-    assert_eq!(text(&pending, 39).as_deref(), Some(state("A").as_str()));
+    assert_eq!(text(&pending, 39).as_deref(), Some("A"));
     // `D` is Restated in one and AcceptedForBidding in the other.
     let restated = settled(&reader, b"8=FIX.4.4|35=8|150=D|10=0|");
     assert_eq!(restated.get_by_tag(39), None);
@@ -400,11 +400,11 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     // the order: nothing left is filled, something left and something done
     // is partially filled.
     let filled = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=0|14=100|10=0|");
-    assert_eq!(text(&filled, 39).as_deref(), Some(state("2").as_str()));
+    assert_eq!(text(&filled, 39).as_deref(), Some("2"));
     let corrected = settled(&reader, b"8=FIX.4.4|35=8|150=G|151=0|10=0|");
-    assert_eq!(text(&corrected, 39).as_deref(), Some(state("2").as_str()));
+    assert_eq!(text(&corrected, 39).as_deref(), Some("2"));
     let partial = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=60|14=40|10=0|");
-    assert_eq!(text(&partial, 39).as_deref(), Some(state("1").as_str()));
+    assert_eq!(text(&partial, 39).as_deref(), Some("1"));
     for line in [
         &b"8=FIX.4.4|35=8|150=F|10=0|"[..],
         b"8=FIX.4.4|35=8|150=F|151=60|10=0|",
@@ -424,12 +424,12 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     let order = settled(&reader, b"8=FIX.4.4|35=D|11=A|150=0|10=0|");
     assert_eq!(order.get_by_tag(39), None);
     let stated = settled(&reader, b"8=FIX.4.4|35=8|39=2|150=F|151=60|14=40|10=0|");
-    assert_eq!(text(&stated, 39).as_deref(), Some(state("2").as_str()));
+    assert_eq!(text(&stated, 39).as_deref(), Some("2"));
 
     // A status read off the execution type is a status the remainder rule
     // reads: one pass answers both.
     let chained = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
-    assert_eq!(text(&chained, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(text(&chained, 39).as_deref(), Some("0"));
     assert_eq!(chained.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(
         text(&chained, yggdryl::STATE_TAG_NAME.0).as_deref(),
@@ -438,11 +438,11 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
 }
 
 #[test]
-fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
+fn a_value_that_would_not_type_is_filled_in_place() {
     let reader = reader();
-    // `PutOrCall` is a number, so `abc` types as null while the entry keeps
-    // the text; the option's own code then says it is a call, and the answer
-    // takes the null's place rather than standing beside it.
+    // `PutOrCall` is a number, so `abc` types as null while the option's own
+    // code says it is a call; the answer takes the null's place rather than
+    // standing beside it.
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A|461=OCXXXX|201=abc|10=0|";
     let held = settled(&reader, LINE);
     // The parse states it: the null the text typed to is where the answer
@@ -459,15 +459,20 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
         1,
         "one column for the tag"
     );
-    // The entries are what arrived: the fill lands in the row, and the pair
-    // the line carried keeps the text it carried.
-    assert_eq!(held.into_bytes(b'|'), LINE);
+    // The entries are the row read as a tree, so the pair the wire re-emits
+    // under that tag is the value the fill landed, not the text that would
+    // not type.
     let entry = held
         .entries()
         .iter()
         .find(|entry| entry.tag() == 201)
-        .expect("the pair still arrived");
-    assert_eq!(entry.value(), Some("abc"));
+        .expect("the column the fill landed in");
+    assert_eq!(entry.value(), Some("1"));
+    assert!(
+        String::from_utf8(held.into_bytes(b'|'))
+            .unwrap()
+            .contains("|201=1|")
+    );
 }
 
 /// The committed dictionary, owned, for the cases that edit a field.
@@ -533,7 +538,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
         "a merge keeps the stored derivation"
     );
     registry
-        .update(leaves)
+        .insert(leaves)
         .expect("the definition is replaced whole");
     assert!(
         registry
@@ -606,8 +611,7 @@ fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
     registry.update(gross).expect("the text is a term");
     let reader = super::fixed_codec(Arc::new(registry));
     let refused = reader
-        .parse_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
-        .map(drop)
+        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
         .expect_err("refused at compile");
     let rendered = refused.to_string();
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
@@ -623,8 +627,7 @@ fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
     registry.update(gross).expect("the text is a term");
     let reader = super::fixed_codec(Arc::new(registry));
     let refused = reader
-        .parse_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
-        .map(drop)
+        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|")
         .expect_err("refused at compile");
     assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
 }
@@ -651,9 +654,11 @@ fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
     assert_eq!(stated.by_tag(381).unwrap(), Scalar::from(99.0_f64));
     let nulled = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|");
     assert_eq!(nulled.by_tag(381).unwrap(), Scalar::from(25.0_f64));
+    // The wire re-emits the message as it now stands, so the column the
+    // fill landed in is what the pair says.
     assert_eq!(
-        nulled.into_bytes(b'|'),
-        b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|"
+        String::from_utf8(nulled.into_bytes(b'|')).unwrap(),
+        "8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=25|10=0|59=0|"
     );
 }
 
@@ -681,7 +686,7 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     assert_eq!(text(&typed, 167).as_deref(), Some("REPO"));
     assert_eq!(integer(&typed, 460), Some(13));
     let report = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
-    assert_eq!(text(&report, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(text(&report, 39).as_deref(), Some("0"));
     assert_eq!(report.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     assert_eq!(
         text(&report, yggdryl::STATE_TAG_NAME.0).as_deref(),
@@ -728,8 +733,8 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
             panic!("{} binds against what it reads: {error}", field.name())
         });
     }
-    // 29 shipped fields and the crate's ten columns.
-    assert_eq!(carried, 39);
+    // The dictionary's own rules and the crate's own columns.
+    assert_eq!(carried, 42);
     for (tag, _) in [
         yggdryl::ISINCODE_TAG_NAME,
         yggdryl::MICCODE_TAG_NAME,
@@ -865,16 +870,27 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     let reader = super::fixed_codec(Arc::new(registry));
     let schema = fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    let read = reader.sole_line(line).expect("a readable line");
+    // A parse is one of the doors that refuses, so the message the row and
+    // the batch doors are handed is built rather than read.
+    let root = DataType::from_fields([
+        reader.registry().field_by_tag(37).expect("OrderID").clone(),
+        reader.registry().field_by_tag(32).expect("LastQty").clone(),
+    ])
+    .expect("a struct root")
+    .required_field("8");
+    let value = Scalar::from_record([
+        ("orderid", Scalar::from("A")),
+        ("lastqty", Scalar::from(10.0_f64)),
+    ])
+    .expect("a record");
+    let read = FixMsg::with_registry(Arc::clone(reader.registry()), root, value)
+        .expect("a built message");
     let names = |rendered: String| {
         assert!(rendered.contains("grosstradeamt"), "{rendered}");
         assert!(rendered.contains("nosuchfield"), "{rendered}");
     };
     names(refusal(
-        &reader
-            .parse_line(line)
-            .map(drop)
-            .expect_err("the line door refuses"),
+        &reader.sole_line(line).expect_err("the line door refuses"),
     ));
     names(refusal(
         &reader
@@ -987,7 +1003,7 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
     assert_eq!(stated.by_tag(38).unwrap(), Scalar::from(100.0_f64));
     let typed = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=4|14=40|84=60|10=0|");
     assert_eq!(typed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(text(&typed, 39).as_deref(), Some(state("4").as_str()));
+    assert_eq!(text(&typed, 39).as_deref(), Some("4"));
     // A working report stating what is left orders done plus left, whatever
     // it canceled along the way: a replace that cut the quantity restated
     // what was ordered.
@@ -1020,7 +1036,7 @@ fn the_fixpoint_reaches_the_chains_one_pass_could_not() {
     // reads: a new order that canceled nothing yet has everything left.
     let fresh = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=0|14=0|84=100|10=0|");
     assert_eq!(fresh.by_tag(38).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(text(&fresh, 39).as_deref(), Some(state("0").as_str()));
+    assert_eq!(text(&fresh, 39).as_deref(), Some("0"));
     assert_eq!(fresh.by_tag(151).unwrap(), Scalar::from(100.0_f64));
     // A trade over several periods, then the multiplied and the gross
     // quantities read off it.

@@ -204,29 +204,6 @@ impl SoleMessage for yggdryl::FixCodec {
     }
 }
 
-/// The datatype every FIX identity column - `msghash`, `msgphash`,
-/// `prevmsghash` - answers: sixteen plain bytes, no RFC identity.
-fn identity_dtype() -> yggdryl::DataType {
-    yggdryl::DataType::fixed_size_binary(16).expect("sixteen is a width")
-}
-
-/// One identity as a row carries it, under the fixed layout.
-fn identity_scalar(bytes: [u8; 16]) -> yggdryl::Scalar {
-    identity_dtype()
-        .scalar(yggdryl::Scalar::from(bytes.as_slice()))
-        .expect("sixteen bytes under the sixteen-byte layout")
-}
-
-/// The sixteen bytes a column holds, refusing every other value.
-#[track_caller]
-fn identity_bytes(held: &yggdryl::Scalar) -> [u8; 16] {
-    let yggdryl::Scalar::Bytes(bytes) = held else {
-        panic!("a sixteen-byte identity, got {held:?}");
-    };
-    assert_eq!(bytes.fixed(), Some(16), "{held:?}");
-    <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
-}
-
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";
 
 /// Run a process-global case in a child containing only that selected test.

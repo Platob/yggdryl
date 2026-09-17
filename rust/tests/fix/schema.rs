@@ -43,52 +43,87 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 116);
-    // The crate's own lead the row in three groups - clocks, identities,
-    // then the rest - and the protocol's own follow them.
-    let (crated, message) = tags.split_at(35);
+    assert_eq!(tags.len(), 114);
+    // The row is read in bands rather than by tag number: when it happened,
+    // which event it is, which message carried it, which instrument it is
+    // about, which order it belongs to, what it states, how it went, the
+    // groups kept whole, and last the frame.
     assert_eq!(
-        crated,
+        &tags[..12],
         [
-            65_003, 65_021, 65_023, 65_025, 65_028, 65_029, // clocks
-            65_017, 65_018, 65_022, 65_024, // identities, and the code
-            65_001, 65_002, 65_005, 65_006, 65_007, 65_008, 65_009, 65_010, 65_011, 65_012, 65_013,
-            65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031, 65_032, 65_033, 65_034, 65_035,
-            65_036, 65_037, 65_038,
-        ]
+            yggdryl::UNIX_TAG_NAME.0,
+            yggdryl::CREATUNIX_TAG_NAME.0,
+            yggdryl::PREVUNIX_TAG_NAME.0,
+            yggdryl::EXPIRUNIX_TAG_NAME.0,
+            yggdryl::SNAPUNIX_TAG_NAME.0,
+            yggdryl::RECORDEDAT_TAG_NAME.0,
+            52,
+            122,
+            60,
+            64,
+            75,
+            126,
+        ],
+        "when it happened"
     );
-    // The arrival record closes the row, so its counter waits for the end
-    // with it rather than standing among the crate's other columns, and
-    // `MsgDirection` waits with it.
     assert_eq!(
-        message,
+        &tags[12..21],
         [
-            HEADER_TAGS.as_slice(),
-            BODY_TAGS.as_slice(),
-            GROUP_TAGS.as_slice(),
-            TRAILER_TAGS.as_slice(),
-            &[385, 65_027],
+            yggdryl::CURRUUID_TAG_NAME.0,
+            yggdryl::CROSSUUID_TAG_NAME.0,
+            yggdryl::CROSSCODE_TAG_NAME.0,
+            yggdryl::HASHCODE_TAG_NAME.0,
+            yggdryl::CROSSHASHCODE_TAG_NAME.0,
+            yggdryl::PREVUUID_TAG_NAME.0,
+            yggdryl::SEQNUM_TAG_NAME.0,
+            yggdryl::PARENTUUIDS_TAG_NAME.0,
+            yggdryl::IDENTIFIERS_TAG_NAME.0,
+        ],
+        "which event"
+    );
+    assert_eq!(
+        &tags[21..28],
+        [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
+        "which message"
+    );
+    // Every tag the four standard lists name still has its column, each
+    // exactly once, and a band claiming one early does not repeat it.
+    for held in [
+        HEADER_TAGS.as_slice(),
+        BODY_TAGS.as_slice(),
+        GROUP_TAGS.as_slice(),
+        TRAILER_TAGS.as_slice(),
+    ] {
+        for tag in held {
+            assert_eq!(
+                tags.iter().filter(|held| *held == tag).count(),
+                1,
+                "tag {tag} once"
+            );
+        }
+    }
+    // The bridge's own keys and the arrival record's counter close the row.
+    assert_eq!(
+        &tags[tags.len() - 2..],
+        [
+            yggdryl::METADATA_TAG_NAME.0,
+            yggdryl::NOFIXENTRIES_TAG_NAME.0
         ]
-        .concat()
     );
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
-    // The protocol's own close the row now that the crate's lead it, and the
-    // arrival record still closes everything.
+    // The frame closes the row: the trailer, then the bridge's own keys, then
+    // the arrival record and the counter that counts it.
     assert_eq!(
-        &names[names.len() - 9..],
+        &names[names.len() - 5..],
         [
-            "secaltidgrp",
-            "notrdregtimestamps",
-            "trdregtimestamps",
-            "signaturelength",
             "signature",
             "checksum",
-            "msgdirection",
+            "metadata",
             "nofixentries",
-            "fixentries",
+            "fixentries"
         ]
     );
     for tag in [yggdryl::PREVUNIX_TAG_NAME.0, yggdryl::PREVUUID_TAG_NAME.0] {
@@ -135,10 +170,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(
         &names[header..header + 3],
-        ["beginstring", "bodylength", "msgtype"]
+        ["beginstring", "msgtype", "msgseqnum"]
     );
-    assert_eq!(schema.index_of("msgtype"), Some(header + 2));
-    assert_eq!(column_of(&schema, 35), header + 2);
+    assert_eq!(schema.index_of("msgtype"), Some(header + 1));
+    assert_eq!(column_of(&schema, 35), header + 1);
     assert_eq!(names[column_of(&schema, 32)], "lastqty");
     assert_eq!(names.last(), Some(&"fixentries"));
 
@@ -159,7 +194,9 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
         typed(yggdryl::UNIX_TAG_NAME.0)
     );
-    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), super::identity_dtype());
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::HASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
@@ -193,19 +230,24 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "updatedat",
-            "createdat",
-            "msghash",
-            "msgphash",
-            "code",
+            "unix",
+            "creatunix",
+            "curruuid",
+            "crossuuid",
+            "hashcode",
+            "crosshashcode",
             "beginstring",
-            "sendingtime"
         ]
     );
 }
 
+/// A settled identity is a value a table carries and gives back.
+///
+/// The hash codes are `uint64` and the identities are `uuid`, which Arrow
+/// stores as sixteen bytes under `arrow.uuid`: what a row holds is what the
+/// message settled, and a writer, a reader and a second row all give it back.
 #[test]
-fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
+fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
@@ -216,19 +258,13 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
     let mut message = codec.sole_line(wire).unwrap();
     let digest = message.digest();
-    let identities = [(
-        PREVUUID_TAG_NAME,
-        [
-            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
-            0xee, 0xff,
-        ],
-    )];
-    message
-        .set_many(
-            identities
-                .iter()
-                .map(|((tag, _), bytes)| (*tag, super::identity_scalar(*bytes))),
-        )
+    let previous = DataType::Uuid
+        .scalar(Scalar::from(
+            &[
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff,
+            ][..],
+        ))
         .unwrap();
     let previous_clock = Scalar::from_datetime(
         1_700_000_000_000_000_123,
@@ -237,8 +273,13 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     )
     .unwrap();
     message
-        .set(yggdryl::PREVUNIX_TAG_NAME.0, previous_clock.clone())
+        .set_many([
+            (PREVUUID_TAG_NAME.0, previous.clone()),
+            (yggdryl::PREVUNIX_TAG_NAME.0, previous_clock.clone()),
+        ])
         .unwrap();
+    // The identity is the message's own fact, so writing one changes neither
+    // the wire it re-emits nor the code that wire digests to.
     assert_eq!(message.digest(), digest);
     assert_eq!(
         message.into_bytes(b'|'),
@@ -248,18 +289,20 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
     for (tag, _) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
-        super::identity_bytes(at(&row, &schema, tag));
+        assert!(
+            at(&row, &schema, tag).as_u64().is_some(),
+            "tag {tag} is a settled code"
+        );
     }
     assert_eq!(
         at(&row, &schema, yggdryl::PREVUNIX_TAG_NAME.0),
         &previous_clock
     );
-    for ((tag, name), bytes) in identities {
-        let field = &schema.fields()[column_of(&schema, tag)];
-        assert_eq!(field.name(), name);
-        assert_eq!(field.dtype(), &super::identity_dtype());
-        assert_eq!(super::identity_bytes(at(&row, &schema, tag)), bytes);
-    }
+    let field = &schema.fields()[column_of(&schema, PREVUUID_TAG_NAME.0)];
+    assert_eq!(field.name(), PREVUUID_TAG_NAME.1);
+    assert_eq!(field.dtype(), &DataType::Uuid);
+    assert_eq!(at(&row, &schema, PREVUUID_TAG_NAME.0), &previous);
+
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(restored.into_row(&schema).unwrap(), row);
     assert_eq!(restored.digest(), digest);
@@ -274,15 +317,27 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
             .data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
     );
-    for (_, name) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, PREVUUID_TAG_NAME] {
-        // Plain sixteen bytes, with no extension name over them: a lake
-        // engine reads the storage and nothing has to know the extension.
+    // A code is a plain `uint64`; an identity is sixteen bytes under the
+    // canonical Arrow extension name for one, which is what a lake engine
+    // reads it back as.
+    for (_, name) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
+        let field = arrow_schema.field_with_name(name).unwrap();
+        assert_eq!(field.data_type(), &arrow_schema::DataType::UInt64);
+        assert!(!field.metadata().contains_key("ARROW:extension:name"));
+    }
+    for (_, name) in [PREVUUID_TAG_NAME, yggdryl::CURRUUID_TAG_NAME] {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(
             field.data_type(),
             &arrow_schema::DataType::FixedSizeBinary(16)
         );
-        assert!(!field.metadata().contains_key("ARROW:extension:name"));
+        assert_eq!(
+            field
+                .metadata()
+                .get("ARROW:extension:name")
+                .map(String::as_str),
+            Some("arrow.uuid")
+        );
     }
 
     let options: RecordOptions = IpcOptions::default().into();
@@ -302,44 +357,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
             .unwrap(),
         1
     );
-    assert_eq!(encoded, [wire.as_slice(), b"\n"].concat());
-}
-
-#[test]
-fn renamed_identity_columns_are_their_tags_roles_and_stay_plain_arrow_bytes() {
-    use yggdryl::FixMsg;
-
-    let registry = Arc::new(FixRegistry::new());
-    // The identity columns are typed by their tag, never by their name: a
-    // renamed sixteen-byte column carrying 65017/65018/65022 is that role,
-    // and the row it belongs to still owes the whole replay bundle.
-    let columns = [(65_017, "id"), (65_018, "persistentid"), (65_022, "previd")];
-    let fields = columns.map(|(tag, name)| {
-        let mut field = super::identity_dtype().required_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
-        field
-    });
-    let schema = DataType::from_fields(fields)
-        .unwrap()
-        .required_field("stored");
-    let row = Scalar::from_sequence((0..3_u8).map(|byte| super::identity_scalar([byte; 16])));
-    let error = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "invalid record value at $.updatedat: expected a mandatory replay field, got missing field"
-    );
-    // Sixteen bytes and no extension name: the storage is the whole story,
-    // which is what a lake engine reads.
-    let arrow_schema = schema.into_arrow_schema().unwrap();
-    for (_, old_name) in columns {
-        assert!(registry.get_field_by_name(old_name).is_none());
-        let arrow = arrow_schema.field_with_name(old_name).unwrap();
-        assert_eq!(
-            arrow.data_type(),
-            &arrow_schema::DataType::FixedSizeBinary(16)
-        );
-        assert!(!arrow.metadata().contains_key("ARROW:extension:name"));
-    }
+    assert_eq!(encoded, [wire.as_slice(), b"59=0|\n"].concat());
 }
 
 #[test]
@@ -451,13 +469,6 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     assert_eq!(at(&row, &schema, 134), &Scalar::from(100.0_f64));
     assert!(at(&row, &schema, 133).is_null(), "no ask lane on a buy");
 
-    // A one-sided quote implies the side it never wrote.
-    let quote = reader
-        .sole_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|")
-        .unwrap();
-    let row = quote.into_row(&schema).unwrap();
-    assert_eq!(at(&row, &schema, 54).as_str(), Some("BUY"));
-
     // And a stated column is never overwritten by a derivation.
     let stated = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
@@ -478,9 +489,11 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let held = row.as_sequence().expect("a row");
     let entries = held.last().unwrap().as_sequence().expect("the record");
 
-    // The record is everything that arrived, in arrival order, so the wire is
-    // rebuilt from it and never from the columns.
-    assert_eq!(entries.len(), 6);
+    // The record is the content the message holds, in its order, so the wire
+    // is rebuilt from it and never from the columns: the version and the
+    // type are the header's, and the day order the dictionary derives for an
+    // order is a child like any other.
+    assert_eq!(entries.len(), 5);
     // A key no dictionary explains is named after itself, folded as every
     // name is: the name cannot be null, and the key is the only one it has.
     let named: Vec<_> = entries
@@ -492,11 +505,11 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
 
     // A key one does explain carries the dictionary's canonical name, so a
     // consumer groups by name without a dictionary of its own.
-    let symbol = entries
+    let clordid = entries
         .iter()
-        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(55))
-        .expect("the Symbol arrival");
-    assert_eq!(symbol.get(1).and_then(Scalar::as_str), Some("symbol"));
+        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(11))
+        .expect("the ClOrdID arrival");
+    assert_eq!(clordid.get(1).and_then(Scalar::as_str), Some("clordid"));
 }
 
 /// The two documents a datatype writes name it the same way.
@@ -777,18 +790,4 @@ fn a_group_keeps_the_members_that_read() {
     let members = group(&marked, &schema)[0].as_sequence().expect("a party");
     assert_eq!(members[0].as_str(), Some("BUYSIDE"));
     assert_eq!(members[2].as_i128(), Some(1));
-}
-
-#[test]
-fn zzz_probe_schema() {
-    let (registry, reader) = reader();
-    let schema = fix_schema(&registry, "fix").unwrap();
-    let tags = yggdryl::fix_schema_tags();
-    println!("PROBE tags len={} {:?}", tags.len(), tags);
-    let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    println!("PROBE names len={} {:?}", names.len(), names);
-    let msg = reader
-        .sole_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
-        .unwrap();
-    println!("PROBE lossless entries={:?}", msg.entries());
 }

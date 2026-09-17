@@ -263,14 +263,14 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .expect("the header opens");
     assert_eq!(
         &names[header..header + 3],
-        ["beginstring", "bodylength", "msgtype"],
+        ["beginstring", "msgtype", "msgseqnum"],
         "{names:?}"
     );
     for once in [
         "msgtype",
         "sourceurl",
         "timestamp",
-        "sendersessionid",
+        "msgsessionid",
         "msgctxid",
         "pluginid",
         "msgseqnum",
@@ -301,9 +301,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         ),
         "{clock:?}"
     );
-    let stamp = schema
-        .field_with_name("updatedat")
-        .expect("the clock column");
+    let stamp = schema.field_with_name("unix").expect("the clock column");
     assert!(
         matches!(
             stamp.data_type(),
@@ -508,10 +506,15 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         sent[HEARTBEAT_ROW]
     );
     assert!(sent[RELAY_ROW].is_temporal(), "{:?}", sent[RELAY_ROW]);
+    // A row states tag 52 only where the message did: the explicit codec
+    // default is intake's stand-in for a line that named no clock, and it
+    // lands in the event's own instant rather than in the header's column.
+    assert!(sent[RESPONSE_ROW].is_null(), "{:?}", sent[RESPONSE_ROW]);
     assert_eq!(
-        sent[RESPONSE_ROW].temporal_count_at(TimeUnit::Nanosecond),
+        tag_column(&read, yggdryl::UNIX_TAG_NAME.0)[RESPONSE_ROW]
+            .temporal_count_at(TimeUnit::Nanosecond),
         Some(1_704_190_530_000_000_000),
-        "an unstated sending time uses the explicit codec default"
+        "an unstated sending time stands in as the event's instant"
     );
 
     // The fill's body: symbol, side, quantities and prices, typed.
@@ -523,9 +526,14 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         Some(547.771791547861)
     );
     assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
-    // A state column holds the ranked spelling the code names, never the
-    // code: `2` is a filled order, and sorts after every live state.
-    assert_eq!(tag_text(&read, 39)[FILL_ROW].as_deref(), Some("80FILLED"));
+    // The dictionary's own column holds the code the wire wrote; the crate's
+    // `state` is the one column that ranks it, and `2` is a filled order,
+    // which sorts after every live state.
+    assert_eq!(tag_text(&read, 39)[FILL_ROW].as_deref(), Some("2"));
+    assert_eq!(
+        tag_text(&read, yggdryl::STATE_TAG_NAME.0)[FILL_ROW].as_deref(),
+        Some("80FILLED")
+    );
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
@@ -540,16 +548,12 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
-    // Every projected row carries its sixteen content identity bytes.
+    // Every projected row carries the code it settled on its content.
     // Distinct real messages remain distinct, independently of the separate
     // arrival digest.
     let identities = tag_column(&read, yggdryl::HASHCODE_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
-        assert_eq!(
-            super::identity_bytes(held).len(),
-            16,
-            "row {row} has sixteen identity bytes"
-        );
+        assert!(held.as_u64().is_some(), "row {row} states a content code");
     }
     assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
     let stamp = tag_column(&read, yggdryl::UNIX_TAG_NAME.0);
@@ -626,7 +630,11 @@ fn a_json_document_is_one_unknown_row_carrying_only_what_the_row_stated() {
     // `Response:` prose names.
     assert_eq!(message.as_field().name(), "unknown");
     assert!(message.entries().is_empty());
-    assert!(message.into_bytes(b'|').is_empty());
+    // The version the row was read at is the whole of what it re-emits.
+    assert_eq!(
+        String::from_utf8(message.into_bytes(b'|')).unwrap(),
+        "8=FIX.4.4|"
+    );
     assert!(message.get_by_tag(35).is_none_or(|held| held.is_null()));
     for spelled in ["SenderCompID", "TargetCompID", "Name", "CurrentPort"] {
         assert!(
@@ -711,12 +719,24 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).unwrap_or(Scalar::Null);
             let expected = match (tag, &alone) {
-                (34, Scalar::Null) => rendered(&sequenced[CARRYING[row]]),
+                // The header's own column is an `int64` in the capture and a
+                // `uint64` on the message, so the count is what is compared.
+                (34, Scalar::Null) => sequenced[CARRYING[row]]
+                    .as_i128()
+                    .map(|count| count.to_string()),
+                (34, held) => held.as_i128().map(|count| count.to_string()),
                 _ => rendered(&alone),
             };
+            let held = match tag {
+                34 => &held[row].as_i128().map_or(Scalar::Null, Scalar::from),
+                _ => &held[row],
+            };
+            let held = match tag {
+                34 => held.as_i128().map(|count| count.to_string()),
+                _ => rendered(held),
+            };
             assert_eq!(
-                expected,
-                rendered(&held[row]),
+                expected, held,
                 "tag {tag} on row {row} differs between the line read and the batch",
             );
         }
@@ -742,7 +762,14 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .unwrap_or_default()
         })
         .collect();
-    assert_eq!(recorded.len(), alone.entries().len());
+    assert_eq!(
+        recorded,
+        alone
+            .entries()
+            .iter()
+            .map(|entry| i64::from(entry.tag()))
+            .collect::<Vec<_>>()
+    );
     for filled in [
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,
