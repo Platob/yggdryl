@@ -367,7 +367,15 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg => Ok((D::utf8(), true)),
+        // The other text-backed types, every one of them Utf8 in Arrow: a
+        // side, a state and a time in force are the codes the protocol
+        // spells them with, and a timezone, a MIME type and a media type are
+        // already the canonical text that spells them whole.
+        D::Side | D::State | D::TimeInForce | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -475,7 +483,15 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg => Ok((D::utf8(), true)),
+        // The other text-backed types, every one of them Utf8 in Arrow: a
+        // side, a state and a time in force are the codes the protocol
+        // spells them with, and a timezone, a MIME type and a media type are
+        // already the canonical text that spells them whole.
+        D::Side | D::State | D::TimeInForce | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -575,7 +591,15 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg => Ok((D::utf8(), true)),
+        // The other text-backed types, every one of them Utf8 in Arrow: a
+        // side, a state and a time in force are the codes the protocol
+        // spells them with, and a timezone, a MIME type and a media type are
+        // already the canonical text that spells them whole.
+        D::Side | D::State | D::TimeInForce | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -684,7 +708,18 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg => Ok((D::utf8(), true)),
+        // The other text-backed types, every one of them Utf8 in Arrow: a
+        // side, a state and a time in force are the codes the protocol
+        // spells them with, and a timezone, a MIME type and a media type are
+        // already the canonical text that spells them whole.
+        D::Side
+        | D::State
+        | D::TimeInForce
+        | D::Timezone
+        | D::MimeType
+        | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

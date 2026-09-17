@@ -578,38 +578,42 @@ fn a_datatype_is_named_the_same_by_both_documents() {
 
 /// The sixteen bytes an identity column holds, refusing every other value.
 ///
-/// Only the lake round trip below reads a column this way - everywhere else
-/// an identity is compared as the scalar it is - so the helper is gated with
-/// its one caller rather than sitting unused in every other lane.
+/// An identity is a `uuid` and crosses a lake as `fixed[16]`, so the column
+/// answers a [`Scalar::Uuid`] and the bytes are what the table is asserted to
+/// carry back. Only the lake round trip below reads a column this way -
+/// everywhere else an identity is compared as the scalar it is - so the
+/// helper is gated with its one caller rather than sitting unused in every
+/// other lane.
 #[cfg(feature = "iceberg")]
 #[track_caller]
 fn identity_bytes(held: &Scalar) -> [u8; 16] {
-    let Scalar::Bytes(bytes) = held else {
+    let Scalar::Uuid(uuid) = held else {
         panic!("a sixteen-byte identity, got {held:?}");
     };
-    assert_eq!(bytes.fixed(), Some(16), "{held:?}");
-    <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
+    uuid.into_bytes()
 }
 
-/// The three identity columns cross a lake as `fixed[16]`, byte for byte.
+/// The three identity columns cross a lake as `uuid`, byte for byte.
 ///
-/// This is the whole reason they are bytes: an Iceberg table maps
-/// `fixed_size_binary(16)` to the spec's `fixed[16]`, which every engine
-/// reads, where `uuid` is read consistently by none. The round trip writes
-/// stamped messages, reads them back, and compares the bytes.
+/// An identity is a UUID again - `curruuid` the UUIDv7 a `TxHash` couples
+/// its instant and its digest into, `crossuuid` the UUIDv8 of the chain's
+/// code - so the column crosses as the spec's own `uuid`, which this crate
+/// carries whole: sixteen bytes on the wire and `uuid` in the schema, "never
+/// demoted to `fixed[16]`" (`docs/media/iceberg/schema.md`). The round trip
+/// writes stamped messages, reads them back, and compares the bytes.
 #[cfg(feature = "iceberg")]
 #[test]
-fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
+fn the_identity_columns_cross_an_iceberg_table_as_uuid() {
     use yggdryl::holder::local::Folder;
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{CROSSHASHCODE_TAG_NAME, HASHCODE_TAG_NAME, PREVUUID_TAG_NAME};
+    use yggdryl::{CROSSUUID_TAG_NAME, CURRUUID_TAG_NAME, PREVUUID_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
-    // Two messages of one order, so the chain stamps `msgphash` on both and
-    // `prevmsghash` on the second.
+    // Two messages of one order, so the walk gives both their own identity
+    // and the chain's, and the second the one it follows.
     let lines: [&[u8]; 2] = [
         b"8=FIX.4.4|35=D|11=LAKE-1|55=AAPL|207=XNAS|15=USD|54=1|38=100|52=20260102-10:15:30.000|10=0|",
         b"8=FIX.4.4|35=8|11=LAKE-1|37=O-1|17=E-1|39=2|150=F|55=AAPL|207=XNAS|15=USD|14=100|52=20260102-10:15:31.000|10=0|",
@@ -623,11 +627,14 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let identities = [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, PREVUUID_TAG_NAME];
+    // The three sixteen-byte columns, and the only three: `hashcode` and
+    // `crosshashcode` are the XXH3-64 digests these are derived from, so they
+    // cross as a long and have no business in a test about fixed bytes.
+    let identities = [CURRUUID_TAG_NAME, CROSSUUID_TAG_NAME, PREVUUID_TAG_NAME];
     // Read off the projected row, because the fixed schema is what the table
-    // holds and a projection is content: `msghash` digests the row it lands in
-    // (see `message.md#clocks-and-identity`), and the table's business is to
-    // carry those bytes back unchanged.
+    // holds and a projection is content: the identity settles on the row a
+    // message lands in, and the table's business is to carry those bytes back
+    // unchanged.
     let expected: Vec<Vec<Option<[u8; 16]>>> = stamped
         .iter()
         .map(|held| {
@@ -646,14 +653,22 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         "the second message states all three"
     );
 
-    let mut schema = fixed.clone();
+    // A FIX row states its two digests as the XXH3-64 they are, and Iceberg
+    // has no unsigned type to hold one, so the row is widened for the target
+    // before it is numbered. The identity columns are not what widens: a
+    // `uuid` is a type Iceberg names, and the assertion below is that it
+    // stayed one.
+    let mut schema = fixed
+        .clone()
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .unwrap();
     assign_field_ids(&mut schema, 1).unwrap();
     for (_, name) in identities {
         assert_eq!(
             PrimitiveType::from_dtype(schema.get_field(name).unwrap().dtype())
                 .unwrap()
                 .to_string(),
-            "fixed[16]",
+            "uuid",
         );
     }
     let path = Folder::temporary()

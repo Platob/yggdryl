@@ -1304,8 +1304,8 @@ mod s3 {
     };
     use yggdryl::media::text::TextOptions;
     use yggdryl::{
-        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
-        fix_schema, fix_schema_carrying,
+        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Scheme, Selector, TimeUnit,
+        Timezone, fix_schema, fix_schema_carrying,
     };
 
     use super::server::FakeS3;
@@ -1597,15 +1597,21 @@ mod s3 {
             carried.metadata_iter(),
         )
         .expect("the schema rebuilds");
+        // A FIX row states its two digests as the XXH3-64 they are, and
+        // Iceberg has no unsigned type to hold one, so the schema is widened
+        // for the target before it is numbered: `into_scheme_compat` rewrites
+        // only what the target cannot express and leaves the rest alone.
+        let mut schema = schema
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .expect("the row widens for Iceberg");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
         // There is no `timepartition` column: how a layout is cut is the
-        // target's, so the table takes an `hour` transform over the
-        // `updatedat` the row already carries rather than a materialized copy
-        // of that instant.
-        let mut spec =
-            PartitionSpec::identity(1, &schema, &["updatedat"]).expect("updatedat is a column");
+        // target's, so the table takes an `hour` transform over the `unix`
+        // the row already carries - the instant the message happened at -
+        // rather than a materialized copy of it.
+        let mut spec = PartitionSpec::identity(1, &schema, &["unix"]).expect("unix is a column");
         spec.fields[0].transform = Transform::Hour;
-        spec.fields[0].name = "updatedat_hour".into();
+        spec.fields[0].name = "unix_hour".into();
         let fix_table = |label: &str| {
             Table::create(
                 folder(&store, &next(label)),

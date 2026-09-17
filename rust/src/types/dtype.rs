@@ -140,25 +140,13 @@ pub enum DataType {
     /// Dictionary key and value types.
     Dictionary(Arc<DictionaryType>),
     /// Exact decimal backed by 32 bits.
-    Decimal32 {
-        precision: u8,
-        scale: i8,
-    },
+    Decimal32 { precision: u8, scale: i8 },
     /// Exact decimal backed by 64 bits.
-    Decimal64 {
-        precision: u8,
-        scale: i8,
-    },
+    Decimal64 { precision: u8, scale: i8 },
     /// Exact decimal backed by 128 bits.
-    Decimal128 {
-        precision: u8,
-        scale: i8,
-    },
+    Decimal128 { precision: u8, scale: i8 },
     /// Exact decimal backed by 256 bits.
-    Decimal256 {
-        precision: u8,
-        scale: i8,
-    },
+    Decimal256 { precision: u8, scale: i8 },
     /// Arrow map entries and key-order flag.
     Map(Arc<MapType>),
     /// Run-end encoding child fields.
@@ -195,6 +183,8 @@ pub enum DataType {
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes closed by a check digit.
     Sedol,
+    /// A Bloomberg code: the vendor's own security identifier, held as the
+    /// ASCII bytes it is written with.
     Bloomberg,
 }
 
