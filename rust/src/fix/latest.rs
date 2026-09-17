@@ -748,6 +748,10 @@ impl<'msg> Restater<'msg> {
 
     /// Every write one rule makes at `level`, or nothing when one target
     /// cannot take its value.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one rule's whole context, threaded"
+    )]
     fn plan(
         &self,
         level: &Level,
@@ -812,6 +816,10 @@ impl<'msg> Restater<'msg> {
     /// One column planned at `writes`: the projected value re-typed for the
     /// target, and the target found at that level. A constant written over
     /// the rule's own source replaces the token the condition named.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one rule's whole context, threaded"
+    )]
     fn plan_column(
         &self,
         writes: &Level,
