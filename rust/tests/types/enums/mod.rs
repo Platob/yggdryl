@@ -6,6 +6,9 @@ use yggdryl::{
     TimeUnit, UnionMode,
 };
 
+mod datatype_id;
+mod datatype_kind;
+mod edge_algorithm;
 mod enumeration;
 mod mime;
 
