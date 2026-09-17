@@ -617,3 +617,27 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     );
     assert_eq!(integer(&latest, 453), Some(1));
 }
+
+#[test]
+fn a_rule_stops_where_the_message_already_stated_one_of_its_targets() {
+    // FIX 4.4 Appendix 6-F: `OrdType` `OnClose` is a market order at
+    // `TimeInForce` `AtTheClose`, which the dictionary states as one rule
+    // filling both. A rule applies all or nothing, so an order that already
+    // said how long it stands keeps both what it said and the spelling the
+    // rule would have replaced.
+    let reader = reader();
+    let held = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|59=0|10=0|");
+    assert_eq!(text(&held, 40).as_deref(), Some("A"), "the rule stood down");
+    assert_eq!(text(&held, 59).as_deref(), Some("0"));
+
+    // Saying nothing about it lets the rule state both.
+    let filled = restated(&reader, b"8=FIX.4.2|35=D|11=A|40=A|10=0|");
+    assert_eq!(text(&filled, 40).as_deref(), Some("1"));
+    assert_eq!(text(&filled, 59).as_deref(), Some("7"));
+
+    // `TimeInForce` is one of the facts the event holds, so what blocks the
+    // rule is the holder and not a column: the row carries no `timeinforce`
+    // child either way.
+    assert!(!names(&held).contains(&"timeinforce"));
+    assert!(!names(&filled).contains(&"timeinforce"));
+}

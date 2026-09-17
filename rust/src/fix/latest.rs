@@ -674,7 +674,15 @@ impl<'msg> Restater<'msg> {
                         }
                         let source = Source { value, tag };
                         before = Some(value.clone());
-                        planned = Some(self.plan(level, root, row, &source, &plan, &parameters));
+                        planned = Some(self.plan(
+                            level,
+                            root,
+                            row,
+                            &source,
+                            &plan,
+                            &parameters,
+                            group.is_none(),
+                        ));
                     }
                     remaining = remaining.min(count);
                 }
@@ -748,6 +756,7 @@ impl<'msg> Restater<'msg> {
         source: &Source<'_>,
         plan: &Plan,
         parameters: &[(&str, Scalar)],
+        rooted: bool,
     ) -> Option<Vec<Write>> {
         let named = named_literals(plan.filter_section().term());
         let mut writes = Vec::new();
@@ -763,6 +772,7 @@ impl<'msg> Restater<'msg> {
                 root,
                 row,
                 parameters,
+                rooted,
             )?);
         }
         Some(writes)
@@ -786,6 +796,7 @@ impl<'msg> Restater<'msg> {
         root: &Field,
         row: &Scalar,
         parameters: &[(&str, Scalar)],
+        rooted: bool,
     ) -> Option<Write> {
         if let Some(definition) = self
             .registry
@@ -795,7 +806,7 @@ impl<'msg> Restater<'msg> {
             return self.plan_group(writes, definition, &members, root, row, parameters);
         }
         let value = term.bind_with(root, parameters).ok()?.eval(row).ok()?;
-        self.plan_column(writes, source, named, name, term, value)
+        self.plan_column(writes, source, named, name, term, value, rooted)
     }
 
     /// One column planned at `writes`: the projected value re-typed for the
@@ -809,6 +820,7 @@ impl<'msg> Restater<'msg> {
         name: &str,
         term: &Term,
         value: Scalar,
+        rooted: bool,
     ) -> Option<Write> {
         let target = stated_field(self.msg.known_by_name(name)?);
         let tag = target.as_fix().tag().ok().flatten()?;
@@ -827,8 +839,19 @@ impl<'msg> Restater<'msg> {
         if at.is_none() && writes.names(target.name()) {
             return None;
         }
-        let writable =
-            own || Self::writable(&target, at.and_then(|at| writes.value_at(at)), &value);
+        // A fact the message holds typed is stated whether or not the row
+        // carries a column for it: `TimeInForce(59)` and `OrderQty(38)` are
+        // the event's, and a rule that would fill one has to see what the
+        // message already said. Only at the root, because a group's
+        // occurrence holds no typed fact.
+        let typed = (rooted && at.is_none() && super::identity::is_typed_tag(tag))
+            .then(|| self.msg.get_by_tag(tag))
+            .flatten();
+        let held = match (at.and_then(|at| writes.value_at(at)), typed.as_ref()) {
+            (Some(held), _) => Some(held),
+            (None, held) => held,
+        };
+        let writable = own || Self::writable(&target, held, &value);
         writable.then_some(Write::Field(FieldWrite {
             at,
             field: target,
@@ -906,6 +929,9 @@ impl<'msg> Restater<'msg> {
                 root,
                 row,
                 parameters,
+                // A group's occurrence, never the root: no typed fact lives
+                // here.
+                false,
             )?);
         }
         let count = occurrences.len() + usize::from(matched.is_none());
