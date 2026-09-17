@@ -2529,7 +2529,9 @@ pub(crate) fn fix_schema(
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
-/// and the row fills it from what the capture stated.
+/// and the row fills it from what the capture stated - except the two the
+/// crate tags, `sourceurl` and `recordedat`, which no message holds and
+/// which whoever read the row states straight onto it.
 ///
 /// A carried column is nullable whatever the capture declared it: a capture's
 /// own column is the *reading's* statement and no message holds one, so a

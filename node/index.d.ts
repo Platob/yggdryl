@@ -1517,9 +1517,9 @@ export type JsFixMessages = FixMessages
  * A FIX message: its typed facts, and the content row the registry types.
  *
  * The typed facts live beside the row: the event the message is - the
- * graph traits' facts - the standard header, what the capture said about
- * the line, the `Text(58)` and the metadata a bridge spelled under its own
- * namespaces. The row holds everything else the message states: the
+ * graph traits' facts - the standard header, what the line said about the
+ * capture it was written for, the `Text(58)` and the metadata a bridge
+ * spelled under its own namespaces. The row holds everything else the message states: the
  * dictionary fields, groups as lists beside their counter, components as
  * structs. The schema is one non-null Struct `Field` - the only row schema -
  * and a plain object crosses as the record the core canonicalizes into that
@@ -1790,9 +1790,11 @@ export declare class FixMsg {
    * the tag its field carries - never by its spelling - so a message that
    * carried nothing at a column answers null there rather than shifting its
    * neighbours. A typed fact fills its column from its holder, a group's
-   * column from the message's own occurrences, and a column no tag names
-   * is the capture's: it takes the child of that name where the message
-   * has one, else null. The arrival record closes the row under
+   * column from the message's own occurrences, and the capture's own
+   * columns answer null - the two the crate tags, `sourceurl` and
+   * `recordedat`, and every column no tag and no counter names - because
+   * a message holds no fact for any of them; the capture readers state
+   * them on the row instead. The arrival record closes the row under
    * `fixentries`, unresolved keys at tag 0.
    *
    * A value a column will not hold is that column's null; a column that

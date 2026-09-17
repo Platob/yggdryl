@@ -5197,7 +5197,8 @@ class FixMsg:
 
     The typed facts live in three holders and two extras - ``event()``, the
     facts the graph vocabulary answers; ``header()``, the standard header;
-    ``capture()``, what the capture said about the line; ``text``, tag 58;
+    ``capture()``, what the line said about the capture it was written for;
+    ``text``, tag 58;
     and ``metadata``, what a bridge stated under its own namespaces - and
     the row holds everything else the message states. ``field`` is the row's
     non-null Struct root, ``value`` anything the ``Scalar`` boundary reads -
@@ -5357,7 +5358,10 @@ class FixCodec:
     Each has an Arrow twin over ``pyarrow.RecordBatchReader``:
     ``parse_text_arrow_reader`` parses a capture's batches into batches of FIX
     rows, ``lifecycle_arrow_reader`` walks batches of FIX rows in place,
-    ``messages`` and ``arrow_reader`` cross between the two shapes, and
+    ``messages`` and ``arrow_reader`` cross between the two shapes - carrying
+    no capture cell, so ``arrow_reader(schema, messages(r))`` answers
+    :meth:`FixMsg.from_row`'s capture columns null where
+    ``lifecycle_arrow_reader(r)`` keeps them - and
     ``write_arrow_reader`` re-emits the wire. Batches close on raw bytes
     against ``batch_byte_size``. A pin is on the codec; a stage is a call. A
     codec pins no version: a row states one in its ``beginstring`` capture,

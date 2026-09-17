@@ -2229,6 +2229,7 @@ pub struct TextLine
   pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
+  pub fn sourceurl(&self) -> Option<&Url>
   pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>)
   pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self
   pub const fn timestamp(&self) -> Option<i128>

@@ -266,7 +266,8 @@
       ['text (58)', frame.text ?? '(none)'],
     ]))
     // The typed facts a message holds beside its content row: the event the
-    // message is, the standard header, and what the capture said.
+    // message is, the standard header, and what the line said about the
+    // capture it was written for.
     for (const [title, held] of [['Native event', frame.event], ['Native header', frame.header], ['Native capture', frame.capture], ['Native metadata', frame.metadata]]) {
       const rows = Object.entries(held ?? {}).filter(([, value]) => value !== null && value !== '' && !(Array.isArray(value) && value.length === 0))
       const held_panel = panel(title, `${rows.length}`)
