@@ -653,11 +653,39 @@ impl FixMsg {
         self.entries.get_or_init(|| self.derive_entries())
     }
 
+    /// The row read as a tree, the capture's own columns left out.
+    ///
+    /// A column no tag and no counter names is the capture's - the body a
+    /// line was read from, its place in the object, a bridge's row header -
+    /// and a capture is not what the message said. It stays a column, so a
+    /// row walked through [`Self::from_row`] and back returns to its schema
+    /// whole; it is not an entry, so it reaches neither the code the message
+    /// answers to nor the wire. Only a scalar column can be one: a nested
+    /// column is a component or a group, which is content whether or not a
+    /// dictionary declares it. A key no dictionary explains is content too -
+    /// the plan resolves its spelling to a tag even where no field does.
     fn derive_entries(&self) -> Vec<FixEntry> {
         let Some(values) = self.value.as_sequence() else {
             return Vec::new();
         };
-        entries_of(self.field.fields(), values)
+        let children = self.field.fields();
+        let stated = |at: usize| {
+            children[at].dtype().is_nested()
+                || self.tags.iter().any(|(_, held)| *held == at)
+                || self.groups.iter().any(|(_, held)| *held == at)
+        };
+        if (0..children.len()).all(stated) {
+            return entries_of(children, values);
+        }
+        let mut fields: Vec<Field> = Vec::with_capacity(children.len());
+        let mut held: Vec<Scalar> = Vec::with_capacity(children.len());
+        for (at, (child, value)) in children.iter().zip(values).enumerate() {
+            if stated(at) {
+                fields.push(child.clone());
+                held.push(value.clone());
+            }
+        }
+        entries_of(&fields, &held)
     }
 
     /// Every entry the wire carries, in wire order: the standard header
@@ -719,11 +747,11 @@ impl FixMsg {
     /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut qty = DataType::Int64.nullable_field("orderqty");
-    /// qty.as_fix_mut().set_tag(38)?;
+    /// let mut clordid = DataType::utf8().nullable_field("clordid");
+    /// clordid.as_fix_mut().set_tag(11)?;
     /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
-    /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
+    /// let registry = Arc::new(FixRegistry::from_fields([clordid, symbol])?);
     ///
     /// let root = DataType::from_fields([DataType::utf8().required_field("symbol")])?
     ///     .required_field("D");
@@ -731,18 +759,22 @@ impl FixMsg {
     /// let mut msg = FixMsg::with_registry(registry, root, value)?;
     ///
     /// // Appended under the dictionary's field, typed by it and found by tag.
-    /// msg.set(38, Scalar::from(100_i64))?;
-    /// assert_eq!(msg.by_tag(38)?, Scalar::from(100_i64));
-    /// assert_eq!(msg.as_field().fields().last().unwrap().name(), "orderqty");
+    /// msg.set(11, Scalar::from("A1"))?;
+    /// assert_eq!(msg.by_tag(11)?, Scalar::from("A1"));
+    /// assert_eq!(msg.as_field().fields().last().unwrap().name(), "clordid");
     ///
     /// // Replaced in place: the child keeps its position, the value changes.
     /// msg.set("Symbol", Scalar::from("MSFT"))?;
     /// assert_eq!(msg.as_field().fields()[0].name(), "symbol");
     /// assert_eq!(msg.by_tag(55)?, Scalar::from("MSFT"));
     ///
-    /// // A typed fact lands on its holder and never in the row.
+    /// // A typed fact lands on its holder and never in the row - the crate's
+    /// // own price, and the quantity `OrderQty(38)` is read and written
+    /// // through, which is why the row grew by nothing.
     /// msg.set(yggdryl::PX_TAG_NAME.0, Scalar::from("82.5"))?;
+    /// msg.set(38, Scalar::from(100_i64))?;
     /// assert_eq!(msg.get_px().to_string(), "82.5");
+    /// assert_eq!(msg.get_qty().to_string(), "100");
     /// assert_eq!(msg.as_field().fields().len(), 2);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
@@ -881,6 +913,19 @@ impl FixMsg {
                 field.scalar(value)?
             };
             return Ok(Staged::Typed(tag, value));
+        }
+        // Which tags the holders own is this crate's statement and not a
+        // dictionary's, so a typed tag written under a registry that
+        // declares no field for it still lands on its holder. There is no
+        // field to type it through - the one above was invented for the
+        // spelling - so the value crosses as it was written and the holder
+        // types it.
+        if tag.is_none() {
+            if let FixKey::Tag(tag) = *key {
+                if identity::is_typed_tag(tag) {
+                    return Ok(Staged::Typed(tag, value));
+                }
+            }
         }
         let value = if value.is_null() {
             field.set_nullable(true);

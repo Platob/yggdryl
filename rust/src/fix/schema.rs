@@ -1180,10 +1180,11 @@ impl super::FixMsg {
     /// types a pair, so every lookup reaches the rebuilt message as it
     /// reaches a parsed one. A column no tag and no counter names is the
     /// capture's own - the body the line was read from, its place in the
-    /// object, the bridge's row header - and it is read past rather than
-    /// adopted: content is what goes back on the wire, and a message that
-    /// carried `body=` to a counterparty would be a message this crate
-    /// invented. Nothing is parsed again: this is
+    /// object, the bridge's row header - and it is kept so the row returns
+    /// to its schema whole, but it is not content: [`FixMsg::entries`] skips
+    /// it, so it reaches no digest and no wire and a message rebuilt from a
+    /// capture row never carries `body=` to a counterparty. Nothing is
+    /// parsed again: this is
     /// what makes a batch of rows a stream of messages at the cost of the
     /// values it already holds. A row without the entries column rebuilds a
     /// message with the typed facts and no content.
@@ -1226,7 +1227,7 @@ impl super::FixMsg {
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
     /// assert_eq!(held.entries(), order.entries());
     /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
-    /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|11=A1|55=AAPL|"));
+    /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|59=0|11=A1|55=AAPL|"));
     /// assert_eq!(held.get_hashcode(), order.get_hashcode());
     /// // And the row it came from is the row it makes.
     /// assert_eq!(held.into_row(&schema)?, row);
@@ -1270,13 +1271,13 @@ impl super::FixMsg {
                 None if planned.counter.is_some() => {}
                 // A column no tag and no counter names is the capture's own -
                 // the line it was read from, its place in the object, the
-                // bridge's row header - and a capture is not what the message
-                // said. Adopting it would make it a child of the content, and
-                // a child of the content is an entry, and an entry goes back
-                // on the wire: a message rebuilt from a capture row would
-                // re-emit `body=` at a counterparty. The reader that put the
-                // prefix in front of the row is the one that states it.
-                None => {}
+                // bridge's row header. It is kept, so the row a reader walks
+                // returns to its schema whole, and it is never content: the
+                // entries skip it, so it reaches no digest and no wire.
+                None => {
+                    members.push(column.clone());
+                    values.push(value.clone());
+                }
             }
         }
         if let Some((fields, held)) = content {
@@ -1307,11 +1308,10 @@ impl super::FixMsg {
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all. A column no
     /// tag or group counter names is a capture's own: it takes the child of
-    /// the same name where the message has one and is left null otherwise,
-    /// which a required column refuses. The capture reader supplies its
-    /// prefix before validation, not after projection - and supplies it
-    /// again for a row it reads back, because [`Self::from_row`] leaves a
-    /// capture's columns to the capture rather than making them content.
+    /// the same name where the message has one - which is how a row read
+    /// back through [`Self::from_row`] returns to its schema whole - and is
+    /// left null otherwise, which a required column refuses. The capture
+    /// reader supplies its prefix before validation, not after projection.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
