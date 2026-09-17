@@ -533,25 +533,19 @@ class Scalar:
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
-        "msghash", "version",
-        "url", "enum", "bytes", "fixed_size_binary", "large_binary",
-        "binary_view", "geospatial",
-        "geography", "date32", "date64", "time32", "time64", "datetime64",
-        "duration32", "duration64", "interval", "sequence", "mapping", "record",
+        "uuid", "version", "timezone", "mimetype", "mediatype", "url",
+        "bytes", "fixed_size_binary", "large_binary", "binary_view",
+        "geometry", "geography", "date32", "date64", "time32", "time64",
+        "datetime64", "duration32", "duration64", "interval", "sequence",
+        "mapping", "record", "arrow",
     ]: ...
     @property
     def id(self) -> str: ...
     @property
     def family(self) -> Literal[
         "null", "boolean", "integer", "floating", "decimal", "temporal",
-        "text", "code", "bytes", "nested", "geospatial", "msghash",
+        "text", "code", "bytes", "nested", "geospatial", "uuid",
     ]: ...
-    @property
-    def enum_kind(self) -> str | None: ...
-    @property
-    def enum_value(self) -> str | None: ...
-    @property
-    def enum_ordinal(self) -> int | None: ...
     @property
     def count(self) -> int | None: ...
     @property
