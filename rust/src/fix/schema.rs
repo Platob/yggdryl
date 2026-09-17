@@ -1574,6 +1574,7 @@ impl super::FixMsg {
 /// required column holding nothing is a broken contract that names itself.
 /// A required crate column is exactly such a contract.
 fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
+    let value = narrowed(column, value);
     // Kept for the retry only where a retry has members to work on, and a
     // `Scalar`'s clone is a refcount rather than a copy of what it names.
     let retry = column.dtype().is_nested().then(|| value.clone());
@@ -1599,6 +1600,33 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
         }
         Err(_) => Err(refusal),
     }
+}
+
+/// A price or a quantity this crate settled, narrowed to the column that
+/// holds it.
+///
+/// This crate keeps a price and a quantity exact - `decimal128(38, 18)` -
+/// because a price is money and a float is not; FIX's own `BidPx`, `BidSize`,
+/// `OfferPx` and `OfferSize` are `Price` and `Qty` fields, which the
+/// dictionary types as `float64` because that is what their text always was.
+/// A lane the message never wrote and this crate filled therefore meets a
+/// float column, and the narrowing is made here, once, rather than at each
+/// lane: the alternative is a null, which loses the fact the fill was for.
+/// Nothing else narrows - a decimal column takes the decimal whole.
+fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
+    let float = matches!(column.dtype(), DataType::Float64 | DataType::Float32);
+    let decimal = matches!(
+        value,
+        crate::Scalar::Decimal32(_)
+            | crate::Scalar::Decimal64(_)
+            | crate::Scalar::Decimal128(_)
+            | crate::Scalar::Decimal256(_)
+    );
+    if !float || !decimal {
+        return value;
+    }
+    crate::types::Decimal::from_scalar(&value)
+        .map_or(value, |held| crate::Scalar::from(held.to_f64()))
 }
 
 /// One value rebuilt under one field with every leaf that will not fit nulled.

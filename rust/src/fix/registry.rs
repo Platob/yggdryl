@@ -1239,9 +1239,13 @@ impl FixRegistry {
         if !field.dtype().is_nested() {
             return Ok(None);
         }
-        super::catalog::definition_category(field)
-            .map(Some)
-            .ok_or_else(|| super::catalog::not_scalar(field))
+        // A list of non-null scalars is one column under one name rather
+        // than a definition, so it folds as a field does; the catalog's own
+        // shape check is where that reading lives.
+        match super::catalog::definition_category(field) {
+            Some(category) => Ok(Some(category)),
+            None => super::catalog::column_shape(field).map(|()| None),
+        }
     }
 
     /// One scalar through rules 2 to 5 of [`Self::add_field`], without the

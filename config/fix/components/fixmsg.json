@@ -215,22 +215,12 @@
       {
         "name": "parentuuids",
         "dtype": {
-          "type": "list",
-          "field": {
-            "name": "parentuuid",
-            "dtype": {
-              "type": "uuid"
-            },
-            "nullable": false,
-            "metadata": {}
-          }
+          "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "description": "The identities of the messages this one descends from, in the order it states them.",
-          "display": "ParentUuids",
-          "fix:tag": "65041",
-          "fix:transient": "false"
+          "fix:field": "parentuuids",
+          "fix:tag": "65041"
         }
       },
       {

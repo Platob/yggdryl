@@ -233,7 +233,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 31 registered scalars and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,272 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 32 fields - 31 scalars and the `parentuuids` column list - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,273 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
 
 Beside those 1,573 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 

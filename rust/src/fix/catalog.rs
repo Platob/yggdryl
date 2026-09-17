@@ -372,7 +372,9 @@ pub(super) fn not_scalar(field: &Field) -> Error {
 /// validation and the fold alike.
 fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
     match category {
-        FixCategory::Fields if field.dtype().is_nested() => Err(not_scalar(field)),
+        FixCategory::Fields if field.dtype().is_nested() && !is_column_list(field) => {
+            Err(not_scalar(field))
+        }
         FixCategory::Components if !matches!(field.dtype(), DataType::Struct(_)) => {
             Err(invalid(field, "a Struct datatype"))
         }
@@ -380,6 +382,46 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
             invalid(field, "a List of non-null Struct occurrences or a Map"),
         ),
         _ => Ok(()),
+    }
+}
+
+/// A nested field read as one column, or the refusal a nested field that is
+/// no definition and no column earns.
+pub(super) fn column_shape(field: &Field) -> Result<()> {
+    if is_column_list(field) {
+        Ok(())
+    } else {
+        Err(not_scalar(field))
+    }
+}
+
+/// Whether a nested field is one column of this crate's own rather than a
+/// definition.
+///
+/// A list of non-null scalars - the identities a message descends from, each
+/// a `Uuid` - is one value a row holds under one name. It is not a repeating
+/// group, because a group's occurrence is a Struct of members a wire states
+/// one tag at a time, and it is not a component.
+///
+/// Only in this crate's own tag block. A wire tag carries one value, so a
+/// dialect handing the dictionary a list under one is stating a group badly
+/// and is told so; the crate's columns answer no wire tag at all, and a list
+/// is what `parentuuids` is.
+fn is_column_list(field: &Field) -> bool {
+    let crate_tag = field
+        .as_fix()
+        .tag()
+        .ok()
+        .flatten()
+        .is_some_and(super::is_crate_tag);
+    if !crate_tag {
+        return false;
+    }
+    match field.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => {
+            !item.is_nullable() && !item.dtype().is_nested()
+        }
+        _ => false,
     }
 }
 

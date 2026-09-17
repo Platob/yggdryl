@@ -104,8 +104,9 @@ fn crated_components() -> usize {
 }
 
 /// The crate's own scalars, or its own groups - the Maps - in the order
-/// every registry iterates them; `parentuuids`, a List of scalars, is a row
-/// column no registry files.
+/// every registry iterates them. `parentuuids` is a List of non-null
+/// scalars, which is one column rather than a group, so it is filed among
+/// the fields and walks with them.
 fn crate_names_of(groups: bool) -> Vec<&'static str> {
     crate::fix_crate_fields()
         .unwrap()
@@ -114,7 +115,7 @@ fn crate_names_of(groups: bool) -> Vec<&'static str> {
             if groups {
                 matches!(field.dtype(), DataType::Map(_))
             } else {
-                !field.dtype().is_nested()
+                !matches!(field.dtype(), DataType::Map(_) | DataType::Struct(_))
             }
         })
         .map(Field::name)

@@ -326,6 +326,27 @@
     }
   },
   {
+    "name": "parentuuids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "parentuuid",
+        "dtype": {
+          "type": "uuid"
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The identities of the messages this one descends from, in the order it states them.",
+      "display": "ParentUuids",
+      "fix:tag": "65041",
+      "fix:transient": "false"
+    }
+  },
+  {
     "name": "seqnum",
     "dtype": {
       "type": "u_int64"
