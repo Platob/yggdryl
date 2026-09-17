@@ -168,7 +168,7 @@ assert tree.set("venue", "XNAS")["venue"].as_str() == "XNAS"
 | `date(count, unit="d", timezone=None)`, `time` / `datetime` / `duration` `(count, unit, timezone=None)` | only `datetime` takes a zone |
 | `from_arrow_scalar` / `_array` / `_batch` / `_table` | Arrow C Data or C Stream; a table arrives batch by batch, then is owned as rows |
 | `into_arrow_*` | exact physical types; `field=` casts to a declared shape |
-| `as_bytes`, `as_str`, `as_json_bytes`, `as_json_utf8` | the scalar payload - `as_str` answers a string, a code, or an enum member - then the core's natural JSON writer |
+| `as_bytes`, `as_str`, `into_json_bytes`, `into_json_str` | the scalar payload - `as_str` answers a string, a code, or an enum member - then the core's natural JSON writer |
 | `len`, iteration, indexing, `get`, `path`, containment, `keys` / `values` / `items` | child values stay native |
 | `set`, `remove` | persistent: a rebuilt `Scalar`, source intact |
 | `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute` | checked native arithmetic, mirrored by the Python operators |

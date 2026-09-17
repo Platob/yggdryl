@@ -210,8 +210,8 @@ def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
     assert Scalar.from_(b"bytes").as_bytes() == b"bytes"
     assert Scalar.from_(b"bytes").as_str() is None
     value = Scalar.from_({"answer": 42})
-    assert value.as_json_bytes() == b'{"answer":42}'
-    assert value.as_json_utf8() == '{"answer":42}'
+    assert value.into_json_bytes() == b'{"answer":42}'
+    assert value.into_json_str() == '{"answer":42}'
 
 
 def test_unsigned_stable_hash_maps_to_python_hash_without_overflow() -> None:

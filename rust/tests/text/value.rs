@@ -170,8 +170,8 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.as_record();
         let _ = value.as_enum();
         let _ = value.record_iter().count();
-        let _ = value.as_json_bytes();
-        let _ = value.as_json_utf8();
+        let _ = value.into_json_bytes();
+        let _ = value.into_json_str();
         let _ = value.len();
         let _ = value.get(0);
         let _ = value.get_key_str("k");

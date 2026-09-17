@@ -185,7 +185,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json_str`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -346,8 +346,8 @@ Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` an
 | infer that Record's datatype | 675 ns |
 | persistent Record field update | 273 ns |
 | restate Date32 days as nanoseconds | 3.10 ns |
-| `as_json_bytes` | 2.67 us |
-| `as_json_utf8` | 2.67 us |
+| `into_json_bytes` | 2.67 us |
+| `into_json_str` | 2.67 us |
 
 | CPython release boundary | estimate |
 | --- | ---: |

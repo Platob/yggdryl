@@ -149,10 +149,10 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&date).temporal_count_at(TimeUnit::Nanosecond));
     });
     group.bench_function("json_bytes_record", |bencher| {
-        bencher.iter(|| black_box(&record).as_json_bytes().unwrap());
+        bencher.iter(|| black_box(&record).into_json_bytes().unwrap());
     });
     group.bench_function("json_utf8_record", |bencher| {
-        bencher.iter(|| black_box(&record).as_json_utf8().unwrap());
+        bencher.iter(|| black_box(&record).into_json_str().unwrap());
     });
     group.bench_function("checked_add_i64", |bencher| {
         bencher.iter(|| black_box(&integer_left).checked_add(black_box(&integer_right)));

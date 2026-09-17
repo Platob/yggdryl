@@ -1285,15 +1285,15 @@ impl PyScalar {
         self.inner.as_str()
     }
 
-    fn as_json_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+    fn into_json_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         self.inner
-            .as_json_bytes()
+            .into_json_bytes()
             .map(|value| PyBytes::new(py, &value))
             .map_err(value_error)
     }
 
-    fn as_json_utf8(&self) -> PyResult<String> {
-        self.inner.as_json_utf8().map_err(value_error)
+    fn into_json_str(&self) -> PyResult<String> {
+        self.inner.into_json_str().map_err(value_error)
     }
 
     /// Add an inferred Python/native value through the core's checked rules.

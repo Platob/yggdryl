@@ -1276,12 +1276,12 @@ impl Scalar {
     }
 
     /// Encode this value as compact JSON bytes.
-    pub fn as_json_bytes(&self) -> Result<Vec<u8>> {
+    pub fn into_json_bytes(&self) -> Result<Vec<u8>> {
         crate::text::json::into_bytes(self)
     }
 
     /// Encode this value as compact JSON UTF-8.
-    pub fn as_json_utf8(&self) -> Result<String> {
+    pub fn into_json_str(&self) -> Result<String> {
         crate::text::json::into_utf8(self)
     }
 
