@@ -77,9 +77,9 @@ pub use fix::{
     PREVUUID_TAG_NAME, PX_TAG_NAME, QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME,
     SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, STANDARD_HEADER_TAGS,
     STANDARD_TRAILER_TAGS, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME, TRADABLE_TAG_NAME,
-    ULBRIDGE_ROWHEADER, UNIT_TAG_NAME,
-    UNIX_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
+    ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, UNIX_TAG_NAME, Words, fix_column_of, fix_column_tags,
+    fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document,
+    into_fix_document, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
 #[cfg(feature = "arrow")]

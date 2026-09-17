@@ -91,8 +91,7 @@ pub const BODY_TAGS: [i32; 50] = [
     1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693,
     // The instrument, and what the market says about trading it.
     55, 48, 22, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
-    54, 40, 59, 854, 15, 120,
-    // The quote's two lanes, which carry no side of their own.
+    54, 40, 59, 854, 15, 120, // The quote's two lanes, which carry no side of their own.
     132, 133, 134, 135, // What was done.
     31, 32, 6, 14, 151, // When.
     60, 64, 75, 126, // How it went.

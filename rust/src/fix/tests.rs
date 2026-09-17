@@ -2980,9 +2980,7 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
 
     let codec = deriving();
     let held = codec
-        .parse_fix_line(
-            b"8=FIX.4.4|35=8|55=BRN|54=1|44=82.5|38=300|31=82.5|59=1|326=17|10=0|",
-        )
+        .parse_fix_line(b"8=FIX.4.4|35=8|55=BRN|54=1|44=82.5|38=300|31=82.5|59=1|326=17|10=0|")
         .expect("a readable report");
     // The price and the quantity have one home. `Price(44)`, `OrderQty(38)`
     // and `Quantity(53)` are read and written through the crate's own

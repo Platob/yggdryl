@@ -210,10 +210,23 @@ pub(super) fn stage_writes(
         let appended = replaced.is_none();
         let held = replaced.as_ref().map(Field::as_fix);
         let written = members[index].as_fix();
+        // A tag is resolved here as the column plan resolves one, so the
+        // index a write leaves is the index a construction would have built:
+        // a child named after a tag the dictionary does not explain answers
+        // for that tag, and a reader that walks the index rather than the
+        // names finds it.
+        let resolved = |field: &Field| {
+            field
+                .as_fix()
+                .tag()
+                .ok()
+                .flatten()
+                .or_else(|| super::field::parse_tag(field.name()))
+        };
         indexed.push(Indexed {
-            retired_tag: held.as_ref().and_then(|held| held.tag().ok().flatten()),
+            retired_tag: replaced.as_ref().and_then(resolved),
             retired_counter: held.as_ref().and_then(|held| held.counter().ok().flatten()),
-            tag: written.tag().ok().flatten(),
+            tag: resolved(&members[index]),
             counter: written.counter().ok().flatten(),
             index,
             renamed,
@@ -698,10 +711,7 @@ impl FixMsg {
                 |field| SmolStr::new(field.name()),
             )
         };
-        for tag in WIRE_HEADER_TAGS
-            .into_iter()
-            .chain(identity::OWN_EVENT_TAGS)
-        {
+        for tag in WIRE_HEADER_TAGS.into_iter().chain(identity::OWN_EVENT_TAGS) {
             if tag == 52 && !self.header.stated_sendingtime() {
                 continue;
             }

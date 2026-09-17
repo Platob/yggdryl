@@ -9,7 +9,7 @@
 | Holders | `event() -> &MarketEventData`, what the four [graph traits](../graph.md) answer - the identities, the codes, the instants, the state, the place in the chain, the price, the quantity, the side, the lanes and the instrument codes; `header() -> &FixHeader`, tags 8, 35, 49, 56, 34, 52, 43 and 385 typed; `capture() -> &FixCapture`, `sourceurl`, `recordedat`, `pluginid`, `msgctxid` and `msgsessionid`; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
 | Row | `as_field()` and `as_value()`: a root Struct [`Field`](../types/field.md) and the `Scalar::Sequence` it declares, holding only what no holder owns - the dictionary's fields, a group as a List of Struct occurrences beside its `int32` counter, a component as a Struct, a key no dictionary explains under its own spelling; a [typed tag](#typed-tags) is never in it |
 | Entries | `entries() -> &[FixEntry]`, the row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, each carrying the tag the dictionary resolved - `0` for a key it does not explain - the canonical name and the value as the wire spells it; a group is one entry under its counter valued the count, with one valueless entry per occurrence heading the members; a component a valueless entry heading its members; the typed facts are not entries |
-| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit the message as it now stands, derived values included: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the event's own tags 15, 54, 461, 132, 133, 134 and 135, then 58, then the entries pre-order; a coded fact spells as its wire code, `54=1`, and a lane number at the decimal's full scale. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator, and is what [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) keys on |
+| Wire | `into_bytes(separator)` and `into_text(separator)` re-emit the message as it now stands, derived values included: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the event's own tags in tag order - 6, 14, 15, 31, 32, 38, 44, 54, 59, 132, 133, 134, 135, 151 and 461, `Quantity(53)` answering nothing because `OrderQty` answers for it - then 58, then the entries pre-order; a coded fact spells as its wire code, `54=1`, and a lane number at the decimal's full scale. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator, and is what [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) keys on |
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
@@ -188,7 +188,6 @@
     # The entries are the row read as a tree: the group is its counter valued
     # the count, over one valueless entry per occurrence.
     assert message.entries() == [
-        (38, "OrderQty", "100", []),
         (55, "Symbol", "AAPL", []),
         (453, "Parties", "1", [(0, "Party", None, [(448, "PartyID", "BROKER", [])])]),
         (0, "9999", "custom", []),
@@ -272,10 +271,11 @@
     assert.equal(message.size, 4)
 
     // A lookup answers the holder for a typed tag and the row for the rest.
-    // `OrderQty` is the quantity the event is about, so it answers exact.
+    // `OrderQty` is the quantity the event is about, so it answers exact -
+    // a decimal at the crate's own scale, which `qty` renders as a number.
     assert.equal(message.byTag(35).asJs(), 'D')
     assert.equal(message.byTag(54).asJs(), 'BUY')
-    assert.equal(String(message.byTag(38).asJs()), '100')
+    assert.equal(message.qty, '100')
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
@@ -286,9 +286,9 @@
     // its counter valued the count over one valueless entry per occurrence.
     assert.deepEqual(
       [...message].map(entry => [entry.tag, entry.name, entry.value]),
-      [[38, 'OrderQty', '100'], [55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
+      [[55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
     )
-    const [occurrence] = message.entries()[2].entries
+    const [occurrence] = message.entries()[1].entries
     assert.deepEqual([occurrence.tag, occurrence.name, occurrence.value], [0, 'Party', null])
     assert.equal(occurrence.entries[0].name, 'PartyID')
 
@@ -302,7 +302,7 @@
     const folded = Field.from('order_qty: int64')
     folded.fix.tag = 38
     assert.equal(folded.fix.id, qty.fix.id)
-    assert.equal(message.byId(qty.fix.id).asJs(), 100)
+    assert.ok(message.byId(qty.fix.id).equals(message.byTag(38)))
     const renamed = Field.from('Quantity: int64')
     renamed.fix.tag = 38
     assert.equal(message.getById(renamed.fix.id), null, 'another name is another field')
@@ -311,7 +311,7 @@
     // and a message rebuilt from them holds the same content; its typed facts
     // are its own to state again.
     const document = message.toJSON()
-    assert.equal(document.field.dtype.fields[1].metadata['fix:tag'], '55')
+    assert.equal(document.field.dtype.fields[0].metadata['fix:tag'], '55')
     const again = new fix.FixMsg(message.field, message.value, registry)
     assert.deepEqual(again.entries(), message.entries())
     assert.equal(again.header().msgtype, '', 'the type was the header\'s, not the row\'s')
@@ -574,7 +574,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. A body column is the same content read once more, so it is read past; a column no tag names is a capture's own and stays a child of the content row, which is how a row read back through `from_row` returns to its schema whole. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. A column no tag and no counter names is a capture's own - the body the line was read from, its place in the object, a bridge's row header - and it stays a child, which is how a row read back through `from_row` returns to its schema whole; it is never an entry, so it reaches neither the code the message answers to nor the wire. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
 
 The round trip is exact for an entry whose bytes are text - which is every entry a log wrote. It cannot be for one whose bytes are not: the row spells a value as `utf8` because a column a reader can read is what a row is for, and a `data` field carrying bytes no text holds reaches that column as the decode of them. One shape is not exact yet, and `FixMsg::from_row`'s own documentation names it: a repeating group whose occurrences nest a second group that only some of them state - the row holds each occurrence on the union of the members any of them stated, so rebuilding lays the nested level out in the order the entries met it rather than the order the parse did. Over `rust/tests/fix/ulbridge.log`, a bridge capture of 94 messages, 83 rebuild exactly and the 11 that do not are all parties nesting `PtysSubGrp`. A group no dictionary declares - a bridge packing `NOTRADINGSESSIONS[0]=...` under a counter's own name - rebuilds from the row as the list it is. The [example above](#written-into-the-row) ends with the round trip.
 

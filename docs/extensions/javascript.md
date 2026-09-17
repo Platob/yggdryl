@@ -921,11 +921,11 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// Symbol remains beside what every registry holds: the crate's 32 fields, the
+// Symbol remains beside what every registry holds: the crate's 36 fields, the
 // seeded SendingTime and TransactTime, and the `identifiers` and `metadata`
 // Map groups, which a registry sizes like any other definition.
-assert.equal(new fix.FixRegistry().size, 36)
-assert.equal(venue.size, 37)
+assert.equal(new fix.FixRegistry().size, 40)
+assert.equal(venue.size, 41)
 assert.deepEqual(venue.dialects(), [])
 
 // Both collections are lazy native iterators the loader gives the protocol:

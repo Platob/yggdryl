@@ -193,7 +193,11 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 
     from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+    # A bridge row states its fields and not its type, so this reader is told
+    # to read the untyped row the default refusals drop.
+    reader = FixCodec(
+        FixRegistry.from_handle(Path("config/fix").resolve()), exclude_msgtypes=[]
+    )
 
     held, = reader.parse_line(
         b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
@@ -228,7 +232,12 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+    // A bridge row states its fields and not its type, so this reader is told
+    // to read the untyped row the default refusals drop.
+    const reader = new fix.FixCodec(
+      fix.FixRegistry.fromHandle(path.resolve('config', 'fix')),
+      { excludeMsgtypes: [] },
+    )
 
     const bridge = Buffer.from(
       '|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1' +
@@ -313,7 +322,11 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 
     from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+    # A document states no message type, so this reader reads the untyped row
+    # the default refusals drop.
+    reader = FixCodec(
+        FixRegistry.from_handle(Path("config/fix").resolve()), exclude_msgtypes=[]
+    )
 
     # A Jolokia answer as a bridge logs it: prose in front, a duration behind.
     line = b'2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Router_OrderRouting","SenderCompID":"CLI.PROD.TRD","TargetCompID":"ST.PROD"},"status":200} (12 ms)'
@@ -336,7 +349,12 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+    // A document states no message type, so this reader reads the untyped row
+    // the default refusals drop.
+    const reader = new fix.FixCodec(
+      fix.FixRegistry.fromHandle(path.resolve('config', 'fix')),
+      { excludeMsgtypes: [] },
+    )
 
     // A Jolokia answer as a bridge logs it: prose in front, a duration behind.
     const line = Buffer.from('2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Router_OrderRouting","SenderCompID":"CLI.PROD.TRD","TargetCompID":"ST.PROD"},"status":200} (12 ms)')

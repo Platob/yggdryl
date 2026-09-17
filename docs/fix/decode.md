@@ -218,8 +218,10 @@ a line that stated no frame.
     # A sentence states no message, whatever `=` it happens to hold.
     assert list(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")) == []
     # The same pairs behind a separator the line named are a bridge row, and a
-    # row that stated no type is named `unknown`.
-    row, = codec.parse_line(b"ACCOUNT=A1|SIDE=1")
+    # row that stated no type is named `unknown` - which this reader is told to
+    # read, since the default refuses it.
+    audit = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()), exclude_msgtypes=[])
+    row, = audit.parse_line(b"ACCOUNT=A1|SIDE=1")
     assert row.field.name == "unknown"
     # The single-frame door refuses the body holding both.
     with pytest.raises(ValueError, match="expected one frame"):
@@ -243,8 +245,13 @@ a line that stated no frame.
     // A sentence states no message, whatever `=` it happens to hold.
     assert.equal([...codec.parseLine(Buffer.from('After Enrichment -> ACCOUNT=A1 SIDE=1'))].length, 0)
     // The same pairs behind a separator the line named are a bridge row, and a
-    // row that stated no type is named `unknown`.
-    const [row] = codec.parseLine(Buffer.from('ACCOUNT=A1|SIDE=1'))
+    // row that stated no type is named `unknown` - which this reader is told to
+    // read, since the default refuses it.
+    const audit = new fix.FixCodec(
+      fix.FixRegistry.fromHandle(path.resolve('config/fix')),
+      { excludeMsgtypes: [] },
+    )
+    const [row] = audit.parseLine(Buffer.from('ACCOUNT=A1|SIDE=1'))
     assert.equal(row.field.name, 'unknown')
     // The single-frame door refuses the body holding both.
     assert.throws(() => codec.parseFixLine(both), /expected one frame/)
