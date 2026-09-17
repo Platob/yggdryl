@@ -438,5 +438,34 @@
       "fix:tag": "65048",
       "fix:transient": "false"
     }
+  },
+  {
+    "name": "prevpx",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The price stated before this message: PrevClosePx where the message states one, else the price its predecessor in the chain stated.",
+      "display": "PrevPx",
+      "fix:derivation": "prevclosepx",
+      "fix:tag": "65051"
+    }
+  },
+  {
+    "name": "prevqty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The quantity the message's predecessor in the chain stated.",
+      "display": "PrevQty",
+      "fix:tag": "65052"
+    }
   }
 ]

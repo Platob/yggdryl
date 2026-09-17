@@ -269,16 +269,13 @@ fn group_positions(field: &Field) -> Vec<(i32, usize)> {
     held
 }
 
-/// The message types carrying an order rather than a report of one.
-///
-/// Consulted by the lane fill alone, which is about what a party is
-/// *willing* to do: a buy order at a price is a party willing to pay it,
-/// so a bid lane it never wrote is still true of it. A fill is a report and
-/// projects nothing.
-const ORDERS: [&str; 6] = ["D", "E", "F", "G", "AB", "AC"];
-
 /// The header tags a wire carries, in the standard header's order.
 const WIRE_HEADER_TAGS: [i32; 7] = [8, 35, 49, 56, 34, 43, 52];
+
+/// FIX's own fields for the last trade, which this crate lifts rather than
+/// restates: `LastPx` and `LastQty`.
+const LASTPX_TAG: i32 = 31;
+const LASTQTY_TAG: i32 = 32;
 
 impl FixMsg {
     /// The deterministic hash of this message's schema and row.
@@ -449,6 +446,7 @@ impl FixMsg {
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
         };
+        message.lift_market_steps();
         message.settle();
         Ok(message)
     }
@@ -553,6 +551,9 @@ impl FixMsg {
                 self.event.set_crosscode(code);
             }
         }
+        // What the message implies about its market, read off what it
+        // stated, before the code it answers to covers either.
+        self.event.fill_market();
         self.event.sync_cross();
         let hashcode = self.hashcode();
         self.event.finalized(hashcode);
@@ -600,12 +601,25 @@ impl FixMsg {
         state.as_u64()
     }
 
-    /// Fills the lane the side implies where the message is an order: a
-    /// party willing to pay the price for the quantity, or to be paid it.
-    pub(super) fn fill_order_lanes(&mut self) {
-        if ORDERS.contains(&self.header.msgtype()) {
-            self.event.fill_lanes();
-        }
+    /// Lifts the last trade the message states onto the event it is.
+    ///
+    /// `LastPx` and `LastQty` are FIX's own fields and stay where they are:
+    /// the row holds them under the dictionary's own columns, and this reads
+    /// them back through the registry, so a venue spelling either as an
+    /// alias of its tag is lifted too and a dictionary that moves the tag
+    /// moves the lift with it. What [`MarketElement::get_px`] settles on is
+    /// the price the message is *about*; this is the last trade alone, so a
+    /// fill and the order it fills are told apart without asking which field
+    /// each settled from.
+    ///
+    /// Read where a message is assembled rather than where one is parsed, so
+    /// a message read back out of a row carries what its row states.
+    fn lift_market_steps(&mut self) {
+        let stated = |tag: i32| self.get_by_tag(tag).as_ref().and_then(Decimal::from_scalar);
+        let lastpx = self.event.get_lastpx().or_else(|| stated(LASTPX_TAG));
+        let lastqty = self.event.get_lastqty().or_else(|| stated(LASTQTY_TAG));
+        self.event.set_lastpx(lastpx);
+        self.event.set_lastqty(lastqty);
     }
 
     /// The event this message is: every fact the three graph traits answer,
@@ -1796,7 +1810,7 @@ impl Element for FixMsg {
     fn with_previous(self, previous: &Self) -> Option<Self> {
         let parent = previous.get_curruuid();
         let adopted = !self.get_parentuuids().contains(&parent);
-        let mut this = self.following(previous)?;
+        let mut this = self.following_market(previous)?;
         if adopted {
             let mut parents = this.get_parentuuids().to_vec();
             parents.push(parent);
@@ -1964,6 +1978,38 @@ impl MarketElement for FixMsg {
 
     fn set_miccode(&mut self, miccode: Option<Mic>) {
         self.event.set_miccode(miccode);
+    }
+
+    fn get_lastpx(&self) -> Option<Decimal> {
+        self.event.get_lastpx()
+    }
+
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
+        self.event.set_lastpx(px);
+    }
+
+    fn get_lastqty(&self) -> Option<Decimal> {
+        self.event.get_lastqty()
+    }
+
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_lastqty(qty);
+    }
+
+    fn get_prevpx(&self) -> Option<Decimal> {
+        self.event.get_prevpx()
+    }
+
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
+        self.event.set_prevpx(px);
+    }
+
+    fn get_prevqty(&self) -> Option<Decimal> {
+        self.event.get_prevqty()
+    }
+
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+        self.event.set_prevqty(qty);
     }
 
     fn get_bidpx(&self) -> Option<Decimal> {

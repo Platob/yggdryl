@@ -211,6 +211,20 @@ pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");
 /// running this crate, and nothing this crate reads back.
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");
 
+/// The tag and name carrying the price the statement before this one in its
+/// chain stated.
+///
+/// The last trade has no column of its own beside this one: FIX already
+/// names it, at `LastPx(31)` and `LastQty(32)`, and a message's
+/// [`get_lastpx`](crate::graph::MarketElement::get_lastpx) is lifted from
+/// the field the dictionary resolves for that tag. A price *before* the
+/// message has no such field - `PrevClosePx` is the market's close rather
+/// than the step before in this chain - so these two are the crate's.
+pub const PREVPX_TAG_NAME: (i32, &str) = (65_051, "prevpx");
+
+/// The tag and name carrying the quantity that statement stated.
+pub const PREVQTY_TAG_NAME: (i32, &str) = (65_052, "prevqty");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -305,6 +319,12 @@ const QTY_DERIVATION: &str = "coalesce(orderqty, lastqty, cumqty, leavesqty)";
 
 /// What the quantity is counted in: the unit of measure the message states.
 const UNIT_DERIVATION: &str = "unitofmeasure";
+
+/// What the message says about the price before its own, where it says
+/// anything: the market's close. Named rather than hard-coded, so the term
+/// resolves against the dictionary and a venue's own spelling of
+/// `PrevClosePx` fills the column too.
+const PREVPX_DERIVATION: &str = "prevclosepx";
 
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
@@ -713,6 +733,24 @@ fn build() -> Result<Vec<Field>> {
              else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
              first stated.",
         )?,
+        // The step before this message in its chain: what a price moved
+        // from. Declared last because the list is in tag order and these are
+        // the crate's newest columns.
+        derived(
+            PREVPX_TAG_NAME,
+            "PrevPx",
+            DataType::DECIMAL,
+            "The price stated before this message: PrevClosePx where the \
+             message states one, else the price its predecessor in the chain \
+             stated.",
+            PREVPX_DERIVATION,
+        )?,
+        crated(
+            PREVQTY_TAG_NAME,
+            "PrevQty",
+            DataType::DECIMAL,
+            "The quantity the message's predecessor in the chain stated.",
+        )?,
         metadata,
     ])
 }
@@ -726,7 +764,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 34);
+/// assert_eq!(held.len(), 36);
 /// assert_eq!(held[0].name(), "unix");
 /// assert_eq!(held[0].display(), Some("Unix"));
 /// // No partition column: how a layout is cut is the target's to decide -

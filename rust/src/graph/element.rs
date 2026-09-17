@@ -1183,6 +1183,40 @@ pub trait MarketElement: Element {
     /// none.
     fn set_miccode(&mut self, miccode: Option<Mic>);
 
+    /// The price the element last traded at, where it states one.
+    ///
+    /// What [`Self::get_px`] settles on is the price the element is *about*:
+    /// what it orders, else what it last traded, else what it averaged. This
+    /// is the last trade alone, so a fill and the order it fills are told
+    /// apart without reading which field each settled from.
+    fn get_lastpx(&self) -> Option<Decimal>;
+
+    /// Records the price the element last traded at; `None` states none.
+    fn set_lastpx(&mut self, px: Option<Decimal>);
+
+    /// The quantity the element last traded, where it states one.
+    fn get_lastqty(&self) -> Option<Decimal>;
+
+    /// Records the quantity the element last traded; `None` states none.
+    fn set_lastqty(&mut self, qty: Option<Decimal>);
+
+    /// The price stated before this element, where one was.
+    ///
+    /// What the element itself says about the price before its own - a
+    /// closing price it carries - else what the statement before it in its
+    /// chain stated, which a walk fills as it fills the instants. It is what
+    /// a move is measured against: a price beside the price it moved from.
+    fn get_prevpx(&self) -> Option<Decimal>;
+
+    /// Records the price stated before this element; `None` states none.
+    fn set_prevpx(&mut self, px: Option<Decimal>);
+
+    /// The quantity stated before this element, where one was.
+    fn get_prevqty(&self) -> Option<Decimal>;
+
+    /// Records the quantity stated before this element; `None` states none.
+    fn set_prevqty(&mut self, qty: Option<Decimal>);
+
     /// The bid lane's price, where the element states one.
     fn get_bidpx(&self) -> Option<Decimal>;
 
@@ -1243,6 +1277,95 @@ pub trait MarketElement: Element {
     /// its own lanes is never overwritten.
     ///
     /// Provided, and what a reader that lifts a quote out of an order calls.
+    /// Fills every market fact this element implies from the ones it
+    /// states, and stops where it would be inventing.
+    ///
+    /// What a market element says comes in three shapes that repeat one
+    /// another: the price and quantity it is *about*, the last trade it
+    /// reports, and the two lanes a quote is made of. A message states some
+    /// of them and leaves the rest to be read off what it stated, so this
+    /// reads them, in one order, each rule filling only what is still
+    /// unstated:
+    ///
+    /// 1. The price is what the element is about, else what it last traded,
+    ///    else what its own side's lane quotes - a report stating only
+    ///    `LastPx` is about that price, and a quote stating only its bid is
+    ///    about that bid. The quantity follows the same three.
+    /// 2. The currency and the unit are the element's own, else the ones the
+    ///    side's lane states: a lane priced in a currency prices the element
+    ///    in it.
+    /// 3. The side's lane is then filled from all of that, by
+    ///    [`Self::fill_lanes`]: a buy at a price is a party willing to pay
+    ///    it, and a sell at one is a party willing to be paid it.
+    ///
+    /// Nothing is invented: a price of nothing, a quantity of nothing, no
+    /// currency and no unit fill nothing, an element that states no side
+    /// fills no lane, and a fact the element stated is never overwritten.
+    /// Running it twice changes nothing the first run did not.
+    ///
+    /// Provided, and what an implementor's [`Element::finalize`] runs before
+    /// it digests, so the code an element answers to covers what it implies
+    /// as well as what it wrote.
+    fn fill_market(&mut self)
+    where
+        Self: Sized,
+    {
+        let side = self.get_side();
+        let (bid, ask) = (side.is_bid(), side.is_ask());
+        // The lane the element's own side quotes, which is the only lane its
+        // own facts can be read off: a buy is about the bid it is willing to
+        // pay, and the other lane is the other party's.
+        let lane_px = if bid {
+            self.get_bidpx()
+        } else if ask {
+            self.get_askpx()
+        } else {
+            None
+        };
+        let lane_qty = if bid {
+            self.get_bidqty()
+        } else if ask {
+            self.get_askqty()
+        } else {
+            None
+        };
+        let lane_currency = if bid {
+            self.get_bidcurrency().cloned()
+        } else if ask {
+            self.get_askcurrency().cloned()
+        } else {
+            None
+        };
+        let lane_unit = if bid {
+            self.get_bidunit().map(str::to_owned)
+        } else if ask {
+            self.get_askunit().map(str::to_owned)
+        } else {
+            None
+        };
+        if self.get_px() == Decimal::ZERO {
+            if let Some(px) = self.get_lastpx().or(lane_px) {
+                self.set_px(px);
+            }
+        }
+        if self.get_qty() == Decimal::ZERO {
+            if let Some(qty) = self.get_lastqty().or(lane_qty) {
+                self.set_qty(qty);
+            }
+        }
+        if self.get_currency() == &Currency::none() {
+            if let Some(currency) = lane_currency {
+                self.set_currency(currency);
+            }
+        }
+        if self.get_unit().is_empty() {
+            if let Some(unit) = lane_unit {
+                self.set_unit(unit);
+            }
+        }
+        self.fill_lanes();
+    }
+
     fn fill_lanes(&mut self)
     where
         Self: Sized,
@@ -1403,6 +1526,24 @@ pub trait MarketEvent: Event + MarketElement {
     ///
     /// Provided, so an implementor's [`Element::merge_with`] has a default
     /// to delegate to.
+    /// This market event stated as the one after `previous`: the timed
+    /// reading, and then the price and the quantity that statement settled
+    /// on, where this one states none of its own.
+    ///
+    /// Provided, and what an implementor's [`Element::with_previous`]
+    /// delegates to where following means carrying the step before along.
+    /// An event that moved is finalized.
+    fn following_market(self, previous: &Self) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut this = self.following(previous)?;
+        if follow_market(&mut this, previous) {
+            this.finalize();
+        }
+        Some(this)
+    }
+
     fn merging_market_event(mut self, other: &Self) -> Option<Self>
     where
         Self: Sized,
@@ -1432,6 +1573,17 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
     feed(state, "px", &this.get_px().units().to_le_bytes());
     feed(state, "currency", this.get_currency().as_str().as_bytes());
     feed(state, "qty", &this.get_qty().units().to_le_bytes());
+    // What the element last traded is its own statement and part of what it
+    // says; what came before it is not, so the previous price and quantity
+    // are left out exactly as the predecessor's instant and identity are.
+    for (name, held) in [
+        ("lastpx", this.get_lastpx()),
+        ("lastqty", this.get_lastqty()),
+    ] {
+        if let Some(held) = held {
+            feed(state, name, &held.units().to_le_bytes());
+        }
+    }
     feed(state, "unit", this.get_unit().as_bytes());
     feed(state, "side", this.get_side().as_str().as_bytes());
     let codes: [(&str, Option<&str>); 6] = [
@@ -1472,6 +1624,27 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
 /// the later statement's price, quantity, unit and lane facts, and each
 /// code the better of the two; whether any moved. `later` says whether
 /// `other` is the later statement.
+/// The market facts an event takes from the statement it follows: the price
+/// and the quantity that statement settled on, where this one states none of
+/// its own.
+///
+/// A chain is what a price moved along, and a message states where it is
+/// rather than where it was, so the move is only readable with the step
+/// before it beside it. What the event states stays: a message carrying its
+/// own closing price has already said what it means by the price before.
+pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
+    let mut changed = false;
+    if this.get_prevpx().is_none() {
+        let px = Some(previous.get_px()).filter(|px| *px != Decimal::ZERO);
+        changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
+    }
+    if this.get_prevqty().is_none() {
+        let qty = Some(previous.get_qty()).filter(|qty| *qty != Decimal::ZERO);
+        changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
+    }
+    changed
+}
+
 fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
     let mut changed = false;
     if later {
@@ -1483,6 +1656,28 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
             |unit| this.set_unit(unit),
         );
     }
+    // The last trade and the step before it fold as a lane folds: the
+    // statement that has one keeps it, and the later one leads where both do.
+    changed |= moved(
+        this.get_lastpx(),
+        stated(this.get_lastpx(), other.get_lastpx(), later),
+        |px| this.set_lastpx(px),
+    );
+    changed |= moved(
+        this.get_lastqty(),
+        stated(this.get_lastqty(), other.get_lastqty(), later),
+        |qty| this.set_lastqty(qty),
+    );
+    changed |= moved(
+        this.get_prevpx(),
+        stated(this.get_prevpx(), other.get_prevpx(), later),
+        |px| this.set_prevpx(px),
+    );
+    changed |= moved(
+        this.get_prevqty(),
+        stated(this.get_prevqty(), other.get_prevqty(), later),
+        |qty| this.set_prevqty(qty),
+    );
     changed |= moved(
         this.get_bidpx(),
         stated(this.get_bidpx(), other.get_bidpx(), later),

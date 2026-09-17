@@ -234,7 +234,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 32 fields - `parentuuids` among them, one column under one name - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,273 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 34 fields - `parentuuids` among them, one column under one name - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,275 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
 
 Beside those 1,573 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
@@ -272,8 +272,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // The crate's own definitions are in the store and in the registry alike:
     // 32 scalar fields, the `parentuuids` list and two Map groups.
     assert_eq!(fix_crate_fields()?.len(), 34);
-    assert_eq!(registry.iter().count(), 7_783, "the fields and the definitions");
-    assert_eq!(registry.len(), 7_783, "the fields, the components and the groups");
+    assert_eq!(registry.iter().count(), 7_785, "the fields and the definitions");
+    assert_eq!(registry.len(), 7_785, "the fields, the components and the groups");
     assert_eq!(registry.field_by_counter(65_020)?.name(), "identifiers");
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     ```
@@ -306,8 +306,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     # The crate's own definitions are in the store and in the registry alike:
     # 32 scalar fields, the `parentuuids` list and two Map groups.
     assert len(fix_crate_fields()) == 34
-    assert sum(1 for _ in registry) == 6_273
-    assert len(registry) == 7_783
+    assert sum(1 for _ in registry) == 6_275
+    assert len(registry) == 7_785
     assert registry.field_by_counter(65_020).name == "identifiers"
     assert registry.msgtype("D").name == "newordersingle"
     ```

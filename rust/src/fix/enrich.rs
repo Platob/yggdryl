@@ -539,7 +539,6 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
             }
         }
     }
-    held.fill_order_lanes();
     Ok(held)
 }
 

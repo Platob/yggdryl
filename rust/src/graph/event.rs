@@ -71,6 +71,10 @@ pub struct MarketElementData {
     bloombergcode: Option<Bloomberg>,
     cficode: Option<Cfi>,
     miccode: Option<Mic>,
+    lastpx: Option<Decimal>,
+    lastqty: Option<Decimal>,
+    prevpx: Option<Decimal>,
+    prevqty: Option<Decimal>,
     bidpx: Option<Decimal>,
     bidcurrency: Option<Currency>,
     bidqty: Option<Decimal>,
@@ -93,6 +97,10 @@ impl Default for MarketElementData {
             identifiers: BTreeMap::new(),
             parentuuids: Vec::new(),
             px: Decimal::ZERO,
+            lastpx: None,
+            lastqty: None,
+            prevpx: None,
+            prevqty: None,
             currency: Currency::none(),
             qty: Decimal::ZERO,
             unit: String::new(),
@@ -177,6 +185,7 @@ impl Element for MarketElementData {
     }
 
     fn finalize(&mut self) {
+        self.fill_market();
         self.sync_cross();
         self.hashcode = self.digest_market().as_u64();
         self.curruuid = Uuid::from_v8(u128::from(self.hashcode));
@@ -291,6 +300,38 @@ impl MarketElement for MarketElementData {
 
     fn set_miccode(&mut self, miccode: Option<Mic>) {
         self.miccode = miccode;
+    }
+
+    fn get_lastpx(&self) -> Option<Decimal> {
+        self.lastpx
+    }
+
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
+        self.lastpx = px;
+    }
+
+    fn get_lastqty(&self) -> Option<Decimal> {
+        self.lastqty
+    }
+
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+        self.lastqty = qty;
+    }
+
+    fn get_prevpx(&self) -> Option<Decimal> {
+        self.prevpx
+    }
+
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
+        self.prevpx = px;
+    }
+
+    fn get_prevqty(&self) -> Option<Decimal> {
+        self.prevqty
+    }
+
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+        self.prevqty = qty;
     }
 
     fn get_bidpx(&self) -> Option<Decimal> {
@@ -510,6 +551,7 @@ impl Element for MarketEventData {
     }
 
     fn finalize(&mut self) {
+        self.fill_market();
         self.sync_cross();
         let hashcode = self.digest_market_event().as_u64();
         self.finalized(hashcode);
@@ -677,6 +719,38 @@ impl MarketElement for MarketEventData {
 
     fn set_miccode(&mut self, miccode: Option<Mic>) {
         self.element.miccode = miccode;
+    }
+
+    fn get_lastpx(&self) -> Option<Decimal> {
+        self.element.lastpx
+    }
+
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
+        self.element.lastpx = px;
+    }
+
+    fn get_lastqty(&self) -> Option<Decimal> {
+        self.element.lastqty
+    }
+
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+        self.element.lastqty = qty;
+    }
+
+    fn get_prevpx(&self) -> Option<Decimal> {
+        self.element.prevpx
+    }
+
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
+        self.element.prevpx = px;
+    }
+
+    fn get_prevqty(&self) -> Option<Decimal> {
+        self.element.prevqty
+    }
+
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+        self.element.prevqty = qty;
     }
 
     fn get_bidpx(&self) -> Option<Decimal> {

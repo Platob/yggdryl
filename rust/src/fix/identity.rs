@@ -16,9 +16,9 @@ use super::{
     CROSSUUID_TAG_NAME, CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXPIRUNIX_TAG_NAME, FixRegistry,
     HASHCODE_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, PARENTUUIDS_TAG_NAME,
-    PLUGINID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, PX_TAG_NAME, QTY_TAG_NAME,
-    RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOURCEURL_TAG_NAME, STATE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME,
+    PLUGINID_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    PX_TAG_NAME, QTY_TAG_NAME, RECORDEDAT_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME,
+    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, UNIT_TAG_NAME, UNIX_TAG_NAME,
 };
 
 /// The standard header facts every message holds typed, beside its row.
@@ -423,6 +423,10 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
         );
     } else if is(PX_TAG_NAME) {
         event.set_px(decimal().unwrap_or(Decimal::ZERO));
+    } else if is(PREVPX_TAG_NAME) {
+        event.set_prevpx(decimal());
+    } else if is(PREVQTY_TAG_NAME) {
+        event.set_prevqty(decimal());
     } else if is(QTY_TAG_NAME) {
         event.set_qty(decimal().unwrap_or(Decimal::ZERO));
     } else if is(UNIT_TAG_NAME) {
@@ -522,6 +526,10 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
             .then(|| Scalar::from_sequence(parents.iter().copied().map(Scalar::Uuid)))
     } else if is(PX_TAG_NAME) {
         number(event.get_px())
+    } else if is(PREVPX_TAG_NAME) {
+        event.get_prevpx().map(Scalar::from)
+    } else if is(PREVQTY_TAG_NAME) {
+        event.get_prevqty().map(Scalar::from)
     } else if is(QTY_TAG_NAME) {
         number(event.get_qty())
     } else if is(UNIT_TAG_NAME) {

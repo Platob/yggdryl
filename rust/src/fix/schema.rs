@@ -163,11 +163,11 @@ pub fn fix_schema_tags() -> Vec<i32> {
         ISINCODE_TAG_NAME as ISIN, METADATA_TAG_NAME as METADATA, MICCODE_TAG_NAME as MIC,
         MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
         MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
-        PLUGINID_TAG_NAME as PLUGINID, PREVUNIX_TAG_NAME as PREVUNIX,
-        PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX, QTY_TAG_NAME as QTY,
-        RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL, SEQNUM_TAG_NAME as SEQNUM,
-        SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL, STATE_TAG_NAME as STATE,
-        UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
+        PLUGINID_TAG_NAME as PLUGINID, PREVPX_TAG_NAME as PREVPX, PREVQTY_TAG_NAME as PREVQTY,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX,
+        QTY_TAG_NAME as QTY, RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL,
+        SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
+        STATE_TAG_NAME as STATE, UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -261,14 +261,18 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &mut tags,
         &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693],
     );
-    // What it states: the side, the price and quantity this crate settled,
-    // then the protocol's own values, then the quote's two lanes.
+    // What it states: the side, the price and quantity this crate settled
+    // beside what each moved from, then the protocol's own values - the last
+    // trade among them, which a settled price is read off - then the quote's
+    // two lanes.
     band(
         &mut tags,
         &[
             54,
             PX.0,
+            PREVPX.0,
             QTY.0,
+            PREVQTY.0,
             UNIT.0,
             15,
             44,

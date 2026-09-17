@@ -652,6 +652,17 @@
         }
       },
       {
+        "name": "prevpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "prevpx",
+          "fix:tag": "65051"
+        }
+      },
+      {
         "name": "qty",
         "dtype": {
           "type": "null"
@@ -660,6 +671,17 @@
         "metadata": {
           "fix:field": "qty",
           "fix:tag": "65044"
+        }
+      },
+      {
+        "name": "prevqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "prevqty",
+          "fix:tag": "65052"
         }
       },
       {
