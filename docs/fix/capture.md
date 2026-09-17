@@ -151,7 +151,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     ```rust
     use std::sync::Arc;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl::{FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A bridge row states its fields and not its type, so this reader is told
@@ -163,7 +163,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
     let held = reader.parse_line(bridge)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
-    assert_eq!(held.by_tag(44)?.as_f64(), Some(41.25));
+    assert_eq!(held.by_tag(44)?, Scalar::from(yggdryl::Decimal::parse("41.25")?));
     // The packed members became three real fields under one nesting.
     let party = yggdryl::FieldPath::from_str("Parties[0].PartyID")?;
     assert_eq!(held.by_path(&party)?.as_str(), Some("BUYSIDE"));
@@ -187,6 +187,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 === "Python"
 
     ```python
+    import decimal
     from pathlib import Path
 
     import pytest
@@ -204,7 +205,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
     assert held.by_tag(55).as_py() == "TTF"
-    assert held.by_tag(44).as_py() == 41.25
+    assert held.by_tag(44).as_py() == decimal.Decimal("41.25")
     # The packed members became three real fields under one nesting.
     assert held.by_path("Parties[0].PartyID").as_py() == "BUYSIDE"
     assert held.by_tag(453).as_py() == 1
@@ -230,7 +231,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { fix } = require('yggdryl')
+    const { Scalar, fix } = require('yggdryl')
 
     // A bridge row states its fields and not its type, so this reader is told
     // to read the untyped row the default refusals drop.
@@ -246,7 +247,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     )
     const [held] = reader.parseLine(bridge)
     assert.equal(held.byTag(55).asJs(), 'TTF')
-    assert.equal(held.byTag(44).asJs(), 41.25)
+    assert.ok(held.byTag(44).equals(Scalar.decimal(4125n, 2)))
     // The packed members became three real fields under one nesting.
     assert.equal(held.byPath('Parties[0].PartyID').asJs(), 'BUYSIDE')
     assert.equal(held.byTag(453).asJs(), 1)
@@ -1040,7 +1041,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
 - A value the column refuses is silence, not a failure: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, leaves `isincode` null, and nothing downstream reads a country off it.
 - A value that would not type - `201=abc` in the `PutOrCall` column - is a null the row holds while the entry keeps the text; a derivation fills the null in place, so the row has one column for the tag and the entry still says `abc`.
-- An absent input is silence: a report stating `LastQty(32)` and no `LastPx(31)` derives no `GrossTradeAmt(381)`, because `lastqty * lastpx` over a null is null, and no term guesses.
+- An absent input is silence: a report stating `LastQty(32)` and no `LastPx(31)` derives no `GrossTradeAmt(381)`, because the quantity times the price over a null is null, and no term guesses.
 - The derivations read codes, and a venue's own word for one is not the code. A bridge row spelling `SECURITYIDSOURCE=isin` beside a `SECURITYID` the check digit closes has stated a source, which stands, and `isin` is not `4` - the dictionary names that code `ISINNumber`, so nothing translated it - so the ISIN column is left null; the same row spelling `SECURITYTYPE=equity` names no code of the `SecurityType` set, so no group files it and no CFI is read off it. The bridge's own `ISINCODE` states the column directly, and the `CFICODE` it spells beside it states the product.
 - A trade stating no quantities states no status: `150=F` alone leaves `OrdStatus` absent, and `state` then holds what the report said happened, `F` as the column spells it, `40TRADE`.
 - An option stating no `PutOrCall` gets a CFI whose exercise is `X`, and `PutOrCall` is not then read back off it: `X` is the code for an exercise left open.

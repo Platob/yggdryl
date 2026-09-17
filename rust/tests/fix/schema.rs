@@ -485,8 +485,8 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|")
         .unwrap();
     let row = buy.into_row(&schema).unwrap();
-    assert_eq!(at(&row, &schema, 132), &Scalar::from(12.5_f64));
-    assert_eq!(at(&row, &schema, 134), &Scalar::from(100.0_f64));
+    assert_eq!(at(&row, &schema, 132), &super::decimal("12.5"));
+    assert_eq!(at(&row, &schema, 134), &super::decimal("100"));
     assert!(at(&row, &schema, 133).is_null(), "no ask lane on a buy");
 
     // And a stated column is never overwritten by a derivation.
@@ -494,7 +494,7 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
         .unwrap();
     let row = stated.into_row(&schema).unwrap();
-    assert_eq!(at(&row, &schema, 132), &Scalar::from(99.0_f64));
+    assert_eq!(at(&row, &schema, 132), &super::decimal("99"));
 }
 
 #[test]

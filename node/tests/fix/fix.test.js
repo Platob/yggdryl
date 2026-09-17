@@ -1674,8 +1674,8 @@ test('a parse restates deprecated fields to their latest aliases', () => {
   // The fill under its newest spelling, reachable by the old one too, and
   // reachable is all it is: an alias is a way of asking rather than a child
   // to store.
-  assert.equal(latest.byTag(32).asJs(), 100)
-  assert.equal(latest.byName('LastShares').asJs(), 100)
+  assert.ok(latest.byTag(32).equals(Scalar.decimal(100n)))
+  assert.ok(latest.byName('LastShares').equals(Scalar.decimal(100n)))
   assert.equal(latest.lastqty, '100')
   const names = [...latest.field.dtype.keys()]
   assert.equal(names.filter((name) => name === 'lastqty').length, 0, 'the event holds it')
@@ -1690,8 +1690,8 @@ test('a parse restates deprecated fields to their latest aliases', () => {
   // in force is a day order, one fill's average is that fill's price, and what
   // it was worth is the quantity times the price.
   assert.equal(latest.byTag(59).toJSON(), '0')
-  assert.equal(latest.byTag(6).asJs(), 10.5)
-  assert.equal(latest.byTag(381).asJs(), 1050)
+  assert.ok(latest.byTag(6).equals(Scalar.decimal(105n, 1)))
+  assert.ok(latest.byTag(381).equals(Scalar.decimal(1050n)))
 })
 
 // A Jolokia answer as a bridge log line writes it: a timestamp and a reader

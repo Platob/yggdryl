@@ -400,7 +400,9 @@
   {
     "name": "underlyingpaymentstreamfixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -424,7 +426,9 @@
   {
     "name": "underlyingpaymentstreamfuturevaluenotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -553,7 +557,9 @@
   {
     "name": "underlyingpaymentstreamratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1651,7 +1657,9 @@
   {
     "name": "underlyingpaymentschedulenotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1699,7 +1707,9 @@
   {
     "name": "underlyingpaymentscheduleratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1759,7 +1769,9 @@
   {
     "name": "underlyingpaymentschedulefixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1849,7 +1861,9 @@
   {
     "name": "underlyingpaymentschedulestepoffsetvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

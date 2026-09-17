@@ -2,7 +2,9 @@
   {
     "name": "paymentstreamreferencelevel",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3232,7 +3234,9 @@
   {
     "name": "streamcommoditysettlperiodnotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3784,7 +3788,9 @@
   {
     "name": "streamcommoditysettlperiodprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

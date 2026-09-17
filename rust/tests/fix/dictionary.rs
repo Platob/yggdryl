@@ -45,7 +45,7 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
     // 4.2, and `LastQty` from 4.3 on.
     let last_qty = registry.field_by_tag(32).expect("tag 32");
     assert_eq!(last_qty.name(), "lastqty");
-    assert_eq!(last_qty.dtype(), &DataType::Float64);
+    assert_eq!(last_qty.dtype(), &DataType::DECIMAL);
     assert_eq!(last_qty.as_metadata().get("display"), Some("LastQty"));
 
     // The dictionary holds one reading of the tag, under one name and one
@@ -207,9 +207,15 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     assert!(source.as_metadata().get("fix:codes").is_some());
     assert!(source.as_metadata().get("fix:codeset").is_none());
 
-    // The float family is what the specification says it is.
+    // A price, a quantity, a price offset and an amount are exact numbers,
+    // at the one decimal width this crate keeps them at; a percentage and
+    // FIX's own `float` stay the floating count the specification names.
     for tag in [31, 38, 44, 6] {
-        let field = registry.field_by_tag(tag).expect("a float-family tag");
+        let field = registry.field_by_tag(tag).expect("an exact-number tag");
+        assert_eq!(field.dtype(), &DataType::DECIMAL, "tag {tag}");
+    }
+    for tag in [155, 231, 211] {
+        let field = registry.field_by_tag(tag).expect("a float tag");
         assert_eq!(field.dtype(), &DataType::Float64, "tag {tag}");
     }
     // And the ones it types otherwise keep those types.
@@ -520,10 +526,15 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// took the names their columns carry: `unix` became `currunix` and
 /// `hashcode` became `currhashcode`, so the crate's tags 65003 and 65017
 /// read as the current instant and the current code next to `crosshashcode`.
+/// It last moved when every FIX quantity, price, price offset and amount
+/// became an exact number: 478 fields are `decimal128(38, 18)` where they
+/// were `float64`, a percentage and FIX's own `float` stay floating, and
+/// the seven derivations that multiply or add across the two state each
+/// operand's exact scale.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 11_906_850_099_867_459_741);
+    assert_eq!(registry.stable_hash(), 7_335_167_131_022_069_334);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

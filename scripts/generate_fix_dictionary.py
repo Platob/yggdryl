@@ -1141,6 +1141,24 @@ def country_case() -> str:
     prefix = "substring(isincode, 1, 2)"
     return case([(f"{prefix} in {quoted_list(crate_countries())}", prefix)])
 
+
+# An exact operand, restated at the scale its arithmetic needs.
+#
+# Every FIX quantity, price, price offset and amount is `decimal128(38, 18)`,
+# and the grammar types a product at the sum of its operands' scales: two
+# such numbers multiply into scale 36, which leaves two integral digits and
+# overflows on any product past ninety-nine. A product therefore states each
+# operand at half the scale, so the product lands back at 18 with twenty
+# integral digits, and a sum states a float operand at the exact scale it is
+# being added to - the grammar shares no type between a decimal and a float.
+# `try_cast` and not `cast`: a number the target scale cannot hold exactly is
+# a derivation that answers nothing, which is what every uncertain rule does,
+# rather than a refusal that would fail the whole message.
+def exact(column: str, scale: int = 9) -> str:
+    """One operand as an exact number of `scale` fractional digits."""
+    return f"try_cast({column} as decimal128(38,{scale}))"
+
+
 # Target tag -> the term, in the grammar's canonical spelling. `Product(460)`
 # is generated from the dictionary's own code set by `attach_derivations`.
 DERIVATION_RULES: tuple[tuple[int, str], ...] = (
@@ -1185,7 +1203,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # stating none is a day order.
     (59, f"case when msgtype in {quoted_list(TIMED)} then '0' end"),
     # Appendix O: the settled amount is the traded amount at the stated rate.
-    (119, "grosstradeamt * settlcurrfxrate"),
+    (119, f"{exact('grosstradeamt')} * {exact('settlcurrfxrate')}"),
     (120, "currency"),
     # A possible duplicate carries the clock of the send it repeats, and the
     # session layer says that is what its original sending time is.
@@ -1199,7 +1217,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (201, prefix_case(PUTORCALL_OF_CFI)),
     # A fill's worth, which Appendix O settles on and Appendix D's execution
     # reports carry.
-    (381, f"case when msgtype in {quoted_list(REPORTS)} then lastqty * lastpx end"),
+    (381, f"case when msgtype in {quoted_list(REPORTS)} then {exact('lastqty')} * {exact('lastpx')} end"),
     (461, cfi_case()),
     # ISO 6166 opens a number with the ISO 3166 code of the country whose
     # agency numbered it, where one did: the crate's registry of countries
@@ -1207,16 +1225,16 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (470, country_case()),
     # A pegged order's price is the reference it pegs to plus its own
     # offset, which is signed: a peg below the reference is a negative one.
-    (839, "peggedrefprice + pegoffsetvalue"),
+    (839, f"peggedrefprice + {exact('pegoffsetvalue', 18)}"),
     # A contract's quantity in units is its quantity in contracts times what
     # one contract multiplies to, an increment in money is the same product
     # of the increment in price, and a trade covering several trading unit
     # periods trades its quantity once in each of them.
     (1146, "minpriceincrement * contractmultiplier"),
     (2367, "lastqty * tradingunitperiodmultiplier"),
-    (2368, "lastqty * contractmultiplier"),
-    (2369, "lastpx * totaltradeqty"),
-    (2370, "totaltradeqty * contractmultiplier"),
+    (2368, f"{exact('lastqty')} * {exact('contractmultiplier')}"),
+    (2369, f"{exact('lastpx')} * {exact('totaltradeqty')}"),
+    (2370, f"{exact('totaltradeqty')} * {exact('contractmultiplier')}"),
     # FIX writes a currency as ISO 4217 and in no other source, so a stated
     # currency states its source too.
     (2897, "case when currency is not null then '6' end"),
@@ -1645,6 +1663,11 @@ def build_catalog(
     return result
 
 
+# The exact number every FIX quantity, price, price offset and amount is
+# typed as: `decimal128(38, 18)`, the crate's own decimal width.
+DECIMAL_DOCUMENT: dict[str, Any] = {"type": "decimal128", "precision": 38, "scale": 18}
+
+
 def dtype_document(name: str) -> dict[str, Any]:
     """The datatype document one FIX datatype name resolves to.
 
@@ -1667,11 +1690,16 @@ def dtype_document(name: str) -> dict[str, Any]:
         "SeqNum": {"type": "int64"},
         "NumInGroup": {"type": "int32"},
         "DayOfMonth": {"type": "int8"},
-        "Qty": {"type": "float64"},
-        "Price": {"type": "float64"},
-        "PriceOffset": {"type": "float64"},
+        # A quantity, a price, a price offset and an amount are exact: the
+        # crate keeps them at `decimal128(38, 18)`, the width its own price
+        # and quantity columns already hold, so a wire that stated `12.5`
+        # never reads back as `12.499999`. A percentage and a float stay
+        # what FIX calls them, a floating count.
+        "Qty": DECIMAL_DOCUMENT,
+        "Price": DECIMAL_DOCUMENT,
+        "PriceOffset": DECIMAL_DOCUMENT,
         "Percentage": {"type": "float64"},
-        "Amt": {"type": "float64"},
+        "Amt": DECIMAL_DOCUMENT,
         "UTCTimestamp": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "TZTimestamp": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "UTCTimeOnly": {"type": "time64", "unit": "nanosecond"},

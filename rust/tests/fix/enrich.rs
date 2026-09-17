@@ -429,7 +429,7 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     // reads: one pass answers both.
     let chained = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
     assert_eq!(text(&chained, 39).as_deref(), Some("0"));
-    assert_eq!(chained.by_tag(151).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(chained.by_tag(151).unwrap(), super::decimal("100"));
     assert_eq!(
         text(&chained, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("0").as_str())
@@ -509,7 +509,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
 
     let reader = super::fixed_codec(Arc::new(registry));
     let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(8.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), super::decimal("8"));
 
     // Removing it silences the fill. `update` merges, and a stored key the
     // incoming field omits is kept as every `fix:` key is, so the removal
@@ -645,14 +645,14 @@ fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
     let half = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|10=0|");
     assert_eq!(half.get_by_tag(381), None);
     let whole = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|10=0|");
-    assert_eq!(whole.by_tag(381).unwrap(), Scalar::from(25.0_f64));
+    assert_eq!(whole.by_tag(381).unwrap(), super::decimal("25"));
 
     // A stated value stands whatever the derivation would say, and a stated
     // null is not a stated value: the derivation fills it in place.
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=99|10=0|");
-    assert_eq!(stated.by_tag(381).unwrap(), Scalar::from(99.0_f64));
+    assert_eq!(stated.by_tag(381).unwrap(), super::decimal("99"));
     let nulled = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|");
-    assert_eq!(nulled.by_tag(381).unwrap(), Scalar::from(25.0_f64));
+    assert_eq!(nulled.by_tag(381).unwrap(), super::decimal("25"));
     // The wire re-emits the message as it now stands, so the column the
     // fill landed in is what the pair says.
     assert_eq!(
@@ -686,7 +686,7 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     assert_eq!(integer(&typed, 460), Some(13));
     let report = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
     assert_eq!(text(&report, 39).as_deref(), Some("0"));
-    assert_eq!(report.by_tag(151).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(report.by_tag(151).unwrap(), super::decimal("100"));
     assert_eq!(
         text(&report, yggdryl::STATE_TAG_NAME.0).as_deref(),
         Some(state("0").as_str())
@@ -879,7 +879,7 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     .required_field("8");
     let value = Scalar::from_record([
         ("orderid", Scalar::from("A")),
-        ("lastqty", Scalar::from(10.0_f64)),
+        ("lastqty", super::decimal("10")),
     ])
     .expect("a record");
     let read =
@@ -996,12 +996,12 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
     // outright, whether the report states nothing left or states nothing.
     let reader = reader();
     let closed = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|84=60|10=0|");
-    assert_eq!(closed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(38).unwrap(), super::decimal("100"));
+    assert_eq!(closed.by_tag(151).unwrap(), super::decimal("0"));
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|151=0|84=60|10=0|");
-    assert_eq!(stated.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(stated.by_tag(38).unwrap(), super::decimal("100"));
     let typed = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=4|14=40|84=60|10=0|");
-    assert_eq!(typed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(typed.by_tag(38).unwrap(), super::decimal("100"));
     assert_eq!(text(&typed, 39).as_deref(), Some("4"));
     // A working report stating what is left orders done plus left, whatever
     // it canceled along the way: a replace that cut the quantity restated
@@ -1010,7 +1010,7 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
         &reader,
         b"8=FIX.4.4|35=8|37=A|39=1|14=40|151=40|84=20|10=0|",
     );
-    assert_eq!(working.by_tag(38).unwrap(), Scalar::from(80.0_f64));
+    assert_eq!(working.by_tag(38).unwrap(), super::decimal("80"));
 }
 
 #[test]
@@ -1024,29 +1024,29 @@ fn the_fixpoint_reaches_the_chains_one_pass_could_not() {
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(forward.by_tag(31).unwrap(), Scalar::from(1.5_f64));
-    assert_eq!(forward.by_tag(381).unwrap(), Scalar::from(15.0_f64));
+    assert_eq!(forward.by_tag(31).unwrap(), super::decimal("1.5"));
+    assert_eq!(forward.by_tag(381).unwrap(), super::decimal("15"));
     let average = settled(
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|14=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(average.by_tag(6).unwrap(), Scalar::from(1.5_f64));
+    assert_eq!(average.by_tag(6).unwrap(), super::decimal("1.5"));
     // What was ordered, read off what was canceled, is what the remainder
     // reads: a new order that canceled nothing yet has everything left.
     let fresh = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=0|14=0|84=100|10=0|");
-    assert_eq!(fresh.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(fresh.by_tag(38).unwrap(), super::decimal("100"));
     assert_eq!(text(&fresh, 39).as_deref(), Some("0"));
-    assert_eq!(fresh.by_tag(151).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(fresh.by_tag(151).unwrap(), super::decimal("100"));
     // A trade over several periods, then the multiplied and the gross
     // quantities read off it.
     let periods = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|32=10|31=3|2353=2|231=5|10=0|",
     );
-    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
-    assert_eq!(periods.by_tag(2370).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(periods.by_tag(2369).unwrap(), Scalar::from(60.0_f64));
-    assert_eq!(periods.by_tag(2368).unwrap(), Scalar::from(50.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), super::decimal("20"));
+    assert_eq!(periods.by_tag(2370).unwrap(), super::decimal("100"));
+    assert_eq!(periods.by_tag(2369).unwrap(), super::decimal("60"));
+    assert_eq!(periods.by_tag(2368).unwrap(), super::decimal("50"));
 }
 
 #[test]
@@ -1066,7 +1066,7 @@ fn a_typed_read_fires_where_the_old_text_read_could_not() {
     );
     assert_eq!(original.get_by_tag(122), None);
     let periods = settled(&reader, b"8=FIX.4.4|35=D|11=A|32=10|2353=2|10=0|");
-    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), super::decimal("20"));
 }
 
 #[test]

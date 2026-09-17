@@ -932,7 +932,7 @@ case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 
 | Validated | at insert, update and load alike, the registry parses the text and checks the grammar's depth and node budget, refusing a malformed one by the field's name; whether every name is a field or a group of the registry, and whether the term binds against those fields, is proven once when the derivations compile - on the first parse or row fill - refusing by the field's name and reading no message for it; the refusal is kept exactly as a compiled list is, so a registry whose derivations refuse compiles once and refuses every ask, on every door, until a field changes |
 | Merge | `update` merges: an incoming derivation replaces the stored one whole, and a stored one the incoming field omits is kept, as every `fix:` key is; a derivation is taken away by `remove_derivation` on the field before an `insert`, which replaces the same identity whole, or by a registry built without it |
 | Evaluated | to a fixpoint, in tag order, a stated non-null value never overwritten, an absent input null, a refused value silence - the [parse's contract](capture.md#what-a-message-implied-is-filled-in) |
-| Typed | the answer lands through the dictionary's own field for the tag, so `then 0` on a `float64` field is `0.0`, `then '2'` on a `state` field is the state `2` spells, and a prefix `CountryOfIssue`'s `in (...)` does not list - `XS`, `EU`, an unassigned pair - is refused by nothing but the term's own condition, because the `country` datatype validates width alone |
+| Typed | the answer lands through the dictionary's own field for the tag, so `then 0` on a `decimal128(38, 18)` field is that decimal zero, `then '2'` on a `state` field is the state `2` spells, and a prefix `CountryOfIssue`'s `in (...)` does not list - `XS`, `EU`, an unassigned pair - is refused by nothing but the term's own condition, because the `country` datatype validates width alone |
 
 ### Configuring a derivation
 
@@ -945,7 +945,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
     use yggdryl::expression::Term;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar};
+    use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -966,12 +966,14 @@ A derivation is metadata on the field, so it is configured the way any field fac
     // Every reader linked to the registry fills by the edited derivation.
     let reader = FixCodec::new(Arc::new(registry));
     let filled = reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|")?.next().expect("one frame")?;
-    assert_eq!(filled.by_tag(151)?, Scalar::from(8.0_f64));
+    // A quantity is exact, so the remainder reads back as the number it is.
+    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal::parse("8")?));
     ```
 
 === "Python"
 
     ```python
+    import decimal
     from pathlib import Path
 
     from yggdryl.fix import FixCodec, FixRegistry
@@ -986,7 +988,8 @@ A derivation is metadata on the field, so it is configured the way any field fac
     # Every reader linked to the registry fills by the edited derivation.
     reader = FixCodec(registry)
     filled = next(reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|"))
-    assert filled.by_tag(151).as_py() == 8.0
+    # A quantity is exact, so it crosses as a `decimal.Decimal`.
+    assert filled.by_tag(151).as_py() == decimal.Decimal("8")
     ```
 
 === "JavaScript"
@@ -1006,12 +1009,26 @@ A derivation is metadata on the field, so it is configured the way any field fac
     // Every reader linked to the registry fills by the edited derivation.
     const reader = new fix.FixCodec(registry)
     const filled = reader.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|')).next().value
-    assert.equal(filled.byTag(151).asJs(), 8)
+    // A quantity is exact, so it crosses as its coefficient and its scale
+    // rather than as a number JavaScript would round.
+    assert.equal(filled.byTag(151).unscaled, 8_000_000_000_000_000_000n)
+    assert.equal(filled.byTag(151).scale, 18)
     ```
 
 ### The derivations the dictionary carries
 
 The generator writes the specification's tables - FIX 4.4's Appendix D for an order's life, 4.2's Appendix O for what a foreign exchange trade settles on, Appendix 6-D for the CFI each security type names, and the code sets' own facts - onto 29 fields as one term each, from `DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, every name the term reads validated at generation against the dictionary (a field, a group or a crate column). `SecurityType(167)`, `PutOrCall(201)` and `CFICode(461)` are rendered from the Appendix 6-D tables the generator holds, `Product(460)` from the groups the dictionary's own `SecurityType` code set files each value under, and `CountryOfIssue(470)` from the crate's own registry of ISO 3166 codes, `StringEnum::COUNTRIES`, which the generator reads off `rust/src/types/string/registries.rs` rather than copying: the `country` datatype validates width alone, so the 249 assigned codes are the derivation's `in (...)`, and the one list they come from is the registry's. The texts below are the stored texts, exactly.
+
+Six of them state a scale. Every FIX quantity, price, price offset and
+amount is `decimal128(38, 18)`, and the grammar types a product at the sum
+of its operands' scales, so two such numbers would multiply into scale 36 -
+two integral digits, which overflows on any product past ninety-nine - and a
+decimal and a float share no type at all. A product therefore states each
+operand at half the scale, so it lands back at 18 with twenty integral
+digits, and a sum states a float operand at the exact scale it is added to.
+`try_cast` and never `cast`: a number the stated scale cannot hold exactly
+is a rule that answers nothing, which is what every uncertain rule does,
+rather than a refusal that would fail the message.
 
 | Fills | `fix:derivation` |
 | --- | --- |
@@ -1025,7 +1042,7 @@ The generator writes the specification's tables - FIX 4.4's Appendix D for an or
 | `SecurityID(48)` | `isincode` |
 | `Symbol(55)` | `coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)` |
 | `TimeInForce(59)` | `case when msgtype in ('D', 'G', '8') then '0' end` |
-| `SettlCurrAmt(119)` | `grosstradeamt * settlcurrfxrate` |
+| `SettlCurrAmt(119)` | `try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))` |
 | `SettlCurrency(120)` | `currency` |
 | `OrigSendingTime(122)` | `case when possdupflag then sendingtime end` |
 | `BidPx(132)` | `bidspotrate + bidforwardpoints` |
@@ -1033,16 +1050,16 @@ The generator writes the specification's tables - FIX 4.4's Appendix D for an or
 | `LeavesQty(151)` | `case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end` |
 | `SecurityType(167)` | `case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end` |
 | `PutOrCall(201)` | `case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end` |
-| `GrossTradeAmt(381)` | `case when msgtype in ('8', '9') then lastqty * lastpx end` |
+| `GrossTradeAmt(381)` | `case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end` |
 | `Product(460)` | `case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end` |
 | `CFICode(461)` | `case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end` |
 | `CountryOfIssue(470)` | `case when substring(isincode, 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(isincode, 1, 2) end` |
-| `PeggedPrice(839)` | `peggedrefprice + pegoffsetvalue` |
+| `PeggedPrice(839)` | `peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))` |
 | `MinPriceIncrementAmount(1146)` | `minpriceincrement * contractmultiplier` |
 | `TotalTradeQty(2367)` | `lastqty * tradingunitperiodmultiplier` |
-| `LastMultipliedQty(2368)` | `lastqty * contractmultiplier` |
-| `TotalGrossTradeAmt(2369)` | `lastpx * totaltradeqty` |
-| `TotalTradeMultipliedQty(2370)` | `totaltradeqty * contractmultiplier` |
+| `LastMultipliedQty(2368)` | `try_cast(lastqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))` |
+| `TotalGrossTradeAmt(2369)` | `try_cast(lastpx as decimal128(38,9)) * try_cast(totaltradeqty as decimal128(38,9))` |
+| `TotalTradeMultipliedQty(2370)` | `try_cast(totaltradeqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))` |
 | `CurrencyCodeSource(2897)` | `case when currency is not null then '6' end` |
 
 The crate's three derived columns declare theirs in `fix/crated.rs`, beside the field:

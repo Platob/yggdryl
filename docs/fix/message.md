@@ -634,7 +634,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert_eq!(latest.by_path(&FieldPath::from_str("parties[1].partyid")?)?, Scalar::from("CLIENT1"));
     assert_eq!(latest.by_path(&FieldPath::from_str("parties[1].partyrole")?)?, Scalar::from(3));
     // LastShares is LastQty, reachable by either spelling.
-    assert_eq!(latest.by_tag(32)?, Scalar::from(100.0_f64));
+    assert_eq!(latest.by_tag(32)?, Scalar::from(yggdryl::Decimal::from_int(100)));
     assert_eq!(latest.by_name("LastShares")?, latest.by_tag(32)?);
 
     // What the message said of itself is its header's; the wire opens with
@@ -649,6 +649,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
 === "Python"
 
     ```python
+    import decimal
     from pathlib import Path
 
     from yggdryl.fix import FixCodec, FixRegistry
@@ -678,7 +679,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
     assert latest.by_path("parties[1].partyrole").as_py() == 3
     # LastShares is LastQty, reachable by either spelling.
-    assert latest.by_tag(32).as_py() == 100.0
+    assert latest.by_tag(32).as_py() == decimal.Decimal(100)
     assert latest.by_name("LastShares") == latest.by_tag(32)
 
     # What the message said of itself is its header's; the wire opens with
@@ -695,7 +696,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { fix } = require('yggdryl')
+    const { Scalar, fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry)
@@ -722,7 +723,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     assert.equal(latest.byPath('parties[1].partyid').asJs(), 'CLIENT1')
     assert.equal(latest.byPath('parties[1].partyrole').asJs(), 3)
     // LastShares is LastQty, reachable by either spelling.
-    assert.equal(latest.byTag(32).asJs(), 100)
+    assert.ok(latest.byTag(32).equals(Scalar.decimal(100n)))
     assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
 
     // What the message said of itself is its header's; the wire opens with

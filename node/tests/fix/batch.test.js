@@ -378,12 +378,12 @@ test('a parse fills what the dictionary derives, through both doors', () => {
   // There is no enriching pass: what a message implies is filled where it
   // is parsed, so the row a capture lands in states it already.
   assert.deepEqual(column(rows, 'leavesqty'), [60])
-  assert.equal(message.byTag(151).asJs(), 60)
+  assert.ok(message.byTag(151).equals(Scalar.decimal(60n)))
   assert.deepEqual(column(rows, 'avgpx'), [10.5])
-  assert.equal(message.byTag(6).asJs(), 10.5)
+  assert.ok(message.byTag(6).equals(Scalar.decimal(105n, 1)))
   // A derived tag the fixed row does not carry is filled on the message and
   // has no column to appear in: the row is a projection of the message.
-  assert.equal(message.byTag(381).asJs(), 420)
+  assert.ok(message.byTag(381).equals(Scalar.decimal(420n)))
   assert.equal(rows.schema.fields.some((field) => field.name === 'grosstradeamt'), false)
   // The carried column still leads the row.
   assert.equal(rows.schema.fields[0].name, 'body')
@@ -581,7 +581,7 @@ test('a set value is typed by the registry field and appended when absent', () =
   assert.equal(message.header().msgseqnum, 7)
   assert.equal(message.byTag(34).asJs(), 7)
   assert.equal(message.px, '10.5')
-  assert.equal(message.byTag(44).asJs(), 10.5)
+  assert.ok(message.byTag(44).equals(Scalar.decimal(105n, 1)))
 })
 
 test('a set value replaces an existing child in place and keeps the tag index', () => {
@@ -622,7 +622,7 @@ test('a set leaves the entries, the wire and the digest untouched', () => {
   message.set(38, Scalar.float(100))
   assert.deepEqual(message.entries().length, parsed.entries().length + 1)
   assert.equal(message.qty, '100')
-  assert.equal(message.byTag(38).asJs(), 100)
+  assert.ok(message.byTag(38).equals(Scalar.decimal(100n)))
   // A null is stored as a stated null.
   message.set(55, null)
   assert.equal(message.field.fieldAt(message.field.indexOf('symbol')).nullable, true)

@@ -319,10 +319,7 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
 
     // The row holds the translated code and the typed number.
     assert_eq!(message.by_name("side").unwrap().as_str(), Some("BUY"));
-    assert_eq!(
-        message.by_name("orderqty").unwrap(),
-        Scalar::from(100.0_f64)
-    );
+    assert_eq!(message.by_name("orderqty").unwrap(), super::decimal("100"));
     // The side is one of the event's own facts, so it is no entry of the
     // row: the wire spells it back under its own tag as the code the set
     // holds, never as the name the column reads it by.
@@ -455,8 +452,8 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // quantity and a price are numbers, and a side is the packed code.
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
     assert_eq!(message.by_tag(54).unwrap().as_str(), Some("BUY"));
-    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(1200.0));
-    assert_eq!(message.by_tag(44).unwrap().as_f64(), Some(41.25));
+    assert_eq!(message.by_tag(38).unwrap(), super::decimal("1200"));
+    assert_eq!(message.by_tag(44).unwrap(), super::decimal("41.25"));
 
     // The occurrence's packed members became three real fields under one
     // nesting, each resolved to its own tag rather than kept as text.
@@ -2141,8 +2138,8 @@ fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
     assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
     assert_eq!(message.by_tag(17).unwrap().as_str(), Some("E1"));
     assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
-    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(21.0));
-    assert_eq!(message.by_tag(31).unwrap().as_f64(), Some(83.08));
+    assert_eq!(message.by_tag(32).unwrap(), super::decimal("21"));
+    assert_eq!(message.by_tag(31).unwrap(), super::decimal("83.08"));
     // A nested element's attributes are the same pairs, flattened - FIXML
     // spells a component as an element and a field as an attribute.
     assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));

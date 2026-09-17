@@ -15,6 +15,16 @@ use crate::{
 };
 
 /// One path, resolved once, as every FIX navigator now takes it.
+/// One exact number, spelled the way a wire spells it.
+///
+/// Every FIX quantity, price, price offset and amount is
+/// `decimal128(38, 18)`, so a pin states the number in text and never as a
+/// float: `82.5` is a value a `f64` holds approximately and a decimal holds
+/// exactly.
+fn decimal(text: &str) -> Scalar {
+    Scalar::from(crate::types::Decimal::parse(text).expect("an exact number"))
+}
+
 fn fpath(spelling: &str) -> crate::FieldPath {
     crate::FieldPath::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"))
 }
@@ -2954,24 +2964,24 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|")
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(60.0_f64));
-    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(420.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), decimal("60"));
+    assert_eq!(held.by_tag(381).unwrap(), decimal("420"));
     // One fill, so the average is that fill's price.
-    assert_eq!(held.by_tag(6).unwrap(), Scalar::from(10.5_f64));
+    assert_eq!(held.by_tag(6).unwrap(), decimal("10.5"));
 
     // A closed order leaves nothing, whatever the arithmetic of the other two
     // would say: Appendix D shows zero on every terminal row.
     let closed = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|")
         .expect("a readable report");
-    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(151).unwrap(), decimal("0"));
 
     // The same identity read backwards: what was ordered is what is left plus
     // what was done.
     let ordered = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
         .expect("a readable report");
-    assert_eq!(ordered.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(ordered.by_tag(38).unwrap(), decimal("100"));
 }
 
 #[test]
@@ -2991,14 +3001,11 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     for tag in [44, 38, 53] {
         assert!(!columns.contains(&tag), "{tag} is px or qty, not a column");
     }
-    assert_eq!(
-        held.by_tag(super::PX_TAG_NAME.0).unwrap(),
-        Scalar::from(crate::types::Decimal::parse("82.5").unwrap())
-    );
+    assert_eq!(held.by_tag(super::PX_TAG_NAME.0).unwrap(), decimal("82.5"));
     // Read back under FIX's own tag it answers as that tag's field types it,
     // which is the float the dictionary gives every `Price`.
-    assert_eq!(held.by_tag(44).unwrap(), Scalar::from(82.5_f64));
-    assert_eq!(held.by_tag(38).unwrap(), Scalar::from(300.0_f64));
+    assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
+    assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
     // `Quantity(53)` is the retired spelling of the same fact: a line
     // stating it fills the quantity, and every reading answers under the
     // spelling the dictionary keeps, exactly as a restatement leaves it.
@@ -3006,7 +3013,7 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     let spelled = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|53=300|10=0|")
         .expect("a readable report");
-    assert_eq!(spelled.by_tag(38).unwrap(), Scalar::from(300.0_f64));
+    assert_eq!(spelled.by_tag(38).unwrap(), decimal("300"));
     // The last trade is its own fact beside them, under FIX's own tag.
     assert_eq!(held.get_lastpx(), crate::types::Decimal::parse("82.5").ok());
     // How long it stands, as the message spelled it: what `1` names is the
@@ -3067,7 +3074,7 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
     let held = codec
         .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|")
         .expect("a readable report");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(999.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), decimal("999"));
 
     // Idempotent: a value derived once is a stated value the second time, so
     // the message read back from its own wire - which spells what it derived
@@ -3121,10 +3128,10 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
             b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
         )
         .expect("a readable report");
-    assert_eq!(held.by_tag(381).unwrap(), Scalar::from(125.0_f64));
+    assert_eq!(held.by_tag(381).unwrap(), decimal("125"));
     assert_eq!(
         held.by_tag(119).unwrap(),
-        Scalar::from(137.5_f64),
+        decimal("137.5"),
         "the traded amount at the stated rate",
     );
     let settled = held.by_tag(120).unwrap();
@@ -3167,7 +3174,8 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     assert_eq!(message.get_by_tag(99), Some(Scalar::Null));
     assert!(!message.entries().iter().any(|held| held.tag() == 99));
 
-    // A value the list does not name is read as the price it is.
+    // A value the list does not name is read as the price it is - a float
+    // here, because the field this registry holds for the tag is one.
     let message = super::FixCodec::new(registry)
         .parse_fix_line(b"99=12.5|")
         .expect("a readable frame");
@@ -4530,7 +4538,13 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let mut gross = edited.field_by_tag(381).unwrap().clone();
     gross
         .as_fix_mut()
-        .set_derivation(&"lastqty * lastpx * settlcurrfxrate".parse().unwrap())
+        // Three exact operands at a third of the scale each, so the product
+        // lands back at eighteen digits with room in front of the point.
+        .set_derivation(
+            &"try_cast(lastqty as decimal128(38,6)) * try_cast(lastpx as decimal128(38,6)) * try_cast(settlcurrfxrate as decimal128(38,6))"
+                .parse()
+                .unwrap(),
+        )
         .unwrap();
     let before = edited.derivations().unwrap();
     edited.update(gross).unwrap();

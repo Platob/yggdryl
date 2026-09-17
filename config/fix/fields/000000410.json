@@ -998,7 +998,9 @@
   {
     "name": "deliveryschedulenotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

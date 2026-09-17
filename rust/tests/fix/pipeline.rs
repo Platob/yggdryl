@@ -540,7 +540,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         tag_column(&read, yggdryl::PX_TAG_NAME.0)[FILL_ROW].as_decimal(),
         Some((yggdryl::i256::from_i128(547_771_791_547_861_000_000), 18))
     );
-    assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
+    assert_eq!(tag_column(&read, 151)[FILL_ROW], super::decimal("0"));
     // The dictionary's own column holds the code the wire wrote; the crate's
     // `state` is the one column that ranks it, and `2` is a filled order,
     // which sorts after every live state.
@@ -564,7 +564,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         tag_column(&read, yggdryl::QTY_TAG_NAME.0)[ROUTED_ROW],
         tag_column(&read, yggdryl::QTY_TAG_NAME.0)[FILL_ROW]
     );
-    assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
+    assert_eq!(tag_column(&read, 31)[ROUTED_ROW], super::decimal("547.77"));
 
     // Every projected row carries the code it settled on its content.
     // Distinct real messages remain distinct, independently of the separate

@@ -293,9 +293,8 @@ fn a_bridge_frame_carrying_a_row_is_the_type_that_row_states() {
     assert_eq!(
         message
             .by_path(&path("TrdInstrmtLegGrp[0].LegPreAllocGrp[0].LegAllocQty"))
-            .unwrap()
-            .as_f64(),
-        Some(600.0)
+            .unwrap(),
+        super::decimal("600")
     );
     assert_eq!(
         message
@@ -341,7 +340,7 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
         .into_iter()
         .find(|message| {
             message.header().msgtype() == "8"
-                && message.get_by_tag(32).and_then(|held| held.as_f64()) == Some(21.0)
+                && message.get_by_tag(32) == Some(super::decimal("21"))
         })
         .expect("the fill of 21 shares");
 
@@ -351,8 +350,9 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
     // source and the country that ISIN opens with, the product the
     // dictionary files the security type under, the market the line names
     // first, and the ranked state it reports.
-    let gross = fill.by_tag(381).unwrap().as_f64().expect("GrossTradeAmt");
-    assert!((gross - 21.0 * 83.08).abs() < 1e-6, "{gross}");
+    // Exact, because a quantity times a price is an exact number and no
+    // longer a float that has to be compared within a tolerance.
+    assert_eq!(fill.by_tag(381).unwrap(), super::decimal("1744.68"));
     assert_eq!(fill.by_tag(120).unwrap().as_str(), Some("CHF"));
     assert_eq!(
         fill.by_tag(yggdryl::PX_TAG_NAME.0).unwrap().as_decimal(),
@@ -377,7 +377,7 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
         yggdryl::types::State::from_spelling("1"),
     );
     // A stated value is never a derived one: the line said 260 remain.
-    assert_eq!(fill.by_tag(151).unwrap().as_f64(), Some(260.0));
+    assert_eq!(fill.by_tag(151).unwrap(), super::decimal("260"));
 
     // An identifier the check digit does not close is no identifier: the
     // anonymized line names one, and nothing is read off it.

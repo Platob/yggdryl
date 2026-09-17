@@ -717,12 +717,12 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
             // is one - is filled on the message and simply has no column to
             // appear in. The row is a projection of the message, not the whole
             // of it.
-            None => assert_eq!(held, Scalar::from(420.0_f64), "tag {tag}"),
+            None => assert_eq!(held, super::decimal("420"), "tag {tag}"),
         }
     }
-    assert_eq!(first_tag_value(&filled, 151), Scalar::from(60.0_f64));
+    assert_eq!(first_tag_value(&filled, 151), super::decimal("60"));
     // One fill, so the average is that fill's price.
-    assert_eq!(first_tag_value(&filled, 6), Scalar::from(10.5_f64));
+    assert_eq!(first_tag_value(&filled, 6), super::decimal("10.5"));
     // The record is the message read as a tree, so the row's arrival record
     // is what the line read emits.
     assert_eq!(
@@ -1424,7 +1424,7 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
         [Some("FIX.4.2"), None],
     ));
     assert!(old.as_field().index_of("lastqty").is_none());
-    assert_eq!(old.by_tag(32).unwrap().as_f64(), Some(100.0));
+    assert_eq!(old.by_tag(32).unwrap(), super::decimal("100"));
 
     // A capture absent, unmatched or empty is silence, never an instruction
     // and never an error.

@@ -1039,7 +1039,9 @@
   {
     "name": "underlyingreturnratecommissionamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1063,7 +1065,9 @@
   {
     "name": "underlyingreturnratetotalcommissionpertrade",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1570,7 +1574,9 @@
   {
     "name": "underlyingreturnrateprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
