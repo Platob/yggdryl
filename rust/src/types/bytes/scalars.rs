@@ -508,10 +508,6 @@ impl<'de> Deserialize<'de> for Bytes {
 }
 
 impl Value for Bytes {
-
-    /// The family's default layout; [`Code::id`] answers the exact
-    /// layout a value is stored in.
-
     fn dtype(&self) -> Result<DataType> {
         Self::dtype(self)
     }
@@ -575,6 +571,12 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     }
 }
 
+/// The inline threshold an integration test cannot reach.
+///
+/// `INLINE_BYTES` is crate-private: it is the byte count below which a
+/// `Bytes` stores its payload in the value rather than behind an `Arc`, so
+/// the boundary has to be crossed from inside. Everything a caller can
+/// observe lives in `tests/types/bytes.rs`.
 #[cfg(test)]
 mod tests {
     use super::{Bytes, INLINE_BYTES};

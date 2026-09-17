@@ -699,6 +699,12 @@ macro_rules! protocol_field_types {
 
 for_each_well_known_protocol!(protocol_field_types);
 
+/// The protocol list an integration test cannot reach.
+///
+/// `for_each_well_known_protocol!` is a crate-private macro: it is the one
+/// place the well-known protocols are named, and this pin checks each one
+/// reaches the key its own scheme spells. The rest of the suite lives in
+/// `tests/types/metadata.rs`.
 #[cfg(test)]
 mod tests {
     use crate::metadata::for_each_well_known_protocol;

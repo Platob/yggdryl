@@ -11,9 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::types::scalar::{Value, text_scalar_value};
-use crate::{
-    DataType, Error, Result, Scalar, hashing::stable_hash_display,
-};
+use crate::{DataType, Error, Result, Scalar, hashing::stable_hash_display};
 
 use super::registry::{self, Basis, Edge, Zone};
 

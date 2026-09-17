@@ -70,7 +70,6 @@ impl From<bool> for Scalar {
 }
 
 impl Value for Null {
-
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Null)
     }
@@ -86,7 +85,6 @@ impl Value for Null {
 }
 
 impl Value for Boolean {
-
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Boolean)
     }

@@ -74,7 +74,6 @@ const _: () = assert!(std::mem::size_of::<Geography>() == 16);
 macro_rules! geospatial_value {
     ($leaf:ident, $dtype:expr) => {
         impl Value for $leaf {
-
             fn dtype(&self) -> Result<DataType> {
                 $dtype
             }

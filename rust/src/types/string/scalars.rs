@@ -29,9 +29,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{StringLayout, StringParameters, trim_padding};
 use crate::types::Scalar;
-use crate::{
-    Charset, DataType, Error, Result, Value,
-};
+use crate::{Charset, DataType, Error, Result, Value};
 
 /// How many bytes of text a [`Str`] holds without reaching the heap.
 ///
@@ -623,10 +621,6 @@ impl<'de> Deserialize<'de> for Str {
 }
 
 impl Value for Str {
-
-    /// The family's default layout; [`Code::id`] answers the exact
-    /// layout a value is stored in.
-
     fn dtype(&self) -> Result<DataType> {
         Self::dtype(self)
     }
@@ -720,6 +714,12 @@ pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
     })
 }
 
+/// The inline threshold an integration test cannot reach.
+///
+/// `INLINE_CAPACITY` is crate-private: it is the byte count below which a
+/// `Str` stores its text in the value rather than behind an `Arc`, so the
+/// boundary has to be crossed from inside. Everything a caller can observe
+/// lives in `tests/types/strings.rs`.
 #[cfg(test)]
 mod tests {
     use super::{INLINE_CAPACITY, Str};

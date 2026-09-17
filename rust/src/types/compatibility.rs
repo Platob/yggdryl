@@ -375,9 +375,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
-            Ok((D::utf8(), true))
-        }
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -489,9 +487,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
-            Ok((D::utf8(), true))
-        }
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -595,9 +591,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
-            Ok((D::utf8(), true))
-        }
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

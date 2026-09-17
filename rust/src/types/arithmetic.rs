@@ -526,6 +526,11 @@ impl Neg for &Scalar {
     }
 }
 
+/// The arithmetic dispatcher an integration test cannot reach.
+///
+/// `Arithmetic` is crate-private: it names which operation a binary walk is
+/// performing, and a caller reaches it only through the operator traits.
+/// What a caller can observe lives in `tests/types/scalar.rs`.
 #[cfg(test)]
 mod tests {
     use super::*;

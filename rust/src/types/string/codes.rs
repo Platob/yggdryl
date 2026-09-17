@@ -611,6 +611,12 @@ fn ascii_values_refusal(values: &DataType) -> Error {
     }
 }
 
+/// The code readers an integration test cannot reach.
+///
+/// `code_text`, `code_cell_text` and `code_for_extension` are crate-private:
+/// they are the doors every registered code goes through, and a caller sees
+/// only the datatype they answer for. The rest of the suite lives in
+/// `tests/types/datatype/coded.rs`.
 #[cfg(test)]
 mod tests {
     use super::{code_cell_text, code_for_extension, code_text};

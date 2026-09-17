@@ -1,3 +1,10 @@
+//! The field-pair walk an integration test cannot reach.
+//!
+//! `Differences::from_fields` is crate-private: it is the borrowed walk
+//! [`OwnedDifferences::from_fields`] owns its answers from, so the wide
+//! cases have to be measured from inside. What a caller can observe lives
+//! in `tests/types/field/comparison.rs`.
+
 use super::{Differences, OwnedDifferences};
 use crate::{DataType, Field};
 

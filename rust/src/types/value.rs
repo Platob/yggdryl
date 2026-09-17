@@ -1750,7 +1750,3 @@ fn validate_map(
         None => Ok(()),
     }
 }
-
-#[cfg(test)]
-#[path = "value/tests.rs"]
-mod tests;

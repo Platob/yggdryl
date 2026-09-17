@@ -6,11 +6,10 @@
 
 use std::sync::Arc;
 
-use crate::types::scalar::{Value};
+use crate::types::scalar::Value;
 use crate::{DataType, Result, Scalar, Url};
 
 impl Value for Url {
-
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Url)
     }

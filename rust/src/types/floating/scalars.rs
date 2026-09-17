@@ -544,7 +544,6 @@ impl<'de> Deserialize<'de> for Float32 {
 macro_rules! floating_value {
     ($leaf:ident, $bits:literal) => {
         impl Value for $leaf {
-
             fn dtype(&self) -> Result<DataType> {
                 Ok(DataType::$leaf)
             }

@@ -8,9 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
-use crate::{
-    DataType, Error, Result, Scalar, Value, TimeUnit,
-};
+use crate::{DataType, Error, Result, Scalar, TimeUnit, Value};
 
 /// Operations shared by every signed and unsigned integer representation.
 pub trait IntegerValue: crate::Value {
@@ -208,7 +206,6 @@ pub(crate) fn validate_integer_tuple(
 macro_rules! integer_scalar_value {
     ($leaf:ident, $dtype:expr) => {
         impl Value for $leaf {
-
             fn dtype(&self) -> Result<DataType> {
                 Ok(($dtype)(self))
             }
@@ -224,7 +221,6 @@ macro_rules! integer_scalar_value {
                 }
             }
         }
-
     };
 }
 

@@ -93,9 +93,7 @@ pub trait Value:
 /// the enum rides behind a shared pointer instead.
 macro_rules! text_scalar_value {
     ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
-
         impl Value for $leaf {
-
             fn dtype(&self) -> Result<DataType> {
                 Ok($dtype)
             }

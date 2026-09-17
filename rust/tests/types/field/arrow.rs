@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
 use arrow_schema::{
     DataType as ArrowDataType, Field as ArrowField, Schema,
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
 use yggdryl::types::{BytesLayout, BytesParameters};
-use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, TimeUnit, Timezone};
+use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
     assert!(schema.flags().unwrap().contains(flag));
@@ -789,4 +790,309 @@ fn a_strict_applied_reader_answers_its_schema_and_applies_every_batch() {
         assert_eq!(batch.column(2).null_count(), 0);
     }
     assert!(applied.next().is_none());
+}
+
+fn variant_storage() -> ArrowDataType {
+    ArrowDataType::Struct(arrow_schema::Fields::from(vec![
+        ArrowField::new("metadata", ArrowDataType::Binary, false),
+        ArrowField::new("value", ArrowDataType::Binary, false),
+    ]))
+}
+
+#[test]
+fn a_geometry_field_projects_the_geoarrow_extension_and_reimports_itself() {
+    let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
+    let arrow = field.clone().into_arrow().unwrap();
+    assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+    assert_eq!(arrow.extension_type_name(), Some("geoarrow.wkb"));
+    assert_eq!(
+        arrow.extension_type_metadata(),
+        Some(r#"{"crs":"OGC:CRS84"}"#)
+    );
+
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported, field);
+    // The extension keys are transport: they never reach Field metadata.
+    assert!(imported.as_metadata().is_empty());
+}
+
+#[test]
+fn a_geography_projection_carries_the_edge_algorithm_and_round_trips() {
+    let field = Field::new(
+        "region",
+        DataType::geography(Some("EPSG:4326"), Some(EdgeAlgorithm::Vincenty)).unwrap(),
+        false,
+    );
+    let arrow = field.clone().into_arrow().unwrap();
+    assert_eq!(
+        arrow.extension_type_metadata(),
+        Some(r#"{"crs":"EPSG:4326","edges":"vincenty"}"#)
+    );
+    assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+}
+
+#[test]
+fn a_variant_field_projects_the_canonical_struct_and_reimports_itself() {
+    let field = Field::new("payload", DataType::variant(), true);
+    let arrow = field.clone().into_arrow().unwrap();
+    assert_eq!(arrow.data_type(), &variant_storage());
+    assert_eq!(arrow.extension_type_name(), Some("arrow.parquet.variant"));
+    assert_eq!(arrow.extension_type_metadata(), Some(""));
+
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported.dtype(), &DataType::Variant);
+    assert!(imported.as_metadata().is_empty());
+    assert_eq!(imported, field);
+}
+
+#[test]
+fn a_bare_geoarrow_document_imports_as_the_default_geometry() {
+    let arrow =
+        ArrowField::new("shape", ArrowDataType::Binary, true).with_metadata(HashMap::from([(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "geoarrow.wkb".to_owned(),
+        )]));
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported.dtype(), &DataType::geometry(None).unwrap());
+    let shared = Field::from_arrow_ref(Arc::new(arrow.clone())).unwrap();
+    assert_eq!(shared, imported);
+    let owned = Field::try_from(arrow).unwrap();
+    assert_eq!(owned, imported);
+}
+
+#[test]
+fn an_unknown_extension_name_keeps_todays_import_exactly() {
+    let arrow = ArrowField::new("raw", ArrowDataType::Binary, true).with_metadata(HashMap::from([
+        (
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "someorg.blob".to_owned(),
+        ),
+        (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
+    ]));
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported.dtype(), &DataType::binary());
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+        Some("someorg.blob")
+    );
+    assert_eq!(imported.into_arrow().unwrap(), arrow);
+}
+
+#[test]
+fn our_extension_name_over_a_foreign_storage_keeps_todays_import() {
+    let arrow =
+        ArrowField::new("shape", ArrowDataType::LargeBinary, true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "geoarrow.wkb".to_owned(),
+            ),
+        ]));
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported.dtype(), &DataType::large_binary());
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+        Some("geoarrow.wkb")
+    );
+}
+
+#[test]
+fn a_malformed_geoarrow_document_is_refused_naming_the_key() {
+    let arrow =
+        ArrowField::new("shape", ArrowDataType::Binary, true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "geoarrow.wkb".to_owned(),
+            ),
+            (
+                EXTENSION_TYPE_METADATA_KEY.to_owned(),
+                r#"{"crs":7}"#.to_owned(),
+            ),
+        ]));
+    let refused = Field::from_arrow(&arrow).unwrap_err().to_string();
+    assert!(refused.contains(EXTENSION_TYPE_METADATA_KEY), "{refused}");
+    assert!(refused.contains("crs"), "{refused}");
+}
+
+#[test]
+fn a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both() {
+    let field = Field::from_parts(
+        "shape",
+        DataType::geometry(None).unwrap(),
+        false,
+        [(EXTENSION_TYPE_NAME_KEY, "someorg.other")],
+    )
+    .unwrap();
+    let refused = field.into_arrow().unwrap_err().to_string();
+    assert!(refused.contains("someorg.other"), "{refused}");
+    assert!(refused.contains("geoarrow.wkb"), "{refused}");
+
+    let variant = Field::from_parts(
+        "payload",
+        DataType::variant(),
+        true,
+        [(EXTENSION_TYPE_METADATA_KEY, "shredded")],
+    )
+    .unwrap();
+    let refused = variant.into_arrow().unwrap_err().to_string();
+    assert!(refused.contains("shredded"), "{refused}");
+    assert!(refused.contains("arrow.parquet.variant"), "{refused}");
+}
+
+#[test]
+fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
+    let shredded =
+        ArrowField::new("payload", variant_storage(), true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "arrow.parquet.variant".to_owned(),
+            ),
+            (
+                EXTENSION_TYPE_METADATA_KEY.to_owned(),
+                "shredded".to_owned(),
+            ),
+        ]));
+    let imported = Field::from_arrow(&shredded).unwrap();
+    assert!(matches!(imported.dtype(), DataType::Struct(_)));
+
+    let swapped = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
+        ArrowField::new("value", ArrowDataType::Binary, false),
+        ArrowField::new("metadata", ArrowDataType::Binary, false),
+    ]));
+    let swapped = ArrowField::new("payload", swapped, true).with_metadata(HashMap::from([(
+        EXTENSION_TYPE_NAME_KEY.to_owned(),
+        "arrow.parquet.variant".to_owned(),
+    )]));
+    let imported = Field::from_arrow(&swapped).unwrap();
+    assert!(matches!(imported.dtype(), DataType::Struct(_)));
+}
+
+#[test]
+fn an_ascii_field_projects_the_string_extension_and_reimports_itself() {
+    // US-ASCII is UTF-8, so it rides Arrow's own text storage and the
+    // charset rides the document; a width is that width's fixed binary
+    // and the document names it, so no width is special.
+    for (dtype, storage, document) in [
+        (
+            DataType::ascii(),
+            ArrowDataType::Utf8,
+            r#"{"layout":"string","charset":"us-ascii"}"#,
+        ),
+        (
+            DataType::fixed_ascii(1).unwrap(),
+            ArrowDataType::FixedSizeBinary(1),
+            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":1}"#,
+        ),
+        (
+            DataType::fixed_ascii(3).unwrap(),
+            ArrowDataType::FixedSizeBinary(3),
+            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":3}"#,
+        ),
+        (
+            DataType::fixed_ascii(64).unwrap(),
+            ArrowDataType::FixedSizeBinary(64),
+            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":64}"#,
+        ),
+    ] {
+        let field = Field::new("ccy", dtype, false);
+        let arrow = field.clone().into_arrow().unwrap();
+        assert_eq!(arrow.data_type(), &storage);
+        assert_eq!(arrow.extension_type_name(), Some("yggdryl.string"));
+        assert_eq!(arrow.extension_type_metadata(), Some(document));
+
+        let imported = Field::from_arrow(&arrow).unwrap();
+        assert_eq!(imported, field);
+        assert!(imported.as_metadata().is_empty());
+    }
+}
+
+#[test]
+fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import() {
+    // The document lays out one storage. Any other storage is a foreign
+    // field wearing our name, so the name stays metadata.
+    let document = r#"{"layout":"string","charset":"us-ascii"}"#;
+    let large =
+        ArrowField::new("ccy", ArrowDataType::LargeBinary, true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "yggdryl.string".to_owned(),
+            ),
+            (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+        ]));
+    let imported = Field::from_arrow(&large).unwrap();
+    assert_eq!(imported.dtype(), &DataType::large_binary());
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+        Some("yggdryl.string")
+    );
+    assert_eq!(imported.into_arrow().unwrap(), large);
+
+    // `yggdryl.ascii` names nothing this crate has.
+    let retired = ArrowField::new("ccy", ArrowDataType::FixedSizeBinary(4), true).with_metadata(
+        HashMap::from([(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "yggdryl.ascii".to_owned(),
+        )]),
+    );
+    let imported = Field::from_arrow(&retired).unwrap();
+    assert_eq!(imported.dtype(), &DataType::fixed_size_binary(4).unwrap());
+    assert_eq!(imported.into_arrow().unwrap(), retired);
+}
+
+#[test]
+fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
+    // The four layouts are Arrow's own and a fixed width is the storage,
+    // so only a maximum rides the document.
+    let bounded = BytesParameters::new(BytesLayout::Binary)
+        .try_with_bound(16)
+        .unwrap();
+    let field = Field::new("key", DataType::bytes(bounded).unwrap(), true);
+    let arrow = field.clone().into_arrow().unwrap();
+    assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+    assert_eq!(arrow.extension_type_name(), Some("yggdryl.bytes"));
+    assert_eq!(
+        arrow.extension_type_metadata(),
+        Some(r#"{"layout":"binary","max":16}"#)
+    );
+    let imported = Field::from_arrow(&arrow).unwrap();
+    assert_eq!(imported, field);
+    assert!(imported.as_metadata().is_empty());
+
+    for dtype in [
+        DataType::binary(),
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::fixed_size_binary(16).unwrap(),
+    ] {
+        let arrow = Field::new("key", dtype, true).into_arrow().unwrap();
+        assert_eq!(arrow.extension_type_name(), None, "{arrow:?}");
+    }
+}
+
+#[test]
+fn a_bytes_extension_over_other_storage_keeps_todays_import() {
+    let document = r#"{"layout":"binary","max":16}"#;
+    let large =
+        ArrowField::new("key", ArrowDataType::LargeBinary, true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "yggdryl.bytes".to_owned(),
+            ),
+            (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+        ]));
+    let imported = Field::from_arrow(&large).unwrap();
+    assert_eq!(imported.dtype(), &DataType::large_binary());
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+        Some("yggdryl.bytes")
+    );
+    assert_eq!(imported.into_arrow().unwrap(), large);
+}
+
+#[test]
+fn a_negative_arrow_fixed_binary_width_is_refused() {
+    let refused = DataType::from_arrow(&ArrowDataType::FixedSizeBinary(-1))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("-1"), "{refused}");
+    assert!(DataType::from_arrow(&ArrowDataType::FixedSizeBinary(0)).is_err());
 }

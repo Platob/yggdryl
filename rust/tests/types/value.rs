@@ -1,4 +1,6 @@
-use super::*;
+//! The value a datatype accepts: canonicalization, readings, and absence.
+
+use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -130,8 +132,8 @@ fn temporal_casts_preserve_family_and_timezone() {
 /// The spellings a value takes on the way into a datatype, and the ones it
 /// prints on the way out - the same readings a column takes and prints.
 mod readings {
-    use crate::types::Mapping;
-    use crate::{DataType, Scalar};
+    use yggdryl::types::Mapping;
+    use yggdryl::{DataType, Scalar};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -338,7 +340,7 @@ mod readings {
 
 /// Absence is a value only where the layout stores it beside the values.
 mod absence {
-    use crate::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar};
 
     #[test]
     fn a_union_and_a_run_end_spell_absence_through_a_child() {

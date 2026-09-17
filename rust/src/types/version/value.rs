@@ -280,7 +280,6 @@ impl<'de> Deserialize<'de> for Version {
 }
 
 impl Value for Version {
-
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::Version)
     }

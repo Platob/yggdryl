@@ -7,11 +7,10 @@
 
 use std::sync::Arc;
 
-use crate::types::scalar::{Value};
+use crate::types::scalar::Value;
 use crate::{DataType, MediaType, Result, Scalar};
 
 impl Value for MediaType {
-
     fn dtype(&self) -> Result<DataType> {
         Ok(DataType::MediaType)
     }

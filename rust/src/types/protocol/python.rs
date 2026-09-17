@@ -524,6 +524,12 @@ pub(crate) fn canonicalize_python_kind(value: &str) -> Result<String> {
     PythonKind::from_str(value).map(|kind| kind.as_str().to_owned())
 }
 
+/// The three metadata keys an integration test cannot reach.
+///
+/// `PYTHON_MODULE_KEY`, `PYTHON_QUALNAME_KEY` and `PYTHON_KIND_KEY` are
+/// crate-private: they are the keys a declaration is stored under, and a
+/// caller reads them back only through the borrowed view. What a caller can
+/// observe lives in `tests/types/metadata.rs`.
 #[cfg(test)]
 mod tests {
     use super::*;

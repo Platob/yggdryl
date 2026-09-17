@@ -1,3 +1,10 @@
+//! The ISO readers and writers an integration test cannot reach.
+//!
+//! `format_date`, `format_time`, `format_datetime`, `format_timestamp` and
+//! `format_duration` are crate-private: they are the text every temporal
+//! value renders through, and a caller sees only the rendered value. What a
+//! caller can observe lives in `tests/types/temporal.rs`.
+
 use super::*;
 
 #[test]

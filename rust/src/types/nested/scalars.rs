@@ -163,7 +163,6 @@ impl std::iter::FusedIterator for Children<'_> {}
 macro_rules! nested_value {
     ($leaf:ident, $variant:ident, $id:ident) => {
         impl Value for $leaf {
-
             fn dtype(&self) -> Result<DataType> {
                 Scalar::$variant(self.clone()).dtype()
             }
@@ -179,7 +178,6 @@ macro_rules! nested_value {
                 }
             }
         }
-
     };
 }
 

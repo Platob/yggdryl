@@ -6,6 +6,7 @@ use yggdryl::{
     TimeUnit, UnionMode,
 };
 
+mod enumeration;
 mod mime;
 
 #[test]

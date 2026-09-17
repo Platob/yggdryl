@@ -28,10 +28,10 @@ mod logical;
 mod media;
 #[path = "types/merge.rs"]
 mod merge;
-#[path = "types/regex.rs"]
-mod regex;
 #[path = "types/metadata.rs"]
 mod metadata;
+#[path = "types/regex.rs"]
+mod regex;
 #[path = "types/scalar.rs"]
 mod scalar;
 #[path = "types/strict_cast.rs"]
@@ -40,6 +40,8 @@ mod strict_cast;
 mod string_enum;
 #[path = "types/strings.rs"]
 mod strings;
+#[path = "types/temporal.rs"]
+mod temporal;
 #[path = "types/timezone.rs"]
 mod timezone;
 #[path = "types/typed/mod.rs"]
@@ -48,6 +50,8 @@ mod typed;
 mod url;
 #[path = "types/uuid.rs"]
 mod uuid;
+#[path = "types/value.rs"]
+mod value;
 #[path = "types/value_bounds.rs"]
 mod value_bounds;
 #[path = "types/version.rs"]
