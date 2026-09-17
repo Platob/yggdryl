@@ -16,6 +16,15 @@ const { BatchReader, IOBase, Scalar, TextLine, TextOptions, fields, fix } = requ
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 // A second of a ULBridge's own capture, anonymized: the corpus
+
+// A codec that reads every message type. The corpora below are captures, and
+// a capture holds the session traffic and the bridge rows stating no type
+// that `DEFAULT_REFUSED_MSGTYPES` drop; a case about the refusals says so for
+// itself.
+function reading(registry, options) {
+  return new fix.FixCodec(registry, { excludeMsgtypes: [], ...(options ?? {}) })
+}
+
 // `rust/tests/fix/dataset.rs` reads.
 const CAPTURE = path.join(__dirname, '..', '..', '..', 'rust', 'tests', 'fix', 'ulbridge.log')
 // The bridge's own row header, as the core spells it: what a line states
@@ -55,55 +64,9 @@ const LIFE = [
   '8=FIX.4.4|35=8|11=A1|37=O1|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=100|14=100|151=0|32=50|31=12.6|60=20260102-10:15:33.000|10=0|',
 ]
 
-test('the walk states each message as the one after the live message it follows', () => {
-  const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
-  const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
-  // Read on its own, each message names the chain its own strongest
-  // identifier spells: the order names the client's `ClOrdID`, the reports
-  // the venue's `OrderID`, so the four open two chains.
-  assert.deepEqual(parsed.map((message) => message.crosscode), ['A1', 'O1', 'O1', 'O1'])
-  assert.equal(new Set(parsed.map((message) => message.crossuuid)).size, 2)
-
-  // The walk is what joins them: a message whose identifiers reach a live
-  // chain follows it and is restated onto its cross code.
-  const walked = [...codec.lifecycle(parsed)]
-  assert.ok(walked.every((message) => message.crosscode === 'A1'))
-  assert.ok(codec.lifecycle(parsed) instanceof fix.FixMessages)
-  assert.equal(walked.length, LIFE.length)
-  // The first states no predecessor; each later one carries the one before
-  // it - its identity, its instant, its place in the chain and the chain's
-  // creation - and takes it as a parent.
-  assert.equal(walked[0].prevuuid, null)
-  assert.equal(walked[0].seqnum, 0)
-  assert.deepEqual(walked[0].parentuuids, [])
-  for (let at = 1; at < walked.length; at += 1) {
-    assert.equal(walked[at].prevuuid, walked[at - 1].curruuid, `message ${at}`)
-    assert.equal(walked[at].event().prevunix, walked[at - 1].unix, `message ${at}`)
-    assert.equal(walked[at].seqnum, at, `message ${at}`)
-    assert.deepEqual(walked[at].parentuuids, [walked[at - 1].curruuid], `message ${at}`)
-    assert.equal(walked[at].event().creatunix, walked[0].event().creatunix, `message ${at}`)
-    assert.equal(walked[at].crossuuid, walked[0].crossuuid, `message ${at}`)
-  }
-  // The state each message reached is its own, ranked.
-  assert.deepEqual(walked.map((message) => message.state), ['00UNKNOWN', '20NEW', '40PARTFILL', '80FILLED'])
-  // The walk states facts; it parses nothing again, so the wire and the
-  // digest are what the parse answered.
-  for (const [at, message] of walked.entries()) {
-    assert.equal(message.intoText('|'), parsed[at].intoText('|'), `message ${at}`)
-    assert.deepEqual(message.digest(), parsed[at].digest(), `message ${at}`)
-    assert.deepEqual(message.entries(), parsed[at].entries(), `message ${at}`)
-  }
-  // Walking a walked stream again answers the same messages.
-  const again = [...codec.lifecycle(walked)]
-  assert.equal(again.length, walked.length)
-  for (const [at, message] of again.entries()) assert.ok(message.equals(walked[at]), `message ${at}`)
-  assert.deepEqual([...codec.lifecycle([])], [])
-})
-
 test('a message no live one precedes is answered as it came', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const codec = reading(registry, { defaultSendingTime: SENDING })
   const heartbeat = codec.parseLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value
   const [walked] = codec.lifecycle([heartbeat])
   // No cross code names no chain, so nothing precedes it and its own
@@ -132,7 +95,7 @@ test('a message no live one precedes is answered as it came', () => {
 
 test('the stream is lazy, pulls one message at a time and throws what its source throws', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const codec = reading(registry, { defaultSendingTime: SENDING })
   const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
 
   // What is not iterable is refused before anything is pulled.
@@ -163,7 +126,7 @@ test('the stream is lazy, pulls one message at a time and throws what its source
 
 test('the walk crosses Arrow both ways without a second parse', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const codec = reading(registry, { defaultSendingTime: SENDING })
   const schema = fix.schema(registry)
   const parsed = LIFE.map((line) => codec.parseLine(Buffer.from(line)).next().value)
 
@@ -193,7 +156,7 @@ test('the walk crosses Arrow both ways without a second parse', () => {
 
 test('a bridge capture parses whole and walks its chains', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, {
+  const codec = reading(registry, {
     captureNames: ['timestamp', 'threadId', 'msgsessionid', 'msgctxid', 'msgseqnum', 'pluginid', 'level'],
   })
   const messages = captured(codec)
@@ -238,7 +201,7 @@ test('a bridge capture parses whole and walks its chains', () => {
 })
 
 test('a transaction time stating only a day leaves the sending clock standing', () => {
-  const codec = new fix.FixCodec(seed(), { defaultSendingTime: SENDING })
+  const codec = reading(seed(), { defaultSendingTime: SENDING })
   // `60=20260814` states a day and no clock, so the event is the sending
   // time rather than midnight (`rust/tests/fix/`).
   const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))

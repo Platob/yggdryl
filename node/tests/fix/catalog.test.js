@@ -15,6 +15,13 @@ const path = require('node:path')
 const test = require('node:test')
 const { DataType, Field, Scalar, TextLine, fields, fix } = require('yggdryl')
 
+// A codec that reads every message type. The corpora below are captures and
+// bridge rows, which state no type and which `DEFAULT_REFUSED_MSGTYPES` drop;
+// a case about the refusals says so for itself.
+function reading(registry, options) {
+  return new fix.FixCodec(registry, { excludeMsgtypes: [], ...(options ?? {}) })
+}
+
 function tagged(name, tag, dtype = 'utf8') {
   const field = Field.from(`${name}: ${dtype}`)
   field.fix.tag = tag
@@ -234,7 +241,7 @@ test('a message reaches its group by the counter that opens it', () => {
   assert.throws(() => held.getGroupByTag(1.5), /tag must be a signed 32-bit integer/)
 
   // And a parse under that registry fills the group beside its counter.
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   const values = [...codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))]
   assert.equal(values.length, 1)
   const value = values[0]
@@ -305,7 +312,7 @@ test('compiled identifier selection returns independent declarations and native 
 
 test('a JSON document is one unknown message through every door', () => {
   const registry = new fix.FixRegistry()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   // A body that is JSON says nothing FIX can read, and being unable to read
   // a body is not an error in the codec: the row is one message named
   // `unknown` with no content, from the line door and the text-line door

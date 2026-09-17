@@ -19,6 +19,15 @@ const { BatchReader, DataType, Field, Scalar, TextLine, fields, fix } = require(
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
+
+// A codec that reads every message type. The corpora below are captures, and
+// a capture holds the session traffic and the bridge rows stating no type
+// that `DEFAULT_REFUSED_MSGTYPES` drop; a case about the refusals says so for
+// itself.
+function reading(registry, options) {
+  return new fix.FixCodec(registry, { excludeMsgtypes: [], ...(options ?? {}) })
+}
+
 let seedRegistry
 function seed() {
   seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
@@ -122,7 +131,7 @@ function stated(message) {
 }
 
 test('parseLines pulls one line at a time and continues past a refused one', () => {
-  const codec = new fix.FixCodec(seed())
+  const codec = reading(seed())
   let pulled = 0
   function* lines() {
     for (const line of [TWO_FRAMES, '']) {
@@ -149,7 +158,7 @@ test('parseLines pulls one line at a time and continues past a refused one', () 
 })
 
 test('an item that is not bytes is refused where it is met', () => {
-  const codec = new fix.FixCodec(seed())
+  const codec = reading(seed())
   const mixed = codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=A|10=0|'), 42])
   assert.equal(mixed.next().value.byTag(11).asJs(), 'A')
   assert.throws(() => mixed.next(), TypeError)
@@ -167,7 +176,7 @@ test('an item that is not bytes is refused where it is met', () => {
 })
 
 test('parseTextLines pulls one line at a time', () => {
-  const codec = new fix.FixCodec(seed(), { captureNames: ['beginstring'] })
+  const codec = reading(seed(), { captureNames: ['beginstring'] })
   let pulled = 0
   function* lines() {
     for (const body of ['8=FIX.4.4|35=D|11=A|10=0|', '8=FIX.4.4|35=D|11=B|10=0|']) {
@@ -182,11 +191,13 @@ test('parseTextLines pulls one line at a time', () => {
   assert.equal(messages.next().value.byTag(11).asJs(), 'B')
   assert.equal(messages.next().done, true)
   // A capture speaks per row: `beginstring` reads the frame at 4.2, where tag
-  // 32 is `lastshares`, and the column is still the dictionary's own.
+  // 32 is `lastshares`, and what it restates to is the quantity the event
+  // last traded rather than a column beside it.
   const [old] = codec.parseTextLines([
     new TextLine(0, Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'), ['FIX.4.2']),
   ])
-  assert.notEqual(old.field.indexOf('lastqty'), null)
+  assert.equal(old.field.indexOf('lastqty'), null, 'the event holds it')
+  assert.equal(old.lastqty, '100')
   assert.notEqual(old.getByName('lastshares'), null)
   // A row of two frames is two messages, and the stream door yields each.
   assert.equal([...codec.parseTextLines([new TextLine(0, Buffer.from(TWO_FRAMES))])].length, 2)
@@ -205,7 +216,7 @@ test("a row's pluginid fills its own column and selects nothing", () => {
   }
   assert.deepEqual(registry.dialects(), ['elsewhere', 'venue'])
   const captureNames = ['pluginid', 'prevpluginid']
-  const codec = new fix.FixCodec(registry, { captureNames })
+  const codec = reading(registry, { captureNames })
   const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
   // A line and the captures its header declared, in that order.
   const lined = (plugin, previous = null, held = body) => new TextLine(0, held, [plugin, previous])
@@ -239,7 +250,7 @@ test("a row's pluginid fills its own column and selects nothing", () => {
 
 test('the codec answers the pins it was given', () => {
   const registry = seed()
-  const bare = new fix.FixCodec(registry)
+  const bare = reading(registry)
   // A codec pins no version: a row states one, or the line implies it.
   assert.equal(bare.version, undefined)
   assert.equal(bare.separator, null)
@@ -249,7 +260,7 @@ test('the codec answers the pins it was given', () => {
   // The default target, stated once in the core and read here.
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
 
-  const pinned = new fix.FixCodec(registry, {
+  const pinned = reading(registry, {
     separator: PIPE,
     payloadColumn: 'line',
     nullValues: ['<none>'],
@@ -265,9 +276,9 @@ test('the codec answers the pins it was given', () => {
   assert.equal(pinned.batchByteSize, 4096)
   // The empty text is no pin; a spelling outside tag 385's set is refused
   // naming the set.
-  assert.equal(new fix.FixCodec(registry, { direction: '' }).direction, null)
-  assert.throws(() => new fix.FixCodec(registry, { direction: 'sideways' }), /R, S/)
-  assert.throws(() => new fix.FixCodec(registry, { batchByteSize: 1.5 }))
+  assert.equal(reading(registry, { direction: '' }).direction, null)
+  assert.throws(() => reading(registry, { direction: 'sideways' }), /R, S/)
+  assert.throws(() => reading(registry, { batchByteSize: 1.5 }))
   // The payload column names a batch column; a line's body is its own, so
   // the line door reads the same frame without naming anything.
   const [read] = pinned.parseTextLines([new TextLine(0, Buffer.from('8=FIX.4.2|35=D|11=A|10=0|'))])
@@ -275,7 +286,7 @@ test('the codec answers the pins it was given', () => {
 })
 
 test('the schema is decided before the first row is read', () => {
-  const reader = new fix.FixCodec(seed()).parseTextArrowReader(capture([], 1))
+  const reader = reading(seed()).parseTextArrowReader(capture([], 1))
   const names = []
   for (let at = 0; at < reader.field.fieldLen; at += 1) names.push(reader.field.fieldAt(at).name)
   // The capture's own column leads; the fixed columns follow, opening on
@@ -295,7 +306,7 @@ test('the schema is decided before the first row is read', () => {
 })
 
 test('a capture answers one row per message, not one per line', () => {
-  const parsed = new fix.FixCodec(seed()).parseTextArrowReader(capture(CAPTURE, CAPTURE.length)).intoTable()
+  const parsed = reading(seed()).parseTextArrowReader(capture(CAPTURE, CAPTURE.length)).intoTable()
   assert.equal(parsed.numRows, CARRYING.length, 'one row a message; the text reader answers one a line')
   assert.deepEqual(
     column(parsed, 'body').map((body) => Buffer.from(body).toString()),
@@ -310,13 +321,13 @@ test('several small input batches accumulate and one large batch splits by rows'
   const registry = seed()
   const lines = wide()
   // Twenty input batches of ten rows, far under the default target.
-  const whole = rowCounts(new fix.FixCodec(registry).parseTextArrowReader(capture(lines, 10)))
+  const whole = rowCounts(reading(registry).parseTextArrowReader(capture(lines, 10)))
   assert.deepEqual(whole, [200], 'one batch under the byte target')
 
   // Under a target holding about five input batches, the output batches are
   // fewer than the input ones and no row is lost.
   const bounded = rowCounts(
-    new fix.FixCodec(registry, { batchByteSize: 5 * 10 * 470 }).parseTextArrowReader(capture(lines, 10)),
+    reading(registry, { batchByteSize: 5 * 10 * 470 }).parseTextArrowReader(capture(lines, 10)),
   )
   assert.ok(bounded.length >= 2 && bounded.length < 20, `${bounded.length} batches`)
   assert.equal(bounded.reduce((sum, rows) => sum + rows, 0), 200)
@@ -326,7 +337,7 @@ test('several small input batches accumulate and one large batch splits by rows'
   // cut is even, and that many rows of raw capture is about the target.
   const target = 4096
   const split = rowCounts(
-    new fix.FixCodec(registry, { batchByteSize: target }).parseTextArrowReader(capture(lines, lines.length)),
+    reading(registry, { batchByteSize: target }).parseTextArrowReader(capture(lines, lines.length)),
   )
   assert.ok(split.length > 1)
   assert.equal(split.reduce((sum, rows) => sum + rows, 0), 200, 'the bound shapes batches, it does not drop rows')
@@ -337,31 +348,31 @@ test('several small input batches accumulate and one large batch splits by rows'
 
   // A target no row fits under closes a batch after every row, so one
   // enormous line can never produce an empty batch.
-  const each = rowCounts(new fix.FixCodec(registry, { batchByteSize: 1 }).parseTextArrowReader(capture(lines, lines.length)))
+  const each = rowCounts(reading(registry, { batchByteSize: 1 }).parseTextArrowReader(capture(lines, lines.length)))
   assert.equal(each.length, 200)
   assert.ok(each.every((rows) => rows === 1))
 })
 
 test('messages to batches close on the arrival records raw bytes', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   const schema = fix.schema(registry)
   const lines = wide()
   assert.deepEqual(rowCounts(codec.arrowReader(schema, codec.parseLines(lines))), [200])
 
   // A bound of about ten lines of pairs cuts the stream into batches of
   // about ten, and every row survives the cut.
-  const many = rowCounts(new fix.FixCodec(registry, { batchByteSize: 10 * 450 }).arrowReader(schema, codec.parseLines(lines)))
+  const many = rowCounts(reading(registry, { batchByteSize: 10 * 450 }).arrowReader(schema, codec.parseLines(lines)))
   assert.ok(many.length > 1 && many.length < 40, `${many.length} batches`)
   assert.equal(many.reduce((sum, rows) => sum + rows, 0), 200)
   assert.ok(many.slice(0, -1).every((rows) => rows > 0))
 
   // A target of one byte is a batch a message.
-  assert.equal(rowCounts(new fix.FixCodec(registry, { batchByteSize: 1 }).arrowReader(schema, codec.parseLines(lines))).length, 200)
+  assert.equal(rowCounts(reading(registry, { batchByteSize: 1 }).arrowReader(schema, codec.parseLines(lines))).length, 200)
 })
 
 test('a parse fills what the dictionary derives, through both doors', () => {
-  const codec = new fix.FixCodec(seed())
+  const codec = reading(seed())
   const rows = codec.parseTextArrowReader(capture([REPORT], 1)).intoTable()
   const [message] = codec.parseLines([REPORT])
   // There is no enriching pass: what a message implies is filled where it
@@ -380,7 +391,7 @@ test('a parse fills what the dictionary derives, through both doors', () => {
 
 test('messages and arrowReader invert each other', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { nullValues: [] })
+  const codec = reading(registry, { nullValues: [] })
   const schema = fix.schema(registry)
   const parsed = [...codec.parseLines(CAPTURE)]
   const again = [...codec.messages(codec.arrowReader(schema, parsed))]
@@ -412,7 +423,7 @@ test('messages and arrowReader invert each other', () => {
 
 test('the identifiers Map crosses native rows and Arrow as a nullable sorted Map', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const codec = reading(registry, { defaultSendingTime: SENDING })
   const schema = fix.schema(registry)
   // A message states its identifiers as a typed fact: the map the event
   // holds, read back as a plain object on the message and as a Map column
@@ -478,7 +489,7 @@ test('a scalar alias never takes the identifiers Map name', () => {
 })
 
 test('messages pull from the reader one batch at a time', () => {
-  const codec = new fix.FixCodec(seed())
+  const codec = reading(seed())
   const source = codec.parseTextArrowReader(capture(CAPTURE, 3))
   const messages = codec.messages(source)
   assert.ok(messages instanceof fix.FixMessages)
@@ -491,7 +502,7 @@ test('messages pull from the reader one batch at a time', () => {
 
 test('a failure behind a batch stream arrives with the batch', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   const message = one(codec, ORDER)
   const reader = codec.arrowReader(fix.schema(registry), [message, 'not a message'])
   // The batch reader pulls the messages, so the failure is that pull's, and
@@ -504,7 +515,7 @@ test('byte in, byte out over the whole corpus', () => {
   // The convention that drops a stated absence is deliberately not
   // byte-preserving, so it is turned off to measure the reader rather than
   // the convention.
-  const codec = new fix.FixCodec(registry, { nullValues: [], separator: PIPE, defaultSendingTime: SENDING })
+  const codec = reading(registry, { nullValues: [], separator: PIPE, defaultSendingTime: SENDING })
   const chunks = []
   const rows = codec.parseTextArrowReader(capture(CAPTURE, CAPTURE.length)).intoIpc()
   const written = codec.writeArrowReader(BatchReader.fromIpc(rows), {
@@ -545,32 +556,36 @@ test('byte in, byte out over the whole corpus', () => {
 
 test('a set value is typed by the registry field and appended when absent', () => {
   const registry = seed()
-  const message = one(new fix.FixCodec(registry), ORDER)
+  const message = one(reading(registry), ORDER)
   const before = message.size
-  const declared = registry.fieldByTag(44)
+  const declared = registry.fieldByTag(1)
 
-  message.set(44, 10.5)
+  message.set(1, 'ACC-1')
 
   assert.equal(message.size, before + 1, 'appended, not inserted')
   const child = message.field.fieldAt(before)
   assert.equal(child.name, declared.name, "the dictionary's spelling")
   assert.ok(child.dtype.equals(declared.dtype), "the dictionary's type")
-  assert.equal(child.fix.tag, 44)
+  assert.equal(child.fix.tag, 1)
   assert.equal(child.nullable, false, 'a stated value is non-null')
-  assert.equal(message.byTag(44).asJs(), 10.5)
-  assert.equal(message.byName('Price').asJs(), 10.5, 'reached by name through the registry')
+  assert.equal(message.byTag(1).asJs(), 'ACC-1')
+  assert.equal(message.byName('Account').asJs(), 'ACC-1', 'reached by name through the registry')
 
   // A header tag is a typed fact: it fills the holder and the row is
-  // exactly as long as it was.
+  // exactly as long as it was. So is `Price(44)`, which the crate's own
+  // `px` is what a message holds it as.
   const held = message.size
   message.set(34, 7)
+  message.set(44, 10.5)
   assert.equal(message.size, held)
   assert.equal(message.header().msgseqnum, 7)
   assert.equal(message.byTag(34).asJs(), 7)
+  assert.equal(message.px, '10.5')
+  assert.equal(message.byTag(44).asJs(), 10.5)
 })
 
 test('a set value replaces an existing child in place and keeps the tag index', () => {
-  const message = one(new fix.FixCodec(seed()), ORDER)
+  const message = one(reading(seed()), ORDER)
   const before = stated(message)
   const at = message.field.indexOf('symbol')
 
@@ -596,12 +611,17 @@ test('a set value replaces an existing child in place and keeps the tag index', 
 })
 
 test('a set leaves the entries, the wire and the digest untouched', () => {
-  const parsed = one(new fix.FixCodec(seed()), ORDER)
+  const parsed = one(reading(seed()), ORDER)
   const message = parsed.clone()
   message.set(55, 'MSFT')
-  message.set(38, Scalar.float(100))
+  message.set(1, 'ACC-1')
   assert.notEqual(message.remove(54), null)
   assert.deepEqual(message.entries().length, parsed.entries().length + 1, 'the written child is an entry')
+  // `OrderQty(38)` is the quantity the event is about, so writing it moves
+  // no child and adds no entry.
+  message.set(38, Scalar.float(100))
+  assert.deepEqual(message.entries().length, parsed.entries().length + 1)
+  assert.equal(message.qty, '100')
   assert.equal(message.byTag(38).asJs(), 100)
   // A null is stored as a stated null.
   message.set(55, null)
@@ -610,7 +630,7 @@ test('a set leaves the entries, the wire and the digest untouched', () => {
 })
 
 test('an unknown name is refused and the message stands', () => {
-  const message = one(new fix.FixCodec(seed()), ORDER)
+  const message = one(reading(seed()), ORDER)
   const before = message.clone()
   assert.throws(() => message.set('nosuchfield', 'y'), /nosuchfield/)
   assert.ok(message.equals(before))
@@ -629,7 +649,7 @@ test('an unknown name is refused and the message stands', () => {
 })
 
 test('a bare unknown tag is appended under its decimal spelling', () => {
-  const message = one(new fix.FixCodec(seed()), ORDER)
+  const message = one(reading(seed()), ORDER)
   message.set(7777, 'custom')
   const child = message.field.fieldAt(message.size - 1)
   assert.equal(child.name, '7777')
@@ -645,7 +665,7 @@ test('a bare unknown tag is appended under its decimal spelling', () => {
 })
 
 test('remove answers the value and the other tags still reach their children', () => {
-  const message = one(new fix.FixCodec(seed()), ORDER)
+  const message = one(reading(seed()), ORDER)
   const before = stated(message)
   const count = message.size
   const wire = message.clone().intoBytes(PIPE).toString()
@@ -676,7 +696,7 @@ test('remove answers the value and the other tags still reach their children', (
 
 test('a row is refused where it cannot state the settled identity', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: SENDING })
+  const codec = reading(registry, { defaultSendingTime: SENDING })
   const schema = fix.schema(registry)
   const parsed = one(codec, ORDER)
   const row = parsed.intoRow(schema)
@@ -711,7 +731,7 @@ test('a row reads back into the message that made it', () => {
   const registry = seed()
   // A whole-millisecond default SendingTime keeps every replay clock exact, so
   // `asJs` states each one as a `Date` below rather than as wider text.
-  const codec = new fix.FixCodec(registry, { defaultSendingTime: new Date(1_704_190_530_000) })
+  const codec = reading(registry, { defaultSendingTime: new Date(1_704_190_530_000) })
   const schema = fix.schema(registry)
   const parsed = one(codec, ORDER)
   const row = parsed.intoRow(schema)
@@ -743,7 +763,7 @@ test('a row reads back into the message that made it', () => {
 
 test("a row carrying its capture's own columns returns to its schema whole", () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   const line = fields.struct('line', [fields.utf8('url'), fields.int64('rownum'), fields.binary('body')], { nullable: false })
   const schema = fix.schemaCarrying(line, fix.schema(registry))
   const parsed = one(codec, ORDER)
@@ -770,7 +790,7 @@ test("a row carrying its capture's own columns returns to its schema whole", () 
 
 test('a row without the entries column has no entries', () => {
   const registry = seed()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   const wideSchema = fix.schema(registry)
   const columns = []
   for (let at = 0; at < wideSchema.fieldLen; at += 1) {
@@ -786,7 +806,7 @@ test('a row without the entries column has no entries', () => {
   // not, because the record is what it was rebuilt from, so the wire is the
   // header and the event's own tags with nothing behind them.
   const emitted = held.intoBytes(PIPE).toString()
-  assert.equal(emitted, '8=FIX.4.4|35=D|54=1|')
+  assert.equal(emitted, '8=FIX.4.4|35=D|54=1|59=0|')
   assert.equal(held.header().msgtype, parsed.header().msgtype)
   assert.equal(held.side, parsed.side)
   assert.equal(held.crosscode, parsed.crosscode)
@@ -813,7 +833,7 @@ test('format answers the rows one message field holds, both doors', () => {
   // and `format_arrow_reader_answers_the_batches_format_messages_answers_rows`
   // in `rust/tests/fix/format.rs`.
   const registry = seed()
-  const codec = new fix.FixCodec(registry)
+  const codec = reading(registry)
   // The fixed row itself as the target, so a formatted row keeps every column
   // the capture landed in.
   const schema = fix.schema(registry)
