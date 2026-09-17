@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use yggdryl::{DataType, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
@@ -778,19 +778,37 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
 }
 
 #[test]
-fn zz_probe_missing_leaves() {
-    for dtype in [
-        DataType::Side,
-        DataType::State,
-        DataType::TimeInForce,
-        DataType::Bloomberg,
-        DataType::Timezone,
-        DataType::MimeType,
-        DataType::MediaType,
-    ] {
-        for scheme in [&Scheme::SPARK, &Scheme::POLARS, &Scheme::PANDAS, &Scheme::ICEBERG] {
-            let got = dtype.clone().into_scheme_compat(scheme);
-            println!("{:?} / {} -> {:?}", dtype, scheme, got.map(|d| d.to_string()));
+fn every_scalar_leaf_has_an_answer_for_every_target() {
+    // Seven leaves - Side, State, TimeInForce, Bloomberg, Timezone, MimeType
+    // and MediaType - were absent from all four per-target matches, so each
+    // fell through to the container arm and answered "expected a scalar
+    // datatype, got side; this container is handled by the generic walker".
+    // Twenty-eight wrong answers, and nothing caught them because a missing
+    // arm is not a compile error.
+    //
+    // This walks every parameter-free identifier instead of the seven, so the
+    // next leaf added without a compatibility arm fails here.
+    for id in DataTypeId::ALL {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue; // an identifier with no standalone datatype spelling
+        };
+        for scheme in [
+            &Scheme::SPARK,
+            &Scheme::POLARS,
+            &Scheme::PANDAS,
+            &Scheme::ICEBERG,
+        ] {
+            if let Err(error) = dtype.clone().into_scheme_compat(scheme) {
+                let reason = error.to_string();
+                assert!(
+                    !reason.contains("handled by the generic walker"),
+                    "{} has no arm for {scheme}: {reason}",
+                    id.as_str()
+                );
+            }
         }
     }
 }

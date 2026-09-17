@@ -367,11 +367,17 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg
+        | D::Side
+        | D::State
+        | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url => Ok((D::utf8(), true)),
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -475,11 +481,17 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg
+        | D::Side
+        | D::State
+        | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url => Ok((D::utf8(), true)),
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -575,11 +587,17 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg
+        | D::Side
+        | D::State
+        | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url => Ok((D::utf8(), true)),
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -637,7 +655,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::String(parameters) if *parameters == StringParameters::default() => {
             Ok((dtype.clone(), false))
         }
-        D::Version | D::Url => Ok((D::utf8(), true)),
+        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
+            Ok((D::utf8(), true))
+        }
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
@@ -684,7 +704,11 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Cfi
         | D::Isin
         | D::Cusip
-        | D::Sedol => Ok((D::utf8(), true)),
+        | D::Sedol
+        | D::Bloomberg
+        | D::Side
+        | D::State
+        | D::TimeInForce => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
