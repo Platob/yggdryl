@@ -14,6 +14,7 @@ use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::UnionMode;
 use crate::types::DecimalType;
+use crate::types::UuidType;
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
@@ -848,7 +849,7 @@ impl fmt::Display for DataType {
             | D::Side
             | D::State
             | D::TimeInForce
-            | D::Uuid
+            | D::Uuid(_)
             | D::Version
             | D::Timezone
             | D::MimeType
@@ -1162,7 +1163,12 @@ impl<'a> Parser<'a> {
                 self.parse_string(layout, &keyword)?
             }
 
-            "uuid" => DataType::Uuid,
+            "uuid" => DataType::Uuid(UuidType::Uuid),
+            // A version names the leaf that admits it; bare `uuid` admits
+            // every one, so the three are spellings beside it, not under it.
+            "uuidv4" => DataType::Uuid(UuidType::Uuidv4),
+            "uuidv7" => DataType::Uuid(UuidType::Uuidv7),
+            "uuidv8" => DataType::Uuid(UuidType::Uuidv8),
             "version" => DataType::Version,
             "timezone" | "timezonename" | "tz" => DataType::Timezone,
             "mimetype" | "mime" => DataType::MimeType,

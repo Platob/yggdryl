@@ -527,11 +527,13 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// rather than an identifier and a flag every field carried. It last moved
 /// when the four decimal widths became one `Decimal` family variant: every
 /// datatype declared after them in the enum shifted by three discriminants,
-/// and a decimal hashes its leaf one level deeper.
+/// and a decimal hashes its leaf one level deeper. It last moved when uuid
+/// became a family: a uuid column hashes the leaf that says which RFC 9562
+/// versions it admits, where it used to hash a variant with nothing in it.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 2_010_498_558_569_525_510);
+    assert_eq!(registry.stable_hash(), 9_262_774_819_722_244_069);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

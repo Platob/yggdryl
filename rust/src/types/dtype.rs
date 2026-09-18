@@ -6,6 +6,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::decimal::DecimalType;
+use crate::types::uuid::UuidType;
 use crate::types::enums::EnumType;
 use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
@@ -127,8 +128,13 @@ pub enum DataType {
     /// How long an order stands, eight ASCII bytes.
     TimeInForce,
     /// Which way a captured line moved, four ASCII bytes: `SENT` or `RECV`.
-    /// One 128-bit universally unique identifier.
-    Uuid,
+    /// One 128-bit universally unique identifier: the whole uuid family.
+    ///
+    /// The leaf - whether the column admits every RFC 9562 version or only
+    /// the one it names - is [`UuidType`]'s business, not this enum's. Every
+    /// leaf is the same sixteen bytes, so a reader walking storage never asks
+    /// which one it is.
+    Uuid(UuidType),
     /// A canonical, numerically ordered software or protocol version.
     Version,
     /// A validated, canonical location, stored as its canonical text.
@@ -292,7 +298,7 @@ impl DataType {
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
-            Self::Uuid => DataTypeId::Uuid,
+            Self::Uuid(family) => family.id(),
             Self::Version => DataTypeId::Version,
             Self::Url => DataTypeId::Url,
             Self::Timezone => DataTypeId::Timezone,
@@ -605,7 +611,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Currency => 31,
         DataType::Mic => 32,
         DataType::Cfi => 33,
-        DataType::Uuid => 34,
+        DataType::Uuid(_) => 34,
         DataType::Version => 35,
         DataType::Sequence(SequenceType::List(_)) => 36,
         DataType::Sequence(SequenceType::ListView(_)) => 37,
@@ -831,7 +837,7 @@ mod arrow {
                 R::Timezone => TimezoneType::arrow_storage(),
                 R::MimeType => MimeTypeType::arrow_storage(),
                 R::MediaType => MediaTypeType::arrow_storage(),
-                R::Uuid => UuidType::arrow_storage(),
+                R::Uuid(_) => UuidType::arrow_storage(),
                 R::Decimal(DecimalType::Decimal32 { .. })
                 | R::Decimal(DecimalType::Decimal64 { .. })
                 | R::Decimal(DecimalType::Decimal128 { .. })
@@ -1076,7 +1082,15 @@ mod arrow {
                     crate::types::BYTES_EXTENSION_NAME,
                     parameters.extension_json(),
                 )),
-                Self::Uuid => Some((crate::types::UUID_EXTENSION_NAME, String::new())),
+                // Every identifier is Arrow's own sixteen bytes; only a
+                // version is a fact Arrow has nowhere to put.
+                Self::Uuid(UuidType::Uuid) => {
+                    Some((crate::types::UUID_EXTENSION_NAME, String::new()))
+                }
+                Self::Uuid(family) => Some((
+                    crate::types::UUID_VERSION_EXTENSION_NAME,
+                    family.extension_json(),
+                )),
                 Self::Version => Some((crate::types::VERSION_EXTENSION_NAME, String::new())),
                 Self::Url => Some((crate::types::URL_EXTENSION_NAME, String::new())),
                 Self::Timezone => Some((crate::types::TIMEZONE_EXTENSION_NAME, String::new())),

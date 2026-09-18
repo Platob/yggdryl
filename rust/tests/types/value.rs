@@ -252,7 +252,7 @@ mod readings {
             DataType::binary().scalar(text).unwrap().as_bytes(),
             Some(b"US".as_slice())
         );
-        let uuid = DataType::Uuid
+        let uuid = DataType::uuid()
             .scalar("00000000-0000-0000-0000-000000000001")
             .unwrap();
         assert_eq!(

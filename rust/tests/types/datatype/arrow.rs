@@ -4,6 +4,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::types::{BytesLayout, BytesType};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
+use yggdryl::types::UuidType;
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
     match error {
@@ -214,7 +215,7 @@ fn extension_datatypes() -> Vec<DataType> {
         DataType::Currency,
         DataType::Mic,
         DataType::Cfi,
-        DataType::Uuid,
+        DataType::Uuid(UuidType::Uuid),
         DataType::Version,
         DataType::Variant,
         DataType::geometry(Some("EPSG:4326")).unwrap(),
@@ -438,7 +439,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::Side,
         DataType::State,
         DataType::TimeInForce,
-        DataType::Uuid,
+        DataType::Uuid(UuidType::Uuid),
         DataType::Version,
         DataType::Url,
         DataType::Variant,

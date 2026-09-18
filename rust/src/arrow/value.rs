@@ -177,7 +177,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
-        DataType::Uuid => uuid_array(values)?,
+        DataType::Uuid(_) => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
                 .iter()
@@ -411,7 +411,7 @@ pub(crate) fn value_from_array(
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         DataType::Bytes(parameters) => bytes_value(*parameters, array, index)?,
         // An identifier reads back as its exact packed scalar leaf.
-        DataType::Uuid => {
+        DataType::Uuid(_) => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::Uuid(crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(
                 fixed.value(index),

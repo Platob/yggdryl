@@ -1,4 +1,5 @@
 use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
+use yggdryl::types::UuidType;
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {
@@ -299,7 +300,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::Currency,
         DataType::Mic,
         DataType::Cfi,
-        DataType::Uuid,
+        DataType::Uuid(UuidType::Uuid),
         DataType::Version,
         DataType::variant(),
         DataType::Date32,

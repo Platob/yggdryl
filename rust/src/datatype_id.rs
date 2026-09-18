@@ -187,11 +187,23 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Struct2 = 68,
+    /// A random RFC 9562 identifier: version 4.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Uuidv4 = 69,
+    /// A time-ordered RFC 9562 identifier: version 7.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Uuidv7 = 70,
+    /// A custom RFC 9562 identifier: version 8.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Uuidv8 = 71,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 68] = [
+    pub const ALL: [Self; 71] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -260,6 +272,9 @@ impl DataTypeId {
         Self::Bloomberg,
         Self::SortedMap,
         Self::Struct2,
+        Self::Uuidv4,
+        Self::Uuidv7,
+        Self::Uuidv8,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -318,6 +333,9 @@ impl DataTypeId {
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
             Self::Uuid => "uuid",
+            Self::Uuidv4 => "uuidv4",
+            Self::Uuidv7 => "uuidv7",
+            Self::Uuidv8 => "uuidv8",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -424,7 +442,7 @@ impl DataTypeId {
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
-            Self::Uuid => DataTypeKind::Uuid,
+            Self::Uuid | Self::Uuidv4 | Self::Uuidv7 | Self::Uuidv8 => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
@@ -577,7 +595,13 @@ impl DataTypeId {
             | Self::DateTime64
             | Self::Decimal64 => Some(8),
             Self::Duration32 => Some(4),
-            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
+            Self::Int128
+            | Self::UInt128
+            | Self::Decimal128
+            | Self::Uuid
+            | Self::Uuidv4
+            | Self::Uuidv7
+            | Self::Uuidv8 => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }

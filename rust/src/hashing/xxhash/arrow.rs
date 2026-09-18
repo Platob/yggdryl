@@ -1219,7 +1219,7 @@ fn feed_cell(
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce
-        | DataType::Uuid
+        | DataType::Uuid(_)
         | DataType::Version
         | DataType::Url
         | DataType::Timezone

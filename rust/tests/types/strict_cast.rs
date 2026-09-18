@@ -300,7 +300,7 @@ fn extension_and_schema_metadata_survive_a_strict_cast() {
     let source = schema(vec![ArrowField::new("id", ArrowDataType::Int32, false)]);
     let batch = RecordBatch::try_new(source, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();
 
-    let mut identifier = DataType::Uuid.nullable_field("identifier");
+    let mut identifier = DataType::uuid().nullable_field("identifier");
     identifier.set_metadata([("owner", "trading")]).unwrap();
     let mut target = root([DataType::Int64.required_field("id"), identifier]);
     target.set_metadata([("source", "book")]).unwrap();

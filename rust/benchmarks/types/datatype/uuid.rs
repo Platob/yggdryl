@@ -58,7 +58,7 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
         })
         .collect();
     let text: ArrayRef = Arc::new(StringArray::from_iter_values(spellings.iter()));
-    let id = DataType::Uuid.required_field("id");
+    let id = DataType::uuid().required_field("id");
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("text_ingest", |bencher| {
         bencher.iter(|| {

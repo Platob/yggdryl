@@ -375,7 +375,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::utf8(), true)),
+        D::Uuid(_) => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
@@ -487,7 +487,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::utf8(), true)),
+        D::Uuid(_) => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
@@ -591,7 +591,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::TimeInForce => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::utf8(), true)),
+        D::Uuid(_) => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
@@ -639,7 +639,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Float64
         | D::Date32
         // Iceberg is the one target that names an identifier type.
-        | D::Uuid => Ok((dtype.clone(), false)),
+        | D::Uuid(_) => Ok((dtype.clone(), false)),
         // Plain `binary`, and `fixed[n]`, which is also how `uuid` is
         // stored; plain `utf8` is the one string a foreign engine names.
         D::Bytes(parameters)

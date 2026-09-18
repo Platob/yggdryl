@@ -13,6 +13,7 @@ use std::sync::Arc;
 use yggdryl::types::floating::FloatingValue;
 use yggdryl::types::{Float16, Float32, Float64, Scalar};
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
+use yggdryl::types::UuidType;
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -574,7 +575,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
+    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid(UuidType::Uuid));
 
     let scalar = Value::into_scalar(text);
     assert_eq!(scalar.id(), DataTypeId::LargeString);

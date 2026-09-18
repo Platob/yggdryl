@@ -699,7 +699,7 @@ mod logical {
 
     #[test]
     fn uuids_round_trip_in_both_encodings() {
-        let expected = DataType::Uuid
+        let expected = DataType::uuid()
             .scalar("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             .unwrap();
         assert_eq!(
@@ -1676,7 +1676,7 @@ mod records {
     #[test]
     fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
         let field = DataType::from_fields([
-            DataType::Uuid.required_field("id"),
+            DataType::uuid().required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
             DataType::fixed_size_binary(3)

@@ -265,12 +265,12 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
     // `Version` is no longer last: the coded FIX datatypes, then `Url`,
     // `Isin`, the three canonical text datatypes and the three securities
-    // identifiers `Cusip`, `Sedol` and `Bloomberg`, and the mapping family's
-    // `SortedMap` leaf and the structure family's `Struct2` leaf, were
-    // appended after it,
+    // identifiers `Cusip`, `Sedol` and `Bloomberg`, the mapping family's
+    // `SortedMap` leaf, the structure family's `Struct2` leaf and the uuid
+    // family's three versioned leaves, were appended after it,
     // which is what `as_u8` being a wire contract requires; the five string
     // layouts took the slots the text variants they replaced held.
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Struct2));
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Uuidv8));
     assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());

@@ -1377,10 +1377,10 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             Ok(Scalar::from(value.as_str()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
-            DataType::Uuid.scalar(crate::types::uuid_text(&value.to_be_bytes()))
+            DataType::uuid().scalar(crate::types::uuid_text(&value.to_be_bytes()))
         }
         (OfficialPrimitiveType::Uuid, OfficialPrimitiveLiteral::Binary(value)) => {
-            DataType::Uuid.scalar(Scalar::from(value.clone()))
+            DataType::uuid().scalar(Scalar::from(value.clone()))
         }
         (OfficialPrimitiveType::Fixed(width), OfficialPrimitiveLiteral::Binary(value)) => {
             let width = u32::try_from(*width).map_err(|_| {
@@ -3302,7 +3302,7 @@ mod official_read_tests {
         let token = 0x0db3_e2a8_9d1d_42b9_aa7b_74eb_e558_dcebu128
             .to_be_bytes()
             .to_vec();
-        let expected = DataType::Uuid.scalar(Scalar::from(token.clone())).unwrap();
+        let expected = DataType::uuid().scalar(Scalar::from(token.clone())).unwrap();
         let input = ManifestEntry::added(
             41,
             DataFile {

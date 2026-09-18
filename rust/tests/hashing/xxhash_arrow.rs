@@ -11,6 +11,8 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::types::Uuid;
+use yggdryl::types::UuidType;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -302,9 +304,9 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
         ),
         (
-            Field::new("uuid", DataType::Uuid, true),
+            Field::new("uuid", DataType::Uuid(UuidType::Uuid), true),
             Scalar::from_sequence([
-                DataType::Uuid
+                DataType::uuid()
                     .scalar("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
                     .unwrap(),
                 Scalar::Null,
@@ -661,6 +663,30 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(100))]).unwrap(),
                 Scalar::from_mapping([]).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("uuidv4", DataType::uuidv4(), true),
+            // A versioned column is the same sixteen bytes; what it refuses
+            // is a value written by another version, and the digest reads the
+            // bytes either way.
+            Scalar::from_sequence([
+                Scalar::Uuid(Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8)),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("uuidv7", DataType::uuidv7(), true),
+            Scalar::from_sequence([
+                Scalar::Uuid(Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210).unwrap()),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("uuidv8", DataType::uuidv8(), true),
+            Scalar::from_sequence([
+                Scalar::Uuid(Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6)),
                 Scalar::Null,
             ]),
         ),

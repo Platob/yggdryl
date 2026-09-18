@@ -239,7 +239,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
-            | DataType::Uuid
+            | DataType::Uuid(_)
             | DataType::Version
             | DataType::Url
             | DataType::Timezone
@@ -323,7 +323,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         }
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
         // spelling like every other UUID value.
-        D::Uuid => scalar(DefaultPlan::Uuid, false),
+        D::Uuid(_) => scalar(DefaultPlan::Uuid, false),
         D::Version => scalar(DefaultPlan::Version, false),
         // A location has no zero, so the default is the shortest one the
         // validator accepts: the filesystem root.

@@ -323,7 +323,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }
     for name in ["curruuid", "crossuuid", "prevuuid"] {
-        assert_eq!(typed(name), &DataType::Uuid, "{name}");
+        assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
     for name in ["unix", "creatunix"] {

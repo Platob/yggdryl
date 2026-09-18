@@ -6,6 +6,7 @@ use super::SoleMessage;
 use std::sync::Arc;
 
 use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
+use yggdryl::types::UuidType;
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -204,8 +205,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
         typed(yggdryl::UNIX_TAG_NAME.0)
     );
-    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
-    assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid(UuidType::Uuid));
+    assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid(UuidType::Uuid));
     assert_eq!(typed(yggdryl::HASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
@@ -268,7 +269,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
     let mut message = codec.sole_line(wire).unwrap();
     let digest = message.digest();
-    let previous = DataType::Uuid
+    let previous = DataType::uuid()
         .scalar(Scalar::from(
             &[
                 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
@@ -310,7 +311,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     );
     let field = &schema.fields()[column_of(&schema, PREVUUID_TAG_NAME.0)];
     assert_eq!(field.name(), PREVUUID_TAG_NAME.1);
-    assert_eq!(field.dtype(), &DataType::Uuid);
+    assert_eq!(field.dtype(), &DataType::uuid());
     assert_eq!(at(&row, &schema, PREVUUID_TAG_NAME.0), &previous);
 
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();

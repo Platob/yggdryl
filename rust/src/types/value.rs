@@ -794,15 +794,18 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
-        D::Uuid => {
-            if matches!(value, Scalar::Uuid(_)) {
-                Ok((value.clone(), false))
-            } else {
-                let bytes = uuid_bytes(value)
-                    .ok_or_else(|| canonical_error("expected UUID text or bytes"))?;
-                let uuid = crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(bytes)?));
-                Ok((Scalar::Uuid(uuid), true))
+        D::Uuid(family) => {
+            // The version a leaf admits is the column's rule, so it is checked
+            // once the value is an identifier however it was spelled.
+            if let Scalar::Uuid(held) = value {
+                family.accept(*held)?;
+                return Ok((value.clone(), false));
             }
+            let bytes = uuid_bytes(value)
+                .ok_or_else(|| canonical_error("expected UUID text or bytes"))?;
+            let uuid = crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(bytes)?));
+            family.accept(uuid)?;
+            Ok((Scalar::Uuid(uuid), true))
         }
         D::Version => match value {
             Scalar::Version(_) => Ok((value.clone(), false)),
@@ -1475,13 +1478,23 @@ fn validate_dtype_value(
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
-        D::Uuid => match value {
-            Scalar::Uuid(_) => Ok(()),
-            _ => match uuid_bytes(value).map(uuid_parse) {
-                Some(Ok(_)) => Ok(()),
-                _ => Err(expected("uuid", value)),
-            },
-        },
+        D::Uuid(family) => {
+            let held = match value {
+                Scalar::Uuid(held) => Some(*held),
+                _ => match uuid_bytes(value).map(uuid_parse) {
+                    Some(Ok(bytes)) => Some(crate::types::Uuid::new(u128::from_be_bytes(bytes))),
+                    _ => None,
+                },
+            };
+            match held {
+                Some(held) if family.admits(held) => Ok(()),
+                Some(held) => Err(ValidationFailure::new(crate::text::expected_got(
+                    format_args!("a {} identifier", family.id().as_str()),
+                    format_args!("version {}", held.version()),
+                ))),
+                None => Err(expected(family.id().as_str(), value)),
+            }
+        }
         D::Version => match value {
             Scalar::Version(_) => Ok(()),
             Scalar::String(text) => text

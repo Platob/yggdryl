@@ -44,6 +44,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
+use crate::types::UuidType;
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -202,7 +203,7 @@ impl Scalar {
             Self::Timezone(_) => Ok(DataType::Timezone),
             Self::MimeType(_) => Ok(DataType::MimeType),
             Self::MediaType(_) => Ok(DataType::MediaType),
-            Self::Uuid(_) => Ok(DataType::Uuid),
+            Self::Uuid(_) => Ok(DataType::Uuid(UuidType::Uuid)),
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),

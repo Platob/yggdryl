@@ -34,7 +34,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 68);
+    assert_eq!(DataTypeId::ALL.len(), 71);
     for id in [
         DataTypeId::String,
         DataTypeId::FixedString,
@@ -168,6 +168,9 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Bloomberg, 66),
         (DataTypeId::SortedMap, 67),
         (DataTypeId::Struct2, 68),
+        (DataTypeId::Uuidv4, 69),
+        (DataTypeId::Uuidv7, 70),
+        (DataTypeId::Uuidv8, 71),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {

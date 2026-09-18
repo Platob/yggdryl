@@ -125,7 +125,8 @@ pub use typed::{
 pub use url::*;
 pub use uuid::*;
 pub(crate) use uuid::{
-    UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
+    UUID_EXTENSION_NAME, UUID_TEXT_LEN, UUID_VERSION_EXTENSION_NAME, uuid_bytes, uuid_parse,
+    uuid_rendered, uuid_text,
 };
 pub(crate) use value::dtype_scalar;
 pub(crate) use version::VERSION_EXTENSION_NAME;

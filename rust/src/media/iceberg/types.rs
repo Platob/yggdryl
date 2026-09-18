@@ -24,6 +24,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::string::is_text_storage;
 use crate::{DataType, Error, Result, TimeUnit};
 use crate::types::DecimalType;
+use crate::types::UuidType;
 
 /// A primitive type from the Iceberg specification.
 ///
@@ -138,7 +139,7 @@ impl PrimitiveType {
             // A UUID is a 16-byte fixed value on the wire, and the core has a
             // datatype that is exactly that, so the spelling survives without
             // a marker beside the column.
-            Self::Uuid => DataType::Uuid,
+            Self::Uuid => DataType::Uuid(UuidType::Uuid),
             Self::Fixed(width) => DataType::fixed_size_binary(width)?,
             Self::Binary => DataType::binary(),
         })
@@ -216,7 +217,7 @@ impl PrimitiveType {
             // numeric ordering text cannot carry, and which Iceberg therefore
             // still refuses.
             DataType::Url => Self::String,
-            DataType::Uuid => Self::Uuid,
+            DataType::Uuid(_) => Self::Uuid,
             // Iceberg's `binary` has no maximum, so a bound is dropped here;
             // the cast on the way in already held every value to it.
             DataType::Bytes(parameters) => match parameters.fixed() {

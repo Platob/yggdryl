@@ -99,7 +99,7 @@ fn every_layout_is_one_datatype_under_every_spelling() {
 
     // A UUID and a geospatial value are bytes with an identity, not byte
     // columns.
-    assert_eq!(DataType::Uuid.bytes_parameters(), None);
+    assert_eq!(DataType::uuid().bytes_parameters(), None);
     assert_eq!(DataType::geometry(None).unwrap().bytes_parameters(), None);
 }
 
@@ -264,7 +264,7 @@ fn a_byte_value_is_the_compact_byte_string_and_carries_no_maximum() {
     assert_eq!(
         DataType::binary()
             .scalar(
-                DataType::Uuid
+                DataType::uuid()
                     .scalar("00000000-0000-0000-0000-000000000001")
                     .unwrap()
             )
