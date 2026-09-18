@@ -114,7 +114,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         });
     });
     group.bench_function("enum_from_parts", |bencher| {
-        bencher.iter(|| Enum::from_parts(black_box("io_mode"), black_box("append")).unwrap());
+        bencher.iter(|| Enum::from_parts(black_box("IOMode"), black_box("append")).unwrap());
     });
     group.bench_function("enum_kind", |bencher| {
         bencher.iter(|| black_box(enum_member).kind());

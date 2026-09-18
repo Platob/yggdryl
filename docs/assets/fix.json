@@ -378152,7 +378152,7 @@
       },
       {
         "dtype": {
-          "type": "u_int64"
+          "type": "uint64"
         },
         "metadata": {
           "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
@@ -378165,7 +378165,7 @@
       },
       {
         "dtype": {
-          "type": "u_int64"
+          "type": "uint64"
         },
         "metadata": {
           "description": "The XXH3-64 of the cross code; zero where the message names none.",
@@ -378420,7 +378420,7 @@
       },
       {
         "dtype": {
-          "type": "u_int64"
+          "type": "uint64"
         },
         "metadata": {
           "description": "The message's place in its chain: how many came before it.",

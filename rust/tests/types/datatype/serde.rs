@@ -50,3 +50,33 @@ fn datetime64_json_uses_the_canonical_tag_and_explicit_timezone_model() {
 
     assert!(DataType::from_json(r#"{"type":"timestamp","unit":"microsecond"}"#).is_err());
 }
+
+#[test]
+fn an_unsigned_width_serializes_as_the_name_every_other_door_spells() {
+    // `rename_all = "snake_case"` turned `UInt8` into `u_int8`, which nothing
+    // else in the crate says: the identifier, the text parser, `Display` and
+    // both bindings all spell `uint8`. This is the `i_o_kind` defect one enum
+    // over, and the same fix - name the four explicitly.
+    for (dtype, spelled) in [
+        (DataType::UInt8, "uint8"),
+        (DataType::UInt16, "uint16"),
+        (DataType::UInt32, "uint32"),
+        (DataType::UInt64, "uint64"),
+    ] {
+        let document = dtype.clone().into_json().unwrap();
+        assert!(
+            document.contains(&format!("\"{spelled}\"")),
+            "{spelled}: {document}"
+        );
+        assert!(!document.contains("u_int"), "{document}");
+        assert_eq!(DataType::from_json(&document).unwrap(), dtype);
+        assert_eq!(dtype.id().as_str(), spelled);
+    }
+
+    // A document written before the rename still reads, so nothing stored
+    // stops loading.
+    assert_eq!(
+        DataType::from_json(r#"{"type":"u_int32"}"#).unwrap(),
+        DataType::UInt32
+    );
+}

@@ -81,7 +81,7 @@
   {
     "name": "hashcode",
     "dtype": {
-      "type": "u_int64"
+      "type": "uint64"
     },
     "nullable": false,
     "metadata": {
@@ -94,7 +94,7 @@
   {
     "name": "crosshashcode",
     "dtype": {
-      "type": "u_int64"
+      "type": "uint64"
     },
     "nullable": false,
     "metadata": {
@@ -349,7 +349,7 @@
   {
     "name": "seqnum",
     "dtype": {
-      "type": "u_int64"
+      "type": "uint64"
     },
     "nullable": true,
     "metadata": {

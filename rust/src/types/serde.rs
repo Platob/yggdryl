@@ -69,9 +69,18 @@ enum DataTypeRef<'a> {
     Int16 {},
     Int32 {},
     Int64 {},
+    // `rename_all = "snake_case"` turns `UInt8` into `u_int8`, which no other
+    // door in the crate spells - `DataTypeId::as_str`, the text parser,
+    // `Display` and both bindings all say `uint8`. Named explicitly here, the
+    // way thirteen other variants in these enums already are. The alias
+    // keeps documents written under the old spelling readable.
+    #[serde(rename = "uint8", alias = "u_int8")]
     UInt8 {},
+    #[serde(rename = "uint16", alias = "u_int16")]
     UInt16 {},
+    #[serde(rename = "uint32", alias = "u_int32")]
     UInt32 {},
+    #[serde(rename = "uint64", alias = "u_int64")]
     UInt64 {},
     Float16 {},
     Float32 {},
@@ -358,9 +367,18 @@ enum DataTypeWire {
     Int16 {},
     Int32 {},
     Int64 {},
+    // `rename_all = "snake_case"` turns `UInt8` into `u_int8`, which no other
+    // door in the crate spells - `DataTypeId::as_str`, the text parser,
+    // `Display` and both bindings all say `uint8`. Named explicitly here, the
+    // way thirteen other variants in these enums already are. The alias
+    // keeps documents written under the old spelling readable.
+    #[serde(rename = "uint8", alias = "u_int8")]
     UInt8 {},
+    #[serde(rename = "uint16", alias = "u_int16")]
     UInt16 {},
+    #[serde(rename = "uint32", alias = "u_int32")]
     UInt32 {},
+    #[serde(rename = "uint64", alias = "u_int64")]
     UInt64 {},
     Float16 {},
     Float32 {},
@@ -655,10 +673,10 @@ impl DataType {
             D::Int16 => tag("int16"),
             D::Int32 => tag("int32"),
             D::Int64 => tag("int64"),
-            D::UInt8 => tag("u_int8"),
-            D::UInt16 => tag("u_int16"),
-            D::UInt32 => tag("u_int32"),
-            D::UInt64 => tag("u_int64"),
+            D::UInt8 => tag("uint8"),
+            D::UInt16 => tag("uint16"),
+            D::UInt32 => tag("uint32"),
+            D::UInt64 => tag("uint64"),
             D::Float16 => tag("float16"),
             D::Float32 => tag("float32"),
             D::Float64 => tag("float64"),
@@ -933,10 +951,12 @@ impl DataType {
             "int16" => Self::Int16,
             "int32" => Self::Int32,
             "int64" => Self::Int64,
-            "u_int8" => Self::UInt8,
-            "u_int16" => Self::UInt16,
-            "u_int32" => Self::UInt32,
-            "u_int64" => Self::UInt64,
+            // The written spelling, and the one `rename_all = "snake_case"`
+            // used to produce. Documents carrying the old one still read.
+            "uint8" | "u_int8" => Self::UInt8,
+            "uint16" | "u_int16" => Self::UInt16,
+            "uint32" | "u_int32" => Self::UInt32,
+            "uint64" | "u_int64" => Self::UInt64,
             "float16" => Self::Float16,
             "float32" => Self::Float32,
             "float64" => Self::Float64,
