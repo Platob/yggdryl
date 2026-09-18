@@ -3273,7 +3273,7 @@ pub const fn is_integer(&self) -> bool
 ### yggdryl::types  [rust/src/types/mod.rs]
 pub enum DataType
 
-### yggdryl::types::nested  [rust/src/types/nested/dtypes.rs]
+### yggdryl::types::nested  [rust/src/types/nested.rs]
 pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn len(&self) -> usize
