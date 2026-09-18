@@ -140,8 +140,8 @@ impl Element for MarketElementData {
         self.curruuid
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.curruuid = uuid;
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -555,8 +555,8 @@ impl Element for MarketEventData {
         self.element.curruuid
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.element.curruuid = uuid;
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.element.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {

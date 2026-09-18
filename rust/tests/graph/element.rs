@@ -24,7 +24,7 @@ use yggdryl::types::{
 /// owns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Report {
-    uuid: Uuid,
+    curruuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
     hashcode: u64,
@@ -47,7 +47,7 @@ struct Report {
 impl Report {
     fn at(uuid: u128, unix: i64) -> Self {
         Self {
-            uuid: Uuid::from_v8(uuid),
+            curruuid: Uuid::from_v8(uuid),
             crossuuid: Uuid::from_v8(uuid),
             crosscode: String::new(),
             hashcode: 0,
@@ -69,11 +69,11 @@ impl Report {
 
 impl Element for Report {
     fn get_curruuid(&self) -> Uuid {
-        self.uuid
+        self.curruuid
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.uuid = uuid;
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {

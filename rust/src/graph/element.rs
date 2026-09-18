@@ -67,7 +67,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// use yggdryl::types::Uuid;
 ///
 /// struct Node {
-///     uuid: Uuid,
+///     curruuid: Uuid,
 ///     crossuuid: Uuid,
 ///     crosscode: String,
 ///     hashcode: u64,
@@ -79,7 +79,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// impl Node {
 ///     fn new(uuid: u128) -> Self {
 ///         Self {
-///             uuid: Uuid::from_v8(uuid),
+///             curruuid: Uuid::from_v8(uuid),
 ///             crossuuid: Uuid::from_v8(uuid),
 ///             crosscode: String::new(),
 ///             hashcode: 0,
@@ -92,10 +92,10 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///
 /// impl Element for Node {
 ///     fn get_curruuid(&self) -> Uuid {
-///         self.uuid
+///         self.curruuid
 ///     }
-///     fn set_curruuid(&mut self, uuid: Uuid) {
-///         self.uuid = uuid;
+///     fn set_curruuid(&mut self, curruuid: Uuid) {
+///         self.curruuid = curruuid;
 ///     }
 ///     fn get_crossuuid(&self) -> Uuid {
 ///         self.crossuuid
@@ -192,7 +192,7 @@ pub trait Element {
     fn get_curruuid(&self) -> Uuid;
 
     /// Records this element's identity.
-    fn set_curruuid(&mut self, uuid: Uuid);
+    fn set_curruuid(&mut self, curruuid: Uuid);
 
     /// The identity this element has in another graph - the cross element
     /// it is the same thing as, elsewhere - which is its own identity where
@@ -603,7 +603,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// use yggdryl::types::{State, Uuid};
 ///
 /// struct Report {
-///     uuid: Uuid,
+///     curruuid: Uuid,
 ///     crossuuid: Uuid,
 ///     crosscode: String,
 ///     hashcode: u64,
@@ -623,7 +623,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// impl Report {
 ///     fn at(uuid: u128, unix: i64) -> Self {
 ///         Self {
-///             uuid: Uuid::from_v8(uuid),
+///             curruuid: Uuid::from_v8(uuid),
 ///             crossuuid: Uuid::from_v8(uuid),
 ///             crosscode: String::new(),
 ///             hashcode: 0,
@@ -644,10 +644,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///
 /// impl Element for Report {
 ///     fn get_curruuid(&self) -> Uuid {
-///         self.uuid
+///         self.curruuid
 ///     }
-///     fn set_curruuid(&mut self, uuid: Uuid) {
-///         self.uuid = uuid;
+///     fn set_curruuid(&mut self, curruuid: Uuid) {
+///         self.curruuid = curruuid;
 ///     }
 ///     fn get_crossuuid(&self) -> Uuid {
 ///         self.crossuuid

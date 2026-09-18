@@ -1773,8 +1773,8 @@ impl Element for FixMsg {
         self.event.get_curruuid()
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.event.set_curruuid(uuid);
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.event.set_curruuid(curruuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
