@@ -209,7 +209,7 @@ Arithmetic is checked in the Rust value model, both bindings redirect to it, and
 | text, bytes, sequences | `+` only | concatenation - the join a repertoire with no sum has. Both sides one repertoire; a code joins as its text and stops being a code; a WKB payload does not join |
 | null | every binary operation above | propagate `Null` |
 
-Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods.
+Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods: `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute`.
 
 === "Rust"
 
@@ -243,6 +243,13 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 
     assert.equal(Scalar.from(40).add(2).asJs(), 42)
     assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
+
+    // The named methods are the whole vocabulary: no operator overloading here.
+    assert.equal(Scalar.from(40).subtract(2).asJs(), 38)
+    assert.equal(Scalar.from(6).multiply(7).asJs(), 42)
+    assert.equal(Scalar.from(43).remainder(2).asJs(), 1)
+    assert.equal(Scalar.from(42).negate().asJs(), -42)
+    assert.equal(Scalar.from(-42).absolute().asJs(), 42)
     ```
 
 | item | rule |
@@ -338,7 +345,13 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 ## Edges
 
 - `readonly` or `random` at a write entry point -> refused.
-- Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
+- Overflow, division by zero, inexact decimal quotient, undefined operand pair
+  -> four separate core errors. JavaScript names them on the thrown error's
+  `code`: `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`
+  and `ERR_YGGDRYL_INEXACT_ARITHMETIC` arrive as a `RangeError`, and
+  `ERR_YGGDRYL_INVALID_ARITHMETIC` - an operand pair with no defined
+  operation - as a `TypeError`, so a `catch` branches on the code rather
+  than on the message. `ERR_YGGDRYL_ARITHMETIC` covers the rest.
 - `+` on text, bytes or a sequence -> concatenation, the join a repertoire with
   no sum has. Both sides must be the same repertoire, and only `+`: `-`, `*`,
   `/` and `%` over text stay refusals. A code joins as its text and stops being

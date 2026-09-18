@@ -575,6 +575,15 @@ def test_registry_insert_update_and_remove_over_fields() -> None:
     assert removed is not None and removed.name == "symbol"
     assert registry.remove(9999) is None
 
+    # `remove` reads an int as a tag, so a field sharing its tag with another
+    # leaves only through the identifier `remove_by_id` reads as one.
+    registry.insert(_field("Held", "utf8", 77, names=["Beside"]))
+    registry.insert(_field("Beside", "utf8", 78, tags=[77]))
+    beside = registry.field_by_name("Beside")
+    assert registry.remove_by_id(beside.fix.id) is not None
+    assert registry.field_by_tag(77).name == "Held"
+    assert registry.remove_by_id(beside.fix.id) is None
+
     # A field with no tag cannot enter at all.
     with pytest.raises(ValueError, match="fix:tag"):
         registry.insert(Field("Untagged", "utf8"))

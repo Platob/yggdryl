@@ -58,6 +58,70 @@ Tests, benchmarks, Python modules, JavaScript source groups, and documentation m
 | One shape per hierarchy level | Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, `is_empty`; dotted names descend. |
 | Bindings are views | Python and JavaScript coerce once at the boundary and call the core; parsing, validation, hashing, and conversion stay native. |
 
+## Watching what the core does
+
+The native core narrates its work through Rust's `log` facade, so a Rust caller
+installs any `log` implementation. Python bridges it into `logging` under the
+package's own logger: a record's name is the Rust module path it came from, so
+`yggdryl.media.iceberg.table` and its siblings all hang off `yggdryl` and one
+`setLevel` is the whole switch. JavaScript has no bridge.
+
+Debug is an operation starting; info is one done, carrying the counts a monitor
+watches. Nothing is reported per row, per batch, or per file: a commit is the
+unit, so ten times the rows is the same handful of records. A dependency of the
+build reaches `logging` only at warning and above, so enabling debug narrates
+this project and nothing else.
+
+=== "Python"
+
+    ```python
+    import logging
+    import tempfile
+    from pathlib import Path
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase, refresh_logging
+    from yggdryl.media.iceberg import Table, assign_field_ids
+
+    said: list[str] = []
+
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            said.append(record.getMessage())
+
+
+    watcher = logging.getLogger("yggdryl")
+    watcher.addHandler(Collect())
+    watcher.setLevel(logging.INFO)
+    # The bridge caches each logger's effective level, so a level set after
+    # import reaches it only through this call.
+    refresh_logging()
+
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    with tempfile.TemporaryDirectory() as folder:
+        table = Table.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
+        table.append(pa.record_batch({"id": [1, 2, 3]}, schema=schema))
+        assert sum(batch.num_rows for batch in table.scan()) == 3
+
+    assert any(message.startswith("created iceberg table at") for message in said)
+    assert any("wrote 3 rows as" in message for message in said)
+    ```
+
+| Reported | Level | Carries |
+| --- | --- | --- |
+| a table created | info | location, format version, column count |
+| a table opened | debug | location, metadata version |
+| a scan planned | debug then info | manifests walked; files to open, files the filters excluded, manifests read and skipped |
+| a snapshot written | debug then info | operation and snapshot id; rows, data files, bytes |
+| a commit landed | info | metadata version and snapshot id |
+| a commit beaten | debug | the version that won, the retry count, the wait |
+| a compaction | debug then info | files and bytes rewritten, files produced |
+| a schema evolved | info | the new schema id |
+| snapshots expired | info | how many |
+| an Arrow write session | debug then info | cadences published |
+
 ## Feature boundaries
 
 | Feature | Default | Adds |

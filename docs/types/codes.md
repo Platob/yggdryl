@@ -425,9 +425,41 @@ intact; message definitions have no generic datatype or code field helper.
 | leading digit | `_` prefixed |
 | opens and closes with `_` | trailing `_` dropped |
 
-The enum bases over these codes are Python-only: `yggdryl.enums` builds a
-`StringEnum` over a fixed US-ASCII width, which Rust and JavaScript express as
-the datatype alone.
+Declaring a vocabulary *over* one of these widths is Python-only: `yggdryl.enums`
+builds an `IntEnum` base whose members are their own storage bytes read
+big-endian, so a member is the text and the integer at once. Rust and JavaScript
+express the same column as the datatype alone. The four registered bases -
+`Currency`, `Country`, `Mic`, `CFI` - ship declared; `fixed_ascii(width)` builds
+one over any fixed width.
+
+=== "Python"
+
+    ```python
+    from yggdryl.enums import Currency, fixed_ascii
+
+    # A member is its value's own storage bytes, read big-endian: three ASCII
+    # letters of a currency are three bytes of an integer.
+    assert int(Currency.USD) == 0x555344
+    assert str(Currency.USD) == "USD"
+
+    class Venue(fixed_ascii(4)):
+        XNAS = "XNAS"
+
+    assert int(Venue.XNAS) == 0x584E4153
+
+    # The vocabulary is open: a value nothing declared reads back as a member
+    # under its own code, and every spelling of it is that one member.
+    assert Venue("XLON") is Venue("XLON")
+    assert str(Venue("XLON")) == "XLON"
+
+    # A value the width refuses is an error, not a silent unknown member.
+    try:
+        Venue("TOOLONG")
+    except ValueError as refusal:
+        assert "at most 4 bytes" in str(refusal)
+    else:
+        raise AssertionError("a value wider than the declaration was accepted")
+    ```
 
 ## A state sorts by its lifecycle
 
