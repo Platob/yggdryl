@@ -270,7 +270,11 @@ would put a test fixture in the crate's API.
   `Scalar::Sequence`; `Scalar::Record` is a sorted name-to-scalar *input* shape.
   No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
-- `Field` alone owns metadata and cache-aware mutation; `DataType` has none.
+- `Field` alone owns metadata, Arrow IPC dictionary identity and cache-aware
+  mutation; `DataType` has none. A `Field` *is* its type: one variant per
+  `DataType` shape, each carrying name, nullability, metadata and the Arrow
+  projection cache, so a datatype is never stored beside a name and
+  `dictionary_id`/`dictionary_is_ordered` exist only on `Field::Dictionary`.
   Protocol metadata is inert `<scheme>:<property>` text in one map; a protocol
   view borrows a whole `Field` and derefs to it, and typed protocol vocabulary
   (`digest:role`, the `partition:` pair, the `python:` class declaration) lives
@@ -304,7 +308,8 @@ would put a test fixture in the crate's API.
 | Concern | Type | Holds |
 | --- | --- | --- |
 | shape | `DataType` | no name, no nullability, no metadata |
-| schema | `Field` = name + `DataType` + nullable + metadata | a non-null Struct `Field` is the row schema |
+| schema | `Field` = one variant per `DataType` shape, each carrying name + nullable + metadata | a non-null `Field::Struct` is the row schema; `Field::new` takes a `DataType` and `Field::dtype()` answers one |
+| descent | `Field::fields`, `get_field_at`, `field_at`, `get_field_by_path` | borrow children out of the variant; never build a `DataType` to reach a child |
 | value | `Scalar` | one variant per physical width |
 | checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
 | narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
