@@ -26,6 +26,7 @@ use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;
 use super::version::VERSION_EXTENSION_NAME;
 use super::{DataType, UnionMode, invalid, validate_non_negative};
+use crate::types::sequence::SequenceType;
 
 /// Arrow field import, cached projection, and conversion traits.
 mod field {
@@ -1042,25 +1043,25 @@ impl DataType {
             A::Utf8 => Self::utf8(),
             A::LargeUtf8 => Self::large_utf8(),
             A::Utf8View => Self::utf8_view(),
-            A::List(field) => Self::List(Arc::new(Field::from_arrow_ref_at_depth(
+            A::List(field) => Self::list(Field::from_arrow_ref_at_depth(
                 Arc::clone(field),
                 child_depth,
-            )?)),
-            A::ListView(field) => Self::ListView(Arc::new(Field::from_arrow_ref_at_depth(
+            )?),
+            A::ListView(field) => Self::list_view(Field::from_arrow_ref_at_depth(
                 Arc::clone(field),
                 child_depth,
-            )?)),
+            )?),
             A::FixedSizeList(field, length) => Self::fixed_size_list(
                 Field::from_arrow_ref_at_depth(Arc::clone(field), child_depth)?,
                 *length,
             )?,
-            A::LargeList(field) => Self::LargeList(Arc::new(Field::from_arrow_ref_at_depth(
+            A::LargeList(field) => Self::large_list(Field::from_arrow_ref_at_depth(
                 Arc::clone(field),
                 child_depth,
-            )?)),
-            A::LargeListView(field) => Self::LargeListView(Arc::new(
+            )?),
+            A::LargeListView(field) => Self::large_list_view(
                 Field::from_arrow_ref_at_depth(Arc::clone(field), child_depth)?,
-            )),
+            ),
             A::Struct(fields) => {
                 Self::Structure(from_arrow_fields_at_depth(fields, child_depth)?.into())
             }
@@ -1132,24 +1133,19 @@ impl DataType {
             A::Utf8 => Self::utf8(),
             A::LargeUtf8 => Self::large_utf8(),
             A::Utf8View => Self::utf8_view(),
-            A::List(field) => Self::List(Arc::new(Field::from_arrow_ref_at_depth(
-                field,
-                child_depth,
-            )?)),
-            A::ListView(field) => Self::ListView(Arc::new(Field::from_arrow_ref_at_depth(
-                field,
-                child_depth,
-            )?)),
+            A::List(field) => Self::list(Field::from_arrow_ref_at_depth(field, child_depth)?),
+            A::ListView(field) => {
+                Self::list_view(Field::from_arrow_ref_at_depth(field, child_depth)?)
+            }
             A::FixedSizeList(field, length) => {
                 Self::fixed_size_list(Field::from_arrow_ref_at_depth(field, child_depth)?, length)?
             }
-            A::LargeList(field) => Self::LargeList(Arc::new(Field::from_arrow_ref_at_depth(
-                field,
-                child_depth,
-            )?)),
-            A::LargeListView(field) => Self::LargeListView(Arc::new(
-                Field::from_arrow_ref_at_depth(field, child_depth)?,
-            )),
+            A::LargeList(field) => {
+                Self::large_list(Field::from_arrow_ref_at_depth(field, child_depth)?)
+            }
+            A::LargeListView(field) => {
+                Self::large_list_view(Field::from_arrow_ref_at_depth(field, child_depth)?)
+            }
             A::Struct(fields) => {
                 // Arrow's shared field slice has no consuming iterator. Its
                 // `FieldRef`s are shallow-cloned and remain the exact cached
@@ -1228,11 +1224,10 @@ impl DataType {
     /// result through the tree in one pass without allocating an Arrow copy.
     pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
         match self {
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::FixedSizeList(field, _)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => field.arrow_import_is_projection_equivalent(),
+            Self::Sequence(sequence) => {
+                let field = sequence.item();
+                field.arrow_import_is_projection_equivalent()
+            }
             Self::Structure(fields) => fields
                 .iter()
                 .all(Field::arrow_import_is_projection_equivalent),
@@ -1335,14 +1330,20 @@ impl TryFrom<&DataType> for ArrowDataType {
             | R::MimeType
             | R::MediaType => Self::Utf8,
             R::Uuid => Self::FixedSizeBinary(16),
-            R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
-            R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
-            R::FixedSizeList(field, length) => {
+            R::Sequence(SequenceType::List(field)) => {
+                Self::List(field.as_ref().clone().into_arrow_ref()?)
+            }
+            R::Sequence(SequenceType::ListView(field)) => {
+                Self::ListView(field.as_ref().clone().into_arrow_ref()?)
+            }
+            R::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 validate_non_negative("FixedSizeList", "length", *length)?;
                 Self::FixedSizeList(field.as_ref().clone().into_arrow_ref()?, *length)
             }
-            R::LargeList(field) => Self::LargeList(field.as_ref().clone().into_arrow_ref()?),
-            R::LargeListView(field) => {
+            R::Sequence(SequenceType::LargeList(field)) => {
+                Self::LargeList(field.as_ref().clone().into_arrow_ref()?)
+            }
+            R::Sequence(SequenceType::LargeListView(field)) => {
                 Self::LargeListView(field.as_ref().clone().into_arrow_ref()?)
             }
             R::Structure(structure) => {
@@ -1477,14 +1478,20 @@ impl TryFrom<DataType> for ArrowDataType {
             | R::MimeType
             | R::MediaType => Self::Utf8,
             R::Uuid => Self::FixedSizeBinary(16),
-            R::List(field) => Self::List(into_arrow_field(field)?),
-            R::ListView(field) => Self::ListView(into_arrow_field(field)?),
-            R::FixedSizeList(field, length) => {
+            R::Sequence(SequenceType::List(field)) => Self::List(into_arrow_field(field)?),
+            R::Sequence(SequenceType::ListView(field)) => {
+                Self::ListView(into_arrow_field(field)?)
+            }
+            R::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 validate_non_negative("FixedSizeList", "length", length)?;
                 Self::FixedSizeList(into_arrow_field(field)?, length)
             }
-            R::LargeList(field) => Self::LargeList(into_arrow_field(field)?),
-            R::LargeListView(field) => Self::LargeListView(into_arrow_field(field)?),
+            R::Sequence(SequenceType::LargeList(field)) => {
+                Self::LargeList(into_arrow_field(field)?)
+            }
+            R::Sequence(SequenceType::LargeListView(field)) => {
+                Self::LargeListView(into_arrow_field(field)?)
+            }
             R::Structure(fields) => {
                 let fields = fields
                     .into_fields()
@@ -1733,19 +1740,19 @@ pub(crate) fn arrow_dtype_to_ffi(
 
 fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
     let (format, children, dictionary, flags) = match dtype {
-        DataType::List(field) => (
+        DataType::Sequence(SequenceType::List(field)) => (
             "+l".to_owned(),
             vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
-        DataType::ListView(field) => (
+        DataType::Sequence(SequenceType::ListView(field)) => (
             "+vl".to_owned(),
             vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
-        DataType::FixedSizeList(field, length) => {
+        DataType::Sequence(SequenceType::FixedSizeList(field, length)) => {
             validate_non_negative("FixedSizeList", "length", *length)?;
             (
                 format!("+w:{length}"),
@@ -1754,13 +1761,13 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
                 Flags::empty(),
             )
         }
-        DataType::LargeList(field) => (
+        DataType::Sequence(SequenceType::LargeList(field)) => (
             "+L".to_owned(),
             vec![field.as_ref().clone().into_arrow_ffi()?],
             None,
             Flags::empty(),
         ),
-        DataType::LargeListView(field) => (
+        DataType::Sequence(SequenceType::LargeListView(field)) => (
             "+vL".to_owned(),
             vec![field.as_ref().clone().into_arrow_ffi()?],
             None,

@@ -15,9 +15,11 @@ use crate::types::cast::downcast;
 use crate::types::nested::casts::{dictionary_values_ref, offset_pair};
 use crate::types::{bytes, string};
 use crate::{DataType, Field, UnionMode};
+use crate::types::sequence::SequenceType;
 
 /// Bounded Arrow materialization accounting.
 mod limits {
+    use crate::types::sequence::SequenceType;
     
     use crate::arrow::{Error, Result};
     use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
@@ -82,7 +84,7 @@ mod limits {
                 return Ok(());
             }
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     self.add_array_layout(dtype, rows)?;
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -149,7 +151,7 @@ mod limits {
         /// still charged because a deeply nested scalar can itself reach a cap.
         pub(crate) fn add_default_scalar_scratch(&mut self, dtype: &DataType) -> Result<()> {
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -212,7 +214,7 @@ mod limits {
             }
             self.add_array_layout_impl(dtype, rows, count_root_slots)?;
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                     let child_rows =
@@ -330,11 +332,11 @@ mod limits {
                 | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
                 | DataType::Decimal64 { .. }
-                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::LargeListView(_) => {
+                | DataType::Sequence(SequenceType::LargeListView(_)) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
                 DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
@@ -346,7 +348,7 @@ mod limits {
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::List(_)
+                | DataType::Sequence(SequenceType::List(_))
                 | DataType::Mapping(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
@@ -359,14 +361,14 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+                DataType::Sequence(SequenceType::LargeList(_)) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
                 DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
                 DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
                 DataType::Null
-                | DataType::FixedSizeList(..)
+                | DataType::Sequence(SequenceType::FixedSizeList(..))
                 | DataType::Structure(_)
                 | DataType::RunEndEncoded(_) => {}
                 DataType::Union(_, mode) => self.add_union_buffers(rows, *mode)?,
@@ -446,11 +448,11 @@ mod limits {
                 | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
                 | DataType::Decimal64 { .. }
-                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
+                | DataType::Sequence(SequenceType::LargeListView(_)) => self.add_fixed_rows(rows, 16)?,
                 DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
@@ -460,7 +462,7 @@ mod limits {
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::List(_)
+                | DataType::Sequence(SequenceType::List(_))
                 | DataType::Mapping(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
@@ -473,13 +475,13 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+                DataType::Sequence(SequenceType::LargeList(_)) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
                 DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
                 DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
-                DataType::FixedSizeList(child, size) => {
+                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                     let child_rows =
@@ -1006,7 +1008,7 @@ fn reserve_source_children_and_payload(
             selection,
             budget,
         )?,
-        DataType::List(child) => {
+        DataType::Sequence(SequenceType::List(child)) => {
             let array = downcast::<ListArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1024,7 +1026,7 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
         }
-        DataType::LargeList(child) => {
+        DataType::Sequence(SequenceType::LargeList(child)) => {
             let array = downcast::<LargeListArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1042,7 +1044,7 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
         }
-        DataType::FixedSizeList(child, size) => {
+        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             let size = usize::try_from(*size).map_err(|_| {
                 Error::IncompatibleSchema(
@@ -1260,9 +1262,9 @@ pub(crate) fn reserve_cast_output_payload(
             }
             _ => Ok(()),
         },
-        DataType::List(_)
-        | DataType::LargeList(_)
-        | DataType::FixedSizeList(..)
+        DataType::Sequence(SequenceType::List(_))
+        | DataType::Sequence(SequenceType::LargeList(_))
+        | DataType::Sequence(SequenceType::FixedSizeList(..))
         | DataType::Structure(_)
         | DataType::Mapping(_)
         | DataType::Union(..)
@@ -1305,7 +1307,7 @@ pub(crate) fn reserve_concat_copy(
         // Dictionary inputs are vocabulary-aligned before concat, so Arrow
         // allocates only the concatenated key array and retains one vocab Arc.
         DataType::Dictionary(_) => budget.add_array_layout(dtype, array.len())?,
-        DataType::List(child) => {
+        DataType::Sequence(SequenceType::List(child)) => {
             let array = downcast::<ListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1313,7 +1315,7 @@ pub(crate) fn reserve_concat_copy(
             let values = array.values().slice(start, end - start);
             reserve_concat_copy(values.as_ref(), child.dtype(), budget)?;
         }
-        DataType::LargeList(child) => {
+        DataType::Sequence(SequenceType::LargeList(child)) => {
             let array = downcast::<LargeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1323,17 +1325,17 @@ pub(crate) fn reserve_concat_copy(
         }
         // Arrow concat preserves every ListView backing child, including
         // ranges not referenced by a logical view.
-        DataType::ListView(child) => {
+        DataType::Sequence(SequenceType::ListView(child)) => {
             let array = downcast::<ListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::LargeListView(child) => {
+        DataType::Sequence(SequenceType::LargeListView(child)) => {
             let array = downcast::<LargeListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::FixedSizeList(child, _) => {
+        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
@@ -1425,25 +1427,25 @@ fn reserve_new_materialized_array_without_dictionary_values(
             // A fixed width was charged by the layout.
             _ => {}
         },
-        DataType::List(child) => reserve_new_materialized_array_without_dictionary_values(
+        DataType::Sequence(SequenceType::List(child)) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeList(child) => reserve_new_materialized_array_without_dictionary_values(
+        DataType::Sequence(SequenceType::LargeList(child)) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::ListView(child) => reserve_new_materialized_array_without_dictionary_values(
+        DataType::Sequence(SequenceType::ListView(child)) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeListView(child) => {
+        DataType::Sequence(SequenceType::LargeListView(child)) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<LargeListViewArray>(output.as_ref())?.values(),
                 downcast::<LargeListViewArray>(source.as_ref())?.values(),
@@ -1451,7 +1453,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 budget,
             )?;
         }
-        DataType::FixedSizeList(child, _) => {
+        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<FixedSizeListArray>(output.as_ref())?.values(),
                 downcast::<FixedSizeListArray>(source.as_ref())?.values(),
@@ -1649,31 +1651,31 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
                 reserve_new_dictionary_vocabularies(output, source, field.dtype(), budget)?;
             }
         }
-        DataType::List(child) => reserve_new_dictionary_vocabularies(
+        DataType::Sequence(SequenceType::List(child)) => reserve_new_dictionary_vocabularies(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeList(child) => reserve_new_dictionary_vocabularies(
+        DataType::Sequence(SequenceType::LargeList(child)) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::ListView(child) => reserve_new_dictionary_vocabularies(
+        DataType::Sequence(SequenceType::ListView(child)) => reserve_new_dictionary_vocabularies(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeListView(child) => reserve_new_dictionary_vocabularies(
+        DataType::Sequence(SequenceType::LargeListView(child)) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListViewArray>(output.as_ref())?.values(),
             downcast::<LargeListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::FixedSizeList(child, _) => reserve_new_dictionary_vocabularies(
+        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => reserve_new_dictionary_vocabularies(
             downcast::<FixedSizeListArray>(output.as_ref())?.values(),
             downcast::<FixedSizeListArray>(source.as_ref())?.values(),
             child.dtype(),

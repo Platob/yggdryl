@@ -6,6 +6,7 @@
 use std::collections::BTreeSet;
 
 use yggdryl::holder::local::Folder;
+use yggdryl::types::SequenceType;
 use yggdryl::{
     DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Scalar,
     TimeUnit, Timezone,
@@ -236,7 +237,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
     assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
     assert_ne!(derived, 453);
-    let DataType::List(item) = parties.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = parties.dtype() else {
         panic!("a list, got {}", parties.dtype());
     };
     assert_eq!(item.name(), "party");
@@ -347,7 +348,7 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
     fn walk(field: &Field, out: &mut Vec<Field>) {
         out.push(field.clone());
         match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => walk(item, out),
+            DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => walk(item, out),
             DataType::Structure(fields) => {
                 for held in fields.iter() {
                     walk(held, out);
@@ -515,14 +516,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
 /// last moved when the nested datatypes became families: `DataType` derives
 /// its hash, so a family variant contributes its leaf's discriminant too, and
-/// every struct and mapping in the dictionary hashes one level deeper than it
-/// did. `identifiers` and `metadata` also declare sorted keys, so they are
+/// every sequence, struct and mapping in the dictionary hashes one level
+/// deeper than it did. `identifiers` and `metadata` also declare sorted keys, so they are
 /// `sorted_map` rather than `map` beside a flag, and their entries are the
 /// `struct2` pair rather than a struct that happens to hold two children.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 380_852_655_784_648_868);
+    assert_eq!(registry.stable_hash(), 14_324_221_365_283_314_705);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

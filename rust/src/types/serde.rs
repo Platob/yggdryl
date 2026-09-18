@@ -6,6 +6,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result, Scalar};
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
+use crate::types::sequence::SequenceType;
 
 /// Structural JSON and Serde implementations for fields.
 mod field {
@@ -743,14 +744,14 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Timezone => Self::Timezone {},
             D::MimeType => Self::MimeType {},
             D::MediaType => Self::MediaType {},
-            D::List(field) => Self::List { field },
-            D::ListView(field) => Self::ListView { field },
-            D::FixedSizeList(field, length) => Self::FixedSizeList {
+            D::Sequence(SequenceType::List(field)) => Self::List { field },
+            D::Sequence(SequenceType::ListView(field)) => Self::ListView { field },
+            D::Sequence(SequenceType::FixedSizeList(field, length)) => Self::FixedSizeList {
                 field,
                 length: *length,
             },
-            D::LargeList(field) => Self::LargeList { field },
-            D::LargeListView(field) => Self::LargeListView { field },
+            D::Sequence(SequenceType::LargeList(field)) => Self::LargeList { field },
+            D::Sequence(SequenceType::LargeListView(field)) => Self::LargeListView { field },
             D::Structure(fields) => Self::Struct {
                 fields: fields.as_fields(),
             },
@@ -1211,24 +1212,24 @@ impl DataType {
                     entries.push((key("fixed"), Scalar::from(fixed)));
                 }
             }
-            D::List(field) => {
+            D::Sequence(SequenceType::List(field)) => {
                 tag("list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::ListView(field) => {
+            D::Sequence(SequenceType::ListView(field)) => {
                 tag("list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::FixedSizeList(field, length) => {
+            D::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 tag("fixed_size_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
                 entries.push((key("length"), Scalar::from(*length)));
             }
-            D::LargeList(field) => {
+            D::Sequence(SequenceType::LargeList(field)) => {
                 tag("large_list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::LargeListView(field) => {
+            D::Sequence(SequenceType::LargeListView(field)) => {
                 tag("large_list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }

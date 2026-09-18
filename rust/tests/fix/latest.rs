@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use yggdryl::fix::{FixCode, FixReplacement};
 use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
+use yggdryl::types::SequenceType;
 
 /// `LastQty(32)`, which `LastShares` also reaches, `Symbol(55)`, and
 /// `ExecBroker(76)`, which `ExecutingBroker` also reaches - all undated.
@@ -263,7 +264,7 @@ fn occurrences<'msg>(message: &'msg FixMsg, group: &str) -> Vec<Vec<(&'msg str, 
         .index_of(group)
         .unwrap_or_else(|| panic!("a {group} group"));
     let item = match message.as_field().fields()[at].dtype() {
-        DataType::List(item) => item.as_ref(),
+        DataType::Sequence(SequenceType::List(item)) => item.as_ref(),
         other => panic!("a list, got {other}"),
     };
     message

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{DataType, Error, Field, Result, Scalar};
+use crate::types::sequence::SequenceType;
 
 const MAX_DEPTH: usize = 64;
 
@@ -147,8 +148,8 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
                 .map(|child| nullable_layout(child, true, depth + 1))
                 .collect::<Result<Vec<_>>>()?,
         )?,
-        DataType::List(item) => DataType::list(nullable_layout(item, false, depth + 1)?),
-        DataType::LargeList(item) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
+        DataType::Sequence(SequenceType::List(item)) => DataType::list(nullable_layout(item, false, depth + 1)?),
+        DataType::Sequence(SequenceType::LargeList(item)) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
         // Native maps are already complete values, not sparse wire groups:
         // their entry and key nullability must remain exactly as declared.
         _ => field.dtype().clone(),
@@ -223,7 +224,7 @@ mod tests {
         assert!(plan.column(1).is_nullable());
         let (column, nested) = plan.nested(802).unwrap();
         assert_eq!(column, 3);
-        assert!(matches!(nested.field().dtype(), DataType::LargeList(_)));
+        assert!(matches!(nested.field().dtype(), DataType::Sequence(SequenceType::LargeList(_))));
         assert_eq!(nested.tag_index(523), Some(0));
         let row = plan.row(vec![
             Scalar::from("broker"),
@@ -240,7 +241,7 @@ mod tests {
                 Scalar::Null,
             ])
         );
-        let DataType::List(item) = source.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = source.dtype() else {
             panic!("list")
         };
         assert!(!item.fields()[0].is_nullable());

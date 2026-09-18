@@ -26,6 +26,7 @@ use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
 use crate::{DataType, DataTypeId, Error, Field, Result, TypedField, UnionMode, Value};
 use crate::types::mapping::MappingType;
+use crate::types::sequence::SequenceType;
 
 #[cfg(feature = "arrow")]
 /// Nested Arrow planning, exposure, and logical-null traversal.
@@ -64,6 +65,7 @@ pub(crate) mod casts {
     use crate::types::decimal::casts::DecimalText;
     use crate::{DataType, Field, Scalar, UnionMode};
 
+    use crate::types::sequence::SequenceType;
     mod dictionary {
         
         use super::*;
@@ -71,11 +73,11 @@ pub(crate) mod casts {
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
                 DataType::Dictionary(_) => true,
-                DataType::List(field)
-                | DataType::ListView(field)
-                | DataType::FixedSizeList(field, _)
-                | DataType::LargeList(field)
-                | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
+                DataType::Sequence(SequenceType::List(field))
+                | DataType::Sequence(SequenceType::ListView(field))
+                | DataType::Sequence(SequenceType::FixedSizeList(field, _))
+                | DataType::Sequence(SequenceType::LargeList(field))
+                | DataType::Sequence(SequenceType::LargeListView(field)) => contains_dictionary(field.dtype()),
                 DataType::Structure(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
@@ -175,7 +177,7 @@ pub(crate) mod casts {
                         replace_array_children(right, right_children, budget)?,
                     ))
                 }
-                DataType::List(child) => {
+                DataType::Sequence(SequenceType::List(child)) => {
                     let left_list = downcast::<ListArray>(left.as_ref())?;
                     let right_list = downcast::<ListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -217,7 +219,7 @@ pub(crate) mod casts {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeList(child) => {
+                DataType::Sequence(SequenceType::LargeList(child)) => {
                     let left_list = downcast::<LargeListArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -249,7 +251,7 @@ pub(crate) mod casts {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::ListView(child) => {
+                DataType::Sequence(SequenceType::ListView(child)) => {
                     let left_list = downcast::<ListViewArray>(left.as_ref())?;
                     let right_list = downcast::<ListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -291,7 +293,7 @@ pub(crate) mod casts {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeListView(child) => {
+                DataType::Sequence(SequenceType::LargeListView(child)) => {
                     let left_list = downcast::<LargeListViewArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -323,7 +325,7 @@ pub(crate) mod casts {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::FixedSizeList(child, size) => {
+                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
                     let width = usize::try_from(*size)
@@ -1998,11 +2000,11 @@ pub(crate) mod casts {
             | DataType::Union(..)
             | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
-            DataType::List(child)
-            | DataType::ListView(child)
-            | DataType::FixedSizeList(child, _)
-            | DataType::LargeList(child)
-            | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
+            DataType::Sequence(SequenceType::List(child))
+            | DataType::Sequence(SequenceType::ListView(child))
+            | DataType::Sequence(SequenceType::FixedSizeList(child, _))
+            | DataType::Sequence(SequenceType::LargeList(child))
+            | DataType::Sequence(SequenceType::LargeListView(child)) => requires_yggdryl_key_comparator(child.dtype()),
             DataType::Structure(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
@@ -2175,7 +2177,7 @@ pub(crate) mod casts {
                         .cmp(DecimalText::new(right_values[right]).as_bytes())
                 })
             }
-            DataType::List(child) => {
+            DataType::Sequence(SequenceType::List(child)) => {
                 let left_source = downcast::<ListArray>(left.as_ref())?;
                 let right_source = downcast::<ListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -2196,7 +2198,7 @@ pub(crate) mod casts {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::LargeList(child) => {
+            DataType::Sequence(SequenceType::LargeList(child)) => {
                 let left_source = downcast::<LargeListArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -2217,7 +2219,7 @@ pub(crate) mod casts {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::ListView(child) => {
+            DataType::Sequence(SequenceType::ListView(child)) => {
                 let left_source = downcast::<ListViewArray>(left.as_ref())?;
                 let right_source = downcast::<ListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -2242,7 +2244,7 @@ pub(crate) mod casts {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::LargeListView(child) => {
+            DataType::Sequence(SequenceType::LargeListView(child)) => {
                 let left_source = downcast::<LargeListViewArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -2267,7 +2269,7 @@ pub(crate) mod casts {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::FixedSizeList(child, size) => {
+            DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                 let left_values = Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
                 let right_values = Arc::clone(downcast::<FixedSizeListArray>(right.as_ref())?.values());
                 let child_compare =
@@ -2648,11 +2650,11 @@ pub(crate) mod casts {
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
             DataType::Structure(_) | DataType::Mapping(_) => true,
-            DataType::List(field)
-            | DataType::ListView(field)
-            | DataType::FixedSizeList(field, _)
-            | DataType::LargeList(field)
-            | DataType::LargeListView(field) => contains_struct(field.dtype()),
+            DataType::Sequence(SequenceType::List(field))
+            | DataType::Sequence(SequenceType::ListView(field))
+            | DataType::Sequence(SequenceType::FixedSizeList(field, _))
+            | DataType::Sequence(SequenceType::LargeList(field))
+            | DataType::Sequence(SequenceType::LargeListView(field)) => contains_struct(field.dtype()),
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
@@ -2665,11 +2667,11 @@ pub(crate) mod casts {
     pub(crate) fn is_reconcilable_nested(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::List(_)
-                | DataType::ListView(_)
-                | DataType::FixedSizeList(_, _)
-                | DataType::LargeList(_)
-                | DataType::LargeListView(_)
+            DataType::Sequence(SequenceType::List(_))
+                | DataType::Sequence(SequenceType::ListView(_))
+                | DataType::Sequence(SequenceType::FixedSizeList(_, _))
+                | DataType::Sequence(SequenceType::LargeList(_))
+                | DataType::Sequence(SequenceType::LargeListView(_))
                 | DataType::Structure(_)
                 | DataType::Union(_, _)
                 | DataType::Dictionary(_)
@@ -3021,16 +3023,8 @@ pub(crate) mod casts {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 #[non_exhaustive]
 pub enum NestedType {
-    /// Variable list with 32-bit offsets.
-    List(Arc<Field>),
-    /// Variable list view with 32-bit offsets.
-    ListView(Arc<Field>),
-    /// Fixed-length list.
-    FixedSizeList(Arc<Field>, i32),
-    /// Variable list with 64-bit offsets.
-    LargeList(Arc<Field>),
-    /// Variable list view with 64-bit offsets.
-    LargeListView(Arc<Field>),
+    /// Many of one thing, as the sequence family holds them.
+    Sequence(SequenceType),
     /// Named children, as the structure family holds them.
     Structure(StructureType),
     /// Tagged union fields and layout.
@@ -3049,11 +3043,11 @@ impl NestedType {
     /// Return the exact datatype identifier.
     pub const fn id(&self) -> DataTypeId {
         match self {
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Sequence(SequenceType::List(_)) => DataTypeId::List,
+            Self::Sequence(SequenceType::ListView(_)) => DataTypeId::ListView,
+            Self::Sequence(SequenceType::FixedSizeList(..)) => DataTypeId::FixedSizeList,
+            Self::Sequence(SequenceType::LargeList(_)) => DataTypeId::LargeList,
+            Self::Sequence(SequenceType::LargeListView(_)) => DataTypeId::LargeListView,
             Self::Structure(StructureType::Struct(_)) => DataTypeId::Struct,
             Self::Structure(StructureType::Struct2(_)) => DataTypeId::Struct2,
             Self::Union(..) => DataTypeId::Union,
@@ -3077,11 +3071,7 @@ impl NestedType {
 impl From<NestedType> for DataType {
     fn from(value: NestedType) -> Self {
         match value {
-            NestedType::List(item) => Self::List(item),
-            NestedType::ListView(item) => Self::ListView(item),
-            NestedType::FixedSizeList(item, length) => Self::FixedSizeList(item, length),
-            NestedType::LargeList(item) => Self::LargeList(item),
-            NestedType::LargeListView(item) => Self::LargeListView(item),
+            NestedType::Sequence(sequence) => Self::Sequence(sequence),
             NestedType::Structure(structure) => Self::Structure(structure),
             NestedType::Union(fields, mode) => Self::Union(fields, mode),
             NestedType::Dictionary(dtype) => Self::Dictionary(dtype),
@@ -3097,13 +3087,7 @@ impl TryFrom<&DataType> for NestedType {
 
     fn try_from(value: &DataType) -> Result<Self> {
         match value {
-            DataType::List(item) => Ok(Self::List(Arc::clone(item))),
-            DataType::ListView(item) => Ok(Self::ListView(Arc::clone(item))),
-            DataType::FixedSizeList(item, length) => {
-                Ok(Self::FixedSizeList(Arc::clone(item), *length))
-            }
-            DataType::LargeList(item) => Ok(Self::LargeList(Arc::clone(item))),
-            DataType::LargeListView(item) => Ok(Self::LargeListView(Arc::clone(item))),
+            DataType::Sequence(sequence) => Ok(Self::Sequence(sequence.clone())),
             DataType::Structure(structure) => Ok(Self::Structure(structure.clone())),
             DataType::Union(fields, mode) => Ok(Self::Union(fields.clone(), *mode)),
             DataType::Dictionary(dtype) => Ok(Self::Dictionary(Arc::clone(dtype))),
@@ -3134,11 +3118,11 @@ impl DataType {
 /// One child with its collection, if it is one, replaced by what it holds.
 pub(crate) fn exploded(child: &Field) -> Field {
     let held = match child.dtype() {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some((item.dtype().clone(), item.is_nullable())),
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::LargeListView(item)) => Some((item.dtype().clone(), item.is_nullable())),
         DataType::Mapping(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
         DataType::RunEndEncoded(encoded) => Some((
             encoded.values().dtype().clone(),
@@ -3412,13 +3396,13 @@ impl Field {
 define_field_types!(
     FixedSizeListType,
     FixedSizeList,
-    crate::DataType::FixedSizeList(..)
+    crate::DataType::Sequence(SequenceType::FixedSizeList(..))
 );
 
 define_field_types!(
     LargeListViewType,
     LargeListView,
-    crate::DataType::LargeListView(_)
+    crate::DataType::Sequence(SequenceType::LargeListView(_))
 );
 
 // The variant lives with the nested family: it is the self-describing

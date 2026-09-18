@@ -271,7 +271,7 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
         yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
-        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item)
+        yggdryl::DataType::Sequence(yggdryl::types::SequenceType::List(item)) | yggdryl::DataType::Sequence(yggdryl::types::SequenceType::LargeList(item))
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
             yggdryl::FixCategory::Fields

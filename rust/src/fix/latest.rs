@@ -42,6 +42,7 @@ use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
 use crate::expression::Term;
 use crate::{DataType, Field, Plan, Result, Scalar};
+use crate::types::sequence::SequenceType;
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -334,7 +335,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
     });
     let rows = Scalar::from_sequence(rows);
     let dtype = match list.dtype() {
-        DataType::LargeList(_) => DataType::large_list(item),
+        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(item),
         _ => DataType::list(item),
     };
     let mut rebuilt = dtype.required_field(list.name());

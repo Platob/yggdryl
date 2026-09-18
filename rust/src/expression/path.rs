@@ -39,6 +39,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::typing::{common_type, unwrap_dictionary};
 use super::{Literal, Term};
 use crate::{DataType, Error, Field, Result, Scalar};
+use crate::types::sequence::SequenceType;
 
 /// What a parse failure names itself as.
 pub(crate) const TARGET: &str = "field path";
@@ -450,11 +451,11 @@ fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
 /// The item field of a list-shaped datatype, whichever layout it uses.
 pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
     match dtype {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some(item.as_ref()),
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::LargeListView(item)) => Some(item.as_ref()),
         _ => None,
     }
 }

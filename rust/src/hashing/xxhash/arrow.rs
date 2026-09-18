@@ -51,6 +51,7 @@ use super::scalar::{
     write_signed, write_string, write_temporal, write_unsigned,
 };
 use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
+use crate::types::sequence::SequenceType;
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -1221,11 +1222,11 @@ fn feed_cell(
         | DataType::Timezone
         | DataType::MimeType
         | DataType::MediaType
-        | DataType::List(_)
-        | DataType::ListView(_)
-        | DataType::FixedSizeList(..)
-        | DataType::LargeList(_)
-        | DataType::LargeListView(_)
+        | DataType::Sequence(SequenceType::List(_))
+        | DataType::Sequence(SequenceType::ListView(_))
+        | DataType::Sequence(SequenceType::FixedSizeList(..))
+        | DataType::Sequence(SequenceType::LargeList(_))
+        | DataType::Sequence(SequenceType::LargeListView(_))
         | DataType::Structure(_)
         | DataType::Union(..)
         | DataType::Dictionary(_)

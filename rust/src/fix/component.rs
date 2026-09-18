@@ -4,6 +4,7 @@
 //! group name uses the published Parties family, then the counter's noun stem.
 
 use smol_str::SmolStr;
+use crate::types::sequence::SequenceType;
 
 const LATIN: [(&str, &str); 4] = [
     ("appendices", "appendix"),
@@ -82,7 +83,7 @@ pub(crate) fn entry_name(group: &str) -> SmolStr {
 }
 
 pub(crate) fn occurrence_name(group: &crate::Field) -> SmolStr {
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = group.dtype() {
+    if let crate::DataType::Sequence(SequenceType::List(item)) | crate::DataType::Sequence(SequenceType::LargeList(item)) = group.dtype() {
         return SmolStr::new(item.name());
     }
     entry_name(&group_name(group))

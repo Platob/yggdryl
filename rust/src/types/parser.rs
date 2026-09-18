@@ -1,5 +1,6 @@
 //! Canonical display and recursive Arrow, SQL, Hive, and Spark parsing.
 
+use crate::types::sequence::SequenceType;
 use std::fmt::Write as _;
 use std::fmt;
 use std::str::FromStr;
@@ -13,6 +14,7 @@ use super::{DataType, TimeUnit};
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
+    
     use std::borrow::Cow;
     use std::str::FromStr;
     use std::sync::OnceLock;
@@ -869,15 +871,15 @@ impl fmt::Display for DataType {
             D::Interval(unit) => write!(formatter, "interval({unit})"),
             D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::List(field) => fmt_single_field_type(formatter, "list", field),
-            D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
-            D::FixedSizeList(field, length) => {
+            D::Sequence(SequenceType::List(field)) => fmt_single_field_type(formatter, "list", field),
+            D::Sequence(SequenceType::ListView(field)) => fmt_single_field_type(formatter, "list_view", field),
+            D::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 formatter.write_str("fixed_size_list(")?;
                 fmt_field(formatter, field)?;
                 write!(formatter, ",{length})")
             }
-            D::LargeList(field) => fmt_single_field_type(formatter, "large_list", field),
-            D::LargeListView(field) => fmt_single_field_type(formatter, "large_list_view", field),
+            D::Sequence(SequenceType::LargeList(field)) => fmt_single_field_type(formatter, "large_list", field),
+            D::Sequence(SequenceType::LargeListView(field)) => fmt_single_field_type(formatter, "large_list_view", field),
             D::Structure(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::types::{BytesLayout, BytesParameters};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::types::SequenceType;
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
     match error {
@@ -402,7 +403,7 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     }
 
     let item = Field::new("item", DataType::utf8(), true);
-    let invalid_list = DataType::FixedSizeList(Arc::new(item.clone()), -1);
+    let invalid_list = DataType::Sequence(SequenceType::FixedSizeList(Arc::new(item.clone()), -1));
     for error in [
         DataType::fixed_size_list(item, -1).unwrap_err(),
         invalid_list.validate().unwrap_err(),

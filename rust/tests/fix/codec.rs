@@ -10,6 +10,7 @@ use yggdryl::graph::Event;
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
 use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar};
+use yggdryl::types::SequenceType;
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -423,7 +424,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
         .as_field()
         .get_field_by_path("parties")
         .expect("the group field");
-    let DataType::List(item) = field.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
         panic!("a list, got {}", field.dtype());
     };
     assert_eq!(item.name(), "party");
@@ -755,7 +756,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     );
     let members = |path: &str| -> Vec<String> {
         let group = message.as_field().get_field_by_path(path).expect(path);
-        let DataType::List(item) = group.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
             panic!("{path}: a list, got {}", group.dtype());
         };
         item.fields()
@@ -834,7 +835,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
         .as_field()
         .get_field_by_path("parties")
         .expect("parties");
-    let DataType::List(item) = party.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = party.dtype() else {
         panic!("a list");
     };
     let names: Vec<&str> = item.fields().iter().map(yggdryl::Field::name).collect();
@@ -950,7 +951,7 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     let message = reader.sole_line(lifted).unwrap();
     let members = |path: &str| -> Vec<String> {
         let group = message.as_field().get_field_by_path(path).expect(path);
-        let DataType::List(item) = group.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
             panic!("{path}: a list, got {}", group.dtype());
         };
         item.fields()
@@ -1136,11 +1137,11 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
         .as_field()
         .get_field_by_path("parties")
         .expect("parties");
-    let DataType::List(item) = party.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = party.dtype() else {
         panic!("a list");
     };
     let marked = item.field("#nopartysubids").expect("the marked group");
-    let DataType::List(sub) = marked.dtype() else {
+    let DataType::Sequence(SequenceType::List(sub)) = marked.dtype() else {
         panic!("a list, got {}", marked.dtype());
     };
     let names: Vec<&str> = sub.fields().iter().map(yggdryl::Field::name).collect();
@@ -1343,7 +1344,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
         .as_field()
         .get_field_by_path("parties")
         .expect("the separate logical group");
-    let DataType::List(item) = field.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
         panic!("the group's own shape, got {}", field.dtype());
     };
     assert!(item.dtype().is_nested(), "a List of `item` Structs");
@@ -1551,7 +1552,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     let occurrences = super::sequence(message.by_name("parties").unwrap());
     assert_eq!(occurrences, [Scalar::Null, Scalar::Null]);
     let group = message.as_field().get_field_by_path("parties").unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("{}", group.dtype());
     };
     assert_eq!(item.name(), "party");

@@ -31,6 +31,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
+use crate::types::sequence::SequenceType;
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -708,11 +709,11 @@ fn function_field(
         Function::Size => {
             if !matches!(
                 unwrap_dictionary(&first),
-                DataType::List(_)
-                    | DataType::ListView(_)
-                    | DataType::FixedSizeList(..)
-                    | DataType::LargeList(_)
-                    | DataType::LargeListView(_)
+                DataType::Sequence(SequenceType::List(_))
+                    | DataType::Sequence(SequenceType::ListView(_))
+                    | DataType::Sequence(SequenceType::FixedSizeList(..))
+                    | DataType::Sequence(SequenceType::LargeList(_))
+                    | DataType::Sequence(SequenceType::LargeListView(_))
                     | DataType::Mapping(_)
             ) {
                 return Err(typing_error(format_smolstr!(

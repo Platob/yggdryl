@@ -2,6 +2,7 @@ use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar};
+use crate::types::sequence::SequenceType;
 
 /// Interpret a natural text value under one field, then validate it.
 pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
@@ -24,11 +25,11 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
     }
     match field.dtype() {
         DataType::Structure(fields) => named(value, fields, field),
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => {
+        DataType::Sequence(SequenceType::List(child))
+        | DataType::Sequence(SequenceType::ListView(child))
+        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
+        | DataType::Sequence(SequenceType::LargeList(child))
+        | DataType::Sequence(SequenceType::LargeListView(child)) => {
             sequence(value, |value| into_natural(value, child), field)
         }
         DataType::Union(fields, _) => {
@@ -127,11 +128,11 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => {
             base64_payload(value, field)
         }
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => sequence(value, |value| prepare(value, child), field),
+        DataType::Sequence(SequenceType::List(child))
+        | DataType::Sequence(SequenceType::ListView(child))
+        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
+        | DataType::Sequence(SequenceType::LargeList(child))
+        | DataType::Sequence(SequenceType::LargeListView(child)) => sequence(value, |value| prepare(value, child), field),
         DataType::Structure(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
         DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
@@ -252,11 +253,11 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
 fn holds_byte_leaf(dtype: &DataType) -> bool {
     match dtype {
         DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => true,
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
+        DataType::Sequence(SequenceType::List(child))
+        | DataType::Sequence(SequenceType::ListView(child))
+        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
+        | DataType::Sequence(SequenceType::LargeList(child))
+        | DataType::Sequence(SequenceType::LargeListView(child)) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
         DataType::Structure(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
         DataType::Union(fields, _) => fields

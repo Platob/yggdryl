@@ -8,6 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::dictionary::DictionaryType;
 use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
+use crate::types::sequence::SequenceType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
@@ -129,17 +130,13 @@ pub enum DataType {
     Version,
     /// A validated, canonical location, stored as its canonical text.
     Url,
-    /// Variable list with 32-bit offsets.
-    List(Arc<Field>),
-    /// Variable list-view with 32-bit offsets.
-    ListView(Arc<Field>),
-    /// Fixed-length list.
-    FixedSizeList(Arc<Field>, i32),
-    /// Variable list with 64-bit offsets.
-    LargeList(Arc<Field>),
-    /// Variable list-view with 64-bit offsets.
-    LargeListView(Arc<Field>),
-    /// Ordered struct fields.
+    /// Many of one thing: one variant for the whole sequence family.
+    ///
+    /// The leaf - which offset width, whether it is a view, whether the
+    /// length is fixed - is [`SequenceType`]'s business, not this enum's.
+    /// Every leaf holds one item field, so a reader walking children asks
+    /// [`SequenceType::item`] and never branches on the layout.
+    Sequence(SequenceType),
     /// Named children, or the two-child pair: the whole structure family.
     ///
     /// The leaf - a struct's ordered children, or a mapping's key-value
@@ -307,11 +304,11 @@ impl DataType {
             Self::Timezone => DataTypeId::Timezone,
             Self::MimeType => DataTypeId::MimeType,
             Self::MediaType => DataTypeId::MediaType,
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Sequence(SequenceType::List(_)) => DataTypeId::List,
+            Self::Sequence(SequenceType::ListView(_)) => DataTypeId::ListView,
+            Self::Sequence(SequenceType::FixedSizeList(..)) => DataTypeId::FixedSizeList,
+            Self::Sequence(SequenceType::LargeList(_)) => DataTypeId::LargeList,
+            Self::Sequence(SequenceType::LargeListView(_)) => DataTypeId::LargeListView,
             Self::Structure(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
@@ -445,11 +442,11 @@ impl DataType {
             // the constructor would have refused for want of a width. This
             // is where it stops, before it reaches a boundary.
             Self::String(parameters) => parameters.validate(),
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => field.validate(),
-            Self::FixedSizeList(field, length) => {
+            Self::Sequence(SequenceType::List(field))
+            | Self::Sequence(SequenceType::ListView(field))
+            | Self::Sequence(SequenceType::LargeList(field))
+            | Self::Sequence(SequenceType::LargeListView(field)) => field.validate(),
+            Self::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 validate_non_negative("FixedSizeList", "length", *length)?;
                 field.validate()
             }
@@ -511,13 +508,13 @@ impl Ord for DataType {
             | (D::Duration64(left), D::Duration64(right)) => left.cmp(right),
             (D::Interval(left), D::Interval(right)) => left.cmp(right),
             (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => cmp_fields(left, right),
+            (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
+            | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
+            | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
+            | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => cmp_fields(left, right),
             (
-                D::FixedSizeList(left_field, left_size),
-                D::FixedSizeList(right_field, right_size),
+                D::Sequence(SequenceType::FixedSizeList(left_field, left_size)),
+                D::Sequence(SequenceType::FixedSizeList(right_field, right_size)),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
             (D::Structure(left), D::Structure(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
@@ -616,11 +613,11 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Cfi => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
-        DataType::List(_) => 36,
-        DataType::ListView(_) => 37,
-        DataType::FixedSizeList(..) => 38,
-        DataType::LargeList(_) => 39,
-        DataType::LargeListView(_) => 40,
+        DataType::Sequence(SequenceType::List(_)) => 36,
+        DataType::Sequence(SequenceType::ListView(_)) => 37,
+        DataType::Sequence(SequenceType::FixedSizeList(..)) => 38,
+        DataType::Sequence(SequenceType::LargeList(_)) => 39,
+        DataType::Sequence(SequenceType::LargeListView(_)) => 40,
         DataType::Structure(_) => 41,
         DataType::Union(..) => 42,
         DataType::Dictionary(_) => 43,

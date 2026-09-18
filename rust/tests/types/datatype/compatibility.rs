@@ -2,6 +2,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
+use yggdryl::types::SequenceType;
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
@@ -41,7 +42,7 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
     let fields = transformed.as_fields().unwrap();
     assert_eq!(fields[0].dtype(), &DataType::Int16);
     assert_eq!(fields[1].dtype(), &DataType::decimal128(20, 0).unwrap());
-    let DataType::List(item) = fields[2].dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = fields[2].dtype() else {
         panic!("expected normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
@@ -423,7 +424,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     )
     .unwrap();
     let transformed = dictionary.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::List(item) = transformed else {
+    let DataType::Sequence(SequenceType::List(item)) = transformed else {
         panic!("expected logical dictionary list");
     };
     assert_eq!(item.dtype(), &DataType::Int32);
@@ -686,7 +687,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
 
     assert_eq!(fields[0].dtype(), &DataType::Int32);
     assert!(!fields[0].is_nullable());
-    let DataType::List(item) = fields[1].dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = fields[1].dtype() else {
         panic!("expected a normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());

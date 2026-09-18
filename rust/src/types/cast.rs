@@ -61,6 +61,7 @@ use crate::types::uuid::casts::ingest_uuid_array;
 use crate::types::version::casts::{ingest_version_array, is_text_layout};
 use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar};
+use crate::types::sequence::SequenceType;
 
 /// Exact and preflight record-batch boundaries.
 mod batch {
@@ -1042,13 +1043,13 @@ mod typed {
         crate::types::uuid::UuidType,
         arrow_array::FixedSizeBinaryArray
     );
-    typed_array!(crate::types::ListType, arrow_array::ListArray);
+    typed_array!(crate::types::ListTypeMarker, arrow_array::ListArray);
     typed_array!(
-        crate::types::ListViewType,
+        crate::types::ListViewTypeMarker,
         arrow_array::ListViewArray
     );
     typed_array!(
-        crate::types::LargeListType,
+        crate::types::LargeListTypeMarker,
         arrow_array::LargeListArray
     );
     typed_array!(
@@ -1955,18 +1956,18 @@ impl ArrayCastPlan {
             // fixed sizes are a different row shape rather than a layout, and
             // that pair is refused below by name.
             (
-                DataType::List(child)
-                | DataType::LargeList(child)
-                | DataType::ListView(child)
-                | DataType::LargeListView(child)
-                | DataType::FixedSizeList(child, _),
+                DataType::Sequence(SequenceType::List(child))
+                | DataType::Sequence(SequenceType::LargeList(child))
+                | DataType::Sequence(SequenceType::ListView(child))
+                | DataType::Sequence(SequenceType::LargeListView(child))
+                | DataType::Sequence(SequenceType::FixedSizeList(child, _)),
                 ArrowDataType::List(source_child)
                 | ArrowDataType::LargeList(source_child)
                 | ArrowDataType::ListView(source_child)
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
+                if let (DataType::Sequence(SequenceType::FixedSizeList(_, size)), ArrowDataType::FixedSizeList(_, source)) =
                     (dtype, source_type)
                 {
                     if size != source {

@@ -5,6 +5,7 @@ use super::path as fpath;
 use std::path::PathBuf;
 use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
+use yggdryl::types::SequenceType;
 
 fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary().unwrap().path().unwrap().join(format!(
@@ -469,7 +470,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
     let group = Field::from_value(record["groups"].get(0).unwrap().clone()).unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the native group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -730,7 +731,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert!(!root.join("messages").exists());
     let document =
         Field::from_json_bytes(&std::fs::read(root.join("groups/Parties.json")).unwrap()).unwrap();
-    let DataType::List(item) = document.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = document.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -1131,7 +1132,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     let group = registry.field_by_name("Parties").unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("parties list")
     };
     assert_eq!(item.name(), "party");
@@ -1268,7 +1269,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
     let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the resolved group list")
     };
     assert_eq!(
@@ -1365,7 +1366,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .set_description("A changed description")
         .unwrap();
     registry.update(component).unwrap();
-    let DataType::List(item) = registry
+    let DataType::Sequence(SequenceType::List(item)) = registry
         .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap()
         .dtype()
@@ -1456,7 +1457,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.name(), "Party");

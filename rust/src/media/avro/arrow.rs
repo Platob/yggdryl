@@ -14,6 +14,7 @@ use crate::{DataType, Field, Result, Scalar, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
+use crate::types::sequence::SequenceType;
 
 /// Project an Avro schema as the crate's `Field` schema.
 ///
@@ -261,7 +262,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;
             record_json(&record_name, fields, counter)
         }
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
             let mut items = node_json(item.dtype(), item.name(), counter)?;
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);

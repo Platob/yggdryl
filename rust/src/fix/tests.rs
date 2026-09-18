@@ -9,6 +9,7 @@ use super::registry::control_byte;
 use super::store::shard_of;
 use crate::fix::{FixCodes, FixReplacement, FixReplacements};
 use crate::holder::local::Folder;
+use crate::types::sequence::SequenceType;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
     FixRegistry, MimeType, Plan, Scalar, Version,
@@ -3998,7 +3999,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
             assert_eq!(registry.get_field_by_counter(tag), Some(field), "{name}");
             continue;
         }
-        let DataType::List(item) = field.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
             panic!("{}", field.dtype());
         };
         assert!(entries.insert(item.name()));
@@ -4045,7 +4046,7 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
         &DataType::Int32
     );
     for field in registry.definitions(FixCategory::Groups) {
-        let DataType::List(item) = field.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
             assert!(
                 matches!(field.dtype(), DataType::Mapping(_)),
                 "{}: a group is a List, or one of the crate's Maps",
@@ -4217,7 +4218,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         .iter()
         .find(|field| field.name() == column)
         .unwrap_or_else(|| panic!("a {column} column"));
-    let DataType::List(item) = held.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = held.dtype() else {
         panic!("a list, got {}", held.dtype());
     };
     // Exactly three fixentry levels on every root-to-leaf path, each with the
@@ -4248,7 +4249,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         assert!(members[2].is_nullable(), "{column} level {level} value");
         let tail = &members[3];
         match tail.dtype() {
-            DataType::List(deeper) if level < 3 => {
+            DataType::Sequence(SequenceType::List(deeper)) if level < 3 => {
                 assert!(!tail.is_nullable(), "{column} level {level} tail");
                 held = deeper;
             }
@@ -4494,7 +4495,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     }
     let group = schema.get_field("secaltidgrp").expect("the group");
     assert!(
-        matches!(group.dtype(), DataType::List(_)),
+        matches!(group.dtype(), DataType::Sequence(SequenceType::List(_))),
         "a group is typed as the registry declares it: {}",
         group.dtype()
     );

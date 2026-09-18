@@ -17,6 +17,7 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
 use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::types::SequenceType;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
@@ -209,7 +210,7 @@ fn a_required_list_item_is_named_under_its_list() {
     let batch = RecordBatch::try_new(source, vec![values]).unwrap();
 
     let target = root([
-        DataType::List(Arc::new(DataType::Int32.required_field("item"))).nullable_field("counts"),
+        DataType::Sequence(SequenceType::List(Arc::new(DataType::Int32.required_field("item")))).nullable_field("counts"),
     ]);
     assert_eq!(
         refusal(&target, batch),

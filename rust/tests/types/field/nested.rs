@@ -6,10 +6,10 @@ use super::typed::assert_typed_marker;
 #[test]
 fn nested_markers_cover_every_child_layout() {
     let item = || Field::new("item", DataType::utf8(), true);
-    assert_typed_marker::<yggdryl::types::ListType>(DataType::list(item()));
-    assert_typed_marker::<yggdryl::types::ListViewType>(DataType::list_view(item()));
+    assert_typed_marker::<yggdryl::types::ListTypeMarker>(DataType::list(item()));
+    assert_typed_marker::<yggdryl::types::ListViewTypeMarker>(DataType::list_view(item()));
     assert_typed_marker::<nested::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
-    assert_typed_marker::<yggdryl::types::LargeListType>(DataType::large_list(item()));
+    assert_typed_marker::<yggdryl::types::LargeListTypeMarker>(DataType::large_list(item()));
     assert_typed_marker::<nested::LargeListViewType>(DataType::large_list_view(item()));
     assert_typed_marker::<yggdryl::types::StructTypeMarker>(DataType::from_fields([item()]).unwrap());
     assert_typed_marker::<yggdryl::types::UnionType>(

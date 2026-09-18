@@ -15,6 +15,7 @@ use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::hashing::xxhash;
 use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
+use crate::types::sequence::SequenceType;
 
 /// A FIX message: a market event with a FIX body around it.
 ///
@@ -1510,11 +1511,11 @@ impl FixMsg {
                     value.get(index)?.clone(),
                 ))
             }
-            DataType::List(item)
-            | DataType::LargeList(item)
-            | DataType::FixedSizeList(item, _)
-            | DataType::ListView(item)
-            | DataType::LargeListView(item) => {
+            DataType::Sequence(SequenceType::List(item))
+            | DataType::Sequence(SequenceType::LargeList(item))
+            | DataType::Sequence(SequenceType::FixedSizeList(item, _))
+            | DataType::Sequence(SequenceType::ListView(item))
+            | DataType::Sequence(SequenceType::LargeListView(item)) => {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
@@ -1596,7 +1597,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
     let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
     let counter = field.as_fix().counter().ok().flatten();
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
             let occurrences = value.as_sequence()?;
             let nested: Vec<FixEntry> = occurrences
                 .iter()

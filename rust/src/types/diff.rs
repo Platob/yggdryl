@@ -12,6 +12,7 @@ use crate::{DataType, Fields, Metadata, RunEndEncodedType, UnionFields, hashing:
 use super::Field;
 use crate::types::mapping::MappingType;
 use crate::types::structure::StructureType;
+use crate::types::sequence::SequenceType;
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -105,11 +106,11 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         return true;
     }
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => Arc::ptr_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
+        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
+        | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
+        | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => Arc::ptr_eq(left, right),
+        (D::Sequence(SequenceType::FixedSizeList(left, left_size)), D::Sequence(SequenceType::FixedSizeList(right, right_size))) => {
             left_size == right_size && Arc::ptr_eq(left, right)
         }
         (D::Structure(left), D::Structure(right)) => left.shares_storage_with(right),
@@ -354,13 +355,13 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => {
+            (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
+            | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
+            | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
+            | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => {
                 self.push_field_property(left, right, &path, "item");
             }
-            (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            (D::Sequence(SequenceType::FixedSizeList(left, left_size)), D::Sequence(SequenceType::FixedSizeList(right, right_size))) => {
                 if left_size != right_size {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "length"),
@@ -920,11 +921,11 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => fields_equal(left, right, false),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
+        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
+        | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
+        | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => fields_equal(left, right, false),
+        (D::Sequence(SequenceType::FixedSizeList(left, left_size)), D::Sequence(SequenceType::FixedSizeList(right, right_size))) => {
             left_size == right_size && fields_equal(left, right, false)
         }
         (D::Structure(left), D::Structure(right)) => {
@@ -1109,11 +1110,11 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => field_layout_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
+        | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
+        | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
+        | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => field_layout_eq(left, right),
+        (D::Sequence(SequenceType::FixedSizeList(left, left_size)), D::Sequence(SequenceType::FixedSizeList(right, right_size))) => {
             left_size == right_size && field_layout_eq(left, right)
         }
         (D::Structure(left), D::Structure(right)) => {

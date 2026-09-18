@@ -12,6 +12,7 @@ use super::FixRegistry;
 use crate::holder::Holder;
 use crate::text::Formatting;
 use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
+use crate::types::sequence::SequenceType;
 
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 3] = [
@@ -240,10 +241,10 @@ impl Resolver<'_> {
                 }
                 Some(DataType::from_fields(resolved)?)
             }
-            DataType::List(item) | DataType::LargeList(item) => {
+            DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
                 let (item, child_height) = self.occurrence(item, depth + 1)?;
                 height = child_height + 1;
-                Some(if matches!(field.dtype(), DataType::List(_)) {
+                Some(if matches!(field.dtype(), DataType::Sequence(SequenceType::List(_))) {
                     DataType::list(item)
                 } else {
                     DataType::large_list(item)
@@ -309,8 +310,8 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| compact(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::List(item) => Some(DataType::list(compact(item.as_ref().clone(), false)?)),
-        DataType::LargeList(item) => {
+        DataType::Sequence(SequenceType::List(item)) => Some(DataType::list(compact(item.as_ref().clone(), false)?)),
+        DataType::Sequence(SequenceType::LargeList(item)) => {
             Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
         }
         DataType::Mapping(map) => {

@@ -53,6 +53,7 @@ use crate::types::StructureType;
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;
+use crate::types::sequence::SequenceType;
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -1058,7 +1059,7 @@ fn group_from_entry(
     );
     let occurrence = DataType::from_fields(union)?.required_field(name);
     let dtype = match known.dtype() {
-        DataType::LargeList(_) => DataType::large_list(occurrence),
+        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
         DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
         _ => DataType::list(occurrence),
     };
@@ -1128,7 +1129,7 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::List(_) | DataType::LargeList(_) | DataType::Mapping(_) => {
+        DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_)) | DataType::Mapping(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -1683,11 +1684,11 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                 .collect();
             held.map(crate::Scalar::from_sequence)
         }),
-        DataType::List(item)
-        | DataType::LargeList(item)
-        | DataType::ListView(item)
-        | DataType::LargeListView(item)
-        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::LargeListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => value.as_sequence().map(|stated| {
             Some(crate::Scalar::from_sequence(
                 stated
                     .iter()

@@ -23,6 +23,7 @@ use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
 use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 use crate::types::structure::StructureType;
+use crate::types::sequence::SequenceType;
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -858,11 +859,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::List(field)
-        | D::ListView(field)
-        | D::FixedSizeList(field, _)
-        | D::LargeList(field)
-        | D::LargeListView(field) => {
+        D::Sequence(SequenceType::List(field))
+        | D::Sequence(SequenceType::ListView(field))
+        | D::Sequence(SequenceType::FixedSizeList(field, _))
+        | D::Sequence(SequenceType::LargeList(field))
+        | D::Sequence(SequenceType::LargeListView(field)) => {
             canonical_sequence(value, |value| canonicalize_field_value(field, value))
         }
         D::Structure(fields) => canonical_struct(fields, value),
@@ -1516,10 +1517,10 @@ fn validate_dtype_value(
                 .map_err(|_| expected("mediatype", value)),
             _ => Err(expected("mediatype", value)),
         },
-        D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
+        D::Sequence(SequenceType::List(field)) | D::Sequence(SequenceType::ListView(field)) | D::Sequence(SequenceType::LargeList(field)) | D::Sequence(SequenceType::LargeListView(field)) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
-        D::FixedSizeList(field, size) => validate_sequence(
+        D::Sequence(SequenceType::FixedSizeList(field, size)) => validate_sequence(
             field,
             value,
             usize::try_from(*size).ok(),

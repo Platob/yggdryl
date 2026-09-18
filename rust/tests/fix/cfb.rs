@@ -10,6 +10,7 @@ use yggdryl::holder::local::Folder;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
+use yggdryl::types::SequenceType;
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -504,7 +505,7 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     let group = fields.iter().find(|held| held.name() == "legs").unwrap();
     assert_eq!(group.as_fix().tag().unwrap(), None);
     assert_eq!(group.as_fix().counter().unwrap(), Some(555));
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
     assert_eq!(item.name(), "leg");
@@ -517,7 +518,7 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     assert!(!members[0].is_nullable(), "556 is required");
     assert_eq!(members[1].dtype(), &DataType::Int32);
     assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
-    let DataType::List(inner) = members[2].dtype() else {
+    let DataType::Sequence(SequenceType::List(inner)) = members[2].dtype() else {
         panic!("a nested list, got {}", members[2].dtype());
     };
     assert_eq!(members[2].as_fix().tag().unwrap(), None);
@@ -702,7 +703,7 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         );
         assert!(registry.get_field_by_counter(counter).is_some());
     }
-    let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = roots[0].get_field("vendorentries").unwrap().dtype() else {
         panic!("a list group");
     };
     assert_eq!(branches(item), ["venue"]);
@@ -2270,7 +2271,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     let group = root
         .get_field_by_path("hedgegroups")
         .expect("the hedge group");
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
     let members: Vec<&str> = item.fields().iter().map(Field::name).collect();
@@ -2364,7 +2365,7 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         .as_field()
         .get_field_by_path("hedgegroups")
         .expect("the hedge group");
-    let DataType::List(item) = hedge.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = hedge.dtype() else {
         panic!("a list, got {}", hedge.dtype());
     };
     let currency = item.fields().first().expect("its first member");

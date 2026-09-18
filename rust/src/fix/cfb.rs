@@ -230,6 +230,7 @@ use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url};
 
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
+use crate::types::sequence::SequenceType;
 
 /// How deep a grammar may nest before the parse stops descending.
 ///
@@ -1722,7 +1723,7 @@ impl<'doc> Parse<'doc> {
         let mut counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is dropped while the parent keeps the rest.
-        if matches!(counter.dtype(), DataType::List(_) | DataType::LargeList(_)) {
+        if matches!(counter.dtype(), DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_))) {
             self.dropped(&self.refused(
                 "a nested grammar opening with its counter",
                 format_args!(
@@ -2185,7 +2186,7 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) ->
                 .collect::<Result<Vec<_>>>()?;
             field.set_dtype(DataType::from_fields(children)?)?;
         }
-        DataType::List(item) => {
+        DataType::Sequence(SequenceType::List(item)) => {
             let item = catalog_members(registry, item.as_ref().clone(), scope)?;
             let mut item = catalog_entry(registry, crate::FixCategory::Components, item, scope)?;
             let component = item.name().to_owned();

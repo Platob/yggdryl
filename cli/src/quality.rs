@@ -182,7 +182,7 @@ fn shaped_group(report: &mut Report, field: &Field, named: &str) {
 /// A list field's item, where it is one.
 fn list_item(field: &Field) -> Option<&Field> {
     match field.dtype() {
-        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item) => Some(item),
+        yggdryl::DataType::Sequence(SequenceType::List(item)) | yggdryl::DataType::Sequence(SequenceType::LargeList(item)) => Some(item),
         _ => None,
     }
 }

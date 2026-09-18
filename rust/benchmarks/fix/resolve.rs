@@ -1,6 +1,7 @@
 //! Registry lookups: fields by tag, name, alias, identifier and path; the
 //! code sets a field carries, read borrowed.
 
+use yggdryl::types::SequenceType;
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
@@ -16,7 +17,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
         registry.field_by_name("Parties").unwrap().dtype(),
-        DataType::List(_)
+        DataType::Sequence(SequenceType::List(_))
     ));
     assert_eq!(
         registry.field_by_counter(453).unwrap(),

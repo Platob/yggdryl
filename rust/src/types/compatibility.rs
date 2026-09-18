@@ -12,6 +12,7 @@ use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
 use super::{BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape};
+use crate::types::sequence::SequenceType;
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -147,7 +148,7 @@ impl Field {
 fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
     match dtype {
-        D::List(field) => {
+        D::Sequence(SequenceType::List(field)) => {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
                 Ok((D::list(field), true))
@@ -155,7 +156,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 Ok((dtype.clone(), false))
             }
         }
-        D::FixedSizeList(field, length) if target.supports_fixed_size_list() => {
+        D::Sequence(SequenceType::FixedSizeList(field, length)) if target.supports_fixed_size_list() => {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
                 Ok((D::fixed_size_list(field, *length)?, true))
@@ -163,10 +164,10 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 Ok((dtype.clone(), false))
             }
         }
-        D::ListView(field)
-        | D::FixedSizeList(field, _)
-        | D::LargeList(field)
-        | D::LargeListView(field) => {
+        D::Sequence(SequenceType::ListView(field))
+        | D::Sequence(SequenceType::FixedSizeList(field, _))
+        | D::Sequence(SequenceType::LargeList(field))
+        | D::Sequence(SequenceType::LargeListView(field)) => {
             let (field, _) = normalize_item(target, field, path)?;
             Ok((D::list(field), true))
         }

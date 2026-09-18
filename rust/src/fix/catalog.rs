@@ -11,6 +11,7 @@ use super::store::{DefinitionKey, compact, reference};
 use super::{FixId, FixRegistry, MsgType};
 use crate::types::folds_equal;
 use crate::{DataType, Error, Field, FixCategory, Result};
+use crate::types::sequence::SequenceType;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Definition {
@@ -418,7 +419,7 @@ fn is_column_list(field: &Field) -> bool {
         return false;
     }
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
             !item.is_nullable() && !item.dtype().is_nested()
         }
         _ => false,
@@ -436,7 +437,7 @@ fn is_column_list(field: &Field) -> bool {
 /// nothing.
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item)
+        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item))
             if !item.is_nullable() && matches!(item.dtype(), DataType::Structure(_)) =>
         {
             Some(FixCategory::Groups)
@@ -450,7 +451,7 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
 /// The occurrence a group's list or map holds.
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => Some(item),
+        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => Some(item),
         DataType::Mapping(map) => Some(map.entries()),
         _ => None,
     }
@@ -459,8 +460,8 @@ pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
 /// Rebuilds only the occurrence, keeping the group's storage contract.
 fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
     match group.dtype() {
-        DataType::List(_) => Ok(DataType::list(occurrence)),
-        DataType::LargeList(_) => Ok(DataType::large_list(occurrence)),
+        DataType::Sequence(SequenceType::List(_)) => Ok(DataType::list(occurrence)),
+        DataType::Sequence(SequenceType::LargeList(_)) => Ok(DataType::large_list(occurrence)),
         DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted()),
         _ => Err(invalid(
             group,
@@ -604,7 +605,7 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::List(_) | DataType::LargeList(_) | DataType::Mapping(_) => {
+        DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_)) | DataType::Mapping(_) => {
             let item = occurrence_of(&field).expect("a group has an occurrence");
             Some(group_dtype(
                 &field,

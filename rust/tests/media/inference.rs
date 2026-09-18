@@ -129,6 +129,7 @@ mod scalars {
 }
 
 mod containers {
+    use yggdryl::types::SequenceType;
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]
@@ -175,7 +176,7 @@ mod containers {
                 .unwrap(),
         ]);
         let dtype = rows.dtype().unwrap();
-        let DataType::List(item) = dtype else {
+        let DataType::Sequence(SequenceType::List(item)) = dtype else {
             panic!("expected a list")
         };
         let fields = item.dtype().as_fields().expect("record fields");

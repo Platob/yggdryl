@@ -17,6 +17,7 @@ use crate::types::nested::reject_duplicate_field_names;
 use crate::types::nested::validate_fields;
 use crate::types::family::FamilyType;
 use crate::types::typed::define_field_types;
+use crate::types::sequence::SequenceType;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, Field, Result, TypedField,
 };
@@ -41,11 +42,7 @@ impl DataType {
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(..)
-            | Self::LargeList(_)
-            | Self::LargeListView(_)
+            Self::Sequence(_)
             | Self::Mapping(_) => 1,
             Self::Structure(structure) => structure.len(),
             Self::Union(fields, _) => fields.len(),
@@ -57,11 +54,10 @@ impl DataType {
     /// Returns a direct child field by position without allocating.
     pub fn get_field_at(&self, index: usize) -> Option<&Field> {
         match self {
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::FixedSizeList(field, _)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => (index == 0).then_some(field),
+            Self::Sequence(sequence) => {
+                let field = sequence.item();
+                (index == 0).then_some(field)
+            }
             Self::Structure(structure) => structure.get_field(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
             Self::Mapping(mapping) => (index == 0).then_some(mapping.entries()),
@@ -80,11 +76,10 @@ impl DataType {
     /// anything, and the whole of it for a name carrying no dot.
     fn get_field_by_name(&self, name: &str) -> Option<&Field> {
         match self {
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::FixedSizeList(field, _)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => (field.name() == name).then_some(field),
+            Self::Sequence(sequence) => {
+                let field = sequence.item();
+                (field.name() == name).then_some(field)
+            }
             Self::Structure(structure) => structure.as_fields().iter().find(|field| field.name() == name),
             Self::Union(fields, _) => fields.get_by_name(name).map(|(_, field)| field),
             Self::Mapping(mapping) => (mapping.entries().name() == name).then_some(mapping.entries()),
@@ -769,11 +764,11 @@ impl DataType {
                 .expect("a child of the arity this layout declares")
         };
         Ok(match self {
-            Self::List(_) => Self::list(next()),
-            Self::ListView(_) => Self::list_view(next()),
-            Self::FixedSizeList(_, length) => Self::fixed_size_list(next(), *length)?,
-            Self::LargeList(_) => Self::large_list(next()),
-            Self::LargeListView(_) => Self::large_list_view(next()),
+            Self::Sequence(SequenceType::List(_)) => Self::list(next()),
+            Self::Sequence(SequenceType::ListView(_)) => Self::list_view(next()),
+            Self::Sequence(SequenceType::FixedSizeList(_, length)) => Self::fixed_size_list(next(), *length)?,
+            Self::Sequence(SequenceType::LargeList(_)) => Self::large_list(next()),
+            Self::Sequence(SequenceType::LargeListView(_)) => Self::large_list_view(next()),
             Self::Structure(_) => Self::from_fields(children)?,
             Self::Union(members, mode) => {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();

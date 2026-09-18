@@ -1,5 +1,6 @@
 use yggdryl::types::{BytesLayout, BytesParameters};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::types::SequenceType;
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -219,10 +220,10 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
         DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
         DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary)),
-        DataType::FixedSizeList(
+        DataType::Sequence(SequenceType::FixedSizeList(
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
             -1,
-        ),
+        )),
         DataType::Decimal32 {
             precision: 0,
             scale: 0,

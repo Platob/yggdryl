@@ -8,6 +8,7 @@ use crate::types::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
+use crate::types::sequence::SequenceType;
 
 const MAX_DEFAULT_NODES: usize = 1_000_000;
 const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
@@ -168,11 +169,11 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
         }
         let child_depth = depth + 1;
         match current {
-            DataType::List(field)
-            | DataType::ListView(field)
-            | DataType::FixedSizeList(field, _)
-            | DataType::LargeList(field)
-            | DataType::LargeListView(field) => {
+            DataType::Sequence(SequenceType::List(field))
+            | DataType::Sequence(SequenceType::ListView(field))
+            | DataType::Sequence(SequenceType::FixedSizeList(field, _))
+            | DataType::Sequence(SequenceType::LargeList(field))
+            | DataType::Sequence(SequenceType::LargeListView(field)) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((field.dtype(), child_depth));
             }
@@ -347,10 +348,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),
-        D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
+        D::Sequence(SequenceType::List(_)) | D::Sequence(SequenceType::ListView(_)) | D::Sequence(SequenceType::LargeList(_)) | D::Sequence(SequenceType::LargeListView(_)) => {
             scalar(DefaultPlan::EmptySequence, false)
         }
-        D::FixedSizeList(field, length) => {
+        D::Sequence(SequenceType::FixedSizeList(field, length)) => {
             let length = usize::try_from(*length)
                 .map_err(|_| fatal_error(path, "fixed-size-list length is negative"))?;
             if length == 0 {

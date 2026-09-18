@@ -5963,7 +5963,7 @@ mod datatype_coverage {
         ])
         .unwrap();
         let deep = DataType::from_fields([
-            DataType::List(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
+            DataType::Sequence(SequenceType::List(Arc::new(DataType::Int64.nullable_field("item")))).nullable_field("xs"),
             DataType::map_of(DataType::utf8(), point.clone(), false)
                 .unwrap()
                 .nullable_field("m"),
@@ -5972,7 +5972,7 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             point.clone().nullable_field("p"),
-            DataType::List(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
+            DataType::Sequence(SequenceType::List(Arc::new(deep.clone().nullable_field("item")))).nullable_field("rows"),
         ];
 
         let point_value =

@@ -41,6 +41,7 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
+use crate::types::sequence::SequenceType;
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -227,11 +228,11 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
-        DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
-        DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
-        DataType::LargeList(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
-        DataType::LargeListView(child) => {
+        DataType::Sequence(SequenceType::List(child)) => list_array::<i32>(child, values, ListKind::List)?,
+        DataType::Sequence(SequenceType::ListView(child)) => list_view_array::<i32>(child, values, ListKind::ListView)?,
+        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => fixed_size_list_array(child, *size, values)?,
+        DataType::Sequence(SequenceType::LargeList(child)) => list_array::<i64>(child, values, ListKind::LargeList)?,
+        DataType::Sequence(SequenceType::LargeListView(child)) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
         DataType::Structure(fields) => struct_array(fields, values)?,
@@ -513,22 +514,22 @@ pub(crate) fn value_from_array(
                 code_cell_text(dtype, text.value(index).as_bytes())?,
             )?)
         }
-        DataType::List(child) => {
+        DataType::Sequence(SequenceType::List(child)) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
-        DataType::ListView(child) => list_value(
+        DataType::Sequence(SequenceType::ListView(child)) => list_value(
             child,
             downcast::<ListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::FixedSizeList(child, _) => list_value(
+        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => list_value(
             child,
             downcast::<FixedSizeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::LargeList(child) => list_value(
+        DataType::Sequence(SequenceType::LargeList(child)) => list_value(
             child,
             downcast::<LargeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::LargeListView(child) => list_value(
+        DataType::Sequence(SequenceType::LargeListView(child)) => list_value(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,

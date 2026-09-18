@@ -52,6 +52,7 @@ use crate::{TimeUnit, UnionMode};
 
 use super::bytes::{BytesLayout, BytesParameters};
 use super::string::{StringLayout, StringParameters};
+use crate::types::sequence::SequenceType;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -388,11 +389,11 @@ fn merge_union(
 /// The item field, width rank, and fixed size of a list-shaped layout.
 fn list_parts(dtype: &DataType) -> Option<(u8, &Field, Option<i32>)> {
     match dtype {
-        DataType::List(item) => Some((0, item, None)),
-        DataType::ListView(item) => Some((1, item, None)),
-        DataType::FixedSizeList(item, size) => Some((0, item, Some(*size))),
-        DataType::LargeList(item) => Some((2, item, None)),
-        DataType::LargeListView(item) => Some((3, item, None)),
+        DataType::Sequence(SequenceType::List(item)) => Some((0, item, None)),
+        DataType::Sequence(SequenceType::ListView(item)) => Some((1, item, None)),
+        DataType::Sequence(SequenceType::FixedSizeList(item, size)) => Some((0, item, Some(*size))),
+        DataType::Sequence(SequenceType::LargeList(item)) => Some((2, item, None)),
+        DataType::Sequence(SequenceType::LargeListView(item)) => Some((3, item, None)),
         _ => None,
     }
 }
