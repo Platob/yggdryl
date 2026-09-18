@@ -110,7 +110,7 @@ def main() -> None:
             ("Iceberg options hash lock", lambda: hash(copy.copy(ICEBERG_OPTIONS)), small),
             ("scan report stable hash", SCAN_REPORT.stable_hash, small),
             ("JSON bytes", NATIVE_VALUE.into_json_bytes, small),
-            ("JSON UTF-8", NATIVE_VALUE.into_json_str, small),
+            ("JSON UTF-8", NATIVE_VALUE.into_json, small),
             ("mapping get", lambda: NATIVE_VALUE.get("symbol"), small),
             ("dotted path", lambda: NATIVE_VALUE.path("levels.1"), small),
             ("persistent mapping set", lambda: NATIVE_VALUE.set("id", 43), small),

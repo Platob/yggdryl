@@ -621,14 +621,14 @@ impl JsScalar {
 
     /// Encode this value as natural compact JSON UTF-8.
     #[napi]
-    pub fn into_json_str(&self) -> Result<String> {
-        self.inner.into_json_str().map_err(napi_error)
+    pub fn into_json(&self) -> Result<String> {
+        self.inner.into_json().map_err(napi_error)
     }
 
     /// Natural compact JSON for the standard JavaScript string protocol.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> Result<String> {
-        self.into_json_str()
+        self.into_json()
     }
 
     /// Whether two native values are the same value.

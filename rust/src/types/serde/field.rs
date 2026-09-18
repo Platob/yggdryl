@@ -42,7 +42,7 @@ impl Field {
     /// The same document [`Self::into_json`] renders, encoded rather than
     /// decoded, for a caller writing it straight to a file or a socket without
     /// a round trip through `String`. [`crate::Scalar`] spells the same pair
-    /// `into_json_bytes` and `into_json_str`.
+    /// `into_json_bytes` and `into_json`.
     ///
     /// # Errors
     ///

@@ -3771,9 +3771,9 @@ export declare class Scalar {
    */
   asStr(): string | null
   /** Encode this value as natural compact JSON bytes. */
-  asJsonBytes(): Buffer
+  intoJsonBytes(): Buffer
   /** Encode this value as natural compact JSON UTF-8. */
-  asJsonUtf8(): string
+  intoJson(): string
   /** Natural compact JSON for the standard JavaScript string protocol. */
   toString(): string
   /**

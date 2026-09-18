@@ -1260,8 +1260,8 @@ impl PyScalar {
             .map_err(value_error)
     }
 
-    fn into_json_str(&self) -> PyResult<String> {
-        self.inner.into_json_str().map_err(value_error)
+    fn into_json(&self) -> PyResult<String> {
+        self.inner.into_json().map_err(value_error)
     }
 
     /// Add an inferred Python/native value through the core's checked rules.

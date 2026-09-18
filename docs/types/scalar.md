@@ -12,7 +12,7 @@
 | `MimeType`, `MediaType` | Representation, ordered codings; suffix, coding, and `MAGIC_PROBE_LEN`-bounded content inference |
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
-| `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
+| `Enum` | The vocabulary: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
@@ -138,7 +138,7 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
-| text and binary | `String`, `Code`, `Enum`, `Bytes`, `Geospatial` |
+| text and binary | `String`, `Code`, `Bytes`, `Geometry`, `Geography` |
 | identifiers | `Uuid`, `Version`, `Url` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
@@ -193,7 +193,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json_str`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -355,7 +355,7 @@ Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` an
 | persistent Record field update | 273 ns |
 | restate Date32 days as nanoseconds | 3.10 ns |
 | `into_json_bytes` | 2.67 us |
-| `into_json_str` | 2.67 us |
+| `into_json` | 2.67 us |
 
 | CPython release boundary | estimate |
 | --- | ---: |

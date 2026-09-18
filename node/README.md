@@ -33,7 +33,7 @@ console.assert(restored.equals(price))
 console.assert(price.kind === 'd256')
 console.assert(typeof price.stableHash() === 'bigint')
 console.assert(price.clone().compare(price) === 0)
-console.assert(price.asJsonUtf8() === '"12345678901234567890.1234"')
+console.assert(price.intoJson() === '"12345678901234567890.1234"')
 ```
 
 `Scalar.float(value, width = 64)`, `decimal(coefficient, scale = 0)`, `date`,

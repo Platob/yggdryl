@@ -209,7 +209,7 @@ assert.ok(
 
 `kind`, `count`, `unit`, `zone`, `unscaled`, and `scale` expose the payload.
 `asBytes`/`asStr` borrow content - `asStr` answers a string, a code, or an
-enum member - and `asJsonBytes`/`asJsonUtf8` use the core natural JSON writer.
+enum member - and `intoJsonBytes`/`intoJson` use the core natural JSON writer.
 
 ## Strings and bytes at the boundary
 

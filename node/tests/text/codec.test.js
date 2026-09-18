@@ -296,9 +296,12 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(Scalar.from('AAPL').asStr(), 'AAPL')
   assert.equal(Scalar.from(1).asStr(), null)
   const record = Scalar.from({ z: 2, a: 1 })
-  assert.equal(record.asJsonUtf8(), '{"a":1,"z":2}')
-  assert.deepEqual(record.asJsonBytes(), Buffer.from(record.asJsonUtf8()))
-  assert.equal(record.toString(), record.asJsonUtf8())
+  assert.equal(record.intoJson(), '{"a":1,"z":2}')
+  assert.deepEqual(record.intoJsonBytes(), Buffer.from(record.intoJson()))
+  assert.equal(record.toString(), record.intoJson())
+  // `toJSON` goes through binding.js, which called a method the rename had
+  // already removed - nothing covered that path, so the break shipped.
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), { a: 1, z: 2 })
   assert.deepEqual(record.toJSON(), { a: 1, z: 2 })
   const clone = record.clone()
   assert.notEqual(clone, record)

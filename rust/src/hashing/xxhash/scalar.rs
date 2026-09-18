@@ -181,7 +181,6 @@ impl Scalar {
     /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
     /// | `MimeType` | `mimetype` | length `u64` little-endian, then the canonical name |
     /// | `MediaType` | `mediatype` | rendered length `u64` little-endian, then the canonical rendering |
-    /// | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
     /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
     /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
     /// | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |

@@ -969,8 +969,8 @@ mod values {
         Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
     };
     use yggdryl::{
-        Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit,
-        Timezone, i256,
+        Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit, Timezone,
+        i256,
     };
 
     const POINT_WKB: [u8; 21] = [

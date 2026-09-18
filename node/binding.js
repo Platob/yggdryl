@@ -1158,7 +1158,7 @@ Object.defineProperties(PartitionSpec.prototype, {
     configurable: true,
     value() {
       return JSON.parse(
-        Reflect.apply(nativePartitionSpecIntoValue, this, []).asJsonUtf8(),
+        Reflect.apply(nativePartitionSpecIntoValue, this, []).intoJson(),
       )
     },
   },
@@ -1303,7 +1303,7 @@ Object.defineProperties(Scalar.prototype, {
   },
   toJSON: {
     value() {
-      return JSON.parse(this.asJsonUtf8())
+      return JSON.parse(this.intoJson())
     },
   },
 })

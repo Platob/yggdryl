@@ -1263,7 +1263,7 @@ impl Scalar {
     }
 
     /// Encode this value as compact JSON UTF-8.
-    pub fn into_json_str(&self) -> Result<String> {
+    pub fn into_json(&self) -> Result<String> {
         crate::text::json::into_utf8(self)
     }
 

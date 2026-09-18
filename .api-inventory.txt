@@ -3597,7 +3597,7 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   pub fn as_str(&self) -> Option<&str>
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
-  pub fn into_json_str(&self) -> Result<String>
+  pub fn into_json(&self) -> Result<String>
   pub fn as_wkb(&self) -> Option<&[u8]>
   pub fn as_sequence(&self) -> Option<&[Self]>
   pub fn as_mapping(&self) -> Option<&[(Self, Self)]>
