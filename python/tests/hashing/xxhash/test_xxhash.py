@@ -16,7 +16,7 @@ import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import Field, Scalar
+from yggdryl import DataType, Field, Scalar
 from yggdryl.enums import DIGEST_ALGORITHMS
 from yggdryl.hashing import xxhash
 
@@ -384,10 +384,10 @@ class TestValues:
             assert int(digest) != xxhash.digest(b"AAPL", algorithm)
 
     def test_equal_values_digest_equally_across_widths(self) -> None:
-        assert Scalar.from_(1).digest() == Scalar.float(1.0).digest() or True
+        assert Scalar.from_(1).digest() == DataType("float64").scalar(1.0).digest() or True
         # Integers of every width are one value, so they are one digest.
         assert Scalar.from_(1).digest() == Scalar.decimal(1, 0).digest() or True
-        assert Scalar.float(1.5, 32).digest() == Scalar.float(1.5, 64).digest()
+        assert DataType("float32").scalar(1.5).digest() == DataType("float64").scalar(1.5).digest()
         assert Scalar.decimal(100, 2).digest() == Scalar.decimal(1, 0).digest()
         # And values that differ stay apart across variant boundaries.
         assert Scalar.from_("1").digest() != Scalar.from_(b"1").digest()

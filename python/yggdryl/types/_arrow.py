@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from .._native import (
+    ArrowScalar,
     DataType,
     Field as NativeField,
     PythonMetadata,
@@ -606,9 +607,11 @@ def _arrow_scalar_value(
     # A leaf crosses under its native datatype through the core scalar
     # boundary, so storage such as a fixed width's padding never reaches
     # Python.
-    return Scalar.from_arrow_scalar(
-        scalar, NativeField("value", plan.dtype, nullable=True)
-    ).as_py()
+    return (
+        ArrowScalar.from_(scalar, NativeField("value", plan.dtype, nullable=True))
+        .into_scalar()
+        .as_py()
+    )
 
 
 def _map_keys_equal(left: Any, right: Any) -> bool:

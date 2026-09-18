@@ -143,18 +143,24 @@ from decimal import Decimal
 
 import pyarrow as pa
 
-from yggdryl import Scalar
+from yggdryl import DataType, Scalar
+from yggdryl.arrow import ArrowScalar
 
 price = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 assert price.kind == "d256"
 assert price.as_py() == Decimal("12345678901234567890123456789012345678.90")
-assert Scalar.float(1.5, 32).kind == "f32"
-assert Scalar.date(1).kind == "date32"
-assert Scalar.time(1, "us").kind == "time64"
-assert Scalar.datetime(0, "s", "UTC").zone == "UTC"
+# The width, unit and zone are named on the type, which reaches every one of
+# them - including the two decimal widths no factory ever could.
+assert DataType("float32").scalar(1.5).kind == "f32"
+assert DataType("decimal32(9,2)").scalar(Decimal("1.50")).kind == "d32"
+assert DataType("date32").scalar(1).kind == "date32"
+assert DataType("time64(us)").scalar(1).kind == "time64"
+assert DataType('datetime64(s,"UTC")').scalar(0).zone == "UTC"
+# A duration is the one construct that picks its width from the count.
 assert Scalar.duration(1, "ms").kind == "duration32"
+assert Scalar.duration(2**31, "ms").kind == "duration64"
 
-values = Scalar.from_arrow_array(pa.array([1, 2], type=pa.int16()))
+values = ArrowScalar.from_(pa.array([1, 2], type=pa.int16())).into_scalar()
 assert values.into_arrow_array().type == pa.int16()
 
 tree = Scalar.from_({"legs": [{"id": 1}]})

@@ -444,7 +444,7 @@ assert_eq!(
 === "Python"
 
     ```python
-    from yggdryl import Scalar
+    from yggdryl import DataType, Scalar
     from yggdryl.hashing import xxhash
 
     symbol = Scalar.from_("AAPL")
@@ -454,7 +454,7 @@ assert_eq!(
 
     # Equal values answer one digest, across widths.
     assert Scalar.decimal(100, 2).digest() == Scalar.decimal(1, 0).digest()
-    assert Scalar.float(1.5, 32).digest() == Scalar.float(1.5, 64).digest()
+    assert DataType("float32").scalar(1.5).digest() == DataType("float64").scalar(1.5).digest()
     # Values that differ stay apart, across variant boundaries.
     assert Scalar.from_("1").digest() != Scalar.from_(b"1").digest()
     assert Scalar.from_(None).digest() != Scalar.from_("").digest()

@@ -6,8 +6,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_pyarrow::FromPyArrow;
+use arrow_array::{ArrayRef, RecordBatch};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{
     PyArithmeticError, PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError,
@@ -20,7 +19,7 @@ use pyo3::types::{
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
-    array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
+    array_from_value, batch_from_value, scalar_array,
 };
 use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
@@ -31,7 +30,7 @@ use yggdryl::types::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
+    DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, Scalar, TimeUnit, Timezone, i256,
 };
 
@@ -41,7 +40,6 @@ use crate::types::field::{PyField, core_field_from_value};
 use crate::types::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};
-use yggdryl::ArrowCastOptions;
 
 /// How deep a Python graph may nest before conversion refuses to recurse.
 const MAX_PYTHON_DEPTH: usize = 128;
@@ -107,10 +105,6 @@ fn time_unit(value: &str) -> PyResult<TimeUnit> {
     TimeUnit::from_str(value).map_err(value_error)
 }
 
-fn timezone_or_naive(value: Option<&Bound<'_, PyAny>>) -> PyResult<Timezone> {
-    value.map_or(Ok(Timezone::NAIVE), core_timezone_from_value)
-}
-
 fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
     if value.is_instance_of::<PyBool>()
         || !(value.is_instance_of::<PyInt>() || value.is_instance_of::<PyString>())
@@ -148,26 +142,6 @@ fn ensure_pyarrow_instance(value: &Bound<'_, PyAny>, class: &str) -> PyResult<()
             value.get_type().name()?
         )))
     }
-}
-
-fn exact_or_inferred_array_field(
-    field: Option<&Bound<'_, PyAny>>,
-    array: &ArrayRef,
-    name: &str,
-) -> PyResult<CoreField> {
-    if let Some(field) = field {
-        return core_field_from_value(field);
-    }
-    let dtype = CoreDataType::try_from(array.data_type().clone()).map_err(value_error)?;
-    Ok(CoreField::new(name, dtype, array.null_count() != 0))
-}
-
-fn extend_rows(rows: &mut Vec<Scalar>, value: &Scalar) -> PyResult<()> {
-    let values = value.as_sequence().ok_or_else(|| {
-        PyValueError::new_err("Arrow record conversion must produce an outer Sequence")
-    })?;
-    rows.extend(values.iter().cloned());
-    Ok(())
 }
 
 fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
@@ -883,14 +857,6 @@ impl PyScalar {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (value, width=64))]
-    fn float(value: f64, width: u8) -> PyResult<Self> {
-        Scalar::from_float(value, width)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
     #[pyo3(signature = (coefficient, scale=0))]
     fn decimal(coefficient: &Bound<'_, PyAny>, scale: i8) -> PyResult<Self> {
         Ok(Self::from_inner(Scalar::from_decimal(
@@ -899,116 +865,20 @@ impl PyScalar {
         )))
     }
 
+    /// Build an elapsed duration, picking the width from the count itself.
+    ///
+    /// The one construct the type side cannot express: `duration32` and
+    /// `duration64` are two static choices, and a count that overflows 32 bits
+    /// is an error there rather than a widening. Here it widens.
+    ///
+    /// An elapsed duration has no zone - the core requires a naive one - so
+    /// there is no `timezone` parameter to pass a zone that could only be
+    /// refused.
     #[staticmethod]
-    #[pyo3(signature = (count, unit="d", timezone=None))]
-    fn date(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_date(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn duration(count: i64, unit: &str) -> PyResult<Self> {
+        Scalar::from_duration(count, time_unit(unit)?, Timezone::NAIVE)
             .map(Self::from_inner)
             .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn time(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_time(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn datetime(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_datetime(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn duration(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_duration(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` scalar through Arrow C Data.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_scalar(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let input = arrow_scalar_into_array(value)?;
-        let field = exact_or_inferred_array_field(field, &input, "value")?;
-        let input = field
-            .cast_arrow_array(input, ArrowCastOptions::new())
-            .map_err(value_error)?;
-        scalar_value(&field, input.as_ref())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` array as an outer Sequence.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_array(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let input = arrow_array_from_pyarrow(value)?;
-        let field = exact_or_inferred_array_field(field, &input, "item")?;
-        let input = field
-            .cast_arrow_array(input, ArrowCastOptions::new())
-            .map_err(value_error)?;
-        array_to_value(&field, input.as_ref())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` `RecordBatch` as an outer Sequence of rows.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_batch(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let batch = RecordBatch::from_pyarrow_bound(value)?;
-        let batch = match field {
-            Some(field) => core_root_field_from_value(field, "row")?
-                .cast_arrow_batch(batch, ArrowCastOptions::new())
-                .map_err(value_error)?,
-            None => batch,
-        };
-        batch_to_value(&batch)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` Table through its Arrow C stream.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_table(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        ensure_pyarrow_instance(value, "Table")?;
-        let root = field
-            .map(|field| core_root_field_from_value(field, "row"))
-            .transpose()?;
-        let mut reader =
-            arrow_array::ffi_stream::ArrowArrayStreamReader::from_pyarrow_bound(value)?;
-        let mut rows = Vec::new();
-        for batch in &mut reader {
-            let batch = batch.map_err(value_error)?;
-            let batch = match &root {
-                Some(root) => root
-                    .cast_arrow_batch(batch, ArrowCastOptions::new())
-                    .map_err(value_error)?,
-                None => batch,
-            };
-            extend_rows(&mut rows, &batch_to_value(&batch).map_err(value_error)?)?;
-        }
-        Ok(Self::from_inner(Scalar::from_sequence(rows)))
     }
 
     /// Convert back to Python's native scalar and collection types.

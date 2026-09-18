@@ -10,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, Scalar, Version, enums, field, scalar, types
+from yggdryl.arrow import ArrowScalar
 from yggdryl.text import json
 
 
@@ -144,7 +145,7 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     scalar = Scalar.from_(Version(5, 0, 300))
     assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"
     batch = pa.record_batch([array], schema=pa.schema([arrow_field]))
-    native = Scalar.from_arrow_batch(batch)
+    native = ArrowScalar.from_(batch).into_scalar()
     assert [row[0].as_py() for row in native] == [Version(5, 0, 300), Version(5), Version(255, 255, 65535)]
 
 

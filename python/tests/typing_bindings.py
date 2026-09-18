@@ -349,7 +349,7 @@ byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_dtype_default_scalar: Scalar = typed_struct.dtype.default_scalar()
-native_instant = Scalar.datetime(0, "us", "UTC")
+native_instant = DataType('datetime64(us,"UTC")').scalar(0)
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 native_enum_text: str | None = Scalar.from_enum("IOMode", "append").as_str()
 native_scalar_id: str = native_instant.id
@@ -1503,7 +1503,7 @@ fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
-    default_sending_time=Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC"),
+    default_sending_time=DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000),
 )
 fix_reader_unpinned_clock: fix.FixCodec = fix.FixCodec(default_sending_time=None)
 fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")

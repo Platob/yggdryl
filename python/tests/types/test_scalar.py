@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Scalar
+from yggdryl import DataType, Scalar
 from yggdryl.text import json
 
 
@@ -116,32 +116,35 @@ def test_a_temporal_finer_than_python_holds_is_floored_not_refused() -> None:
     # `datetime` counts microseconds, so a nanosecond reading crosses floored
     # rather than withheld - the discarded remainder is under a microsecond,
     # and the Arrow path still carries the whole reading.
-    assert Scalar.datetime(1, "ns", "UTC").as_py() == dt.datetime(
+    assert DataType('datetime64(ns,"UTC")').scalar(1).as_py() == dt.datetime(
         1970, 1, 1, tzinfo=dt.timezone.utc
     )
-    assert Scalar.datetime(1_500, "ns", "UTC").as_py() == dt.datetime(
+    assert DataType('datetime64(ns,"UTC")').scalar(1_500).as_py() == dt.datetime(
         1970, 1, 1, 0, 0, 0, 1, tzinfo=dt.timezone.utc
     )
     # Floored, not truncated toward zero, so the rounding stays monotonic
     # across the epoch and two ordered values stay ordered.
-    assert Scalar.datetime(-1, "ns", "UTC").as_py() == dt.datetime(
+    assert DataType('datetime64(ns,"UTC")').scalar(-1).as_py() == dt.datetime(
         1969, 12, 31, 23, 59, 59, 999_999, tzinfo=dt.timezone.utc
     )
 
     with pytest.raises(OverflowError, match="microseconds a duration counts"):
         Scalar.from_(dt.timedelta.max)
 
-    with pytest.raises(ValueError, match="within one day of midnight"):
-        Scalar.time(99_999_999, "s").as_py()
+    # `Scalar.time` built this and only refused when projected to Python. The
+    # type refuses the count against its unit's range at construction, which
+    # is earlier and says more.
+    with pytest.raises(ValueError, match="must be in 0..86400"):
+        DataType("time32(s)").scalar(99_999_999)
 
 
 def test_a_zone_with_no_rules_anywhere_is_named_in_the_error() -> None:
     with pytest.raises(ValueError, match='"Mars/Olympus"'):
-        Scalar.datetime(0, "s", "Mars/Olympus").as_py()
+        DataType('datetime64(s,"Mars/Olympus")').scalar(0).as_py()
 
 
 def test_a_coarser_unit_is_restated_exactly() -> None:
-    value = Scalar.datetime(1_700_000_000, "s", "UTC")
+    value = DataType('datetime64(s,"UTC")').scalar(1_700_000_000)
     assert value.as_py() == dt.datetime(
         2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc
     )
@@ -160,8 +163,8 @@ def test_mapping_keys_cross_in_a_hashable_python_shape() -> None:
 
 
 def test_equal_cross_width_numbers_share_a_hash() -> None:
-    f32 = Scalar.float(1.0, 32)
-    f64 = Scalar.float(1.0)
+    f32 = DataType("float32").scalar(1.0)
+    f64 = DataType("float64").scalar(1.0)
     assert f32 == f64
     assert hash(f32) == hash(f64)
 
@@ -175,13 +178,13 @@ def test_a_value_answers_what_shape_it_is_without_lowering_it() -> None:
     assert not Scalar.from_("text").is_container()
 
     assert Scalar.from_(1).is_number()
-    assert Scalar.float(1.5).is_number()
+    assert DataType("float64").scalar(1.5).is_number()
     assert Scalar.decimal(150, 2).is_number()
     assert not Scalar.from_("1").is_number()
     assert not Scalar.from_(True).is_number()
 
     assert Scalar.from_(1).is_integer()
-    assert not Scalar.float(1.5).is_integer()
+    assert not DataType("float64").scalar(1.5).is_integer()
     assert not Scalar.decimal(150, 2).is_integer()
 
 
@@ -194,11 +197,11 @@ def test_a_value_narrows_to_the_python_number_it_is() -> None:
     assert Scalar.from_(-7).as_int() == -7
     assert Scalar.from_(2**63).as_int() == 2**63
     assert Scalar.from_("7").as_int() is None
-    assert Scalar.float(1.5).as_int() is None
+    assert DataType("float64").scalar(1.5).as_int() is None
 
     # A 32-bit float widens exactly, so both widths answer here.
-    assert Scalar.float(1.5, 32).as_float() == 1.5
-    assert Scalar.float(1.5, 64).as_float() == 1.5
+    assert DataType("float32").scalar(1.5).as_float() == 1.5
+    assert DataType("float64").scalar(1.5).as_float() == 1.5
     assert Scalar.from_(1).as_float() is None
 
 

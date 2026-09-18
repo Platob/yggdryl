@@ -30,7 +30,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # The one intake clock undated test bytes take, so a parse repeats.
-CLOCK = Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC")
+CLOCK = DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000)
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:

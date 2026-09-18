@@ -124,7 +124,7 @@ class TestValues:
         value = txhash.txh3(b"AAPL", INSTANT)
         instant = value.into_datetime()
         assert instant.as_py() == dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
-        assert instant == Scalar.datetime(INSTANT, "us", "UTC")
+        assert instant == DataType('datetime64(us,"UTC")').scalar(INSTANT)
         cell = value.into_scalar()
         assert cell.as_bytes() == bytes(value)
         assert cell.dtype == DataType("fixed_size_binary[16]")

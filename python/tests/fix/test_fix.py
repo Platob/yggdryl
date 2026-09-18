@@ -57,7 +57,7 @@ SEEDED_SCALARS = 38
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
 CLOCK_NS = 1_704_190_530_000_000_000
-CLOCK = Scalar.datetime(CLOCK_NS, "ns", "UTC")
+CLOCK = DataType('datetime64(ns,"UTC")').scalar(CLOCK_NS)
 CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 
 # The crate's own tags the message answers as typed facts.
@@ -1256,7 +1256,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
             b"8=FIX.4.4|35=0|52=19700101-00:00:02.123456789|60=19700101-00:00:03.987654321|10=0|"
         )
     )
-    assert stated.by_tag(52) == Scalar.datetime(2_123_456_789, "ns", "UTC")
+    assert stated.by_tag(52) == DataType('datetime64(ns,"UTC")').scalar(2_123_456_789)
     assert stated.header().sendingtime == 2_123_456_789
     assert stated.header().stated_sendingtime
     assert stated.unix == 3_987_654_321
@@ -1271,7 +1271,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert day.unix == CLOCK_NS
 
     # The pin is exact: another unit, a naive clock or text is refused.
-    for refused in (Scalar.datetime(0, "us", "UTC"), Scalar.datetime(0, "ns"), "1970-01-01T00:00:00Z"):
+    for refused in (DataType('datetime64(us,"UTC")').scalar(0), DataType("datetime64(ns)").scalar(0), "1970-01-01T00:00:00Z"):
         with pytest.raises(ValueError, match="default_sending_time"):
             FixCodec(registry, default_sending_time=refused)
 
