@@ -1059,7 +1059,7 @@ mod typed {
         crate::types::nested::FixedSizeListType,
         arrow_array::FixedSizeListArray
     );
-    typed_array!(crate::types::StructType, arrow_array::StructArray);
+    typed_array!(crate::types::StructTypeMarker, arrow_array::StructArray);
     typed_array!(crate::types::UnionType, arrow_array::UnionArray);
     typed_array!(crate::types::nested::MapTypeMarker, arrow_array::MapArray);
     // A variant's storage is the canonical struct of two required binaries, and a
@@ -1888,11 +1888,11 @@ impl ArrayCastPlan {
             (target, source) if holds_decimal(target) && holds_text(source) => {
                 ArrayCastKind::DecimalIngest
             }
-            (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
+            (DataType::Structure(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
                 };
-                let mapping = folded_field_mapping(source_fields, fields)?;
+                let mapping = folded_field_mapping(source_fields, fields.as_fields())?;
                 let mut columns = Vec::with_capacity(fields.len());
                 for (target_index, (target, source_index)) in fields.iter().zip(mapping).enumerate()
                 {

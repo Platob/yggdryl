@@ -952,7 +952,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
             ),
         ]));
     let imported = Field::from_arrow(&shredded).unwrap();
-    assert!(matches!(imported.dtype(), DataType::Struct(_)));
+    assert!(matches!(imported.dtype(), DataType::Structure(_)));
 
     let swapped = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
         ArrowField::new("value", ArrowDataType::Binary, false),
@@ -963,7 +963,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
         "arrow.parquet.variant".to_owned(),
     )]));
     let imported = Field::from_arrow(&swapped).unwrap();
-    assert!(matches!(imported.dtype(), DataType::Struct(_)));
+    assert!(matches!(imported.dtype(), DataType::Structure(_)));
 }
 
 #[test]

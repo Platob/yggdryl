@@ -167,7 +167,7 @@ fn write_dtype(
 fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Result {
     use DataType as D;
     match dtype {
-        D::Struct(fields) => write!(formatter, "struct[{}]", fields.len()),
+        D::Structure(fields) => write!(formatter, "struct[{}]", fields.len()),
         D::List(_) => formatter.write_str("list"),
         D::ListView(_) => formatter.write_str("list_view"),
         D::LargeList(_) => formatter.write_str("large_list"),
@@ -197,7 +197,7 @@ fn write_children(
 ) -> fmt::Result {
     use DataType as D;
     match dtype {
-        D::Struct(fields) => {
+        D::Structure(fields) => {
             for field in fields.as_fields() {
                 formatter.write_str("\n")?;
                 write_field(formatter, field, columns)?;

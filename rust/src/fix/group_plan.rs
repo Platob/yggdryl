@@ -85,7 +85,7 @@ impl GroupPlan {
         check_depth(field, depth)?;
         for (index, child) in field.fields().iter().enumerate() {
             path.push(index);
-            if matches!(child.dtype(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Structure(_)) {
                 Self::columns(child, path, columns, paths, depth + 1)?;
             } else {
                 columns.push(child.clone());
@@ -141,7 +141,7 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
     check_depth(field, depth)?;
     let mut held = field.clone();
     let dtype = match field.dtype() {
-        DataType::Struct(fields) => DataType::from_fields(
+        DataType::Structure(fields) => DataType::from_fields(
             fields
                 .iter()
                 .map(|child| nullable_layout(child, true, depth + 1))
@@ -163,7 +163,7 @@ fn component_value(field: &Field, values: &mut std::vec::IntoIter<Scalar>, root:
         .fields()
         .iter()
         .map(|child| {
-            if matches!(child.dtype(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Structure(_)) {
                 component_value(child, values, false)
             } else {
                 values

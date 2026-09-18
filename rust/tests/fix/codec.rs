@@ -1555,7 +1555,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
         panic!("{}", group.dtype());
     };
     assert_eq!(item.name(), "party");
-    assert!(matches!(item.dtype(), DataType::Struct(_)));
+    assert!(matches!(item.dtype(), DataType::Structure(_)));
     assert!(item.is_nullable());
     // The group is what the wire says of it: two occurrences under their
     // count, each one the declared component states nothing in.

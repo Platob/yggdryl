@@ -99,7 +99,7 @@ fn crated_components() -> usize {
     crate::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), DataType::Struct(_)))
+        .filter(|field| matches!(field.dtype(), DataType::Structure(_)))
         .count()
 }
 
@@ -115,7 +115,7 @@ fn crate_names_of(groups: bool) -> Vec<&'static str> {
             if groups {
                 matches!(field.dtype(), DataType::Mapping(_))
             } else {
-                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Struct(_))
+                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Structure(_))
             }
         })
         .map(Field::name)
@@ -792,7 +792,7 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         FixRegistry::from_fields([tagged("msgtype", super::MSGTYPE_TAG_NAME.0)]).unwrap();
     let value = registry.register_msgtype("D", None, None).unwrap();
     assert_eq!(value.as_str(), "D");
-    assert!(matches!(value.as_field().dtype(), DataType::Struct(_)));
+    assert!(matches!(value.as_field().dtype(), DataType::Structure(_)));
 
     let held = registry
         .register_msgtype(
@@ -4003,7 +4003,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
         };
         assert!(entries.insert(item.name()));
         assert!(!item.is_nullable());
-        assert!(matches!(item.dtype(), DataType::Struct(_)));
+        assert!(matches!(item.dtype(), DataType::Structure(_)));
         let component = registry
             .definition(FixCategory::Components, item.name())
             .unwrap();

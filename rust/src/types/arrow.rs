@@ -1061,7 +1061,9 @@ impl DataType {
             A::LargeListView(field) => Self::LargeListView(Arc::new(
                 Field::from_arrow_ref_at_depth(Arc::clone(field), child_depth)?,
             )),
-            A::Struct(fields) => Self::Struct(from_arrow_fields_at_depth(fields, child_depth)?),
+            A::Struct(fields) => {
+                Self::Structure(from_arrow_fields_at_depth(fields, child_depth)?.into())
+            }
             A::Union(fields, mode) => {
                 let values = fields
                     .iter()
@@ -1157,7 +1159,7 @@ impl DataType {
                     .cloned()
                     .map(|field| Field::from_arrow_ref_at_depth(field, child_depth))
                     .collect::<Result<Vec<_>>>()?;
-                Self::Struct(Fields::from_imported_fields(values)?)
+                Self::Structure(Fields::from_imported_fields(values)?.into())
             }
             A::Union(fields, mode) => {
                 let values = fields
@@ -1231,7 +1233,7 @@ impl DataType {
             | Self::FixedSizeList(field, _)
             | Self::LargeList(field)
             | Self::LargeListView(field) => field.arrow_import_is_projection_equivalent(),
-            Self::Struct(fields) => fields
+            Self::Structure(fields) => fields
                 .iter()
                 .all(Field::arrow_import_is_projection_equivalent),
             Self::Union(fields, _) => fields
@@ -1343,7 +1345,9 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::LargeListView(field) => {
                 Self::LargeListView(field.as_ref().clone().into_arrow_ref()?)
             }
-            R::Struct(fields) => Self::Struct(into_arrow_fields(fields)?),
+            R::Structure(structure) => {
+                Self::Struct(into_arrow_fields(&structure.clone().into_fields())?)
+            }
             R::Union(fields, mode) => {
                 let mut type_ids = Vec::with_capacity(fields.len());
                 let mut arrow_fields = Vec::with_capacity(fields.len());
@@ -1481,7 +1485,7 @@ impl TryFrom<DataType> for ArrowDataType {
             }
             R::LargeList(field) => Self::LargeList(into_arrow_field(field)?),
             R::LargeListView(field) => Self::LargeListView(into_arrow_field(field)?),
-            R::Struct(fields) => {
+            R::Structure(fields) => {
                 let fields = fields
                     .into_fields()
                     .into_iter()
@@ -1762,7 +1766,7 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
             None,
             Flags::empty(),
         ),
-        DataType::Struct(fields) => (
+        DataType::Structure(fields) => (
             "+s".to_owned(),
             fields
                 .iter()

@@ -148,7 +148,7 @@ fn union_from(
 /// Returns an error naming any datatype Avro cannot spell.
 pub(crate) fn schema_json_from_field(field: &Field) -> Result<Scalar> {
     let mut counter = 0_usize;
-    let DataType::Struct(_) = field.dtype() else {
+    let DataType::Structure(_) = field.dtype() else {
         return Err(invalid(format_smolstr!(
             "expected a struct root to write Avro records, got {}",
             field.dtype()
@@ -255,7 +255,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("scale", Scalar::from(i64::from(*scale))),
             ])
         }
-        DataType::Struct(_) => {
+        DataType::Structure(_) => {
             *counter += 1;
             let record_name = unique_name(name, counter);
             let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;

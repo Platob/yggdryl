@@ -374,13 +374,14 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
     assert_eq!(DataTypeId::Sedol.as_u8(), 65);
     assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
     assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 5..],
+        &DataTypeId::ALL[DataTypeId::ALL.len() - 6..],
         &[
             DataTypeId::MediaType,
             DataTypeId::Cusip,
             DataTypeId::Sedol,
             DataTypeId::Bloomberg,
-            DataTypeId::SortedMap
+            DataTypeId::SortedMap,
+            DataTypeId::Tuple2
         ]
     );
     // The datatype order is total and appends too, so no earlier pair

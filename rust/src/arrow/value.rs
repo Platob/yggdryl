@@ -234,7 +234,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::LargeListView(child) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
-        DataType::Struct(fields) => struct_array(fields, values)?,
+        DataType::Structure(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
         DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
         DataType::Decimal32 { scale, .. } => {
@@ -532,7 +532,7 @@ pub(crate) fn value_from_array(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Struct(fields) => {
+        DataType::Structure(fields) => {
             let array = downcast::<StructArray>(array)?;
             // A downcast answers the layout and nothing else, and the zip
             // below reads children by position: a declaration naming fewer or
@@ -825,7 +825,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     )?))
 }
 
-fn struct_array(fields: &crate::Fields, values: &[&Scalar]) -> Result<ArrayRef> {
+fn struct_array(fields: &crate::StructureType, values: &[&Scalar]) -> Result<ArrayRef> {
     let null_rows = values
         .iter()
         .filter(|value| matches!(value, Scalar::Null))

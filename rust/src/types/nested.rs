@@ -21,7 +21,7 @@ use crate::types::typed::define_field_types;
 use crate::types::{Scalar, invalid};
 
 use crate::types::dictionary::DictionaryType;
-use crate::types::structure::Fields;
+use crate::types::structure::StructureType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
 use crate::{DataType, DataTypeId, Error, Field, Result, TypedField, UnionMode, Value};
@@ -76,7 +76,7 @@ pub(crate) mod casts {
                 | DataType::FixedSizeList(field, _)
                 | DataType::LargeList(field)
                 | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
-                DataType::Struct(fields) => fields
+                DataType::Structure(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
                 DataType::Union(fields, _) => fields
@@ -148,7 +148,7 @@ pub(crate) mod casts {
                     right_exposure,
                     budget,
                 ),
-                DataType::Struct(fields) => {
+                DataType::Structure(fields) => {
                     let left_struct = downcast::<StructArray>(left.as_ref())?;
                     let right_struct = downcast::<StructArray>(right.as_ref())?;
                     let left_child_exposure = visible_array_exposure(left.as_ref(), left_exposure, budget)?;
@@ -2003,7 +2003,7 @@ pub(crate) mod casts {
             | DataType::FixedSizeList(child, _)
             | DataType::LargeList(child)
             | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
-            DataType::Struct(fields) => fields
+            DataType::Structure(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
             DataType::Mapping(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
@@ -2287,7 +2287,7 @@ pub(crate) mod casts {
                     Ordering::Equal
                 })
             }
-            DataType::Struct(fields) => {
+            DataType::Structure(fields) => {
                 let left_source = downcast::<StructArray>(left.as_ref())?;
                 let right_source = downcast::<StructArray>(right.as_ref())?;
                 let comparators = fields
@@ -2647,7 +2647,7 @@ pub(crate) mod casts {
 
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
-            DataType::Struct(_) | DataType::Mapping(_) => true,
+            DataType::Structure(_) | DataType::Mapping(_) => true,
             DataType::List(field)
             | DataType::ListView(field)
             | DataType::FixedSizeList(field, _)
@@ -2670,7 +2670,7 @@ pub(crate) mod casts {
                 | DataType::FixedSizeList(_, _)
                 | DataType::LargeList(_)
                 | DataType::LargeListView(_)
-                | DataType::Struct(_)
+                | DataType::Structure(_)
                 | DataType::Union(_, _)
                 | DataType::Dictionary(_)
                 | DataType::Mapping(_)
@@ -3031,8 +3031,8 @@ pub enum NestedType {
     LargeList(Arc<Field>),
     /// Variable list view with 64-bit offsets.
     LargeListView(Arc<Field>),
-    /// Ordered struct fields.
-    Struct(Fields),
+    /// Named children, as the structure family holds them.
+    Structure(StructureType),
     /// Tagged union fields and layout.
     Union(UnionFields, UnionMode),
     /// Dictionary key and value types.
@@ -3054,7 +3054,8 @@ impl NestedType {
             Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
             Self::LargeList(_) => DataTypeId::LargeList,
             Self::LargeListView(_) => DataTypeId::LargeListView,
-            Self::Struct(_) => DataTypeId::Struct,
+            Self::Structure(StructureType::Struct(_)) => DataTypeId::Struct,
+            Self::Structure(StructureType::Tuple2(_)) => DataTypeId::Tuple2,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
             Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
@@ -3081,7 +3082,7 @@ impl From<NestedType> for DataType {
             NestedType::FixedSizeList(item, length) => Self::FixedSizeList(item, length),
             NestedType::LargeList(item) => Self::LargeList(item),
             NestedType::LargeListView(item) => Self::LargeListView(item),
-            NestedType::Struct(fields) => Self::Struct(fields),
+            NestedType::Structure(structure) => Self::Structure(structure),
             NestedType::Union(fields, mode) => Self::Union(fields, mode),
             NestedType::Dictionary(dtype) => Self::Dictionary(dtype),
             NestedType::Mapping(mapping) => Self::Mapping(mapping),
@@ -3103,7 +3104,7 @@ impl TryFrom<&DataType> for NestedType {
             }
             DataType::LargeList(item) => Ok(Self::LargeList(Arc::clone(item))),
             DataType::LargeListView(item) => Ok(Self::LargeListView(Arc::clone(item))),
-            DataType::Struct(fields) => Ok(Self::Struct(fields.clone())),
+            DataType::Structure(structure) => Ok(Self::Structure(structure.clone())),
             DataType::Union(fields, mode) => Ok(Self::Union(fields.clone(), *mode)),
             DataType::Dictionary(dtype) => Ok(Self::Dictionary(Arc::clone(dtype))),
             DataType::Mapping(mapping) => Ok(Self::Mapping(mapping.clone())),
@@ -3200,7 +3201,7 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     if entries.is_nullable() {
         return Err(invalid("Map", "entries field must be non-null"));
     }
-    let DataType::Struct(children) = entries.dtype() else {
+    let DataType::Structure(children) = entries.dtype() else {
         return Err(invalid("Map", "entries field must contain a struct"));
     };
     if children.len() != 2 {

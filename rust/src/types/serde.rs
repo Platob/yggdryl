@@ -751,7 +751,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             },
             D::LargeList(field) => Self::LargeList { field },
             D::LargeListView(field) => Self::LargeListView { field },
-            D::Struct(fields) => Self::Struct {
+            D::Structure(fields) => Self::Struct {
                 fields: fields.as_fields(),
             },
             D::Union(fields, mode) => Self::Union {
@@ -1232,7 +1232,7 @@ impl DataType {
                 tag("large_list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::Struct(fields) => {
+            D::Structure(fields) => {
                 tag("struct");
                 entries.push((
                     key("fields"),

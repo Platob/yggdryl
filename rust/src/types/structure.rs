@@ -15,10 +15,10 @@ use crate::types::nested::exploded;
 use crate::types::nested::missing_child;
 use crate::types::nested::reject_duplicate_field_names;
 use crate::types::nested::validate_fields;
+use crate::types::family::FamilyType;
 use crate::types::typed::define_field_types;
 use crate::{
-    DataType, Error, Field, Result, TypedField,
-
+    DataType, DataTypeId, DataTypeKind, Error, Field, Result, TypedField,
 };
 
 impl DataType {
@@ -28,7 +28,7 @@ impl DataType {
     where
         I: IntoIterator<Item = Field>,
     {
-        Ok(Self::Struct(Fields::from_fields(fields)?))
+        Ok(Self::Structure(Fields::from_fields(fields)?.into()))
     }
 
     /// Returns the number of direct child fields without allocating.
@@ -40,7 +40,7 @@ impl DataType {
             | Self::LargeList(_)
             | Self::LargeListView(_)
             | Self::Mapping(_) => 1,
-            Self::Struct(fields) => fields.len(),
+            Self::Structure(structure) => structure.len(),
             Self::Union(fields, _) => fields.len(),
             Self::RunEndEncoded(_) => 2,
             _ => 0,
@@ -55,7 +55,7 @@ impl DataType {
             | Self::FixedSizeList(field, _)
             | Self::LargeList(field)
             | Self::LargeListView(field) => (index == 0).then_some(field),
-            Self::Struct(fields) => fields.get(index),
+            Self::Structure(structure) => structure.get_field(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
             Self::Mapping(mapping) => (index == 0).then_some(mapping.entries()),
             Self::RunEndEncoded(encoded) => match index {
@@ -78,7 +78,7 @@ impl DataType {
             | Self::FixedSizeList(field, _)
             | Self::LargeList(field)
             | Self::LargeListView(field) => (field.name() == name).then_some(field),
-            Self::Struct(fields) => fields.get_by_name(name),
+            Self::Structure(structure) => structure.as_fields().iter().find(|field| field.name() == name),
             Self::Union(fields, _) => fields.get_by_name(name).map(|(_, field)| field),
             Self::Mapping(mapping) => (mapping.entries().name() == name).then_some(mapping.entries()),
             Self::RunEndEncoded(encoded) => {
@@ -711,7 +711,7 @@ impl DataType {
     /// Returns struct children as a borrowed slice, or `None` for other types.
     pub fn as_fields(&self) -> Option<&[Field]> {
         match self {
-            Self::Struct(fields) => Some(fields.as_fields()),
+            Self::Structure(structure) => Some(structure.as_fields()),
             _ => None,
         }
     }
@@ -767,7 +767,7 @@ impl DataType {
             Self::FixedSizeList(_, length) => Self::fixed_size_list(next(), *length)?,
             Self::LargeList(_) => Self::large_list(next()),
             Self::LargeListView(_) => Self::large_list_view(next()),
-            Self::Struct(_) => Self::from_fields(children)?,
+            Self::Structure(_) => Self::from_fields(children)?,
             Self::Union(members, mode) => {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();
                 Self::union(ids.into_iter().zip(children), *mode)?
@@ -1394,10 +1394,252 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
-define_field_types!(StructType, Struct, crate::DataType::Struct(_));
+define_field_types!(
+    StructTypeMarker,
+    Struct,
+    crate::DataType::Structure(crate::types::StructureType::Struct(_))
+);
 
 /// A struct-typed field.
-pub type StructField = TypedField<StructType>;
+pub type StructField = TypedField<StructTypeMarker>;
+
+// ------------------------------------------------------------------------
+// The structure family: named children, and the two-child leaf beside them.
+// ------------------------------------------------------------------------
+
+/// The named children of a struct, in declaration order.
+///
+/// A newtype over [`Fields`] so the family's leaf has a name of its own, and
+/// it dereferences to the collection, so everything a caller does with the
+/// children reads the same through it.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct StructType(pub(crate) Fields);
+
+impl StructType {
+    /// Wraps an ordered collection of children.
+    pub const fn new(fields: Fields) -> Self {
+        Self(fields)
+    }
+
+    /// Borrows the children without allocating.
+    pub const fn fields(&self) -> &Fields {
+        &self.0
+    }
+
+    /// Consumes this leaf and returns the children.
+    pub fn into_fields(self) -> Fields {
+        self.0
+    }
+}
+
+impl Deref for StructType {
+    type Target = Fields;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Fields> for StructType {
+    fn from(value: Fields) -> Self {
+        Self(value)
+    }
+}
+
+/// Exactly two children: a first and a second field.
+///
+/// The shape Arrow's map entries have always had, stated once as a type
+/// rather than re-checked as a struct that happens to hold two children. A
+/// value of this type cannot have one child or three.
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Tuple2Type(pub(crate) [Field; 2]);
+
+impl Tuple2Type {
+    /// Pairs two children in order.
+    pub const fn new(first: Field, second: Field) -> Self {
+        Self([first, second])
+    }
+
+    /// Borrows the first child without allocating.
+    pub const fn first(&self) -> &Field {
+        &self.0[0]
+    }
+
+    /// Borrows the second child without allocating.
+    pub const fn second(&self) -> &Field {
+        &self.0[1]
+    }
+
+    /// Borrows both children as a slice without allocating.
+    pub const fn as_fields(&self) -> &[Field] {
+        &self.0
+    }
+}
+
+/// The structure family's datatype payload.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum StructureType {
+    /// Named children in declaration order.
+    Struct(StructType),
+    /// Exactly two children, the shape a mapping's entries have.
+    ///
+    /// Behind a shared pointer: two whole fields are wider than this enum,
+    /// and a datatype clone must not walk them.
+    Tuple2(Arc<Tuple2Type>),
+}
+
+impl StructureType {
+    /// Returns the children of whichever leaf this is.
+    ///
+    /// Every structure leaf has ordered children; only how many, and whether
+    /// the count is fixed, differs.
+    pub fn as_fields(&self) -> &[Field] {
+        match self {
+            Self::Struct(structure) => structure.as_fields(),
+            Self::Tuple2(pair) => pair.as_fields(),
+        }
+    }
+
+    /// Returns the number of direct children.
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Struct(structure) => structure.len(),
+            Self::Tuple2(_) => 2,
+        }
+    }
+
+    /// Returns whether this structure has no children.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the child at `index`, or `None` past the last one.
+    pub fn get_field(&self, index: usize) -> Option<&Field> {
+        match self {
+            Self::Struct(structure) => structure.as_fields().get(index),
+            Self::Tuple2(pair) => pair.as_fields().get(index),
+        }
+    }
+
+    /// Iterates the direct children in order.
+    ///
+    /// The children are contiguous under either leaf, so this is the slice's
+    /// own iterator and allocates nothing.
+    pub fn iter(&self) -> std::slice::Iter<'_, Field> {
+        self.as_fields().iter()
+    }
+
+    /// Returns the child one name picks out, or `None`.
+    pub fn get_by_name(&self, name: &str) -> Option<&Field> {
+        self.as_fields().iter().find(|field| field.name() == name)
+    }
+
+    /// Consumes this payload and returns its children as a collection.
+    ///
+    /// The two-child leaf materializes a collection here, which is the one
+    /// place it costs an allocation; every read path borrows instead.
+    pub fn into_fields(self) -> Fields {
+        match self {
+            Self::Struct(structure) => structure.into_fields(),
+            Self::Tuple2(pair) => Fields::from_vec(
+                Arc::try_unwrap(pair)
+                    .map_or_else(|shared| shared.0.clone(), |owned| owned.0)
+                    .to_vec(),
+            ),
+        }
+    }
+
+    /// Returns whether both payloads are the same leaf over one allocation.
+    ///
+    /// The cheap identity check a cache takes before comparing shapes; two
+    /// different leaves never share storage however equal their children.
+    pub fn shares_storage_with(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Struct(left), Self::Struct(right)) => left.0.shares_storage_with(&right.0),
+            (Self::Tuple2(left), Self::Tuple2(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+
+    /// Returns the named children when this is the struct leaf.
+    pub const fn as_struct(&self) -> Option<&StructType> {
+        match self {
+            Self::Struct(structure) => Some(structure),
+            Self::Tuple2(_) => None,
+        }
+    }
+
+    /// Returns the pair when this is the two-child leaf.
+    pub fn as_tuple2(&self) -> Option<&Tuple2Type> {
+        match self {
+            Self::Tuple2(pair) => Some(pair),
+            Self::Struct(_) => None,
+        }
+    }
+}
+
+impl FamilyType for StructureType {
+    const FAMILY: &'static str = "structure";
+
+    fn id(&self) -> DataTypeId {
+        match self {
+            Self::Struct(_) => DataTypeId::Struct,
+            Self::Tuple2(_) => DataTypeId::Tuple2,
+        }
+    }
+
+    fn kind(&self) -> DataTypeKind {
+        DataTypeKind::Nested
+    }
+
+    fn validate(&self) -> Result<()> {
+        for field in (0..self.len()).filter_map(|index| self.get_field(index)) {
+            field.validate()?;
+        }
+        Ok(())
+    }
+
+    fn into_dtype(self) -> DataType {
+        DataType::Structure(self)
+    }
+
+    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+        match dtype {
+            DataType::Structure(family) => Some(family),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for StructureType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.id().as_str())
+    }
+}
+
+impl From<StructureType> for DataType {
+    fn from(value: StructureType) -> Self {
+        Self::Structure(value)
+    }
+}
+
+impl From<Fields> for StructureType {
+    fn from(value: Fields) -> Self {
+        Self::Struct(StructType(value))
+    }
+}
+
+impl From<Tuple2Type> for StructureType {
+    fn from(value: Tuple2Type) -> Self {
+        Self::Tuple2(Arc::new(value))
+    }
+}
+
 
 impl<'a> From<&'a str> for FieldKey<'a> {
     fn from(path: &'a str) -> Self {
@@ -1423,5 +1665,28 @@ impl<'a> IntoIterator for &'a Fields {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a StructureType {
+    type Item = &'a Field;
+    type IntoIter = std::slice::Iter<'a, Field>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl AsRef<[Field]> for StructureType {
+    fn as_ref(&self) -> &[Field] {
+        self.as_fields()
+    }
+}
+
+impl Index<usize> for StructureType {
+    type Output = Field;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.as_fields()[index]
     }
 }

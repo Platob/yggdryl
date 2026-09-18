@@ -21,7 +21,8 @@ use crate::types::integer::{
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
-use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
+use crate::types::structure::StructureType;
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -864,7 +865,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::LargeListView(field) => {
             canonical_sequence(value, |value| canonicalize_field_value(field, value))
         }
-        D::Struct(fields) => canonical_struct(fields, value),
+        D::Structure(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
         D::Dictionary(dictionary) => canonicalize_dtype_value(dictionary.value(), value),
         D::Decimal32 { .. }
@@ -1060,14 +1061,14 @@ fn canonical_sequence(
     }
 }
 
-fn canonical_struct(fields: &Fields, value: &Scalar) -> Result<(Scalar, bool)> {
+fn canonical_struct(fields: &StructureType, value: &Scalar) -> Result<(Scalar, bool)> {
     if let Some(record) = value.as_record() {
-        let values = record_values(fields, record)?;
+        let values = record_values(fields.as_fields(), record)?;
         let sequence = Scalar::from_sequence(values);
         return canonical_struct(fields, &sequence).map(|(value, _)| (value, true));
     }
     let Some(values) = value.as_sequence() else {
-        return canonicalization_failure(&DataType::Struct(fields.clone()));
+        return canonicalization_failure(&DataType::Structure(fields.clone()));
     };
     if let Some(canonical) = canonicalize_slice(values, |index, value| {
         canonicalize_field_value(&fields[index], value)
@@ -1525,7 +1526,7 @@ fn validate_dtype_value(
             "fixed_size_list",
             depth + 1,
         ),
-        D::Struct(fields) => validate_struct(fields, value, depth + 1),
+        D::Structure(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
         D::Dictionary(dictionary) => validate_dtype_value(dictionary.value(), value, depth + 1),
         D::Decimal32 { precision, .. } => validate_decimal_value(value, *precision, 32),
@@ -1578,12 +1579,12 @@ fn validate_sequence(
 }
 
 fn validate_struct(
-    fields: &Fields,
+    fields: &StructureType,
     value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     if let Some(record) = value.as_record() {
-        return validate_record_fields(fields, record, depth);
+        return validate_record_fields(fields.as_fields(), record, depth);
     }
     let values = value
         .as_sequence()

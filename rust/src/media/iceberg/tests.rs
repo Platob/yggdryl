@@ -7732,7 +7732,7 @@ mod isolation {
 
     /// One variant value: the v1 metadata of an empty dictionary and a null.
     fn variant_column(rows: usize, field: &arrow_schema::Field) -> ArrayRef {
-        let arrow_schema::DataType::Struct(children) = field.data_type() else {
+        let arrow_schema::DataType::Structure(children) = field.data_type() else {
             panic!("a variant lays out as a struct, got {}", field.data_type());
         };
         let metadata = BinaryArray::from_iter_values((0..rows).map(|_| [0x01_u8, 0x00, 0x00]));

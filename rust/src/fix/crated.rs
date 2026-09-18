@@ -885,7 +885,7 @@ impl super::FixRegistry {
     /// let mut registry = FixRegistry::from_fields([field])?;
     /// let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     /// assert_eq!(message.as_str(), "P Report Ack");
-    /// assert!(matches!(message.as_field().dtype(), DataType::Struct(_)));
+    /// assert!(matches!(message.as_field().dtype(), DataType::Structure(_)));
     /// assert!(std::ptr::eq(
     ///     registry.msgtype("P Report Ack")?,
     ///     registry.msgtype("AllocationReportAck")?,

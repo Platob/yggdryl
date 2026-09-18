@@ -878,7 +878,7 @@ impl fmt::Display for DataType {
             }
             D::LargeList(field) => fmt_single_field_type(formatter, "large_list", field),
             D::LargeListView(field) => fmt_single_field_type(formatter, "large_list_view", field),
-            D::Struct(fields) => {
+            D::Structure(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {
                     if index != 0 {

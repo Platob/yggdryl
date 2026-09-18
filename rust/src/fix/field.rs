@@ -314,7 +314,7 @@ impl<'field> FixField<'field> {
             if spelling.is_empty() || spelling.contains(SEPARATOR) {
                 return Err(refused("a nonempty member spelling without a comma"));
             }
-            if !matches!(self.as_field().dtype(), DataType::Struct(_)) {
+            if !matches!(self.as_field().dtype(), DataType::Structure(_)) {
                 return Err(refused(
                     "a Struct component declaring its own scalar members",
                 ));

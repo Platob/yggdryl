@@ -1503,7 +1503,7 @@ impl FixMsg {
         segment: &FieldSegment,
     ) -> Option<(Field, Scalar)> {
         match field.dtype() {
-            DataType::Struct(_) => {
+            DataType::Structure(_) => {
                 let index = self.segment_index(field, segment)?;
                 Some((
                     field.fields().get(index)?.clone(),
@@ -1601,7 +1601,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
             let nested: Vec<FixEntry> = occurrences
                 .iter()
                 .filter_map(|occurrence| match item.dtype() {
-                    DataType::Struct(_) => {
+                    DataType::Structure(_) => {
                         let members = entries_of(item.fields(), occurrence.as_sequence()?);
                         let own = item.as_fix().tag().ok().flatten().unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
@@ -1621,7 +1621,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
                 None => Some(FixEntry::new(tag, field.name(), None).with_entries(nested)),
             }
         }
-        DataType::Struct(_) => {
+        DataType::Structure(_) => {
             let members = entries_of(field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }

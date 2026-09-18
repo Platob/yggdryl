@@ -95,7 +95,7 @@ impl MsgType {
     }
 
     pub(super) fn from_field(field: Field) -> Result<Self> {
-        if field.is_nullable() || !matches!(field.dtype(), DataType::Struct(_)) {
+        if field.is_nullable() || !matches!(field.dtype(), DataType::Structure(_)) {
             return Err(Error::InvalidRecord {
                 path: field.name().into(),
                 reason: crate::text::expected_got("a non-null Struct message definition", field),

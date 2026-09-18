@@ -176,7 +176,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((field.dtype(), child_depth));
             }
-            DataType::Struct(fields) => {
+            DataType::Structure(fields) => {
                 reserve_pending(&mut pending, visited, fields.len(), kind)?;
                 pending.extend(fields.iter().map(|field| (field.dtype(), child_depth)))
             }
@@ -377,7 +377,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
                 logically_null: false,
             })
         }
-        D::Struct(fields) => {
+        D::Structure(fields) => {
             let mut plans = Vec::new();
             plans
                 .try_reserve_exact(fields.len())

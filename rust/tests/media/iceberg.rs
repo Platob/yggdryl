@@ -656,7 +656,7 @@ fn unknown_is_the_null_column_and_variant_is_the_semi_structured_one() {
     )
     .unwrap();
     let arrow = schema.into_arrow_schema().unwrap();
-    let arrow_schema::DataType::Struct(children) = arrow.field(2).data_type() else {
+    let arrow_schema::DataType::Structure(children) = arrow.field(2).data_type() else {
         panic!("a variant lays out as a struct");
     };
     let payload = StructArray::try_new(

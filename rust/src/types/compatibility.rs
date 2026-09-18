@@ -170,7 +170,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
             let (field, _) = normalize_item(target, field, path)?;
             Ok((D::list(field), true))
         }
-        D::Struct(fields) => normalize_struct(target, dtype, fields, path),
+        D::Structure(fields) => normalize_struct(target, dtype, fields, path),
         D::Union(..) if !target.supports_union() => incompatible(
             target,
             path,
@@ -214,7 +214,7 @@ fn normalize_item(target: Target, field: &Field, path: &Path<'_>) -> Result<(Fie
 fn normalize_struct(
     target: Target,
     dtype: &DataType,
-    fields: &super::Fields,
+    fields: &super::StructureType,
     path: &Path<'_>,
 ) -> Result<(DataType, bool)> {
     for (index, field) in fields.iter().enumerate() {

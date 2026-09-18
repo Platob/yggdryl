@@ -427,7 +427,7 @@ mod shared {
     /// One slot per discriminant byte an identifier can carry: the highest one
     /// stated, plus one. A retired number (58, once `msgdirection`) is an empty slot,
     /// because a discriminant is a wire contract and never moves to close a gap.
-    const PREBUILT_SLOTS: usize = DataTypeId::SortedMap.as_u8() as usize + 1;
+    const PREBUILT_SLOTS: usize = DataTypeId::Tuple2.as_u8() as usize + 1;
 
     /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`].
     ///
@@ -759,7 +759,7 @@ impl<K: FieldType> TypedField<K> {
     }
 }
 
-impl TypedField<super::StructType> {
+impl TypedField<super::StructTypeMarker> {
     /// Consumes a checked Struct wrapper and returns its generic Struct field.
     ///
     /// This typed spelling is the Rust counterpart of the cached struct-root

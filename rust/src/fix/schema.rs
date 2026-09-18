@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::Fields;
+use crate::types::StructureType;
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;
@@ -631,7 +631,7 @@ impl std::ops::Deref for Columns {
 }
 
 pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
-    let DataType::Struct(fields) = schema.dtype() else {
+    let DataType::Structure(fields) = schema.dtype() else {
         return Err(super::identity::refused(
             schema.name(),
             "a Struct field",
@@ -656,12 +656,12 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
 
 thread_local! {
     // One retained schema and registry: aliases belong to the resolving registry.
-    static LAST_COLUMN_PLAN: RefCell<Option<(Fields, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
+    static LAST_COLUMN_PLAN: RefCell<Option<(StructureType, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
 }
 
 /// Pointer identity is fast; equal reconstructed layouts need a structural comparison.
 pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Result<ColumnPlan> {
-    let DataType::Struct(columns) = schema.dtype() else {
+    let DataType::Structure(columns) = schema.dtype() else {
         return column_plan(schema, registry);
     };
     LAST_COLUMN_PLAN.with(|held| {
@@ -1134,7 +1134,7 @@ fn child_from_entry(
             };
             group_from_entry(registry, entry, known, Some(item))
         }
-        DataType::Struct(_) => {
+        DataType::Structure(_) => {
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             for member in entry.entries() {
@@ -1670,7 +1670,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
 /// for it.
 fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     let rebuilt = match field.dtype() {
-        DataType::Struct(members) => value.as_sequence().map(|stated| {
+        DataType::Structure(members) => value.as_sequence().map(|stated| {
             // A member the value never reached is the null the column would
             // have held anyway; one it reached is refitted in place.
             let held: Option<Vec<crate::Scalar>> = members

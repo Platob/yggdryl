@@ -6,7 +6,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::dictionary::DictionaryType;
-use crate::types::structure::Fields;
+use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
@@ -140,7 +140,11 @@ pub enum DataType {
     /// Variable list-view with 64-bit offsets.
     LargeListView(Arc<Field>),
     /// Ordered struct fields.
-    Struct(Fields),
+    /// Named children, or the two-child pair: the whole structure family.
+    ///
+    /// The leaf - a struct's ordered children, or a mapping's key-value
+    /// pair - is [`StructureType`]'s business, not this enum's.
+    Structure(StructureType),
     /// Tagged union fields and layout mode.
     Union(UnionFields, UnionMode),
     /// Dictionary key and value types.
@@ -308,7 +312,7 @@ impl DataType {
             Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
             Self::LargeList(_) => DataTypeId::LargeList,
             Self::LargeListView(_) => DataTypeId::LargeListView,
-            Self::Struct(_) => DataTypeId::Struct,
+            Self::Structure(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
             Self::Decimal32 { .. } => DataTypeId::Decimal32,
@@ -449,7 +453,7 @@ impl DataType {
                 validate_non_negative("FixedSizeList", "length", *length)?;
                 field.validate()
             }
-            Self::Struct(fields) => validate_fields(fields.as_fields(), "Struct"),
+            Self::Structure(fields) => validate_fields(fields.as_fields(), "Struct"),
             Self::Union(fields, _) => validate_union_fields(fields),
             Self::Dictionary(dictionary) => {
                 validate_dictionary_key(&dictionary.key)?;
@@ -515,7 +519,7 @@ impl Ord for DataType {
                 D::FixedSizeList(left_field, left_size),
                 D::FixedSizeList(right_field, right_size),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
-            (D::Struct(left), D::Struct(right)) => left.cmp(right),
+            (D::Structure(left), D::Structure(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
                 .cmp(right_mode)
                 .then_with(|| left_fields.cmp(right_fields)),
@@ -617,7 +621,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::FixedSizeList(..) => 38,
         DataType::LargeList(_) => 39,
         DataType::LargeListView(_) => 40,
-        DataType::Struct(_) => 41,
+        DataType::Structure(_) => 41,
         DataType::Union(..) => 42,
         DataType::Dictionary(_) => 43,
         DataType::Decimal32 { .. } => 44,

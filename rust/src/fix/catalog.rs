@@ -375,7 +375,7 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
         FixCategory::Fields if field.dtype().is_nested() && !is_column_list(field) => {
             Err(not_scalar(field))
         }
-        FixCategory::Components if !matches!(field.dtype(), DataType::Struct(_)) => {
+        FixCategory::Components if !matches!(field.dtype(), DataType::Structure(_)) => {
             Err(invalid(field, "a Struct datatype"))
         }
         FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => Err(
@@ -437,12 +437,12 @@ fn is_column_list(field: &Field) -> bool {
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
         DataType::List(item) | DataType::LargeList(item)
-            if !item.is_nullable() && matches!(item.dtype(), DataType::Struct(_)) =>
+            if !item.is_nullable() && matches!(item.dtype(), DataType::Structure(_)) =>
         {
             Some(FixCategory::Groups)
         }
         DataType::Mapping(_) => Some(FixCategory::Groups),
-        DataType::Struct(_) => Some(FixCategory::Components),
+        DataType::Structure(_) => Some(FixCategory::Components),
         _ => None,
     }
 }
@@ -597,7 +597,7 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
         field.remove_metadata(super::field::TAG_KEY);
     }
     let dtype = match field.dtype() {
-        DataType::Struct(children) => Some(DataType::from_fields(
+        DataType::Structure(children) => Some(DataType::from_fields(
             children
                 .iter()
                 .cloned()

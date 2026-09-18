@@ -26,7 +26,7 @@ fn definitions(registry: &FixRegistry, category: FixCategory) -> impl Iterator<I
 
 fn category_of(field: &Field) -> FixCategory {
     match field.dtype() {
-        DataType::Struct(_) => FixCategory::Components,
+        DataType::Structure(_) => FixCategory::Components,
         dtype if dtype.is_nested() => FixCategory::Groups,
         _ => FixCategory::Fields,
     }
@@ -348,7 +348,7 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
         out.push(field.clone());
         match field.dtype() {
             DataType::List(item) | DataType::LargeList(item) => walk(item, out),
-            DataType::Struct(fields) => {
+            DataType::Structure(fields) => {
                 for held in fields.iter() {
                     walk(held, out);
                 }
@@ -513,13 +513,15 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
 /// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
-/// last moved when key order became the mapping leaf: `identifiers` and
-/// `metadata` declare sorted keys, so they are `sorted_map` and hash under
-/// that identifier rather than under `map` beside a flag.
+/// last moved when the nested datatypes became families: `DataType` derives
+/// its hash, so a family variant contributes its leaf's discriminant too, and
+/// every struct and mapping in the dictionary hashes one level deeper than it
+/// did. `identifiers` and `metadata` also declare sorted keys, so they are
+/// `sorted_map` rather than `map` beside a flag.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_990_004_782_073_536_976);
+    assert_eq!(registry.stable_hash(), 17_538_832_047_428_682_257);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

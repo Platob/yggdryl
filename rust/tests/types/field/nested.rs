@@ -11,7 +11,7 @@ fn nested_markers_cover_every_child_layout() {
     assert_typed_marker::<nested::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
     assert_typed_marker::<yggdryl::types::LargeListType>(DataType::large_list(item()));
     assert_typed_marker::<nested::LargeListViewType>(DataType::large_list_view(item()));
-    assert_typed_marker::<yggdryl::types::StructType>(DataType::from_fields([item()]).unwrap());
+    assert_typed_marker::<yggdryl::types::StructTypeMarker>(DataType::from_fields([item()]).unwrap());
     assert_typed_marker::<yggdryl::types::UnionType>(
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
     );

@@ -927,7 +927,7 @@ pub(super) fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr
             if child.parquet_field_id().ok().flatten() == Some(source_id) {
                 return Some(child);
             }
-            if matches!(child.dtype(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Structure(_)) {
                 if let Some(found) = find(child, source_id, path) {
                     return Some(found);
                 }

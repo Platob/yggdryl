@@ -269,7 +269,7 @@ fn merge_nested(
     recode: Recode,
 ) -> Result<Option<DataType>> {
     match (left, right) {
-        (DataType::Struct(left_fields), DataType::Struct(right_fields)) => {
+        (DataType::Structure(left_fields), DataType::Structure(right_fields)) => {
             merge_struct(left_fields.as_ref(), right_fields.as_ref(), how, recode).map(Some)
         }
         (DataType::Mapping(left_map), DataType::Mapping(right_map)) => {
@@ -461,7 +461,7 @@ fn merge_scalar(
 fn is_mergeable_into_bytes(dtype: &DataType) -> bool {
     !matches!(
         dtype,
-        DataType::Struct(_) | DataType::Union(..) | DataType::Mapping(_)
+        DataType::Structure(_) | DataType::Union(..) | DataType::Mapping(_)
     ) && list_parts(dtype).is_none()
 }
 

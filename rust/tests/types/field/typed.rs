@@ -86,7 +86,7 @@ fn struct_fields_have_the_return_typed_conversion_name() {
     .into_struct_field();
 
     assert_eq!(root.name(), "row");
-    assert!(matches!(root.dtype(), DataType::Struct(_)));
+    assert!(matches!(root.dtype(), DataType::Structure(_)));
 }
 
 mod integer_marker {

@@ -11,6 +11,7 @@ use crate::metadata::write_json_string as write_quoted;
 use crate::{DataType, Fields, Metadata, RunEndEncodedType, UnionFields, hashing::stable_hash_display};
 use super::Field;
 use crate::types::mapping::MappingType;
+use crate::types::structure::StructureType;
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -111,7 +112,7 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
             left_size == right_size && Arc::ptr_eq(left, right)
         }
-        (D::Struct(left), D::Struct(right)) => left.shares_storage_with(right),
+        (D::Structure(left), D::Structure(right)) => left.shares_storage_with(right),
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode && left.shares_storage_with(right)
         }
@@ -369,7 +370,7 @@ impl DiffEngine {
                 }
                 self.push_field_property(left, right, &path, "item");
             }
-            (D::Struct(left), D::Struct(right)) => {
+            (D::Structure(left), D::Structure(right)) => {
                 self.push_field_slices(left.clone(), right.clone(), &path);
             }
             (D::Union(left, left_mode), D::Union(right, right_mode)) => {
@@ -522,7 +523,7 @@ impl DiffEngine {
         });
     }
 
-    fn push_field_slices(&mut self, left: Fields, right: Fields, path: &str) {
+    fn push_field_slices(&mut self, left: StructureType, right: StructureType, path: &str) {
         if left.shares_storage_with(&right) {
             return;
         }
@@ -535,8 +536,8 @@ impl DiffEngine {
         }
         let right_len = right.len();
         self.work.push(Work::FieldSlices {
-            left,
-            right,
+            left: left.into_fields(),
+            right: right.into_fields(),
             path: path.to_owned(),
             phase: SlicePhase::LeftExtras,
             index: right_len,
@@ -926,7 +927,7 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
         (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
             left_size == right_size && fields_equal(left, right, false)
         }
-        (D::Struct(left), D::Struct(right)) => {
+        (D::Structure(left), D::Structure(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
@@ -1115,7 +1116,7 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
         (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
             left_size == right_size && field_layout_eq(left, right)
         }
-        (D::Struct(left), D::Struct(right)) => {
+        (D::Structure(left), D::Structure(right)) => {
             left.len() == right.len()
                 && left
                     .iter()

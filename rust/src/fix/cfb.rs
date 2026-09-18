@@ -2177,7 +2177,7 @@ fn catalog_entry(
 
 fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) -> Result<Field> {
     match field.dtype() {
-        DataType::Struct(children) => {
+        DataType::Structure(children) => {
             let children = children
                 .iter()
                 .cloned()

@@ -231,7 +231,7 @@ impl Resolver<'_> {
         Self::depth(field.name(), depth)?;
         let mut height = 0;
         let dtype = match field.dtype() {
-            DataType::Struct(children) => {
+            DataType::Structure(children) => {
                 let mut resolved = Vec::with_capacity(children.len());
                 for child in children.iter() {
                     let (child, child_height) = self.occurrence(child, depth + 1)?;
@@ -302,7 +302,7 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         }
     }
     let dtype = match field.dtype() {
-        DataType::Struct(children) => Some(DataType::from_fields(
+        DataType::Structure(children) => Some(DataType::from_fields(
             children
                 .iter()
                 .cloned()

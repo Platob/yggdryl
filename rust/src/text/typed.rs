@@ -23,7 +23,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
         return Ok(value);
     }
     match field.dtype() {
-        DataType::Struct(fields) => named(value, fields, field),
+        DataType::Structure(fields) => named(value, fields, field),
         DataType::List(child)
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
@@ -80,7 +80,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
 }
 
 /// Re-key one canonical struct row by the names its Field declares.
-fn named(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
+fn named(value: Scalar, fields: &crate::StructureType, field: &Field) -> Result<Scalar> {
     let Some(values) = value.as_sequence() else {
         // A record already carries its names; anything else is not a struct
         // row and the format writer refuses it under its own rules.
@@ -132,7 +132,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::FixedSizeList(child, _)
         | DataType::LargeList(child)
         | DataType::LargeListView(child) => sequence(value, |value| prepare(value, child), field),
-        DataType::Struct(fields) => structure(value, fields, field),
+        DataType::Structure(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
         DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
         DataType::Mapping(map) => mapping(value, map, field),
@@ -166,7 +166,7 @@ fn sequence(
 }
 
 /// Descend a document object or ordered array under a struct's children.
-fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
+fn structure(value: Scalar, fields: &crate::StructureType, field: &Field) -> Result<Scalar> {
     match value {
         Scalar::Record(entries) => {
             let prepared = entries
@@ -258,7 +258,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
         | DataType::LargeList(child)
         | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
-        DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
+        DataType::Structure(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
         DataType::Union(fields, _) => fields
             .iter()
             .any(|(_, field)| holds_byte_leaf(field.dtype())),

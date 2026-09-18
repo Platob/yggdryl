@@ -127,7 +127,7 @@ where
     };
     let first = first?;
     let dtype = first.dtype()?;
-    if first.as_record().is_none() || !matches!(dtype, crate::DataType::Struct(_)) {
+    if first.as_record().is_none() || !matches!(dtype, crate::DataType::Structure(_)) {
         return Err(unwritable_rows(format_args!(
             "expected a named record to infer a schema from, got {}; declare the schema, or pass \
              records built by Scalar::from_record",

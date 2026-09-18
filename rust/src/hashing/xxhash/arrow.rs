@@ -1226,7 +1226,7 @@ fn feed_cell(
         | DataType::FixedSizeList(..)
         | DataType::LargeList(_)
         | DataType::LargeListView(_)
-        | DataType::Struct(_)
+        | DataType::Structure(_)
         | DataType::Union(..)
         | DataType::Dictionary(_)
         | DataType::Mapping(_)

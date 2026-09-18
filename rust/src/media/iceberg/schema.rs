@@ -344,7 +344,7 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
 /// Render one field's datatype as an Iceberg type.
 fn type_to_json(field: &Field) -> Result<Scalar> {
     match field.dtype() {
-        DataType::Struct(_) => Scalar::from_record([
+        DataType::Structure(_) => Scalar::from_record([
             ("type", Scalar::from("struct")),
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),

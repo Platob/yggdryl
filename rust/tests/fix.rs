@@ -238,7 +238,7 @@ fn crated_components() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Struct(_)))
+        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Structure(_)))
         .count()
 }
 
@@ -270,7 +270,7 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 /// members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
-        yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
+        yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
         yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item)
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
