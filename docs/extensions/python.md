@@ -136,7 +136,37 @@ with pytest.raises(ValueError, match="fixed US-ASCII string of at most 16 bytes"
 
 ## Native `Scalar`
 
-`Scalar` is a Python view of the Rust tree, and `from_` chooses the natural Python shape.
+`Scalar` is a Python view of the Rust tree. There are two ways in, and they
+divide cleanly:
+
+- **`Scalar.from_(value)`** infers. It reads Python's own types - `datetime`,
+  `date`, `time`, `timedelta`, `Decimal` at its own exponent, `UUID`, `bytes`,
+  `list`, `dict`, a dataclass, a namedtuple, anything exposing the Arrow C
+  protocols - and picks the type that holds it. This is the one inference
+  door; there is no second spelling of it.
+- **`DataType(...).scalar(value)`** or **`Field.scalar(value)`** names the
+  type. Use it when the width, unit, scale or zone matters, because that is
+  where those live: `types.temporal.datetime64("at", "ns", "UTC").scalar(dt)`
+  reads an exact nanosecond instant, and `DataType("decimal32(9,2)")` reaches
+  a width no constructor on `Scalar` can.
+
+```python
+import datetime as dt
+
+from yggdryl import DataType, Scalar
+from yggdryl.types import temporal
+
+# Python's own constructor, inferred.
+assert Scalar.from_(dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)).kind == "datetime64"
+# The type names the resolution, so the value is just the count.
+assert temporal.datetime64("at", "ns", "UTC").scalar(1).unit == "ns"
+```
+
+`Scalar` keeps only the constructors expressing something neither door can:
+`from_record` (a Python mapping as a Record rather than a Mapping),
+`from_enum` (a case-insensitive resolver into the core vocabularies),
+`decimal` (a raw coefficient and scale), and `duration` (the width chosen
+from the count, so a value too wide for 32 bits widens instead of failing).
 
 ```python
 from decimal import Decimal
