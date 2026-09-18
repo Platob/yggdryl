@@ -128,6 +128,60 @@ assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
+## Truthiness and length
+
+`is_truthy` is a coercion and answers for every value; `as_bool` is a reading
+and answers only for a boolean, keeping the `None` a filter's three-valued
+logic walks. Nothing falls back between them.
+
+Falsy is absence and emptiness: `Null`, `false`, a zero of any width, empty
+text or bytes, and a container with nothing set in it. That last one is wider
+than `is_empty`, which only counts entries - a record of three nulls has three
+fields and nothing set, so it is not empty but it is falsy.
+
+Text is the one place this is wider than Python. `false`, `no`, `off`, `f`,
+`n` and `0` read as false, case-insensitively and trimmed, where Python calls
+every non-empty string true. Values arrive as text from CSV, FIX and query
+strings, and a column that spells false is not asking to be read as true.
+[`Boolean`](numeric.md)'s own text reader stays strict, because that
+one is the String-to-Boolean *cast*, not a coercion.
+
+`len` counts a container's direct children and answers zero for everything
+else, so it is not a text or byte length and never a truthiness test.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Scalar;
+
+    assert!(Scalar::from(5).is_truthy());
+    assert!(!Scalar::from(0).is_truthy());
+    assert!(!Scalar::from("OFF").is_truthy());
+    assert!(Scalar::from("anything else").is_truthy());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar
+
+    assert bool(Scalar.from_(5))
+    assert not bool(Scalar.from_(0))
+    assert not bool(Scalar.from_("off"))
+    assert not bool(Scalar.from_({"a": None, "b": ""}))
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar } = require('yggdryl')
+
+    assert.equal(Scalar.from(5).isTruthy(), true)
+    assert.equal(Scalar.from(0).isTruthy(), false)
+    assert.equal(Scalar.from('off').isTruthy(), false)
+    ```
+
 ## Variants and arithmetic
 
 Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.

@@ -812,3 +812,88 @@ fn nested_children_come_from_the_iterator_and_not_from_its_bound() {
     assert!(Scalar::from_sequence([]).is_empty());
     assert!(Scalar::from_mapping([]).unwrap().is_empty());
 }
+
+#[test]
+fn truthiness_reads_absence_zero_and_emptiness_as_false() {
+    // Falsy is absence, zero at every width, empty text or bytes, and a
+    // container with nothing truthy in it.
+    for falsy in [
+        Scalar::Null,
+        Scalar::from(false),
+        Scalar::from(0_i32),
+        Scalar::from(0_u64),
+        Scalar::from(0.0_f64),
+        Scalar::from(-0.0_f64),
+        Scalar::d128(0, 4),
+        Scalar::from(""),
+        Scalar::from("   "),
+        Scalar::from(Arc::from(b"".as_slice())),
+        Scalar::from_sequence([]),
+        Scalar::from_mapping([]).unwrap(),
+        Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+    ] {
+        assert!(!falsy.is_truthy(), "{falsy:?} should read false");
+    }
+
+    for truthy in [
+        Scalar::from(true),
+        Scalar::from(1_i32),
+        Scalar::from(-1_i64),
+        Scalar::from(f64::NAN),
+        Scalar::d128(1, 4),
+        Scalar::from("0.0"),
+        Scalar::from("anything"),
+        Scalar::from(Arc::from(b"\0".as_slice())),
+        Scalar::from_sequence([Scalar::from(1)]),
+    ] {
+        assert!(truthy.is_truthy(), "{truthy:?} should read true");
+    }
+}
+
+#[test]
+fn truthiness_reads_the_text_a_column_spells_false_with() {
+    // Wider than Python on purpose: text arrives from CSV, FIX and query
+    // strings, where a column that spells false is not asking to be read true.
+    for spelling in ["false", "FALSE", "False", " no ", "OFF", "f", "N", "0"] {
+        assert!(
+            !Scalar::from(spelling).is_truthy(),
+            "{spelling:?} should read false"
+        );
+    }
+    for spelling in ["true", "yes", "on", "1", "00", "falsey", "n/a"] {
+        assert!(
+            Scalar::from(spelling).is_truthy(),
+            "{spelling:?} should read true"
+        );
+    }
+
+    // The cast reader stays strict - this coercion does not widen it.
+    assert!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("off"))
+            .is_err()
+    );
+    assert_eq!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("false"))
+            .unwrap(),
+        Scalar::from(false)
+    );
+}
+
+#[test]
+fn a_container_of_empty_values_is_itself_empty() {
+    // The "struct all empty values" case: `is_empty` counts entries, so a
+    // record of three nulls is not empty - but nothing in it is set.
+    let all_null = Scalar::from_record(vec![
+        ("a", Scalar::Null),
+        ("b", Scalar::from("")),
+        ("c", Scalar::from_sequence([Scalar::Null])),
+    ])
+    .unwrap();
+    assert!(!all_null.is_empty(), "it has three fields");
+    assert!(!all_null.is_truthy(), "none of them is set");
+
+    let one_set = Scalar::from_record(vec![("a", Scalar::Null), ("b", Scalar::from(1))]).unwrap();
+    assert!(one_set.is_truthy());
+}

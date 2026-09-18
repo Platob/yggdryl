@@ -3583,6 +3583,7 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   pub fn record_iter(&self) -> std::collections::btree_map::Iter<'_, SmolStr, Self>
   pub const fn is_null(&self) -> bool
   pub const fn is_container(&self) -> bool
+  pub fn is_truthy(&self) -> bool  (coercion, not a reading: absence, zero at any width, empty text/bytes, and a container with nothing set are false; text spelling false/no/off/0/f/n is false, wider than Python because values arrive as text)
   pub const fn is_number(&self) -> bool
   pub fn path(&self, path: &str) -> Option<&Self>
   pub fn get_or<'value>(&'value self, key: &str, default: &'value Self) -> &'value Self

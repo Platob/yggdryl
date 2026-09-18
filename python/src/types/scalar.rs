@@ -1358,6 +1358,18 @@ impl PyScalar {
         self.inner.len()
     }
 
+    /// Return whether this value reads as true where a condition is wanted.
+    ///
+    /// Falsy is absence, a zero of any width, empty text or bytes, and a
+    /// container with nothing set in it; text that spells false reads false.
+    ///
+    /// Without this, `bool(scalar)` fell through to `__len__`, which counts
+    /// entries and answers zero for every value that is not a container - so
+    /// `bool(Scalar.from_(5))` was False.
+    fn __bool__(&self) -> bool {
+        self.inner.is_truthy()
+    }
+
     /// Return whether this is an empty sequence, mapping, or record.
     fn is_empty(&self) -> bool {
         self.inner.is_empty()

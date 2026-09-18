@@ -565,3 +565,23 @@ def test_empty_rows_require_the_known_arrow_root_on_output() -> None:
     with pytest.raises(ValueError, match="empty rows"):
         rows.into_arrow_batch()
     assert rows.into_arrow_batch(Field.from_arrow_schema(batch.schema)).equals(batch)
+
+
+def test_truthiness_reads_absence_zero_and_emptiness_as_false() -> None:
+    # Before `__bool__` existed, `bool(scalar)` fell through to `__len__`,
+    # which counts entries and answers zero for everything that is not a
+    # container - so all four of these read False. They are the reversal.
+    assert bool(Scalar.from_(5)) is True
+    assert bool(Scalar.from_("abc")) is True
+    assert bool(Scalar.from_(b"ab")) is True
+    assert bool(Scalar.from_(True)) is True
+
+    assert bool(Scalar.from_(0)) is False
+    assert bool(Scalar.from_(False)) is False
+    assert bool(Scalar.from_("")) is False
+    assert bool(Scalar.from_([])) is False
+
+    # Text a column spells false with, and the "struct all empty" case.
+    assert bool(Scalar.from_("off")) is False
+    assert bool(Scalar.from_({"a": None, "b": ""})) is False
+    assert bool(Scalar.from_({"a": None, "b": 1})) is True

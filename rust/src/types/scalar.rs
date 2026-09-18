@@ -1238,6 +1238,81 @@ impl Scalar {
         }
     }
 
+    /// Return whether this value reads as true where a condition is wanted.
+    ///
+    /// This is a coercion, not a reading: it answers for every value, where
+    /// [`Self::as_bool`] answers only for a boolean and keeps its `None` for
+    /// the three-valued logic a filter walks. Nothing falls back to it, so a
+    /// caller asking "is this set?" gets an answer and a caller asking "is
+    /// this a boolean?" still does not.
+    ///
+    /// Falsy is emptiness and zero, the way Python reads them: absence, a
+    /// zero of any width, empty text or bytes, and an empty container. A
+    /// container of falsy values is falsy too - a struct whose every field is
+    /// null reads as unset rather than as present-but-empty - which
+    /// [`Self::is_empty`] does not say, because that one only counts entries.
+    ///
+    /// Text is the one place this is wider than Python, and deliberately:
+    /// `"false"`, `"no"`, `"off"` and `"0"` read as false, where Python calls
+    /// every non-empty string true. Values arrive as text from CSV, FIX and
+    /// query strings, and a column that spells false is not asking to be
+    /// read as true. The reading is ASCII case-insensitive and trims.
+    /// [`crate::types::Boolean`]'s own text reader stays strict - it is the
+    /// String-to-Boolean *cast*, and a cast that guessed this widely would
+    /// accept text no schema declared.
+    ///
+    /// ```
+    /// use yggdryl::Scalar;
+    ///
+    /// assert!(Scalar::from(5).is_truthy());
+    /// assert!(!Scalar::from(0).is_truthy());
+    /// assert!(!Scalar::Null.is_truthy());
+    /// assert!(!Scalar::from("").is_truthy());
+    /// assert!(!Scalar::from("OFF").is_truthy());
+    /// assert!(Scalar::from("anything else").is_truthy());
+    /// assert!(!Scalar::from_sequence([Scalar::Null, Scalar::from(0)]).is_truthy());
+    /// assert!(Scalar::from_sequence([Scalar::from(1)]).is_truthy());
+    /// ```
+    #[must_use]
+    pub fn is_truthy(&self) -> bool {
+        if let Self::Null = self {
+            return false;
+        }
+        if let Some(value) = self.as_bool() {
+            return value;
+        }
+        if let Some(value) = self.as_i128() {
+            return value != 0;
+        }
+        if let Some((unscaled, _)) = self.as_decimal() {
+            return unscaled != crate::i256::ZERO;
+        }
+        if let Some(value) = self.as_f64() {
+            // NaN is not zero, so it is present. Only the two zeroes are not.
+            return value != 0.0;
+        }
+        if let Some(text) = self.as_str() {
+            let trimmed = text.trim();
+            return !matches!(
+                trimmed.to_ascii_lowercase().as_str(),
+                "" | "0" | "f" | "n" | "no" | "off" | "false"
+            );
+        }
+        if let Some(bytes) = self.as_bytes() {
+            return !bytes.is_empty();
+        }
+        if let Some(values) = self.as_sequence() {
+            return values.iter().any(Self::is_truthy);
+        }
+        if let Some(entries) = self.as_mapping() {
+            return entries.iter().any(|(_, value)| value.is_truthy());
+        }
+        if let Some(entries) = self.as_record() {
+            return entries.values().any(Self::is_truthy);
+        }
+        true
+    }
+
     /// Return a string slice when this is a string.
     pub fn as_str(&self) -> Option<&str> {
         match self {

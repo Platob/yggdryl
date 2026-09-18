@@ -302,6 +302,15 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   // `toJSON` goes through binding.js, which called a method the rename had
   // already removed - nothing covered that path, so the break shipped.
   assert.deepEqual(JSON.parse(JSON.stringify(record)), { a: 1, z: 2 })
+
+  // Truthiness is a coercion: absence, zero, empty text or bytes, and a
+  // container with nothing set in it all read false.
+  assert.equal(Scalar.from(5).isTruthy(), true)
+  assert.equal(Scalar.from(0).isTruthy(), false)
+  assert.equal(Scalar.from('').isTruthy(), false)
+  assert.equal(Scalar.from('off').isTruthy(), false)
+  assert.equal(Scalar.from('anything').isTruthy(), true)
+  assert.equal(record.isTruthy(), true)
   assert.deepEqual(record.toJSON(), { a: 1, z: 2 })
   const clone = record.clone()
   assert.notEqual(clone, record)

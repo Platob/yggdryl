@@ -3717,6 +3717,8 @@ export declare class Scalar {
   get family(): string
   /** The number of direct sequence children, mapping entries, or record fields. */
   get length(): number
+  /** Whether this value reads as true where a condition is wanted. */
+  isTruthy(): boolean
   /** Whether this is an empty sequence, mapping, or record. */
   isEmpty(): boolean
   /** Look up one non-negative sequence index without projecting its value. */

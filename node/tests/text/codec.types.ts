@@ -52,6 +52,7 @@ const single: Scalar = Scalar.float(1.5, 32)
 const double: Scalar = Scalar.float(1.5)
 const enumScalar: Scalar = Scalar.fromEnum('IOMode', 'append')
 const enumText: string | null = enumScalar.asStr()
+const truthy: boolean = enumScalar.isTruthy()
 const kind: string = at.kind
 const scalarId: string = at.id
 const scalarFamily: string = at.family
@@ -103,6 +104,7 @@ void replacedValue
 void removedValue
 void iteratedValues
 void enumText
+void truthy
 
 const arrowVector = vectorFromArray([1, 2], new Int32())
 const arrowValue: Scalar = Scalar.fromArrowArray(arrowVector)

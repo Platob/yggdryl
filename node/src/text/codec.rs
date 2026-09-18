@@ -336,6 +336,15 @@ impl JsScalar {
         length
     }
 
+    /// Whether this value reads as true where a condition is wanted.
+    ///
+    /// Falsy is absence, a zero of any width, empty text or bytes, and a
+    /// container with nothing set in it; text that spells false reads false.
+    #[napi]
+    pub fn is_truthy(&self) -> bool {
+        self.inner.is_truthy()
+    }
+
     /// Whether this is an empty sequence, mapping, or record.
     #[napi]
     pub fn is_empty(&self) -> bool {
