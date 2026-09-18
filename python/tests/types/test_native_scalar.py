@@ -263,9 +263,20 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
     assert Scalar.decimal(1).divide(Scalar.decimal(128)) == Scalar.decimal(78_125, 7)
 
 
+def test_addition_joins_text_bytes_and_sequences() -> None:
+    # Text, bytes and sequences have no sum, so `+` joins them - through the
+    # Python operator too, not just the named method.
+    assert (Scalar.from_("AA") + "PL").as_py() == "AAPL"
+    assert (Scalar.from_(b"\x01") + b"\x02").as_py() == b"\x01\x02"
+    assert (Scalar.from_([1]) + [2]).as_py() == [1, 2]
+
+
 def test_checked_arithmetic_preserves_python_error_categories() -> None:
+    # Two repertoires still do not join, and only `+` joins at all.
     with pytest.raises(TypeError, match="invalid addition"):
-        _ = Scalar.from_("a") + "b"
+        _ = Scalar.from_("a") + 1
+    with pytest.raises(TypeError, match="invalid subtraction"):
+        _ = Scalar.from_("a") - "b"
     with pytest.raises(OverflowError, match="overflows"):
         _ = Scalar.from_(2**63 - 1) + 1
     with pytest.raises(ZeroDivisionError, match="by zero"):
