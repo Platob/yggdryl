@@ -1669,7 +1669,7 @@ static_field_constructor!(super::BloombergType, DataType::Bloomberg);
 static_field_constructor!(super::SideType, DataType::Side);
 static_field_constructor!(super::StateType, DataType::State);
 static_field_constructor!(super::TimeInForceType, DataType::TimeInForce);
-static_field_constructor!(super::nested::VariantType, DataType::Variant);
+static_field_constructor!(super::VariantType, DataType::Variant);
 static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
 static_field_constructor!(super::version::VersionType, DataType::Version);
 static_field_constructor!(super::timezone::TimezoneType, DataType::Timezone);

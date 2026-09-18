@@ -133,7 +133,7 @@ pub(crate) mod casts {
     use crate::types::budget::MaterializationBudget;
     use crate::types::bytes::{BytesLayout, BytesParameters};
     use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
-    use crate::types::nested::casts::{is_exposed, null_buffers_ptr_eq};
+    use crate::types::cast::columns::{is_exposed, null_buffers_ptr_eq};
     use crate::{DataType, Field};
 
     /// Whether one byte layout reaches another only through Arrow's `Binary`.

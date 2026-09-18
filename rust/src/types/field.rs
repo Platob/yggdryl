@@ -1088,3 +1088,28 @@ impl Index<usize> for Field {
         })
     }
 }
+
+impl Field {
+
+    /// The recursive worker behind [`Self::merge_with`], shared with the
+    /// datatype merge so nested children never take a different path.
+    pub(crate) fn merge(
+        &self,
+        other: &Self,
+        how: crate::types::Widening,
+        recode: crate::types::Recode,
+    ) -> Result<Self> {
+        let dtype = self.dtype.merge(&other.dtype, how, recode)?;
+        let mut merged = Self::new(self.name.clone(), dtype, self.nullable || other.nullable);
+        // One rule, on `Metadata` itself: the union of both, this field
+        // winning any key they disagree on.
+        merged.set_metadata(self.metadata.merge_with(&other.metadata)?.iter())?;
+        if self.dictionary_id != 0 && other.dictionary_id != 0 {
+            merged.set_dictionary_options(
+                self.dictionary_id,
+                self.dictionary_is_ordered && other.dictionary_is_ordered,
+            )?;
+        }
+        Ok(merged)
+    }
+}

@@ -28,7 +28,6 @@ pub mod mapping;
 pub mod runend;
 pub mod structure;
 pub mod union;
-pub mod nested;
 mod parser;
 mod pretty;
 pub mod protocol;
@@ -74,10 +73,10 @@ pub(crate) use default::{
 };
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
-pub use dtype::DataType;
+pub use dtype::{DataType, VariantField, VariantType};
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Vocabulary;
-pub use family::{FamilyField, FamilyType};
+pub use family::{Children, FamilyField, FamilyType, NestedValue};
 pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
@@ -97,7 +96,6 @@ pub use mapping::*;
 pub use runend::*;
 pub use structure::*;
 pub use union::*;
-pub use nested::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, Value};

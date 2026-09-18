@@ -68,7 +68,7 @@ pub(crate) mod casts {
     use crate::arrow::{Error, Result};
     use crate::types::budget::MaterializationBudget;
     use crate::types::cast::{arrow_cast_exposed, downcast};
-    use crate::types::nested::casts::is_exposed;
+    use crate::types::cast::columns::is_exposed;
     use crate::{DataType, Field, Timezone};
 
     /// Parse and canonicalize every exposed text cell into time zone Utf8 storage.

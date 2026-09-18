@@ -1,4 +1,4 @@
-use yggdryl::types::nested;
+use yggdryl::types::{dictionary, mapping, runend, sequence};
 use yggdryl::{DataType, Field, UnionMode};
 
 use super::typed::assert_typed_marker;
@@ -8,20 +8,20 @@ fn nested_markers_cover_every_child_layout() {
     let item = || Field::new("item", DataType::utf8(), true);
     assert_typed_marker::<yggdryl::types::ListTypeMarker>(DataType::list(item()));
     assert_typed_marker::<yggdryl::types::ListViewTypeMarker>(DataType::list_view(item()));
-    assert_typed_marker::<nested::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
+    assert_typed_marker::<sequence::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
     assert_typed_marker::<yggdryl::types::LargeListTypeMarker>(DataType::large_list(item()));
-    assert_typed_marker::<nested::LargeListViewType>(DataType::large_list_view(item()));
+    assert_typed_marker::<sequence::LargeListViewType>(DataType::large_list_view(item()));
     assert_typed_marker::<yggdryl::types::StructTypeMarker>(DataType::from_fields([item()]).unwrap());
     assert_typed_marker::<yggdryl::types::UnionType>(
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
     );
-    assert_typed_marker::<nested::DictionaryTypeMarker>(
+    assert_typed_marker::<dictionary::DictionaryTypeMarker>(
         DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
     );
-    assert_typed_marker::<nested::MapTypeMarker>(
+    assert_typed_marker::<mapping::MapTypeMarker>(
         DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
     );
-    assert_typed_marker::<nested::RunEndEncodedTypeMarker>(
+    assert_typed_marker::<runend::RunEndEncodedTypeMarker>(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
             Field::new("values", DataType::utf8(), true),

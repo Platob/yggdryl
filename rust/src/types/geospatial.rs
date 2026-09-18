@@ -24,7 +24,7 @@ pub(crate) mod casts {
     use crate::arrow::{Error, Result};
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::types::cast::{downcast, internal_target_error};
-    use crate::types::nested::casts::is_exposed;
+    use crate::types::cast::columns::is_exposed;
 
     /// Validates every exposed, non-null payload of a Binary array as WKB on its
     /// way into a geospatial field, naming the field, the row, and the byte

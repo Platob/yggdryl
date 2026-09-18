@@ -39,8 +39,8 @@ impl Scalar {
     /// it never allocates and never copies a string or a byte payload.
     ///
     /// `None` is the answer for [`Self::Null`], which has no payload, and for
-    /// [`crate::types::nested::Sequence`], [`crate::types::nested::Mapping`], and
-    /// [`crate::types::nested::Record`], whose
+    /// [`crate::types::sequence::Sequence`], [`crate::types::mapping::Mapping`], and
+    /// [`crate::types::structure::Record`], whose
     /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
     ///
     /// A decimal answers its coefficient, and a temporal its stored count: the

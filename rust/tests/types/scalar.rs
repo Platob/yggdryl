@@ -519,7 +519,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
+    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, temporal, uuid};
     use yggdryl::{
         CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
@@ -568,7 +568,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
     assert_eq!(Value::dtype(&geometry).unwrap().id(), DataTypeId::Geometry);
 
-    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
+    let sequence = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
     assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
@@ -584,7 +584,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
     use yggdryl::types::{
-        bytes, decimal, geospatial, integer, mapping, nested, string, temporal, uuid,
+        bytes, decimal, geospatial, integer, mapping, sequence, string, structure, temporal,
+        uuid,
     };
 
     let integer = integer::Int32::new(-7);
@@ -661,14 +662,14 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(geometry.as_bytes(), point);
     assert!(geospatial::Geography::new(vec![0xff]).is_err());
 
-    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
-    assert_eq!(sequence.as_slice().len(), 2);
+    let values = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
+    assert_eq!(values.as_slice().len(), 2);
     let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
         Scalar::from("one"),
         Scalar::from(1_i32),
     )])));
     assert_eq!(mapping.as_slice().len(), 1);
-    let record = nested::Record::new(Arc::new(std::collections::BTreeMap::from([(
+    let record = structure::Record::new(Arc::new(std::collections::BTreeMap::from([(
         "one".into(),
         Scalar::from(1_i32),
     )])));
@@ -677,7 +678,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal};
+    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, temporal};
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -727,7 +728,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::Sequence(nested::Sequence::new(Arc::from([
+    let sequence = Scalar::Sequence(sequence::Sequence::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ])));

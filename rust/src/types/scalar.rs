@@ -48,16 +48,17 @@ use super::decimal::{Decimal128, Decimal256, Decimal32, Decimal64};
 use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
 use super::integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, compare_integer_parts, integer_parts};
-use super::nested::Children;
+use crate::types::family::Children;
 use super::mapping::{Map, Mapping};
-use super::nested::Record;
-use super::nested::Sequence;
+use crate::types::structure::Record;
+use crate::types::sequence::Sequence;
 use super::string::Str;
 use super::temporal::scalars::temporal_key;
 use super::temporal::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 use super::uuid::Uuid;
 use super::version::Version;
 use super::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal as decimal};
+use std::ops::Index;
 
 /// One concrete scalar representation.
 ///
@@ -2080,7 +2081,7 @@ mod tests {
     fn a_width_variant_borrows_the_leaf_display_it_holds() {
         use std::sync::Arc;
 
-        use crate::types::{decimal, integer, nested};
+        use crate::types::{decimal, integer, sequence};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
         assert_eq!(decimal.leaf_display().unwrap().to_string(), "12.50");
@@ -2091,7 +2092,7 @@ mod tests {
                 .to_string(),
             "7"
         );
-        let held = nested::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+        let held = sequence::Sequence::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
             Scalar::Sequence(held.clone())
                 .leaf_display()
@@ -2103,5 +2104,41 @@ mod tests {
         assert!(Scalar::from("12.50").leaf_display().is_none());
         assert!(Scalar::from(true).leaf_display().is_none());
         assert!(Scalar::Null.leaf_display().is_none());
+    }
+}
+
+impl From<Vec<Scalar>> for Scalar {
+    fn from(value: Vec<Scalar>) -> Self {
+        Self::from_sequence(value)
+    }
+}
+
+impl FromIterator<Scalar> for Scalar {
+    fn from_iter<T: IntoIterator<Item = Scalar>>(iter: T) -> Self {
+        Self::from_sequence(iter)
+    }
+}
+
+impl Index<usize> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.as_sequence().expect("value is not a sequence")[index]
+    }
+}
+
+impl Index<&Scalar> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, key: &Scalar) -> &Self::Output {
+        self.get_key(key).expect("mapping key is not present")
+    }
+}
+
+impl Index<&str> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, key: &str) -> &Self::Output {
+        self.get_key_str(key).expect("mapping key is not present")
     }
 }

@@ -175,7 +175,7 @@ pub(crate) mod casts {
     use crate::types::bytes::casts::variable_binary_source;
     use crate::types::cast::arrow_cast_exposed;
     use crate::types::cast::{downcast, internal_target_error, named_cell};
-    use crate::types::nested::casts::is_exposed;
+    use crate::types::cast::columns::is_exposed;
     use crate::types::string::arrow_storage;
     use crate::types::{
         Str, StringParameters, code_cell_text, code_text, trim_padding, uuid_parse, uuid_text,

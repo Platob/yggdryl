@@ -10,14 +10,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::FIELD_PARTITION_KEY;
 
-use crate::types::nested::cmp_field_slices;
-use crate::types::nested::exploded;
-use crate::types::nested::missing_child;
-use crate::types::nested::reject_duplicate_field_names;
-use crate::types::nested::validate_fields;
 use crate::types::family::FamilyType;
 use crate::types::typed::define_field_types;
 use crate::types::sequence::SequenceType;
+use std::collections::{BTreeMap, HashSet};
+use crate::types::family::{Children, NestedValue};
+use crate::types::scalar::Value;
+use crate::types::invalid;
+use crate::Scalar;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, Field, Result, TypedField,
 };
@@ -1690,5 +1690,172 @@ impl Index<usize> for StructureType {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.as_fields()[index]
+    }
+}
+
+pub(crate) fn exploded(child: &Field) -> Field {
+    let held = match child.dtype() {
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::LargeListView(item)) => Some((item.dtype().clone(), item.is_nullable())),
+        DataType::Mapping(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
+        DataType::RunEndEncoded(encoded) => Some((
+            encoded.values().dtype().clone(),
+            encoded.values().is_nullable(),
+        )),
+        DataType::Dictionary(dictionary) => Some((dictionary.value().clone(), false)),
+        _ => None,
+    };
+    match held {
+        Some((dtype, element_nullable)) => {
+            let mut exploded =
+                Field::new(child.name(), dtype, child.is_nullable() || element_nullable);
+            // The column's own annotations describe the column, not the
+            // collection layout, so they survive the expansion.
+            let _ = exploded.set_metadata(child.metadata_iter());
+            exploded
+        }
+        None => child.clone(),
+    }
+}
+
+/// Report a path that names no child, and the names that exist beside it.
+pub(crate) fn missing_child(node: &DataType, path: &str) -> Error {
+    let names: Vec<&str> = (0..node.field_len())
+        .filter_map(|index| node.get_field_at(index))
+        .map(Field::name)
+        .collect();
+    Error::InvalidRecord {
+        path: format_smolstr!("$.{path}"),
+        reason: crate::text::expected_got(
+            format_smolstr!("a child among {names:?}"),
+            format_smolstr!("{path:?}"),
+        ),
+    }
+}
+
+pub(crate) fn cmp_field_slices(left: &[Field], right: &[Field]) -> Ordering {
+    let mut left = left.iter();
+    let mut right = right.iter();
+    loop {
+        match (left.next(), right.next()) {
+            (Some(left), Some(right)) => {
+                let order = cmp_fields(left, right);
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+        }
+    }
+}
+
+pub(crate) fn cmp_fields(left: &Field, right: &Field) -> Ordering {
+    left.cmp(right)
+}
+
+
+
+pub(crate) fn validate_fields(fields: &[Field], kind: &'static str) -> Result<()> {
+    reject_duplicate_field_names(fields, kind)?;
+    fields.iter().try_for_each(Field::validate)
+}
+
+pub(crate) fn reject_duplicate_field_names(fields: &[Field], kind: &'static str) -> Result<()> {
+    const HASHED_DUPLICATE_CHECK_THRESHOLD: usize = 16;
+
+    if fields.len() > HASHED_DUPLICATE_CHECK_THRESHOLD {
+        let mut names = HashSet::with_capacity(fields.len());
+        for field in fields {
+            if !names.insert(field.name()) {
+                return Err(invalid(
+                    kind,
+                    format_smolstr!("duplicate field name {:?}", field.name()),
+                ));
+            }
+        }
+        return Ok(());
+    }
+
+    for (index, field) in fields.iter().enumerate() {
+        if fields[..index]
+            .iter()
+            .any(|previous| previous.name() == field.name())
+        {
+            return Err(invalid(
+                kind,
+                format_smolstr!("duplicate field name {:?}", field.name()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// One deterministic record sorted by field name.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Record(Arc<BTreeMap<SmolStr, Scalar>>);
+
+impl Record {
+    /// Construct a sorted record.
+    pub fn new(values: impl Into<Arc<BTreeMap<SmolStr, Scalar>>>) -> Self {
+        Self(values.into())
+    }
+
+    /// Borrow the sorted fields.
+    pub fn as_map(&self) -> &BTreeMap<SmolStr, Scalar> {
+        self.0.as_ref()
+    }
+
+    /// Consume this value and return its shared fields.
+    pub fn into_inner(self) -> Arc<BTreeMap<SmolStr, Scalar>> {
+        self.0
+    }
+}
+
+impl fmt::Display for Record {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}", self.as_map())
+    }
+}
+
+impl NestedValue for Record {
+    fn len(&self) -> usize {
+        self.as_map().len()
+    }
+
+    fn children(&self) -> Children<'_> {
+        Children::Record(self.as_map().values())
+    }
+}
+
+impl<'a> IntoIterator for &'a Scalar {
+    type Item = &'a Scalar;
+    type IntoIter = Children<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl Value for Record {
+    fn dtype(&self) -> Result<DataType> {
+        Scalar::Record(self.clone()).dtype()
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Record(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Record(value) => Some(value),
+            _ => None,
+        }
     }
 }

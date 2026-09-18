@@ -5,8 +5,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::types::nested::cmp_fields;
-use crate::types::nested::validate_run_ends;
+use crate::types::structure::cmp_fields;
+use smol_str::format_smolstr;
+use crate::types::invalid;
+use crate::types::typed::define_field_types;
 use crate::{
     DataType, Field, Result,
 };
@@ -73,3 +75,33 @@ impl DataType {
         })))
     }
 }
+
+pub(crate) fn validate_run_ends(run_ends: &Field) -> Result<()> {
+    // Two independent rules; report the one that actually fired so a caller
+    // fixes the right half.
+    if run_ends.is_nullable() {
+        return Err(invalid(
+            "RunEndEncoded",
+            format_smolstr!(
+                "expected a non-null run_ends field, got nullable field {:?}",
+                run_ends.name()
+            ),
+        ));
+    }
+    if !run_ends.dtype().is_run_ends_type() {
+        return Err(invalid(
+            "RunEndEncoded",
+            format_smolstr!(
+                "expected a run_ends datatype of int16, int32, or int64, got {}",
+                run_ends.dtype()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+define_field_types!(
+    RunEndEncodedTypeMarker,
+    RunEndEncoded,
+    crate::DataType::RunEndEncoded(_)
+);

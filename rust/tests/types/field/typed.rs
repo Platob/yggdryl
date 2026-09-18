@@ -135,7 +135,7 @@ fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
 
 #[test]
 fn the_extension_typed_markers_narrow_their_exact_variants() {
-    assert_typed_marker::<yggdryl::types::nested::VariantType>(DataType::variant());
+    assert_typed_marker::<yggdryl::types::VariantType>(DataType::variant());
     assert_typed_marker::<yggdryl::types::geospatial::GeometryType>(
         DataType::geometry(None).unwrap(),
     );

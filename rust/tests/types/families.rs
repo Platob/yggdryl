@@ -7,7 +7,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
     BytesLayout, BytesParameters, DataType, DecimalType, DictionaryType, Fields, FloatingType,
-    GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType, StringLayout,
+    GeospatialType, IntegerType, MapType, RunEndEncodedType, StringLayout,
     StringParameters, TemporalType, TimeUnit, UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
@@ -61,10 +61,11 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     assert_eq!(DataType::bytes(parameters).unwrap(), bytes);
     assert_eq!(DataType::utf8().bytes_parameters(), None);
 
+    // A wrapper datatype answers for itself now that no intermediate enum
+    // stands between the root and the families.
     let nested = DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap();
-    let nested_family = NestedType::try_from(&nested).unwrap();
-    assert!(nested_family.is_wrapper());
-    assert_eq!(DataType::from(nested_family), nested);
+    assert!(nested.id().is_wrapper());
+    assert_eq!(nested.id(), yggdryl::DataTypeId::Dictionary);
 
     let geospatial = DataType::geography(None, None).unwrap();
     let geospatial_family = GeospatialType::try_from(&geospatial).unwrap();

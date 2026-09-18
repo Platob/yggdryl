@@ -15,13 +15,16 @@ use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, Un
 
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
-use super::nested::cmp_fields;
-use super::nested::validate_dictionary_key;
-use super::nested::validate_fields;
-use super::nested::validate_map_entries;
-use super::nested::validate_run_ends;
-use super::nested::validate_union_fields;
+use crate::types::structure::cmp_fields;
+use crate::types::dictionary::validate_dictionary_key;
+use crate::types::structure::validate_fields;
+use crate::types::mapping::validate_map_entries;
+use crate::types::runend::validate_run_ends;
+use crate::types::union::validate_union_fields;
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
+use std::ops::Index;
+use crate::types::typed::define_field_types;
+use crate::TypedField;
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///
 /// Scalar variants are inline. Nested children use `Arc`, so cloning a
@@ -670,3 +673,93 @@ pub(crate) fn validate_non_negative(
         Ok(())
     }
 }
+
+// ------------------------------------------------------------------------
+// Shared child collections and validated nested datatype construction.
+// ------------------------------------------------------------------------
+
+impl DataType {
+    /// Creates the self-describing semi-structured Variant type.
+    ///
+    /// It takes no parameters: shredding is physical layout, while each value
+    /// is the ordinary [`crate::Scalar`] tree. Parentheses distinguish the
+    /// finite [`Self::dense_union`] input form in the grammar.
+    #[must_use]
+    pub const fn variant() -> Self {
+        Self::Variant
+    }
+
+}
+
+/// Subscripting a datatype reaches a nested **child**, never metadata.
+///
+/// The same semantic [`Field`] carries, so a caller walking a schema gets a
+/// child from every node in the graph. The string is resolved by
+/// [`DataType::get_field_by_path`] - an exact name first, a dotted path after -
+/// and that method is the non-panicking form.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+/// assert_eq!(row["id"].dtype(), &DataType::Int64);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this datatype has no child with that name - including when it is a dotted path.
+impl Index<&str> for DataType {
+    type Output = Field;
+
+    fn index(&self, path: &str) -> &Self::Output {
+        self.get_field_by_path(path)
+            .unwrap_or_else(|| panic!("{path:?} is not a child of the datatype {self}"))
+    }
+}
+
+/// Subscripting a datatype by position reaches that nested child.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let items = DataType::list(DataType::utf8().nullable_field("item"));
+/// assert_eq!(items[0].name(), "item");
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this datatype has no child at that position.
+impl Index<usize> for DataType {
+    type Output = Field;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.get_field_at(index).unwrap_or_else(|| {
+            panic!(
+                "the datatype {self} has {} children, so position {index} is out of range",
+                self.field_len()
+            )
+        })
+    }
+}
+
+
+
+// The variant lives with the nested family: it is the self-describing
+// sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
+// as dense-union sugar), and its Arrow storage is a struct of two binaries.
+define_field_types!(VariantType, Variant, crate::DataType::Variant);
+
+
+
+
+
+
+
+/// A variant-typed field.
+pub type VariantField = TypedField<VariantType>;

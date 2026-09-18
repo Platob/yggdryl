@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::types::nested::cmp_fields;
-use crate::types::nested::validate_union_values;
+use crate::types::structure::cmp_fields;
 use crate::types::dtype::invalid;
 use crate::types::typed::define_field_types;
+use smol_str::format_smolstr;
 use crate::{
     DataType, Field, Result, UnionMode,
 
@@ -223,4 +223,41 @@ impl<'a> IntoIterator for &'a UnionFields {
         }
         self.as_ref().iter().map(borrow_member)
     }
+}
+
+pub(crate) fn validate_union_fields(fields: &UnionFields) -> Result<()> {
+    validate_union_values(fields.as_fields(), true)
+}
+
+pub(crate) fn validate_union_values(values: &[(i8, Field)], validate_children: bool) -> Result<()> {
+    let mut seen = 0_u128;
+    for (index, (type_id, field)) in values.iter().enumerate() {
+        if *type_id < 0 {
+            return Err(invalid(
+                "Union",
+                format_smolstr!("type id must be non-negative: {type_id}"),
+            ));
+        }
+        let mask = 1_u128 << *type_id;
+        if seen & mask != 0 {
+            return Err(invalid(
+                "Union",
+                format_smolstr!("duplicate type id: {type_id}"),
+            ));
+        }
+        seen |= mask;
+        if values[..index]
+            .iter()
+            .any(|(_, previous)| previous.name() == field.name())
+        {
+            return Err(invalid(
+                "Union",
+                format_smolstr!("duplicate field name {:?}", field.name()),
+            ));
+        }
+        if validate_children {
+            field.validate()?;
+        }
+    }
+    Ok(())
 }

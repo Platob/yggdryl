@@ -12,7 +12,7 @@ pub(crate) use limits::{ MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_phys
 use crate::arrow::{Error, Result};
 use crate::types::bytes::casts::{byte_array_storage_ptr_eq, checked_valid_payload_bytes, projected_byte_len};
 use crate::types::cast::downcast;
-use crate::types::nested::casts::{dictionary_values_ref, offset_pair};
+use crate::types::cast::columns::{dictionary_values_ref, offset_pair};
 use crate::types::{bytes, string};
 use crate::{DataType, Field, UnionMode};
 use crate::types::sequence::SequenceType;

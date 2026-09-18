@@ -21,6 +21,8 @@ use std::fmt;
 use std::hash::Hash;
 
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
+use smol_str::SmolStr;
+use crate::Scalar;
 
 /// One datatype family's payload.
 ///
@@ -74,3 +76,74 @@ pub trait FamilyField: Clone + fmt::Debug + Sized {
     /// Widen this payload back to the generic field.
     fn into_field(self) -> Field;
 }
+
+// ------------------------------------------------------------------------
+// Nested values and typed scalar aliases.
+// ------------------------------------------------------------------------
+
+/// Borrowing access shared by every nested value shape.
+pub trait NestedValue: crate::Value {
+    /// Return the number of direct children.
+    fn len(&self) -> usize;
+    /// Return whether this value has no direct children.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Iterate over direct sequence values, mapping keys, or record values.
+    fn children(&self) -> Children<'_>;
+}
+
+/// A borrowed iterator over sequence values, mapping keys or record values.
+pub enum Children<'a> {
+    /// Sequence values.
+    Sequence(std::slice::Iter<'a, Scalar>),
+    /// Mapping keys.
+    Mapping(std::slice::Iter<'a, (Scalar, Scalar)>),
+    /// Record field values in sorted name order.
+    Record(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
+}
+
+impl<'a> Iterator for Children<'a> {
+    type Item = &'a Scalar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Sequence(values) => values.next(),
+            Self::Mapping(entries) => entries.next().map(|(key, _)| key),
+            Self::Record(entries) => entries.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let length = self.len();
+        (length, Some(length))
+    }
+}
+
+impl DoubleEndedIterator for Children<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Sequence(values) => values.next_back(),
+            Self::Mapping(entries) => entries.next_back().map(|(key, _)| key),
+            Self::Record(entries) => entries.next_back(),
+        }
+    }
+}
+
+impl ExactSizeIterator for Children<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Sequence(values) => values.len(),
+            Self::Mapping(entries) => entries.len(),
+            Self::Record(entries) => entries.len(),
+        }
+    }
+}
+
+impl std::iter::FusedIterator for Children<'_> {}
+
+
+
+
+
+

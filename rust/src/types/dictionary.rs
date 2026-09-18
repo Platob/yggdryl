@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::types::nested::validate_dictionary_key;
+use smol_str::format_smolstr;
+use crate::types::invalid;
+use crate::types::typed::define_field_types;
 use crate::{
     DataType, Result,
 };
@@ -54,4 +56,27 @@ impl DataType {
         validate_dictionary_key(&key)?;
         Ok(Self::Dictionary(Arc::new(DictionaryType { key, value })))
     }
+}
+
+pub(crate) fn validate_dictionary_key(key: &DataType) -> Result<()> {
+    if is_valid_dictionary_key(key) {
+        Ok(())
+    } else {
+        Err(invalid(
+            "Dictionary",
+            format_smolstr!(
+                "expected an integer key datatype (int8, int16, int32, int64, uint8, uint16, uint32, or uint64), got {key}"
+            ),
+        ))
+    }
+}
+
+define_field_types!(
+    DictionaryTypeMarker,
+    Dictionary,
+    crate::DataType::Dictionary(_)
+);
+
+fn is_valid_dictionary_key(key: &DataType) -> bool {
+    key.is_integer()
 }

@@ -25,7 +25,7 @@ pub(crate) mod casts {
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::types::cast::arrow_cast_exposed;
     use crate::types::cast::text::ingest_text_values;
-    use crate::types::nested::casts::is_exposed;
+    use crate::types::cast::columns::is_exposed;
     use crate::{DataType, Field, Scalar};
 
     /// Whether a source Arrow type holds temporals with a classic spelling.

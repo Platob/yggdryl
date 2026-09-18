@@ -18,7 +18,7 @@ pub(crate) mod casts {
     use crate::types::bytes::casts::variable_binary_source;
     use crate::types::cast::arrow_cast_exposed;
     use crate::types::cast::{downcast, internal_target_error};
-    use crate::types::nested::casts::is_exposed;
+    use crate::types::cast::columns::is_exposed;
     use crate::types::uuid_parse;
     use crate::{DataType, Field};
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};

@@ -1,7 +1,7 @@
 //! Schema-directed validation and canonicalization of row values.
 //!
 //! A struct [`Field`] is the schema of the rows it describes, so validating a
-//! row is validating one [`super::nested::Sequence`] against that field's children.
+//! row is validating one [`crate::types::sequence::Sequence`] against that field's children.
 //! Canonicalization is the same walk with rewriting: it narrows integers,
 //! floats, and nested containers into the exact representation the schema
 //! declares, and returns the input untouched when nothing needed changing.

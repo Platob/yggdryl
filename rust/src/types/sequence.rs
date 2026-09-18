@@ -26,6 +26,10 @@ use crate::types::dtype::validate_non_negative;
 use crate::types::family::FamilyType;
 use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
+use serde::{Deserialize, Serialize};
+use crate::types::family::{Children, NestedValue};
+use crate::types::scalar::Value;
+use crate::Scalar;
 
 /// The sequence family's datatype payload.
 ///
@@ -224,3 +228,71 @@ define_field_types!(
     LargeList,
     crate::DataType::Sequence(crate::types::SequenceType::LargeList(_))
 );
+
+/// One ordered sequence of scalar children.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Sequence(Arc<[Scalar]>);
+
+impl Sequence {
+    /// Construct an ordered sequence.
+    pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
+        Self(values.into())
+    }
+
+    /// Borrow the ordered values.
+    pub fn as_slice(&self) -> &[Scalar] {
+        self.0.as_ref()
+    }
+
+    /// Consume this value and return its shared children.
+    pub fn into_inner(self) -> Arc<[Scalar]> {
+        self.0
+    }
+}
+
+impl fmt::Display for Sequence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}", self.as_slice())
+    }
+}
+
+impl NestedValue for Sequence {
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    fn children(&self) -> Children<'_> {
+        Children::Sequence(self.as_slice().iter())
+    }
+}
+
+define_field_types!(
+    FixedSizeListType,
+    FixedSizeList,
+    crate::DataType::Sequence(crate::types::SequenceType::FixedSizeList(..))
+);
+
+define_field_types!(
+    LargeListViewType,
+    LargeListView,
+    crate::DataType::Sequence(crate::types::SequenceType::LargeListView(_))
+);
+
+impl Value for Sequence {
+    fn dtype(&self) -> Result<DataType> {
+        Scalar::Sequence(self.clone()).dtype()
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Sequence(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Sequence(value) => Some(value),
+            _ => None,
+        }
+    }
+}

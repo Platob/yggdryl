@@ -24,8 +24,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::family::{FamilyField, FamilyType};
 use crate::types::structure::StructureType;
-use crate::types::nested::{Children, NestedValue, cmp_fields, validate_map_entries};
+use crate::types::family::Children;
+use crate::types::family::NestedValue;
+use crate::types::structure::cmp_fields;
 use crate::types::scalar::Value;
+use crate::types::invalid;
+use crate::types::typed::define_field_types;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar,
 };
@@ -550,3 +554,21 @@ impl<'de> Deserialize<'de> for Mapping {
         Map::deserialize(deserializer).map(Self::Map)
     }
 }
+
+pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
+    if entries.is_nullable() {
+        return Err(invalid("Map", "entries field must be non-null"));
+    }
+    let DataType::Structure(StructureType::Struct2(pair)) = entries.dtype() else {
+        return Err(invalid(
+            "Map",
+            "entries field must contain a key and a value",
+        ));
+    };
+    if pair.first().is_nullable() {
+        return Err(invalid("Map", "key field must be non-null"));
+    }
+    Ok(())
+}
+
+define_field_types!(MapTypeMarker, Map, crate::DataType::Mapping(_));
