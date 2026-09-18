@@ -1621,7 +1621,7 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: AvroOptions) -> Self
   pub fn with_field(mut self, field: Field) -> Self
-  pub fn with_root_name(mut self, root_name: impl Into<SmolStr>) -> Self
+  pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
   pub fn with_level(mut self, level: Level) -> Self
   pub const fn options(&self) -> &AvroOptions
   pub fn options_mut(&mut self) -> &mut AvroOptions
@@ -1795,7 +1795,7 @@ pub fn ref_by_name(&self, name: &str) -> Option<&SnapshotRef>
   pub fn create_tag(&mut self, name: impl Into<SmolStr>, snapshot_id: i64) -> Result<()>
   pub fn rename_ref(&mut self, from: &str, to: impl Into<SmolStr>) -> Result<()>
   pub fn fast_forward_branch(&mut self, name: &str, to_snapshot_id: i64) -> Result<()>
-  pub fn expire_snapshots_older_than(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
+  pub fn expire_snapshots(&mut self, older_than_ms: Option<i64>, retain_last: Option<usize>, snapshot_ids: &[i64]) -> Result<Vec<i64>>
 
 ### yggdryl::media::iceberg::options  [rust/src/media/iceberg/options.rs]
 pub struct IcebergOptions
@@ -1959,7 +1959,7 @@ pub fn set_options(&mut self, options: IcebergOptions)
   pub fn create_tag(&mut self, name: &str, snapshot_id: i64) -> Result<()>
   pub fn remove_snapshot_ref(&mut self, name: &str) -> Result<SnapshotRef>
   pub fn fast_forward_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
-  pub fn expire_snapshots(&mut self, older_than_ms: i64) -> Result<Vec<i64>>
+  pub fn expire_snapshots(&mut self, older_than_ms: Option<i64>, retain_last: Option<usize>, snapshot_ids: &[i64]) -> Result<Vec<i64>>
   pub fn scan_ref(&self, name: &str, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
   pub struct CommitConflict { pub expected_version: u32, pub beaten: u32, pub last_seen_version: u32 }
 
@@ -1991,7 +1991,7 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: IpcOptions) -> Self
   pub fn with_field(mut self, field: Field) -> Self
-  pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self
+  pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self
   pub fn with_level(mut self, level: Level) -> Self
   pub const fn options(&self) -> &IpcOptions
   pub fn options_mut(&mut self) -> &mut IpcOptions
@@ -2128,7 +2128,7 @@ pub struct ParquetOptions
   pub struct Parquet<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: ParquetOptions) -> Self
-  pub fn with_root_name(mut self, root_name: impl Into<smol_str::SmolStr>) -> Self
+  pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self
   pub fn with_field(mut self, field: Field) -> Self
   pub const fn handle(&self) -> &H
   pub fn handle_mut(&mut self) -> &mut H
@@ -2570,13 +2570,18 @@ pub struct Plan
   pub fn detect(handle: &impl IOBase, head: &[u8]) -> Result<Self>
   pub const fn format(self) -> Format
   pub const fn codec(self) -> Codec
-  pub fn load(source: &impl IOBase) -> Result<Scalar>
-  pub fn load_with_limits(source: &impl IOBase, limits: Limits) -> Result<Scalar>
-  pub fn load_all(source: &impl IOBase) -> Result<Vec<Scalar>>
-  pub fn load_all_with_limits(source: &impl IOBase, limits: Limits) -> Result<Vec<Scalar>>
-  pub fn dump(target: &mut impl IOBase, value: &Scalar) -> Result<()>
-  pub fn dump_with_level(target: &mut impl IOBase, value: &Scalar, level: Level) -> Result<()>
-  pub fn dump_all(target: &mut impl IOBase, values: &[Scalar]) -> Result<()>
+  pub fn from_io<H: IOBase + ?Sized>(source: &H) -> Result<Scalar>
+  pub fn from_io_with_limits<H: IOBase + ?Sized>(source: &H, limits: Limits) -> Result<Scalar>
+  pub fn from_io_with_field<H: IOBase + ?Sized>(source: &H, field: &Field) -> Result<Scalar>
+  pub fn from_io_with_field_and_limits<H: IOBase + ?Sized>(source: &H, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_io_with<H: IOBase + ?Sized>(source: &H, loading: &Loading) -> Result<Scalar>
+  pub fn from_io_all<H: IOBase + ?Sized>(source: &H) -> Result<Vec<Scalar>>
+  pub fn from_io_all_with_limits<H: IOBase + ?Sized>(source: &H, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn into_io<H: IOBase + ?Sized>(value: &Scalar, target: &mut H) -> Result<()>
+  pub fn into_io_with_level<H: IOBase + ?Sized>(value: &Scalar, target: &mut H, level: Level) -> Result<()>
+  pub fn into_io_with_formatting<H: IOBase + ?Sized>(value: &Scalar, target: &mut H, formatting: &Formatting) -> Result<()>
+  pub fn into_io_all<H: IOBase + ?Sized>(values: &[Scalar], target: &mut H) -> Result<()>
+  pub fn into_io_all_with_formatting<H: IOBase + ?Sized>(values: &[Scalar], target: &mut H, formatting: &Formatting) -> Result<()>
 
 ### yggdryl::text::json  [rust/src/text/json/mod.rs]
 pub const MAX_PARSER_DEPTH: usize = 384;
@@ -3548,12 +3553,6 @@ pub struct ProtocolField<'field>
 
 ### yggdryl::types::scalar  [rust/src/types/scalar.rs]
 pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (no associated consts: a leaf's identity is its dtype; no Family type - a leaf widens through into_scalar)
-  fn dtype(&self) -> Result<DataType>
-  fn into_family(self) -> Self::Family
-  fn from_family(family: &Self::Family) -> Option<&Self>
-  fn into_scalar(self) -> Scalar
-  fn from_scalar(value: &Scalar) -> Option<&Self>
-  fn id(&self) -> DataTypeId
   fn dtype(&self) -> Result<DataType>
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<&Self>
