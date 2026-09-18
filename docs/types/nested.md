@@ -107,7 +107,7 @@ A wrapper is a storage decision, so `is_nested` resolves through it.
     // A wrapper reports the shape of what it encodes, not of its own storage.
     assert!(!codes.is_nested() && !runs.is_nested());
 
-    let DataType::Dictionary(dictionary) = &codes else { panic!("dictionary") };
+    let DataType::Enum(dictionary) = &codes else { panic!("dictionary") };
     assert_eq!(dictionary.key(), &DataType::Int16);
     assert_eq!(dictionary.value(), &DataType::utf8());
 

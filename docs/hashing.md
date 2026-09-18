@@ -544,7 +544,7 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
 
     // The batch has no holder column; the fill adds it where the root declares it.
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![symbol.into_arrow()?, quantity.into_arrow()?])),
+        Arc::new(Schema::new(vec![symbol.into_arrow_field()?, quantity.into_arrow_field()?])),
         vec![
             Arc::new(StringArray::from(vec!["AAPL", "AAPL"])),
             Arc::new(Int64Array::from(vec![100, 999])),
@@ -1141,14 +1141,14 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
     let event = Field::new("event", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC }, false);
     let symbol = Field::new("symbol", DataType::utf8(), false);
-    let mut key = Field::new("key", DataType::fixed_size_binary(16)?, false);
+    let mut key = Field::new("key", DataType::fixed_binary(16)?, false);
     key.as_digest_mut().set_holder()?;
     key.as_digest_mut().set_time("event")?;
     key.as_digest_mut().set_unit(TimeUnit::Second)?;
     let root = DataType::from_fields([event.clone(), symbol.clone(), key])?.required_field("row");
 
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![event.into_arrow()?, symbol.into_arrow()?])),
+        Arc::new(Schema::new(vec![event.into_arrow_field()?, symbol.into_arrow_field()?])),
         vec![
             Arc::new(TimestampMicrosecondArray::from(vec![1_700_000_000_000_000, 1_700_000_000_999_999]).with_timezone("UTC")),
             Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),

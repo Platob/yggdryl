@@ -107,14 +107,14 @@ A code is an identity over a published registry, not a string with a charset: a 
 
     // A code rides its own Arrow extension, so the identity survives the trip.
     let venue = Field::new("venue", DataType::Mic, false);
-    let arrow = venue.clone().into_arrow()?;
+    let arrow = venue.clone().into_arrow_field()?;
     // The storage is the text; the name beside it is the identity.
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
-    assert_eq!(Field::from_arrow(&arrow)?, venue);
+    assert_eq!(Field::from_arrow_field(&arrow)?, venue);
     // The same storage under no name at all is plain text.
     let bare = arrow_schema::Field::new("venue", ArrowDataType::Utf8, false);
-    assert_eq!(Field::from_arrow(&bare)?.dtype(), &DataType::utf8());
+    assert_eq!(Field::from_arrow_field(&bare)?.dtype(), &DataType::utf8());
     ```
 
 === "Python"
@@ -295,7 +295,7 @@ intact; message definitions have no generic datatype or code field helper.
     let side = StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
     let field = Field::new("side", ascii4.clone(), false).try_with_string_enum(&side)?;
     assert_eq!(side.into_members(&ascii4)?[0], ("BUY".into(), 0x4200_0000));
-    assert_eq!(Field::from_arrow(&field.into_arrow()?)?.string_enum()?, Some(side.clone()));
+    assert_eq!(Field::from_arrow_field(&field.into_arrow_field()?)?.string_enum()?, Some(side.clone()));
     // A string that does not pack is refused by name.
     let refused = Field::new("side", DataType::utf8(), false).try_with_string_enum(&side).unwrap_err().to_string();
     assert!(refused.contains("at most 16 bytes"), "{refused}");

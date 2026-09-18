@@ -46,17 +46,17 @@ Every spelling reads to the same bytes and writes back canonical.
 
     // Storage is the canonical `arrow.uuid` extension over sixteen bytes, and
     // the value reads back spelled out.
-    let id = Field::new("id", DataType::Uuid, false);
+    let id = Field::new("id", DataType::uuid(), false);
     let value = id.scalar(text)?;
     let stored = scalar_array(&id, &value)?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(0), packed.to_be_bytes());
     assert_eq!(scalar_value(&id, stored.as_ref())?, value);
 
-    let arrow = id.clone().into_arrow()?;
+    let arrow = id.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
-    assert_eq!(Field::from_arrow(&arrow)?, id);
+    assert_eq!(Field::from_arrow_field(&arrow)?, id);
 
     // The spelling goes into a caller's slot, so a writer that wants a
     // `&str` allocates nothing for it.

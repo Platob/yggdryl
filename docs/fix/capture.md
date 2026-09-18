@@ -570,8 +570,8 @@ Six values close every message and are never null: `currunix`, `creatunix`, `cur
     assert!(fields.iter().all(|field| !field.is_partition()));
     // The two identities are the crate's own uuid, the codes plain integers.
     let by_name = |name: &str| fields.iter().find(|field| field.name() == name).expect("a crate column");
-    assert_eq!(by_name("curruuid").dtype(), &yggdryl::DataType::Uuid);
-    assert_eq!(by_name("crossuuid").dtype(), &yggdryl::DataType::Uuid);
+    assert_eq!(by_name("curruuid").dtype(), &yggdryl::DataType::uuid());
+    assert_eq!(by_name("crossuuid").dtype(), &yggdryl::DataType::uuid());
     assert_eq!(by_name("currhashcode").dtype(), &yggdryl::DataType::UInt64);
     // And no market column: a price is `Price(44)`, the dictionary's own.
     assert!(fields.iter().all(|field| field.name() != "px"));

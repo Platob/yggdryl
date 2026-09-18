@@ -93,8 +93,8 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
 
     // Fixed width is counted across siblings, not per column.
     let wide = DataType::from_fields([
-        Field::new("left", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
-        Field::new("right", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
+        Field::new("left", DataType::fixed_binary(40 * 1024 * 1024)?, false),
+        Field::new("right", DataType::fixed_binary(40 * 1024 * 1024)?, false),
     ])?;
     let message = scalar_array(&Field::new("wide", wide, true), &Scalar::Null)
         .unwrap_err()
@@ -110,7 +110,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
                 1,
                 Field::new(
                     "inactive",
-                    DataType::fixed_size_binary(64 * 1024 * 1024 + 1)?,
+                    DataType::fixed_binary(64 * 1024 * 1024 + 1)?,
                     false,
                 ),
             ),

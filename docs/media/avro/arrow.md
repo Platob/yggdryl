@@ -108,8 +108,8 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 | `utf8`, `utf8(n)`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)`, `fixed_utf8(n)` | `string` | `utf8` |
 | `string(windows-1252)`, any charset but UTF-8 and US-ASCII | refused: `expected a datatype Avro can spell` | |
 | `country`, `currency`, `mic`, `cfi`, `isin` | `string` | `utf8` |
-| `binary`, `binary(n)`, `large_binary`, `binary_view` | `bytes` | `binary` |
-| `fixed_size_binary(n)` | `fixed` of size `n` | `fixed_size_binary(n)` |
+| `binary`, `sized_binary(n)`, `large_binary`, `binary_view`, `large_binary_view` | `bytes` | `binary` |
+| `fixed_binary(n)` | `fixed` of size `n` | `fixed_binary(n)` |
 | `uuid` | `string` with `logicalType: uuid` | `uuid` |
 
 === "Rust"
@@ -125,7 +125,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 
     let row = DataType::from_fields([
         DataType::fixed_ascii(4)?.nullable_field("code"),
-        DataType::fixed_size_binary(2)?.nullable_field("key"),
+        DataType::fixed_binary(2)?.nullable_field("key"),
         DataType::from_str("binary(8)")?.nullable_field("blob"),
     ])?
     .required_field("row");
@@ -143,7 +143,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 
     let stored = handle.read_arrow_field(&options)?;
     let spelled: Vec<String> = stored.fields().iter().map(|child| child.dtype().to_string()).collect();
-    assert_eq!(spelled, ["utf8", "fixed_size_binary(2)", "binary"]);
+    assert_eq!(spelled, ["utf8", "fixed_binary(2)", "binary"]);
 
     let legacy = DataType::from_fields([
         DataType::from_str("string(windows-1252)")?.nullable_field("note"),
@@ -184,7 +184,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     )
 
     stored = handle.read_arrow_field()
-    assert [str(child.dtype) for child in stored.dtype] == ["utf8", "fixed_size_binary(2)", "binary"]
+    assert [str(child.dtype) for child in stored.dtype] == ["utf8", "fixed_binary(2)", "binary"]
     assert list(handle.read_records()) == [{"code": "AB", "key": b"\x00\x01", "blob": b"xyz"}]
 
     legacy = handle.record_options()
@@ -232,7 +232,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     const stored = handle.readArrowField()
     assert.deepEqual(
       [0, 1, 2].map((index) => String(stored.dtype.getFieldAt(index).dtype)),
-      ['utf8', 'fixed_size_binary(2)', 'binary'],
+      ['utf8', 'fixed_binary(2)', 'binary'],
     )
     assert.deepEqual([...handle.readRecords()].map((record) => record.code), ['AB'])
 

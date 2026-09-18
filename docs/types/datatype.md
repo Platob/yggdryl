@@ -294,15 +294,15 @@ to the outer node and Arrow's values are a bare datatype.
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
-    let arrow = value.clone().into_arrow()?;
+    let arrow = value.clone().into_arrow_datatype()?;
 
-    assert_eq!(DataType::from_arrow(&arrow)?, value);
-    assert_eq!(value.clone().into_arrow()?, arrow);
+    assert_eq!(DataType::from_arrow_datatype(&arrow)?, value);
+    assert_eq!(value.clone().into_arrow_datatype()?, arrow);
     assert_eq!(DataType::try_from(arrow)?, value);
 
     // Projection re-checks parameters, so a directly built enum value cannot escape.
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow().is_err());
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_ffi().is_err());
+    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_datatype().is_err());
+    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_datatype_ffi().is_err());
     ```
 
 === "Python"
@@ -363,7 +363,7 @@ The core computes one default; each binding projects it.
     assert_eq!(DataType::utf8().default_value()?, Scalar::from(""));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
-    assert!(DataType::fixed_size_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
+    assert!(DataType::fixed_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
     ```
 
 === "Python"
@@ -473,7 +473,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(DataType::from_str(&rows.to_string())?, rows);
 
     // Readable is the alternate, or the named adapter - one implementation.
-    assert_eq!(format!("{rows:#}"), rows.pretty().to_string());
+    assert_eq!(format!("{rows:#}"), rows.into_pretty_str().to_string());
     assert_eq!(
         format!("{rows:#}"),
         "list\n  item: struct[1], nullable\n    venue: utf8, nullable",
@@ -617,11 +617,11 @@ assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 // A valid value validates without allocating, recursing through every child.
 let value = DataType::list(Field::new(
     "item",
-    DataType::Decimal128 { precision: 18, scale: 4 },
+    DataType::decimal128(18, 4)?,
     true,
 ));
 value.validate()?;
-assert!(DataType::Decimal128 { precision: 0, scale: 0 }.validate().is_err());
+assert!(DataType::decimal128(0, 0).is_err());
 
 assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ```

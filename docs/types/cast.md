@@ -6,7 +6,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
 | Key | Value |
 | --- | --- |
-| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `ArrowCastOptions`, `Nullability`, `Representation`, `ArrowCastPlan`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
+| Owns | `validate_value`, `canonicalize_value`, the cast doors on `DataTypeValue` / `FieldValue`, `ArrowCastOptions`, `Nullability`, `Representation`, `ArrowCastPlan`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
 | Target | The field, never the source; an exact input returns unchanged - the same arrays, and the same batch object |
 | Returns | `Field`, `DataType`: `ArrayRef`; `TypedField`: its own array (datetime, dictionary: `ArrayRef`) |
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
@@ -31,7 +31,8 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
     use yggdryl::types::Int64Field;
-    use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Nullability};
+    use yggdryl::types::FieldValue as _;
+use yggdryl::{ArrowCastOptions, DataType, Field, Nullability};
 
     let strict_conversion = ArrowCastOptions::new().with_safe(false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
@@ -42,7 +43,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
     assert_eq!(cast.data_type(), &arrow_schema::DataType::Int64);
 
     // A typed field already knows its variant, so it answers with the array itself.
-    let typed = Int64Field::new("id", false);
+    let typed = Int64Field::unit("id", false);
     let ids: Int64Array = typed.cast_arrow_array(text, strict_conversion)?;
     assert_eq!(ids.values(), &[1, 2]);
 
@@ -118,7 +119,8 @@ what an absent value means.
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, UInt64Array};
-    use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Representation};
+    use yggdryl::types::FieldValue as _;
+    use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
 
     let bits = ArrowCastOptions::new().with_representation(Representation::Bits);
     let source: ArrayRef = Arc::new(UInt64Array::from(vec![0, u64::MAX]));
@@ -129,7 +131,7 @@ what an absent value means.
     assert_eq!(signed.values(), &[0, -1]);
 
     // The same eight bytes, now as raw payload - and back again exactly.
-    let stored = Field::new("digest", DataType::fixed_size_binary(8)?, true)
+    let stored = Field::new("digest", DataType::fixed_binary(8)?, true)
         .cast_arrow_array(Arc::clone(&source), bits)?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(1), &[0xff; 8]);
@@ -295,7 +297,8 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field};
+    use yggdryl::types::FieldValue as _;
+use yggdryl::{ArrowCastOptions, DataType, Field};
 
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
@@ -365,7 +368,8 @@ strictness is about declared values that are absent, not about columns nobody de
 
     use arrow_array::{ArrayRef, Int32Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+    use yggdryl::types::FieldValue as _;
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
     let root = DataType::from_fields([

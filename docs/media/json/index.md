@@ -120,7 +120,7 @@ A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) 
     let refused = json::from_utf8_with_field(r#""AAPLE""#, &symbol).unwrap_err().to_string();
     assert!(refused.contains("expected at most 4 bytes of us-ascii, got 5"), "{refused}");
 
-    let key = Field::new("key", DataType::fixed_size_binary(2)?, false);
+    let key = Field::new("key", DataType::fixed_binary(2)?, false);
     assert_eq!(json::from_utf8_with_field(r#""AP8=""#, &key)?, Scalar::from(&[0_u8, 0xFF][..]));
     ```
 

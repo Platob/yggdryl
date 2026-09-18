@@ -36,7 +36,7 @@ The selectors validate once and pick the physical width at construction.
     assert!(DataType::decimal128(39, 0).is_err());
     assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
     assert!(DataType::time(TimeUnit::YearMonth).is_err());
-    assert!(DataType::fixed_size_binary(0).is_err());
+    assert!(DataType::fixed_binary(0).is_err());
     ```
 
 === "Python"

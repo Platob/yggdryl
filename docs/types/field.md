@@ -285,15 +285,15 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
     // A fixed string and fixed bytes of one width keep that storage; a
     // number's width is its own encoding and never bytes it shares.
     assert_eq!(
-        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, true)?,
-        DataType::fixed_size_binary(4)?,
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_binary(4)?, true)?,
+        DataType::fixed_binary(4)?,
     );
     assert_eq!(
-        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, false)?,
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_binary(4)?, false)?,
         DataType::fixed_ascii(4)?,
     );
     assert_eq!(
-        DataType::Int32.merge_with(&DataType::fixed_size_binary(4)?, true)?,
+        DataType::Int32.merge_with(&DataType::fixed_binary(4)?, true)?,
         DataType::binary(),
     );
 
@@ -556,30 +556,33 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 
 Keys and values are strings in lexical key order, so equal entries compare and hash identically. Every write validates the whole batch first; a bad entry leaves the field as it was.
 
-## Typed field aliases
+## The field leaves
 
 === "Rust"
 
     ```rust
-    use yggdryl::types::{Int64Field, DateTime64Field, StringField, integer};
+    use yggdryl::types::{DateTime64Field, DateTime64Type, FieldValue as _, Int64Field, StringField, StringType};
     use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
-    let id = Int64Field::new("id", false);
-    let symbol = StringField::try_new("symbol", DataType::utf8(), true)?;
-    let at = DateTime64Field::try_new("at", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }, false)?;
+    let id = Int64Field::unit("id", false);
+    let symbol = StringField::new("symbol", StringType::default(), true);
+    let at = DateTime64Field::new(
+        "at",
+        DateTime64Type::new(TimeUnit::Microsecond, Timezone::NAIVE),
+        false,
+    );
 
-    // A typed field derefs to the field it wraps.
+    // A leaf answers its own datatype, already narrowed.
     assert_eq!(id.name(), "id");
     assert_eq!(symbol.dtype(), &DataType::utf8());
     assert_eq!(at.dtype().to_string(), "datetime64(us)");
 
-    // The marker is checked, never assumed.
-    assert!(
-        Field::new("id", DataType::utf8(), false)
-            .try_into_typed::<integer::Int64Type>()
-            .is_err()
-    );
-    assert_eq!(id.into_field().dtype(), &DataType::Int64);
+    // The root enum is the leaves, so narrowing is a match and never a check
+    // that could have been skipped: a field of another datatype is another
+    // variant, and there is nothing to assume.
+    let root: Field = id.into_field();
+    assert_eq!(root.dtype(), &DataType::Int64);
+    assert!(Int64Field::from_field(&Field::new("id", DataType::utf8(), false)).is_none());
     ```
 
 === "Python"
@@ -613,13 +616,13 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
+`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares.
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `VariantField`, `UuidField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
-| parameterized (`StringField`, `BytesField`, `DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)`; `StringField` is every layout, charset and bound, `BytesField` every byte layout |
-| from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `DateTime64Field`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
+| from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |
 
 [Geospatial](geospatial.md), [Strings & bytes](text.md), [Codes](codes.md), [UUID](uuid.md), and [Version](text.md#versions) aliases follow this pattern; a registered code builds its own datatype, not a fixed string.
@@ -846,7 +849,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     assert_eq!(Field::from_str(&order.to_string())?, order);
 
     // Readable is the alternate, or the named adapter - one implementation.
-    assert_eq!(format!("{order:#}"), order.pretty().to_string());
+    assert_eq!(format!("{order:#}"), order.into_pretty_str().to_string());
     assert_eq!(
         format!("{order:#}"),
         concat!(

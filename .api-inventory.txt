@@ -2352,7 +2352,7 @@ pub struct LineSep
 pub struct Metadata(Arc<MetadataMap>);
   pub fn new() -> Self
   pub fn from_entries<I, K, V>(values: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
-  pub fn from_arrow(values: &HashMap<String, String>) -> Result<Self>
+  pub fn from_arrow_metadata(values: &HashMap<String, String>) -> Result<Self>
   pub fn from_json(value: &str) -> Result<Self>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -2392,7 +2392,7 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn display(&self) -> Option<&str>
   pub fn into_json(self) -> Result<String>
   pub fn stable_hash(&self) -> u64
-  pub fn into_arrow(self) -> HashMap<String, String>
+  pub fn into_arrow_metadata(self) -> HashMap<String, String>
   pub struct MetadataIter<'a>(btree_map::Iter<'a, String, String>);
   pub struct MetadataIntoIter(btree_map::IntoIter<String, String>);
   pub struct PropertyIter<'metadata, 'scheme>
@@ -2848,23 +2848,24 @@ pub struct Timezone
   pub fn stable_hash(&self) -> u64
   pub fn from_smol_str(value: SmolStr) -> Result<Self>
 
-### yggdryl::types::arrow  [rust/src/types/arrow.rs]
-pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
+### yggdryl::types::dtype::arrow  [rust/src/types/dtype.rs]  (DataType's Arrow projection; each arm names the family that answers)
+pub fn from_arrow_datatype(value: &ArrowDataType) -> Result<Self>
+  pub fn to_arrow_datatype(&self) -> Result<ArrowDataType>
+  pub fn into_arrow_datatype(self) -> Result<ArrowDataType>
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
-  pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
-  pub fn into_arrow(self) -> Result<ArrowDataType>
+  pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::arrow::field  [rust/src/types/arrow.rs]
+### yggdryl::types::field::arrow  [rust/src/types/field.rs]  (the same projection for a Field: its datatype, its nullability and its metadata)
 pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self>
-  pub fn from_arrow(value: &ArrowField) -> Result<Self>
-  pub fn from_arrow_ref(value: FieldRef) -> Result<Self>
+  pub fn from_arrow_field(value: &ArrowField) -> Result<Self>
+  pub fn from_arrow_field_ref(value: FieldRef) -> Result<Self>
   pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema>
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
-  pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
-  pub fn into_arrow(self) -> Result<ArrowField>
-  pub fn as_arrow_ref(&self) -> Result<&FieldRef>  (borrows the cached projection, building it once)
-  pub fn into_arrow_ref(self) -> Result<FieldRef>
+  pub fn into_arrow_field_ffi(self) -> Result<FFI_ArrowSchema>
+  pub fn into_arrow_field(self) -> Result<ArrowField>
+  pub fn as_arrow_field_ref(&self) -> Result<&FieldRef>  (borrows the cached projection, building it once)
+  pub fn into_arrow_field_ref(self) -> Result<FieldRef>
   pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_array::RecordBatch>
   pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_schema::SchemaRef>
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
@@ -3031,28 +3032,13 @@ pub enum DataType
   pub fn validate(&self) -> Result<()>
 
 ### yggdryl::types::field  [rust/src/types/field.rs]
-  pub type Int8Field = TypedField<integer::Int8>;
-  pub type Int32Field = TypedField<integer::Int32>;
-  pub type Int64Field = TypedField<integer::Int64>;
-  pub type UInt32Field = TypedField<integer::UInt32>;
-  pub type UInt64Field = TypedField<integer::UInt64>;
-  pub type DateTime64Field = TypedField<temporal::DateTime64Type>;
-  pub type BytesField = TypedField<bytes::BytesType>;  (one alias for every byte layout; see yggdryl::types::bytes::fields)
-  pub type StringField = TypedField<string::StringType>;  (one alias for every string layout and charset; the nine code fields CountryField .. TimeInForceField are listed under their own modules)
-  pub type StructField = TypedField<nested::Struct>;
-  pub type Decimal128Field = TypedField<decimal::Decimal128>;
-  pub type VariantField = TypedField<nested::Variant>;
-  pub type UuidField = TypedField<nested::Uuid>;
-  pub type VersionField = TypedField<version::VersionType>;
-  pub type GeometryField = TypedField<geospatial::Geometry>;
-  pub type GeographyField = TypedField<geospatial::Geography>;
+  pub struct FieldOf<D: DataTypeValue>  (one field carrying its family's own datatype, so the payload is the proof and no marker carries it)
+  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTime64Field, Date32Field, Date64Field, Time32Field, Time64Field, Duration32Field, Duration64Field, IntervalField, BytesField, StringField, the nine code fields CountryField .. TimeInForceField, UuidField, VersionField, UrlField, SequenceField, StructureField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BloombergField)
   pub type FieldRef = Arc<ArrowField>;
-  pub struct Field
+  pub enum Field  (the enum over those leaves; every arm names the family that answers, and a variant is a datatype nobody can disagree with)
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
   pub fn default_value(&self) -> Result<Scalar>
   pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar>
-  pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>>
-  pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>>
   pub fn from_parts<I, K, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: Into<String>, V: Into<String>,
   pub fn name(&self) -> &str
   pub const fn dtype(&self) -> &DataType
@@ -3275,20 +3261,31 @@ pub const fn is_integer(&self) -> bool
 ### yggdryl::types  [rust/src/types/mod.rs]
 pub enum DataType
 
-### yggdryl::types::dictionary  [rust/src/types/dictionary.rs]  (a key column over a value column)
+### yggdryl::types::enums  [rust/src/types/enums.rs]  (the dictionary family: a key column over a value column)
+  pub enum EnumType  (#[non_exhaustive]; Dictionary(Arc<DictionaryType>))
+  pub fn key(&self) -> &DataType
+  pub fn value(&self) -> &DataType
   pub struct DictionaryType
   pub const fn key(&self) -> &DataType
   pub const fn value(&self) -> &DataType
   pub fn dictionary(key: Self, value: Self) -> Result<Self>
 
-### yggdryl::types::list  [rust/src/types/list.rs]  (the five sequence layouts)
+### yggdryl::types::sequence  [rust/src/types/sequence.rs]  (the sequence family: five layouts over one item)
+  pub enum SequenceType  (#[non_exhaustive]; List, ListView, FixedSizeList(_, i32), LargeList, LargeListView, each holding Arc<Field>)
+  pub fn item(&self) -> &Field  (the one child every leaf repeats, so a reader walking children never branches on the layout)
+  pub fn item_ref(&self) -> &Arc<Field>
   pub fn list(item: Field) -> Self
   pub fn list_view(item: Field) -> Self
   pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
   pub fn large_list(item: Field) -> Self
   pub fn large_list_view(item: Field) -> Self
 
-### yggdryl::types::map  [rust/src/types/map.rs]  (a list of key-value entries)
+### yggdryl::types::mapping  [rust/src/types/mapping.rs]  (the mapping family: a list of key-value entries)
+  pub enum MappingType  (#[non_exhaustive]; Map(Arc<MapType>), SortedMap(Arc<MapType>); the leaf is the promise, so no flag can disagree with it)
+  pub fn entries(&self) -> &Field
+  pub fn parameters(&self) -> &MapType
+  pub const fn keys_sorted(&self) -> bool
+  pub fn shares_storage_with(&self, other: &Self) -> bool
   pub struct MapType
   pub const fn entries(&self) -> &Field
   pub const fn keys_sorted(&self) -> bool
@@ -3375,8 +3372,16 @@ pub enum DataType
   pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>
   pub fn dense_union<I>(fields: I) -> Result<Self>
 
-### yggdryl::types::nested  [rust/src/types/nested.rs]
-pub const fn new() -> Self
+### yggdryl::types::structure  [rust/src/types/structure.rs]  (the structure family, and the field collections the nested datatypes hold)
+pub enum StructureType  (#[non_exhaustive]; Struct(StructType), Struct2(Arc<Struct2Type>) - the two-child shape a mapping's entries have)
+  pub fn as_fields(&self) -> &[Field]
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get_field(&self, index: usize) -> Option<&Field>
+  pub fn iter(&self) -> std::slice::Iter<'_, Field>
+  pub fn as_struct2(&self) -> Option<&Struct2Type>
+  pub fn struct2(first: Field, second: Field) -> Self  (on DataType)
+  pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -3685,8 +3690,8 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   pub fn with_field(&self, name: impl Into<SmolStr>, value: impl Into<Self>) -> Result<Self>
   pub fn without_field(&self, name: &str) -> Result<Self>
   pub fn into_native(&self) -> Result<Self>
-  pub fn from_arrow(value: crate::arrow::ArrowScalar) -> Self
-  pub fn as_arrow(&self) -> Option<&crate::arrow::ArrowScalar>
+  pub fn from_arrow_scalar(value: crate::arrow::ArrowScalar) -> Self
+  pub fn as_arrow_scalar(&self) -> Option<&crate::arrow::ArrowScalar>
 
 ### yggdryl::types::serde  [rust/src/types/serde.rs]
 pub fn from_json(input: &str) -> Result<Self>
@@ -4129,34 +4134,8 @@ pub struct FieldRecord<'a>
   impl Index<usize> for FieldRecord<'a>  // and Index<&str>
   impl From<FieldRecord<'_>> for Scalar
 
-### yggdryl::types::typed::shared  [rust/src/types/typed.rs]
-pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar)
-pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
-  pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
-  pub struct TypedField<K: FieldType>
-  pub fn try_from_field(field: Field) -> Result<Self>
-  pub fn try_new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Result<Self>
-  pub fn try_from_parts<I, M, V>( name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>,
-  pub const fn as_field(&self) -> &Field
-  pub const fn as_typed_ref(&self) -> TypedFieldRef<'_, K>
-  pub fn into_field(self) -> Field
-  pub fn into_struct_field(self) -> Field
-  pub fn set_name(&mut self, name: impl Into<SmolStr>)
-  pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
-  pub fn set_nullable(&mut self, nullable: bool)
-  pub fn with_nullable(mut self, nullable: bool) -> Self
-  pub fn set_dtype(&mut self, dtype: DataType) -> Result<()>
-  pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self>
-  pub fn insert_metadata( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<Option<String>>
-  pub fn set_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
-  pub fn update_metadata<I, M, V>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (M, V)>, M: Into<String>, V: Into<String>,
-  pub fn remove_metadata(&mut self, key: &str) -> Option<String>
-  pub fn clear_metadata(&mut self)
-  pub struct TypedFieldRef<'field, K: FieldType>
-  pub fn try_from_field(field: &'field Field) -> Result<Self>
-  pub const fn as_field(self) -> &'field Field
-  pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self
-  pub fn from_parts<I, M, V>( name: impl Into<SmolStr>, nullable: bool, metadata: I, ) -> Result<Self> where I: IntoIterator<Item = (M, V)>, M: Into<String>,
+### yggdryl::types::typed::shared  [rust/src/types/typed.rs]  (the prebuilt fields a parameter-free datatype shares, one slot per DataTypeId)
+pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar; None for a datatype that carries parameters, because no two of those are the same field)
 
 ### yggdryl::types::vocabulary  [rust/src/types/vocabulary.rs]
 pub const LOGICAL_NAMES: &'static [(&'static str, DataType)]

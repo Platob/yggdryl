@@ -6,7 +6,7 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 
 | | |
 | --- | --- |
-| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `types::geospatial::wkb` |
+| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `types::wkb` |
 | Defaults | CRS `OGC:CRS84`; edges `spherical`; display omits defaults |
 | Algorithms | `spherical`, `vincenty`, `thomas`, `andoyer`, `karney`; case-insensitive ([`EdgeAlgorithm`](scalar.md)) |
 | Arrow | variant: struct of non-nullable `metadata`, `value` binaries under `arrow.parquet.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
@@ -141,7 +141,7 @@ Rust only. Display, the [text cast](cast.md), and Parquet and Iceberg statistics
 `Geometry::from_slice` reads the seven simple-feature shapes in either byte order, with ISO (Z, M, ZM add 1000, 2000, 3000) or EWKB type codes. `bounding_box` folds min/max in one pass; `into_wkt` prints the shortest round-trip decimal.
 
 ```rust
-use yggdryl::types::geospatial::wkb::{self, Geometry};
+use yggdryl::types::wkb::{self, Geometry};
 
 // A little-endian XY point: order byte, type code 1, then x and y.
 let mut point = vec![1, 1, 0, 0, 0];

@@ -1,18 +1,18 @@
 # Strings & bytes
 
-One string family in five layouts, one byte family in four, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
+One string family in five layouts, one byte family in six real leaves, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
 
 ## Contract
 
 | | |
 | --- | --- |
 | Owns | `DataType::String(StringType)`, `DataType::Bytes(BytesType)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
-| Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `fixed_size_binary(n)` pick a layout once |
+| Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `large_binary_view`, `fixed_binary(n)`, `sized_binary(n)` pick a leaf once |
 | Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
-| Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused; a fixed layout with no width refused |
+| Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused. On the byte side the number *is* the leaf - `fixed_binary(n)` and `sized_binary(n)` - so neither stands without one and the other four refuse one |
 | Value | holds UTF-8 (or the payload) beside its layout, charset and fixed width; never a maximum |
 | Arrow | text storage for UTF-8 and US-ASCII, binary storage for every other charset; `yggdryl.string` / `yggdryl.bytes` only where Arrow cannot say what is declared |
-| Rust only | the value types `Str` and `Bytes`; `StringLayout`, `BytesLayout`; the bindings read the parameters as frozen `StringType` / `BytesType` values |
+| Rust only | the value types `Str` and `Bytes`; `StringLayout`; the bindings read the parameters as frozen `StringParameters` / `BytesParameters` values |
 
 ### Strings
 
@@ -53,16 +53,29 @@ maxima, `fixed_ascii(4)` and `fixed_utf8(32)` are widths.
 
 ### Bytes
 
-A byte column is one of Arrow's four layouts and a bound. `binary(n)` is a
-maximum of `n` bytes; the fixed slot is `fixed_size_binary(n)`, and bytes are
-never padded, so a fixed value is exactly its width.
+A byte column is one of six leaves, and the leaf is the whole declaration.
+Four of them stand alone; the other two *are* a number - `fixed_binary(n)` is
+an exact width and `sized_binary(n)` a maximum - so neither stands without one
+and the four refuse one. Bytes are never padded, so a fixed value is exactly
+its width.
 
-| layout | spelling | with a bound | also parsed as |
+`binary(n)` is `sized_binary(n)` written short, because plain binary is
+exactly the storage a bounded column fills. Every other leaf would lose itself
+under a maximum, so it says so rather than silently becoming something
+narrower.
+
+| leaf | spelling | number | also parsed as |
 | --- | --- | --- | --- |
-| 32-bit offsets | `binary` | `binary(n)` | `bytes`, `blob`, `bytea`, `varbinary`, `varbinary(n)` |
-| fixed width | `fixed_size_binary(n)` | the exact width | `fixed_binary(n)` |
-| 64-bit offsets | `large_binary` | `large_binary(n)` | - |
-| view | `binary_view` | `binary_view(n)` | - |
+| 32-bit offsets | `binary` | none | `bytes`, `blob`, `bytea`, `varbinary` |
+| 64-bit offsets | `large_binary` | none | - |
+| view | `binary_view` | none | - |
+| view, 64-bit offsets | `large_binary_view` | none | - |
+| fixed width | `fixed_binary(n)` | the exact width, required | `fixed_size_binary(n)` |
+| bounded | `sized_binary(n)` | the maximum, required | `binary(n)`, `varbinary(n)`, `varbinary_bounded(n)` |
+
+Arrow has nowhere to put a maximum and one view width where this crate
+declares two, so `sized_binary` and `large_binary_view` ride the
+`yggdryl.bytes` document; the other four are Arrow's own.
 
 ## Use
 
@@ -71,7 +84,7 @@ Declare a string and a byte column, and read the declaration back.
 === "Rust"
 
     ```rust
-    use yggdryl::types::{BytesLayout, StringLayout};
+    use yggdryl::types::{BytesType, StringLayout};
     use yggdryl::{Charset, DataType};
 
     // Every spelling of a layout is one datatype, rendered under the name
@@ -94,19 +107,21 @@ Declare a string and a byte column, and read the declaration back.
     assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
     assert_eq!(DataType::ascii().fixed_byte_width(), None);
 
-    // Bytes: the layout and a bound, nothing else.
+    // Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     let bounded = DataType::from_str("varbinary(16)")?;
-    assert_eq!(bounded.to_string(), "binary(16)");
-    assert_eq!(bounded.bytes_parameters().unwrap().layout(), BytesLayout::Binary);
+    assert_eq!(bounded.to_string(), "sized_binary(16)");
+    assert_eq!(bounded.bytes_parameters(), Some(BytesType::SizedBinary(16)));
     assert_eq!(bounded.bytes_parameters().unwrap().max(), Some(16));
-    assert_eq!(DataType::fixed_size_binary(16)?.fixed_byte_width(), Some(16));
+    assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
+    // A large binary is just a large binary; a maximum beside it is refused.
+    assert!(DataType::from_str("large_binary(16)").is_err());
     assert!(DataType::binary().string_parameters().is_none());
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import BytesType, DataType, StringType, types
+    from yggdryl import BytesParameters, DataType, StringParameters, types
 
     # Every spelling of a layout is one datatype, rendered under the name
     # its charset earns.
@@ -119,7 +134,7 @@ Declare a string and a byte column, and read the declaration back.
     # a frozen value.
     latin = DataType.string(charset="windows-1252", bound=32)
     assert str(latin) == "string(windows-1252,32)"
-    assert latin.string_parameters == StringType("string", "windows-1252", 32)
+    assert latin.string_parameters == StringParameters("string", "windows-1252", 32)
     assert latin.string_parameters.max == 32
     assert latin.charset == "windows-1252"
     assert types.string("name", charset="windows-1252", max=32).dtype == latin
@@ -129,13 +144,13 @@ Declare a string and a byte column, and read the declaration back.
     assert DataType.fixed_ascii(4).fixed_byte_width == 4
     assert DataType.ascii().fixed_byte_width is None
 
-    # Bytes: the layout and a bound, nothing else.
+    # Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     bounded = DataType("varbinary(16)")
-    assert str(bounded) == "binary(16)"
-    assert bounded.bytes_parameters == BytesType("binary", 16)
+    assert str(bounded) == "sized_binary(16)"
+    assert bounded.bytes_parameters == BytesParameters("sized_binary", 16)
     assert bounded == DataType.bytes(bound=16)
     assert DataType.fixed_size_binary(16).fixed_byte_width == 16
-    assert types.bytes("blob", layout="fixed_size_binary", fixed=16).dtype.id == "fixed_size_binary"
+    assert types.bytes("blob", layout="fixed_binary", fixed=16).dtype.id == "fixed_binary"
     assert DataType.binary().string_parameters is None
     ```
 
@@ -170,13 +185,13 @@ Declare a string and a byte column, and read the declaration back.
     assert.equal(DataType.fixedAscii(4).fixedByteWidth, 4)
     assert.equal(DataType.ascii().fixedByteWidth, null)
 
-    // Bytes: the layout and a bound, nothing else.
+    // Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     const bounded = DataType.from('varbinary(16)')
-    assert.equal(bounded.toString(), 'binary(16)')
-    assert.deepEqual(bounded.bytesParameters, { layout: 'binary', bound: 16, max: 16 })
+    assert.equal(bounded.toString(), 'sized_binary(16)')
+    assert.deepEqual(bounded.bytesParameters, { layout: 'sized_binary', bound: 16, max: 16 })
     assert.ok(DataType.bytes({ max: 16 }).equals(bounded))
     assert.equal(DataType.fixedSizeBinary(16).fixedByteWidth, 16)
-    assert.equal(fields.bytes('blob', { layout: 'fixed_size_binary', fixed: 16 }).dtype.id, 'fixed_size_binary')
+    assert.equal(fields.bytes('blob', { layout: 'fixed_binary', fixed: 16 }).dtype.id, 'fixed_binary')
     assert.equal(DataType.binary().stringParameters, null)
     ```
 
@@ -285,7 +300,7 @@ read out of `utf8(32)` is a `utf8`.
 Rust only; the bindings read a value as a `Scalar` and its `dtype`.
 
 ```rust
-use yggdryl::types::{Bytes, BytesLayout, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType};
+use yggdryl::types::{Bytes, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, Scalar};
 
 // Short text lives inside the value; longer text is one shared handle.
@@ -316,8 +331,8 @@ assert!(payload.is_inline());
 assert!(!Bytes::new(vec![0_u8; INLINE_BYTES + 1]).is_inline());
 assert_eq!(std::mem::size_of::<Bytes>(), 40);
 assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(payload.clone()));
-let fixed = BytesType::new(BytesLayout::FixedSizeBinary).try_with_bound(3)?;
-assert_eq!(payload.clone().try_with_parameters(fixed)?.dtype()?, DataType::fixed_size_binary(3)?);
+let fixed = BytesType::FixedBinary(3);
+assert_eq!(payload.clone().try_with_parameters(fixed)?.dtype()?, DataType::fixed_binary(3)?);
 assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
 ```
 
@@ -375,8 +390,9 @@ What Arrow cannot say rides an extension document on the field, and only then:
 | `fixed_ascii(4)` | `FixedSizeBinary(4)` | `yggdryl.string` | `{"layout":"fixed_string","charset":"us-ascii","fixed":4}` |
 | `large_utf8_view` | `Utf8View` | `yggdryl.string` | `{"layout":"large_string_view","charset":"utf-8"}` |
 | `string(windows-1252)` | `Binary` | `yggdryl.string` | `{"layout":"string","charset":"windows-1252"}` |
-| `binary`, `large_binary`, `binary_view`, `fixed_size_binary(16)` | the same four | none | - |
-| `binary(16)` | `Binary` | `yggdryl.bytes` | `{"layout":"binary","max":16}` |
+| `binary`, `large_binary`, `binary_view`, `fixed_binary(16)` | the same four | none | - |
+| `sized_binary(16)` | `Binary` | `yggdryl.bytes` | `{"layout":"sized_binary","max":16}` |
+| `large_binary_view` | `BinaryView` | `yggdryl.bytes` | `{"layout":"large_binary_view"}` |
 
 A document over a storage it does not describe is a foreign field wearing our
 name, and it imports as its storage. A code rides its own extension name
@@ -389,35 +405,35 @@ name, and it imports as its storage. A code rides its own extension name
     use yggdryl::{DataType, Field};
 
     // Plain UTF-8 is Arrow's own datatype and crosses bare.
-    let plain = Field::new("text", DataType::utf8(), true).into_arrow()?;
+    let plain = Field::new("text", DataType::utf8(), true).into_arrow_field()?;
     assert_eq!(plain.data_type(), &ArrowDataType::Utf8);
     assert!(!plain.metadata().contains_key("ARROW:extension:name"));
 
     // US-ASCII is UTF-8, so it rides the text layout; the charset rides the document.
     let note = Field::new("note", DataType::ascii(), false);
-    let arrow = note.clone().into_arrow()?;
+    let arrow = note.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.string");
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"string","charset":"us-ascii"}"#);
-    assert_eq!(Field::from_arrow(&arrow)?, note);
+    assert_eq!(Field::from_arrow_field(&arrow)?, note);
 
     // A fixed width is Arrow's fixed binary, whatever the charset.
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, false);
-    let arrow = ccy.clone().into_arrow()?;
+    let arrow = ccy.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
     assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#);
-    assert_eq!(Field::from_arrow(&arrow)?, ccy);
+    assert_eq!(Field::from_arrow_field(&arrow)?, ccy);
 
     // A legacy charset rides binary storage, because its bytes are not UTF-8.
     let latin = Field::new("name", DataType::from_str("string(windows-1252)")?, true);
-    assert_eq!(latin.clone().into_arrow()?.data_type(), &ArrowDataType::Binary);
-    assert_eq!(Field::from_arrow(&latin.clone().into_arrow()?)?, latin);
+    assert_eq!(latin.clone().into_arrow_field()?.data_type(), &ArrowDataType::Binary);
+    assert_eq!(Field::from_arrow_field(&latin.clone().into_arrow_field()?)?, latin);
 
     // Bytes are the layout; only a maximum needs a document.
-    assert!(!Field::new("blob", DataType::binary(), true).into_arrow()?.metadata().contains_key("ARROW:extension:name"));
-    let capped = Field::new("blob", DataType::from_str("binary(16)")?, true).into_arrow()?;
+    assert!(!Field::new("blob", DataType::binary(), true).into_arrow_field()?.metadata().contains_key("ARROW:extension:name"));
+    let capped = Field::new("blob", DataType::from_str("binary(16)")?, true).into_arrow_field()?;
     assert_eq!(capped.metadata()["ARROW:extension:name"], "yggdryl.bytes");
-    assert_eq!(capped.metadata()["ARROW:extension:metadata"], r#"{"layout":"binary","max":16}"#);
+    assert_eq!(capped.metadata()["ARROW:extension:metadata"], r#"{"layout":"sized_binary","max":16}"#);
     ```
 
 === "Python"
@@ -448,7 +464,7 @@ name, and it imports as its storage. A code rides its own extension name
         b'{"layout":"fixed_string","charset":"us-ascii","fixed":4}'
     )
     assert Field.from_arrow(arrow) == ccy
-    assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field("ccy", "fixed_size_binary(4)")
+    assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field("ccy", "fixed_binary(4)")
 
     # A legacy charset rides binary storage, because its bytes are not UTF-8.
     latin = Field("name", DataType.string(charset="windows-1252"))
@@ -460,7 +476,7 @@ name, and it imports as its storage. A code rides its own extension name
     capped = Field("blob", "binary(16)").into_arrow()
     assert capped.metadata == {
         b"ARROW:extension:name": b"yggdryl.bytes",
-        b"ARROW:extension:metadata": b'{"layout":"binary","max":16}',
+        b"ARROW:extension:metadata": b'{"layout":"sized_binary","max":16}',
     }
     ```
 
@@ -505,7 +521,7 @@ name, and it imports as its storage. A code rides its own extension name
     assert.equal(projected(fields.binary('blob')).metadata.get('ARROW:extension:name'), undefined)
     const capped = projected(fields.bytes('blob', { max: 16 }))
     assert.equal(capped.metadata.get('ARROW:extension:name'), 'yggdryl.bytes')
-    assert.equal(capped.metadata.get('ARROW:extension:metadata'), '{"layout":"binary","max":16}')
+    assert.equal(capped.metadata.get('ARROW:extension:metadata'), '{"layout":"sized_binary","max":16}')
     ```
 
 ## Casts
@@ -528,7 +544,8 @@ column read back under `utf8` trims.
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
-    use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field};
+    use yggdryl::types::FieldValue as _;
+use yggdryl::{ArrowCastOptions, DataType, Field};
 
     let strict = ArrowCastOptions::new().with_safe(false);
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, true);
@@ -540,7 +557,7 @@ column read back under `utf8` trims.
     assert_eq!(cells.value(1), b"EU\0\0");
 
     // A stored column carrying the document reads back under `utf8` trimmed.
-    let stored = ccy.clone().into_arrow()?;
+    let stored = ccy.clone().into_arrow_field()?;
     let batch = arrow_array::RecordBatch::try_new(
         Arc::new(arrow_schema::Schema::new(vec![stored])),
         vec![padded],
@@ -649,10 +666,13 @@ bare text or bytes under the default parameters and an object otherwise.
         DataType::fixed_ascii(4)?.into_json()?,
         r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#
     );
-    assert_eq!(DataType::from_str("binary(16)")?.into_json()?, r#"{"type":"binary","max":16}"#);
     assert_eq!(
-        DataType::fixed_size_binary(16)?.into_json()?,
-        r#"{"type":"binary","layout":"fixed_size_binary","fixed":16}"#
+        DataType::from_str("binary(16)")?.into_json()?,
+        r#"{"type":"binary","layout":"sized_binary","max":16}"#
+    );
+    assert_eq!(
+        DataType::fixed_binary(16)?.into_json()?,
+        r#"{"type":"binary","layout":"fixed_binary","fixed":16}"#
     );
     let field = Field::new("name", DataType::from_str("fixed_string(windows-1252,8)")?, true);
     assert_eq!(Field::from_json(&field.clone().into_json()?)?, field);
@@ -673,10 +693,14 @@ bare text or bytes under the default parameters and an object otherwise.
         "charset": "us-ascii",
         "fixed": 4,
     }
-    assert DataType("binary(16)").into_dict() == {"type": "binary", "max": 16}
+    assert DataType("binary(16)").into_dict() == {
+        "type": "binary",
+        "layout": "sized_binary",
+        "max": 16,
+    }
     assert DataType.fixed_size_binary(16).into_dict() == {
         "type": "binary",
-        "layout": "fixed_size_binary",
+        "layout": "fixed_binary",
         "fixed": 16,
     }
     field = Field("name", "fixed_string(windows-1252,8)")
@@ -697,10 +721,14 @@ bare text or bytes under the default parameters and an object otherwise.
       charset: 'us-ascii',
       fixed: 4,
     })
-    assert.deepEqual(DataType.from('binary(16)').toJSON(), { type: 'binary', max: 16 })
+    assert.deepEqual(DataType.from('binary(16)').toJSON(), {
+      type: 'binary',
+      layout: 'sized_binary',
+      max: 16,
+    })
     assert.deepEqual(DataType.fixedSizeBinary(16).toJSON(), {
       type: 'binary',
-      layout: 'fixed_size_binary',
+      layout: 'fixed_binary',
       fixed: 16,
     })
     const field = new Field('name', 'fixed_string(windows-1252,8)', true)

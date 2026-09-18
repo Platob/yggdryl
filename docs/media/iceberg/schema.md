@@ -529,7 +529,7 @@ assert!(legacy.contains("string(windows-1252)"), "{legacy}");
 // A fixed byte layout is `fixed[n]`; the variable layouts are `binary`, and
 // Iceberg has no maximum, so `binary(16)` crosses unbounded.
 assert_eq!(PrimitiveType::from_dtype(&DataType::binary_view())?, PrimitiveType::Binary);
-assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_size_binary(16)?)?, PrimitiveType::Fixed(16));
+assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_binary(16)?)?, PrimitiveType::Fixed(16));
 assert_eq!(PrimitiveType::from_dtype(&DataType::from_str("binary(16)")?)?, PrimitiveType::Binary);
 assert_eq!(
     PrimitiveType::from_dtype(&DataType::decimal64(9, 2)?)?,
@@ -543,7 +543,7 @@ assert!(PrimitiveType::from_dtype(&DataType::Int16).is_err());
 
 // A UUID is the core's own `uuid`, so the spelling survives the round trip
 // in the datatype rather than in a marker beside the column.
-assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::Uuid);
+assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::uuid());
 assert_eq!(
     PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
     "uuid"
@@ -607,7 +607,8 @@ let schema = schema_from_json("row", &document)?;
 
 // A list becomes a `List` whose item field is named `element` and carries `element-id`.
 let legs = &schema.fields()[0];
-let DataType::List(element) = legs.dtype() else { panic!("expected a list") };
+let DataType::Sequence(sequence) = legs.dtype() else { panic!("expected a list") };
+let element = sequence.item();
 assert_eq!(element.name(), "element");
 assert_eq!(element.parquet_field_id()?, Some(2));
 assert!(!element.is_nullable());
@@ -615,7 +616,8 @@ assert_eq!(element.fields()[0].name(), "price");
 
 // A map becomes a `Map` over a non-null `entries` struct of `key` and `value`.
 let tags = &schema.fields()[1];
-let DataType::Map(map) = tags.dtype() else { panic!("expected a map") };
+let DataType::Mapping(mapping) = tags.dtype() else { panic!("expected a map") };
+let map = mapping.parameters();
 assert_eq!(map.entries().name(), "entries");
 assert!(!map.entries().is_nullable());
 assert!(!map.entries().fields()[0].is_nullable());
@@ -683,7 +685,7 @@ assert!(!written.fields()[0].is_nullable());
 - `variant` (v3) -> `DataType::Variant`, the `metadata`/`value` binary pair; a data file stores it under Parquet's `VARIANT` logical type; it is not `unknown`, which has no values at all.
 - `unknown` or `variant` in a v1 or v2 table -> refused naming the column and the type; both were added in v3.
 - Official Iceberg 0.10.1 models neither name -> at its boundary each such column crosses as `binary` under its own field id and comes back as itself, in metadata documents and in manifest headers alike; the crate's own schema serde spells the two names.
-- `Uuid` -> `DataType::Uuid`, spelled `uuid` on the way back.
+- `Uuid` -> `DataType::uuid()`, spelled `uuid` on the way back.
 - map key -> always required; absent `element-required` or `value-required` -> required.
 - Python or JavaScript caller -> sees the type mapping in the schema a table reports, and commits files through the table's append and overwrite.
 
