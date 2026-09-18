@@ -1161,18 +1161,15 @@ impl<'a> Parser<'a> {
             "duration64" => DataType::duration64(self.parse_required_time_unit(depth)?.0)?,
             "interval" => DataType::Interval(self.parse_interval_unit(depth)?),
             // One byte family, one grammar: an optional bound that reads as
-            // the width on the fixed layout and as the maximum on every
-            // other.
-            "binary" | "bytes" | "varbinary" | "blob" | "bytea" => {
-                self.parse_bytes(BytesType::Binary)?
+            // the width on the fixed leaf and as the maximum on the sized
+            // one, which `binary(32)` is the shorter spelling of. Which word
+            // names which leaf is the family's own table, so a spelling is
+            // never accepted here and refused under a `layout=` argument.
+            _ if BytesType::from_spelling(&keyword).is_some() => {
+                let leaf =
+                    BytesType::from_spelling(&keyword).expect("the guard just answered this leaf");
+                self.parse_bytes(leaf)?
             }
-            "fixedsizebinary" | "fixedbinary" => self.parse_bytes(BytesType::FixedBinary(1))?,
-            "largebinary" => self.parse_bytes(BytesType::LargeBinary)?,
-            "binaryview" => self.parse_bytes(BytesType::BinaryView)?,
-            "largebinaryview" => self.parse_bytes(BytesType::LargeBinaryView)?,
-            // A maximum is its own leaf, and the number after it is that
-            // maximum; `binary(32)` is the same column spelled shorter.
-            "sizedbinary" | "varbinarybounded" => self.parse_bytes(BytesType::SizedBinary(1))?,
             // One family, three spellings each, and one grammar over all of
             // them: an optional charset, then an optional bound that reads
             // as the width on a fixed layout and as the maximum on every

@@ -413,6 +413,24 @@ fn a_declared_sql_length_is_a_length() {
             "{refused}"
         );
     }
+    // One byte is a number like any other. The two leaves that *are* their
+    // number carry a placeholder in `BytesType::ALL`, and reading "was a
+    // number stated?" off that placeholder refused the one width that
+    // happened to equal it.
+    assert_eq!(
+        "fixed_binary(1)".parse::<DataType>().unwrap(),
+        DataType::fixed_binary(1).unwrap()
+    );
+    assert_eq!(
+        "sized_binary(1)".parse::<DataType>().unwrap().to_string(),
+        "sized_binary(1)"
+    );
+    // And a leaf that is its number still refuses to stand without one.
+    for bare in ["fixed_binary", "sized_binary"] {
+        let refused = bare.parse::<DataType>().unwrap_err().to_string();
+        assert!(refused.contains(bare), "{refused}");
+        assert!(refused.contains("got none"), "{refused}");
+    }
     for malformed in ["varchar(0)", "char(-1)"] {
         assert!(malformed.parse::<DataType>().is_err(), "{malformed}");
     }

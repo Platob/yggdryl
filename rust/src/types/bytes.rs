@@ -911,6 +911,62 @@ impl BytesType {
         )
     }
 
+    /// The leaf this one becomes under a stated number.
+    ///
+    /// The number is the width on the fixed leaf and the maximum on the
+    /// sized one. `binary` takes a maximum and answers `sized_binary`,
+    /// because plain binary is exactly the storage a bounded column fills;
+    /// the other three would lose themselves under a maximum, so they refuse
+    /// it rather than silently becoming something narrower. This is the one
+    /// place the rule is stated - the grammar and both bindings read it here
+    /// rather than each deciding it again.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] when this leaf carries no number,
+    /// naming the leaf a bounded column would be, or when the number cannot
+    /// describe a column at all.
+    pub fn with_bound(self, bound: u32) -> Result<Self> {
+        let bounded = match self {
+            Self::FixedBinary(_) => Self::FixedBinary(bound),
+            Self::Binary | Self::SizedBinary(_) => Self::SizedBinary(bound),
+            _ => {
+                return Err(Error::InvalidDataType {
+                    kind: "bytes",
+                    reason: SmolStr::new_static(
+                        "expected no maximum on this layout; \
+                         a bounded column is sized_binary(maximum)",
+                    ),
+                });
+            }
+        };
+        bounded.validate()?;
+        Ok(bounded)
+    }
+
+    /// The leaf this one becomes under a number the caller may not have
+    /// stated.
+    ///
+    /// Two leaves *are* their number - `fixed_binary` is a width and
+    /// `sized_binary` a maximum - so neither stands without one; the other
+    /// four stand alone and refuse one. This is what a grammar, a binding
+    /// and a document all need to agree on, so it is decided here once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] when a leaf that is its number was
+    /// given none, or for any reason [`Self::with_bound`] refuses.
+    pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self> {
+        match (bound, self.bound()) {
+            (Some(bound), _) => self.with_bound(bound),
+            (None, None) => Ok(self),
+            (None, Some(_)) => Err(Error::InvalidDataType {
+                kind: "bytes",
+                reason: format_smolstr!("expected {}(number), got none", self.as_str()),
+            }),
+        }
+    }
+
     /// Reject a leaf whose stated number cannot describe a column.
     ///
     /// # Errors
@@ -1015,11 +1071,34 @@ impl BytesType {
     ///
     /// Returns [`Error::InvalidDataType`] naming the input when no leaf
     /// spells it.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Result<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|leaf| super::folds_equal(value, leaf.as_str()))
+        Self::from_spelling(&super::normalized(value))
             .ok_or_else(|| invalid(format_smolstr!("expected a byte layout, got {value:?}")))
+    }
+
+    /// The leaf one already-folded word names, in every spelling.
+    ///
+    /// Case, underscores, hyphens and spaces are gone by the time a word
+    /// reaches here. The two leaves that carry a number answer with a
+    /// placeholder of one, which
+    /// [`Self::with_declared_bound`] then replaces or refuses; nothing reads
+    /// the placeholder as a stated width.
+    ///
+    /// The grammar and the bindings both read this, so a spelling a caller
+    /// may write is accepted in a datatype expression and under a `layout=`
+    /// argument alike, rather than in one of the two.
+    #[must_use]
+    pub fn from_spelling(word: &str) -> Option<Self> {
+        match word {
+            "binary" | "bytes" | "varbinary" | "blob" | "bytea" => Some(Self::Binary),
+            "fixedbinary" | "fixedsizebinary" => Some(Self::FixedBinary(1)),
+            "largebinary" => Some(Self::LargeBinary),
+            "binaryview" => Some(Self::BinaryView),
+            "largebinaryview" => Some(Self::LargeBinaryView),
+            "sizedbinary" | "varbinarybounded" => Some(Self::SizedBinary(1)),
+            _ => None,
+        }
     }
 }
 
@@ -1083,7 +1162,10 @@ impl Parser<'_> {
     /// Returns [`crate::Error::Parse`] for a bound outside a positive `u32`,
     /// and for the fixed layout with no width.
     pub(crate) fn parse_bytes(&mut self, leaf: BytesType) -> Result<DataType> {
-        let mut parameters = leaf;
+        // What the text stated, never what the leaf happened to carry: the
+        // leaf a spelling names carries a placeholder number, so comparing
+        // against it read `fixed_binary(1)` as a width nobody wrote.
+        let mut declared = None;
         if let Some(close) = self.consume_opening() {
             // Empty parentheses are the bare spelling with punctuation.
             if !self.consume_symbol(close) {
@@ -1093,48 +1175,19 @@ impl Parser<'_> {
                     false => "a maximum byte length",
                 };
                 let value = self.parse_integer(label)?;
-                let bound = u32::try_from(value).map_err(|_| {
+                declared = Some(u32::try_from(value).map_err(|_| {
                     self.error_at(
                         position,
                         format_smolstr!("expected {label} inside u32, got {value}"),
                     )
-                })?;
-                // A number is the width on the fixed leaf and the maximum on
-                // the sized one. `binary(n)` is the sized leaf written short,
-                // because plain binary is exactly the storage it fills; every
-                // other layout would lose itself under a maximum, so it says
-                // so rather than silently becoming something narrower.
-                parameters = match leaf {
-                    BytesType::FixedBinary(_) => BytesType::FixedBinary(bound),
-                    BytesType::Binary | BytesType::SizedBinary(_) => BytesType::SizedBinary(bound),
-                    other => {
-                        return Err(self.error_at(
-                            position,
-                            format_smolstr!(
-                                "expected no maximum on {other}, got {bound}; \
-                                 a bounded column is sized_binary({bound})"
-                            ),
-                        ));
-                    }
-                };
+                })?);
                 self.expect_symbol(close)?;
             }
         }
         let position = self.current_position();
-        // The fixed leaf is its width: a bare `fixed_binary` states nothing.
-        if matches!(leaf, BytesType::FixedBinary(_)) && parameters == leaf {
-            return Err(self.error_at(
-                position,
-                format_smolstr!("expected fixed_binary(width), got no width"),
-            ));
-        }
-        // So is a bare `sized_binary`: a maximum is what makes it sized.
-        if matches!(leaf, BytesType::SizedBinary(_)) && parameters == leaf {
-            return Err(self.error_at(
-                position,
-                format_smolstr!("expected sized_binary(maximum), got no maximum"),
-            ));
-        }
+        let parameters = leaf
+            .with_declared_bound(declared)
+            .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
         DataType::bytes(parameters)
             .map_err(|error| self.error_at(position, format_smolstr!("{error}")))
     }
