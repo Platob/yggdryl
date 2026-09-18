@@ -292,7 +292,9 @@ delete binding.avroLoadsNative
 delete binding.avroDumpsNative
 delete binding.ScalarIterator
 
-function publicNativeClass(NativeClass, name, hiddenStatics) {
+const { normalizeMetadata } = require('./fields.js')
+
+function publicNativeClass(NativeClass, name, hiddenStatics, normalizeArgs = (args) => args) {
   const PublicClass = function (...args) {
     if (new.target === undefined) {
       throw new TypeError(
@@ -300,7 +302,7 @@ function publicNativeClass(NativeClass, name, hiddenStatics) {
       )
     }
     const target = new.target === PublicClass ? NativeClass : new.target
-    return Reflect.construct(NativeClass, args, target)
+    return Reflect.construct(NativeClass, normalizeArgs(args), target)
   }
   Object.defineProperty(PublicClass, 'name', { value: name })
   PublicClass.prototype = NativeClass.prototype
@@ -347,10 +349,18 @@ const DataType = publicNativeClass(
   'DataType',
   internalDtypeNames,
 )
+// The constructor's metadata argument reads every shape `update` reads. Until
+// this, it took a plain object only: a tuple array threw, and a `Map` was
+// accepted and silently produced empty metadata - the worse of the two,
+// because it drops the caller's data without saying so. `update` has
+// normalized all three since it was written (`fields.js:10`), so the two doors
+// onto one field's metadata disagreed.
 const Field = publicNativeClass(
   NativeField,
   'Field',
   new Set(['fromArrowString', 'fromJSON']),
+  (args) =>
+    args.length <= 3 ? args : [...args.slice(0, 3), normalizeMetadata(args[3])],
 )
 const MimeType = publicNativeClass(
   NativeMimeType,
@@ -565,7 +575,7 @@ Object.defineProperty(MediaType.prototype, Symbol.iterator, {
     return this.encodings[Symbol.iterator]()
   },
 })
-const { createFields, normalizeMetadata } = require('./fields.js')
+const { createFields } = require('./fields.js')
 const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),

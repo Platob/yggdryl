@@ -899,3 +899,27 @@ test('unnesting flattens structs and exploding reaches inside collections', () =
     leaves.map((child) => child.name),
   )
 })
+
+test('the constructor reads every metadata shape `update` reads', () => {
+  // A `Map` used to be accepted and silently produce empty metadata, and a
+  // tuple array used to throw, while `update` normalized all three. Two doors
+  // onto one field's metadata, disagreeing.
+  const expected = { venue: 'XPAR' }
+  for (const input of [
+    { venue: 'XPAR' },
+    [['venue', 'XPAR']],
+    new Map([['venue', 'XPAR']]),
+  ]) {
+    const field = new Field('price', new DataType('float64'), true, input)
+    assert.deepEqual(field.toJSON().metadata, expected)
+    const updated = new Field('price', new DataType('float64'), true)
+    updated.update(input)
+    assert.deepEqual(field.toJSON(), updated.toJSON())
+  }
+
+  // A tuple that is not a pair is still refused, by both doors.
+  assert.throws(
+    () => new Field('price', new DataType('float64'), true, [['venue']]),
+    /two items/,
+  )
+})
