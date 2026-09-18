@@ -381,7 +381,7 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
             DataTypeId::Sedol,
             DataTypeId::Bloomberg,
             DataTypeId::SortedMap,
-            DataTypeId::Tuple2
+            DataTypeId::Struct2
         ]
     );
     // The datatype order is total and appends too, so no earlier pair

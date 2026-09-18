@@ -167,7 +167,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Sedol, 65),
         (DataTypeId::Bloomberg, 66),
         (DataTypeId::SortedMap, 67),
-        (DataTypeId::Tuple2, 68),
+        (DataTypeId::Struct2, 68),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {

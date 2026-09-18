@@ -3055,7 +3055,7 @@ impl NestedType {
             Self::LargeList(_) => DataTypeId::LargeList,
             Self::LargeListView(_) => DataTypeId::LargeListView,
             Self::Structure(StructureType::Struct(_)) => DataTypeId::Struct,
-            Self::Structure(StructureType::Tuple2(_)) => DataTypeId::Tuple2,
+            Self::Structure(StructureType::Struct2(_)) => DataTypeId::Struct2,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
             Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
@@ -3201,16 +3201,13 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     if entries.is_nullable() {
         return Err(invalid("Map", "entries field must be non-null"));
     }
-    let DataType::Structure(children) = entries.dtype() else {
-        return Err(invalid("Map", "entries field must contain a struct"));
-    };
-    if children.len() != 2 {
+    let DataType::Structure(StructureType::Struct2(pair)) = entries.dtype() else {
         return Err(invalid(
             "Map",
-            "entries struct must contain exactly key and value fields",
+            "entries field must contain a key and a value",
         ));
-    }
-    if children[0].is_nullable() {
+    };
+    if pair.first().is_nullable() {
         return Err(invalid("Map", "key field must be non-null"));
     }
     Ok(())

@@ -517,11 +517,12 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// its hash, so a family variant contributes its leaf's discriminant too, and
 /// every struct and mapping in the dictionary hashes one level deeper than it
 /// did. `identifiers` and `metadata` also declare sorted keys, so they are
-/// `sorted_map` rather than `map` beside a flag.
+/// `sorted_map` rather than `map` beside a flag, and their entries are the
+/// `struct2` pair rather than a struct that happens to hold two children.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 17_538_832_047_428_682_257);
+    assert_eq!(registry.stable_hash(), 380_852_655_784_648_868);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

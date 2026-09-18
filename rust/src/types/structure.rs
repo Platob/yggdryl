@@ -31,6 +31,13 @@ impl DataType {
         Ok(Self::Structure(Fields::from_fields(fields)?.into()))
     }
 
+    /// Creates the two-child structure a mapping's entries have.
+    pub fn struct2(first: Field, second: Field) -> Self {
+        Self::Structure(StructureType::Struct2(Arc::new(Struct2Type::new(
+            first, second,
+        ))))
+    }
+
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
@@ -1456,9 +1463,9 @@ impl From<Fields> for StructType {
 #[repr(transparent)]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Tuple2Type(pub(crate) [Field; 2]);
+pub struct Struct2Type(pub(crate) [Field; 2]);
 
-impl Tuple2Type {
+impl Struct2Type {
     /// Pairs two children in order.
     pub const fn new(first: Field, second: Field) -> Self {
         Self([first, second])
@@ -1490,7 +1497,7 @@ pub enum StructureType {
     ///
     /// Behind a shared pointer: two whole fields are wider than this enum,
     /// and a datatype clone must not walk them.
-    Tuple2(Arc<Tuple2Type>),
+    Struct2(Arc<Struct2Type>),
 }
 
 impl StructureType {
@@ -1501,7 +1508,7 @@ impl StructureType {
     pub fn as_fields(&self) -> &[Field] {
         match self {
             Self::Struct(structure) => structure.as_fields(),
-            Self::Tuple2(pair) => pair.as_fields(),
+            Self::Struct2(pair) => pair.as_fields(),
         }
     }
 
@@ -1509,7 +1516,7 @@ impl StructureType {
     pub fn len(&self) -> usize {
         match self {
             Self::Struct(structure) => structure.len(),
-            Self::Tuple2(_) => 2,
+            Self::Struct2(_) => 2,
         }
     }
 
@@ -1522,7 +1529,7 @@ impl StructureType {
     pub fn get_field(&self, index: usize) -> Option<&Field> {
         match self {
             Self::Struct(structure) => structure.as_fields().get(index),
-            Self::Tuple2(pair) => pair.as_fields().get(index),
+            Self::Struct2(pair) => pair.as_fields().get(index),
         }
     }
 
@@ -1546,7 +1553,7 @@ impl StructureType {
     pub fn into_fields(self) -> Fields {
         match self {
             Self::Struct(structure) => structure.into_fields(),
-            Self::Tuple2(pair) => Fields::from_vec(
+            Self::Struct2(pair) => Fields::from_vec(
                 Arc::try_unwrap(pair)
                     .map_or_else(|shared| shared.0.clone(), |owned| owned.0)
                     .to_vec(),
@@ -1561,7 +1568,7 @@ impl StructureType {
     pub fn shares_storage_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Struct(left), Self::Struct(right)) => left.0.shares_storage_with(&right.0),
-            (Self::Tuple2(left), Self::Tuple2(right)) => Arc::ptr_eq(left, right),
+            (Self::Struct2(left), Self::Struct2(right)) => Arc::ptr_eq(left, right),
             _ => false,
         }
     }
@@ -1570,14 +1577,14 @@ impl StructureType {
     pub const fn as_struct(&self) -> Option<&StructType> {
         match self {
             Self::Struct(structure) => Some(structure),
-            Self::Tuple2(_) => None,
+            Self::Struct2(_) => None,
         }
     }
 
     /// Returns the pair when this is the two-child leaf.
-    pub fn as_tuple2(&self) -> Option<&Tuple2Type> {
+    pub fn as_struct2(&self) -> Option<&Struct2Type> {
         match self {
-            Self::Tuple2(pair) => Some(pair),
+            Self::Struct2(pair) => Some(pair),
             Self::Struct(_) => None,
         }
     }
@@ -1589,7 +1596,7 @@ impl FamilyType for StructureType {
     fn id(&self) -> DataTypeId {
         match self {
             Self::Struct(_) => DataTypeId::Struct,
-            Self::Tuple2(_) => DataTypeId::Tuple2,
+            Self::Struct2(_) => DataTypeId::Struct2,
         }
     }
 
@@ -1634,9 +1641,9 @@ impl From<Fields> for StructureType {
     }
 }
 
-impl From<Tuple2Type> for StructureType {
-    fn from(value: Tuple2Type) -> Self {
-        Self::Tuple2(Arc::new(value))
+impl From<Struct2Type> for StructureType {
+    fn from(value: Struct2Type) -> Self {
+        Self::Struct2(Arc::new(value))
     }
 }
 

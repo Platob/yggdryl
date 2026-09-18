@@ -20,9 +20,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::family::{FamilyField, FamilyType};
+use crate::types::structure::StructureType;
 use crate::types::nested::{Children, NestedValue, cmp_fields, validate_map_entries};
 use crate::types::scalar::Value;
 use crate::{
@@ -198,11 +199,14 @@ impl From<MappingType> for DataType {
 }
 
 impl DataType {
-    /// Creates a map from a validated non-null entries struct field.
+    /// Creates a map from a non-null entries field holding a key and a value.
     ///
     /// `keys_sorted` picks the leaf; after this it is the type, not a flag.
+    /// The entries are stored as [`crate::Struct2Type`], so a caller may hand
+    /// this either a pair or the two-child struct Arrow spells it with, and
+    /// what comes back is always the pair.
     pub fn map(entries: Field, keys_sorted: bool) -> Result<Self> {
-        validate_map_entries(&entries)?;
+        let entries = pair_entries(entries)?;
         Ok(Self::Mapping(MappingType::with_keys_sorted(
             Arc::new(MapType { entries }),
             keys_sorted,
@@ -214,10 +218,10 @@ impl DataType {
         Self::map(
             Field::new(
                 "entries",
-                Self::from_fields([
+                Self::struct2(
                     Field::new("key", key, false),
                     Field::new("value", value, true),
-                ])?,
+                ),
                 false,
             ),
             keys_sorted,
@@ -228,6 +232,41 @@ impl DataType {
     pub fn as_mapping(&self) -> Option<&MappingType> {
         MappingType::from_dtype(self)
     }
+}
+
+/// Reads one entries field as the key-value pair a mapping stores.
+///
+/// Arrow spells map entries as a struct of exactly two children, and callers
+/// coming from Arrow, Iceberg and Avro build them that way; the pair is what
+/// this crate stores, so the struct spelling is folded into it here, once,
+/// rather than re-checked at every reader.
+fn pair_entries(mut entries: Field) -> Result<Field> {
+    if entries.is_nullable() {
+        return Err(Error::InvalidDataType {
+            kind: "map",
+            reason: SmolStr::new_static("entries field must be non-null"),
+        });
+    }
+    let pair = match entries.dtype() {
+        DataType::Structure(StructureType::Struct2(_)) => None,
+        DataType::Structure(structure) if structure.len() == 2 => Some(DataType::struct2(
+            structure[0].clone(),
+            structure[1].clone(),
+        )),
+        _ => {
+            return Err(Error::InvalidDataType {
+                kind: "map",
+                reason: SmolStr::new_static(
+                    "entries field must hold a key and a value",
+                ),
+            });
+        }
+    };
+    if let Some(pair) = pair {
+        entries.set_dtype(pair)?;
+    }
+    validate_map_entries(&entries)?;
+    Ok(entries)
 }
 
 // ------------------------------------------------------------------------

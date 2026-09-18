@@ -133,7 +133,7 @@ pub use types::{
     GeospatialType, IntegerType, MapField, MapType, MappingField, MappingType, MediaTypeField,
     MediaTypeType, MimeTypeField, MimeTypeType, NestedType, RunEndEncodedType, SortedMapField,
     StringEnum, StringType, TemporalType, TimezoneField, TimezoneType, UnionFields, UrlField,
-    StructType, StructureType, Tuple2Type, UrlType, Version, VersionField,
+    StructType, StructureType, Struct2Type, UrlType, Version, VersionField,
     VersionType,
 };
 pub use union_mode::UnionMode;
