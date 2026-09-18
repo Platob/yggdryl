@@ -418,7 +418,12 @@ mod shared {
     /// One slot per discriminant byte an identifier can carry: the highest one
     /// stated, plus one. A retired number (58, once `msgdirection`) is an empty slot,
     /// because a discriminant is a wire contract and never moves to close a gap.
-    const PREBUILT_SLOTS: usize = DataTypeId::Uuidv8.as_u8() as usize + 1;
+    ///
+    /// Read off the last identifier declared rather than named here, because a
+    /// name here is a second place to remember: ids are appended, so naming one
+    /// leaves the table a discriminant short the moment another lands after it,
+    /// and the build below indexes by `as_u8` with no bound to catch it.
+    const PREBUILT_SLOTS: usize = DataTypeId::ALL[DataTypeId::ALL.len() - 1].as_u8() as usize + 1;
 
     /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`].
     ///
