@@ -186,7 +186,17 @@ impl Scalar {
             // is rather than a guess over its characters; a code is its own
             // identity.
             Self::String(text) => text.dtype(),
-            Self::Code(code) => Ok(code.datatype()),
+            Self::Country(_) => Ok(DataType::Country),
+            Self::Currency(_) => Ok(DataType::Currency),
+            Self::Mic(_) => Ok(DataType::Mic),
+            Self::Cfi(_) => Ok(DataType::Cfi),
+            Self::Side(_) => Ok(DataType::Side),
+            Self::State(_) => Ok(DataType::State),
+            Self::TimeInForce(_) => Ok(DataType::TimeInForce),
+            Self::Isin(_) => Ok(DataType::Isin),
+            Self::Cusip(_) => Ok(DataType::Cusip),
+            Self::Sedol(_) => Ok(DataType::Sedol),
+            Self::Bloomberg(_) => Ok(DataType::Bloomberg),
             Self::Version(_) => Ok(DataType::Version),
             Self::Url(_) => Ok(DataType::Url),
             Self::Timezone(_) => Ok(DataType::Timezone),

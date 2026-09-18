@@ -10,7 +10,7 @@ use crate::types::budget::{
 use crate::types::string::is_text_storage;
 use crate::types::{
     BLOOMBERG_WIDTH, Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
-    CUSIP_WIDTH, Code, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
+    CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
     StringLayout, StringParameters, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
     uuid_parse,
 };
@@ -441,77 +441,77 @@ pub(crate) fn value_from_array(
         // at the width its own standard fixes.
         DataType::Country => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Country(crate::types::Country::new(code_cell_text(
+            Scalar::Country(crate::types::Country::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Currency => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Currency(crate::types::Currency::new(
+            Scalar::Currency(crate::types::Currency::new(
                 code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?))
+            )?)
         }
         DataType::Mic => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Mic(crate::types::Mic::new(code_cell_text(
+            Scalar::Mic(crate::types::Mic::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Cfi => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Cfi(crate::types::Cfi::new(code_cell_text(
+            Scalar::Cfi(crate::types::Cfi::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Isin => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Isin(crate::types::Isin::new(code_cell_text(
+            Scalar::Isin(crate::types::Isin::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Cusip => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Cusip(crate::types::Cusip::new(code_cell_text(
+            Scalar::Cusip(crate::types::Cusip::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Sedol => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Sedol(crate::types::Sedol::new(code_cell_text(
+            Scalar::Sedol(crate::types::Sedol::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::Bloomberg => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Bloomberg(crate::types::Bloomberg::new(
+            Scalar::Bloomberg(crate::types::Bloomberg::new(
                 code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?))
+            )?)
         }
         DataType::Side => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::Side(crate::types::Side::new(code_cell_text(
+            Scalar::Side(crate::types::Side::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::State => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::State(crate::types::State::new(code_cell_text(
+            Scalar::State(crate::types::State::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
-            )?)?))
+            )?)?)
         }
         DataType::TimeInForce => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Code(Code::TimeInForce(crate::types::TimeInForce::new(
+            Scalar::TimeInForce(crate::types::TimeInForce::new(
                 code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?))
+            )?)
         }
         DataType::List(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?

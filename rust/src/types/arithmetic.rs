@@ -18,6 +18,7 @@ use super::temporal::scalars::{
     temporal_target, temporal_value_parts,
 };
 use crate::{DataType, Error, Result};
+use super::code_scalars;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Arithmetic {
@@ -359,7 +360,7 @@ fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<
         return None;
     }
     match (left, right) {
-        (Scalar::String(_) | Scalar::Code(_), Scalar::String(_) | Scalar::Code(_)) => {
+        (Scalar::String(_) | code_scalars!(), Scalar::String(_) | code_scalars!()) => {
             let (left, right) = (left.as_str()?, right.as_str()?);
             let mut joined = String::with_capacity(left.len() + right.len());
             joined.push_str(left);

@@ -28,6 +28,7 @@ use super::path::write_segments;
 use super::selector::{Projection, Selector};
 use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
 use crate::{DataType, Scalar};
+use crate::types::code_scalars;
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -487,7 +488,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
         Scalar::String(held) => Some(held.storage().clone()),
-        Scalar::Code(held) => Some(held.storage().clone()),
+        code_scalars!() => value.code_storage().cloned(),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Timezone(held) => Some(SmolStr::new(held.as_str())),

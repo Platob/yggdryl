@@ -156,6 +156,57 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 }
 
 #[test]
+fn the_eleven_codes_sort_by_which_code_then_by_text() {
+    use std::hash::{Hash, Hasher};
+
+    use yggdryl::types::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, TimeInForce};
+
+    fn hash_of(value: &Scalar) -> u64 {
+        let mut hasher = std::hash::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // The eleven share one value rank, so nothing but the identity separates
+    // them - and that identity is the one their datatypes sort by, which is
+    // what makes a sorted column of fields and a sorted column of values agree.
+    let ascending = [
+        Scalar::Country(Country::new("FR").unwrap()),
+        Scalar::Currency(Currency::new("EUR").unwrap()),
+        Scalar::Mic(Mic::new("XPAR").unwrap()),
+        Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
+        Scalar::Side(yggdryl::types::Side::new("BUY").unwrap()),
+        Scalar::State(yggdryl::types::State::read("New").unwrap()),
+        Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
+        Scalar::Isin(Isin::new("US0378331005").unwrap()),
+        Scalar::Cusip(Cusip::new("037833100").unwrap()),
+        Scalar::Sedol(Sedol::new("2046251").unwrap()),
+        Scalar::Bloomberg(Bloomberg::new("BBG000B9XRY4").unwrap()),
+    ];
+    for pair in ascending.windows(2) {
+        assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);
+        assert_eq!(
+            pair[0].cmp(&pair[1]),
+            pair[0].dtype().unwrap().cmp(&pair[1].dtype().unwrap()),
+            "the values disagree with their datatypes"
+        );
+    }
+
+    // Two codes whose bytes agree are two values, and their hashes say so.
+    let currency = Scalar::Currency(Currency::new("XXX").unwrap());
+    let country = Scalar::Country(Country::new("XX").unwrap());
+    assert_ne!(currency, country);
+    assert_ne!(hash_of(&currency), hash_of(&country));
+
+    // Within one code the text decides, and hash agrees with order.
+    let one = Scalar::Currency(Currency::new("EUR").unwrap());
+    let other = Scalar::Currency(Currency::new("USD").unwrap());
+    assert!(one < other);
+    assert_eq!(hash_of(&one), hash_of(&Scalar::Currency(Currency::new("EUR").unwrap())));
+    assert_ne!(hash_of(&one), hash_of(&other));
+}
+
+#[test]
 fn cross_width_numbers_agree_in_equality_order_and_hash() {
     use std::hash::{Hash, Hasher};
 
@@ -658,11 +709,11 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
-    let side = string::Code::Side(string::Side::new("BUY").unwrap());
-    let time_in_force = string::Code::TimeInForce(string::TimeInForce::new("BUY").unwrap());
+    let side = Scalar::Side(string::Side::new("BUY").unwrap());
+    let time_in_force = Scalar::TimeInForce(string::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
-    assert_ne!(Scalar::from(side), Scalar::from("BUY"));
+    assert_ne!(side, Scalar::from("BUY"));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

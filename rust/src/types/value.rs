@@ -21,7 +21,7 @@ use crate::types::integer::{
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    Code, Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes,
+    Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes,
     ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
     value_is_logically_null,
 };
@@ -758,7 +758,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Side
         | D::State
         | D::TimeInForce => {
-            if matches!(value, Scalar::Code(code) if code.datatype() == *dtype) {
+            if value.is_code() && value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
             let Some(bytes) = ascii_bytes(value) else {
@@ -773,24 +773,24 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 _ => code_cell_text(dtype, bytes)?,
             };
             let canonical = match dtype {
-                D::Country => Code::Country(crate::types::Country::new(text)?),
-                D::Currency => Code::Currency(crate::types::Currency::new(text)?),
-                D::Mic => Code::Mic(crate::types::Mic::new(text)?),
-                D::Cfi => Code::Cfi(crate::types::Cfi::new(text)?),
-                D::Isin => Code::Isin(crate::types::Isin::new(text)?),
-                D::Cusip => Code::Cusip(crate::types::Cusip::new(text)?),
-                D::Sedol => Code::Sedol(crate::types::Sedol::new(text)?),
-                D::Bloomberg => Code::Bloomberg(crate::types::Bloomberg::new(text)?),
+                D::Country => Scalar::Country(crate::types::Country::new(text)?),
+                D::Currency => Scalar::Currency(crate::types::Currency::new(text)?),
+                D::Mic => Scalar::Mic(crate::types::Mic::new(text)?),
+                D::Cfi => Scalar::Cfi(crate::types::Cfi::new(text)?),
+                D::Isin => Scalar::Isin(crate::types::Isin::new(text)?),
+                D::Cusip => Scalar::Cusip(crate::types::Cusip::new(text)?),
+                D::Sedol => Scalar::Sedol(crate::types::Sedol::new(text)?),
+                D::Bloomberg => Scalar::Bloomberg(crate::types::Bloomberg::new(text)?),
                 // A side and a state are read by their spelling: the wire
                 // code, the specification's name or a stored value all reach
                 // the one explicit value, and a spelling that names none is
                 // refused rather than stored unread.
-                D::Side => Code::Side(crate::types::Side::read(text)?),
-                D::State => Code::State(crate::types::State::read(text)?),
-                D::TimeInForce => Code::TimeInForce(crate::types::TimeInForce::new(text)?),
+                D::Side => Scalar::Side(crate::types::Side::read(text)?),
+                D::State => Scalar::State(crate::types::State::read(text)?),
+                D::TimeInForce => Scalar::TimeInForce(crate::types::TimeInForce::new(text)?),
                 _ => unreachable!("registered code matched above"),
             };
-            Ok((Scalar::Code(canonical), true))
+            Ok((canonical, true))
         }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.

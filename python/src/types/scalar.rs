@@ -24,7 +24,7 @@ use yggdryl::arrow::{
 use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry};
-use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
+use yggdryl::types::string::{Str, StringLayout, StringParameters};
 use yggdryl::types::temporal::Interval;
 use yggdryl::types::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
@@ -328,10 +328,14 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         }
         // A code pickles under its own identity, which is what tells a
         // currency from a country whose bytes agree.
-        Scalar::Code(value) => tagged_pickle_state(
+        code if code.is_code() => tagged_pickle_state(
             py,
-            value.identifier().as_str(),
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+            code.id().as_str(),
+            Some(
+                PyString::new(py, code.as_str().expect("a code borrowed its text"))
+                    .into_any()
+                    .unbind(),
+            ),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
@@ -604,37 +608,37 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map_err(value_error)
         }
         "country" => Country::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Country(value)))
+            .map(Scalar::Country)
             .map_err(value_error),
         "currency" => Currency::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Currency(value)))
+            .map(Scalar::Currency)
             .map_err(value_error),
         "mic" => Mic::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Mic(value)))
+            .map(Scalar::Mic)
             .map_err(value_error),
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Cfi(value)))
+            .map(Scalar::Cfi)
             .map_err(value_error),
         "isin" => Isin::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Isin(value)))
+            .map(Scalar::Isin)
             .map_err(value_error),
         "cusip" => Cusip::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Cusip(value)))
+            .map(Scalar::Cusip)
             .map_err(value_error),
         "sedol" => Sedol::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Sedol(value)))
+            .map(Scalar::Sedol)
             .map_err(value_error),
         "bloomberg" => Bloomberg::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Bloomberg(value)))
+            .map(Scalar::Bloomberg)
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Side(value)))
+            .map(Scalar::Side)
             .map_err(value_error),
         "state" => State::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::State(value)))
+            .map(Scalar::State)
             .map_err(value_error),
         "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::TimeInForce(value)))
+            .map(Scalar::TimeInForce)
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;
@@ -1536,7 +1540,11 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => decimal_as_py(py, value),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        Scalar::Code(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        code if code.is_code() => Ok(
+            PyString::new(py, code.as_str().expect("a code borrowed its text"))
+                .into_any()
+                .unbind(),
+        ),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?

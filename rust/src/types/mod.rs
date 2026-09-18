@@ -41,6 +41,7 @@ mod vocabulary;
 pub mod cast;
 
 pub use crate::{TimeUnit, UnionMode};
+pub(crate) use scalar::code_scalars;
 pub(crate) use arithmetic::Arithmetic;
 #[cfg(feature = "arrow")]
 pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};

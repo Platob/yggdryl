@@ -483,7 +483,7 @@ fn named(name: &str) -> bool {
 fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
         Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
-        Scalar::Code(text) => return Some(Cow::Borrowed(text.as_str())),
+        code if code.is_code() => return code.as_str().map(Cow::Borrowed),
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Boolean(held) => held.to_string(),
         Scalar::Int8(_)

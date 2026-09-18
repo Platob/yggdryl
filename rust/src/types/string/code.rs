@@ -15,7 +15,7 @@ use super::codes::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
     SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
-use crate::{DataType, DataTypeId, Result, Scalar, Value, types};
+use crate::{DataType, Result, Scalar, Value, types};
 
 /// Borrowing access shared by every code representation.
 pub trait CodeValue: crate::Value {
@@ -1049,151 +1049,6 @@ static STATE_NAMES: &[(&str, &str)] = &[
     ("unknown", "00UNKNOWN"),
 ];
 
-/// One registered code, whichever registry it is drawn from.
-///
-/// The identity leads: a currency and a country whose bytes agree are two
-/// values, and they order by which code they are before they order by text.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[non_exhaustive]
-pub enum Code {
-    /// ISO 3166-1 alpha-2 country code.
-    Country(Country),
-    /// ISO 4217 currency code.
-    Currency(Currency),
-    /// ISO 10383 market identifier code.
-    Mic(Mic),
-    /// ISO 10962 classification code.
-    Cfi(Cfi),
-    /// ISO 6166 securities identification number.
-    Isin(Isin),
-    /// CUSIP securities identifier.
-    Cusip(Cusip),
-    /// SEDOL securities identifier.
-    Sedol(Sedol),
-    Bloomberg(Bloomberg),
-    /// FIX's side of a trade.
-    Side(Side),
-    /// What state one thing is in, ranked so the bytes sort by lifecycle.
-    State(State),
-    /// How long an order stands.
-    TimeInForce(TimeInForce),
-}
-
-const _: () = assert!(std::mem::size_of::<Code>() == 32);
-
-impl Code {
-    /// Borrow the validated text independently of the code's identity.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.storage().as_str()
-    }
-
-    /// The better statement of this code and another: [`CodeValue::merge_with`]
-    /// where the two are one kind of code, and this one where they are not.
-    #[must_use]
-    pub fn merge_with(self, other: &Self) -> Self {
-        match (self, other) {
-            (Self::Country(this), Self::Country(that)) => Self::Country(this.merge_with(that)),
-            (Self::Currency(this), Self::Currency(that)) => Self::Currency(this.merge_with(that)),
-            (Self::Mic(this), Self::Mic(that)) => Self::Mic(this.merge_with(that)),
-            (Self::Cfi(this), Self::Cfi(that)) => Self::Cfi(this.merge_with(that)),
-            (Self::Isin(this), Self::Isin(that)) => Self::Isin(this.merge_with(that)),
-            (Self::Cusip(this), Self::Cusip(that)) => Self::Cusip(this.merge_with(that)),
-            (Self::Sedol(this), Self::Sedol(that)) => Self::Sedol(this.merge_with(that)),
-            (Self::Bloomberg(this), Self::Bloomberg(that)) => {
-                Self::Bloomberg(this.merge_with(that))
-            }
-            (Self::Side(this), Self::Side(that)) => Self::Side(this.merge_with(that)),
-            (Self::State(this), Self::State(that)) => Self::State(this.merge_with(that)),
-            (Self::TimeInForce(this), Self::TimeInForce(that)) => {
-                Self::TimeInForce(this.merge_with(that))
-            }
-            (this, _) => this,
-        }
-    }
-
-    /// Borrow the shared storage independently of the code's identity.
-    ///
-    /// Every member holds the same trimmed, validated text, so a string
-    /// adopting a code's text clones this handle instead of the characters.
-    #[must_use]
-    pub const fn storage(&self) -> &SmolStr {
-        match self {
-            Self::Country(value) => value.storage(),
-            Self::Currency(value) => value.storage(),
-            Self::Mic(value) => value.storage(),
-            Self::Cfi(value) => value.storage(),
-            Self::Isin(value) => value.storage(),
-            Self::Cusip(value) => value.storage(),
-            Self::Sedol(value) => value.storage(),
-            Self::Bloomberg(value) => value.storage(),
-            Self::Side(value) => value.storage(),
-            Self::State(value) => value.storage(),
-            Self::TimeInForce(value) => value.storage(),
-        }
-    }
-
-    /// The fixed storage width of this code, in bytes.
-    #[must_use]
-    pub const fn width(&self) -> usize {
-        match self {
-            Self::Country(_) => COUNTRY_WIDTH,
-            Self::Currency(_) => CURRENCY_WIDTH,
-            Self::Mic(_) => MIC_WIDTH,
-            Self::Cfi(_) => CFI_WIDTH,
-            Self::Isin(_) => ISIN_WIDTH,
-            Self::Cusip(_) => CUSIP_WIDTH,
-            Self::Sedol(_) => SEDOL_WIDTH,
-            Self::Bloomberg(_) => BLOOMBERG_WIDTH,
-            Self::Side(_) => SIDE_WIDTH,
-            Self::State(_) => STATE_WIDTH,
-            Self::TimeInForce(_) => TIMEINFORCE_WIDTH,
-        }
-    }
-
-    /// The identifier this code carries.
-    #[must_use]
-    pub const fn identifier(&self) -> DataTypeId {
-        match self {
-            Self::Country(_) => DataTypeId::Country,
-            Self::Currency(_) => DataTypeId::Currency,
-            Self::Mic(_) => DataTypeId::Mic,
-            Self::Cfi(_) => DataTypeId::Cfi,
-            Self::Isin(_) => DataTypeId::Isin,
-            Self::Cusip(_) => DataTypeId::Cusip,
-            Self::Sedol(_) => DataTypeId::Sedol,
-            Self::Bloomberg(_) => DataTypeId::Bloomberg,
-            Self::Side(_) => DataTypeId::Side,
-            Self::State(_) => DataTypeId::State,
-            Self::TimeInForce(_) => DataTypeId::TimeInForce,
-        }
-    }
-
-    /// The datatype this code is a value of.
-    #[must_use]
-    pub const fn datatype(&self) -> DataType {
-        match self {
-            Self::Country(_) => DataType::Country,
-            Self::Currency(_) => DataType::Currency,
-            Self::Mic(_) => DataType::Mic,
-            Self::Cfi(_) => DataType::Cfi,
-            Self::Isin(_) => DataType::Isin,
-            Self::Cusip(_) => DataType::Cusip,
-            Self::Sedol(_) => DataType::Sedol,
-            Self::Bloomberg(_) => DataType::Bloomberg,
-            Self::Side(_) => DataType::Side,
-            Self::State(_) => DataType::State,
-            Self::TimeInForce(_) => DataType::TimeInForce,
-        }
-    }
-}
-
-impl fmt::Display for Code {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
 macro_rules! code_value {
     ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)?) => {
         impl Value for $leaf {
@@ -1203,12 +1058,12 @@ macro_rules! code_value {
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Code(Code::$leaf(self))
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Code(Code::$leaf(value)) => Some(value),
+                    Scalar::$leaf(value) => Some(value),
                     _ => None,
                 }
             }
@@ -1234,7 +1089,7 @@ macro_rules! code_value {
 
         impl From<$leaf> for Scalar {
             fn from(value: $leaf) -> Self {
-                Self::Code(Code::$leaf(value))
+                Self::$leaf(value)
             }
         }
     };
@@ -1251,9 +1106,3 @@ code_value!(Sedol, Sedol, SEDOL_WIDTH);
 code_value!(Side, Side, SIDE_WIDTH, merge = Side::merged);
 code_value!(State, State, STATE_WIDTH, merge = State::merged);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
-
-impl From<Code> for Scalar {
-    fn from(value: Code) -> Self {
-        Self::Code(value)
-    }
-}

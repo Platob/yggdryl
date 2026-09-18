@@ -3,6 +3,7 @@ use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
 use crate::{Scalar, TimeUnit, Timezone};
+use crate::types::code_scalars;
 
 /// A natural JSON view of [`Scalar`].
 ///
@@ -43,7 +44,8 @@ impl Serialize for JsonRef<'_> {
             Scalar::Decimal128(value) => serializer.collect_str(value),
             Scalar::Decimal256(value) => serializer.collect_str(value),
             Scalar::String(value) => serializer.serialize_str(value.as_str()),
-            Scalar::Code(value) => serializer.serialize_str(value.as_str()),
+            code_scalars!() => serializer
+                .serialize_str(self.0.as_str().expect("a code borrowed its text")),
             Scalar::Version(value) => serializer.collect_str(value),
             Scalar::Url(value) => serializer.collect_str(value),
             Scalar::Timezone(value) => serializer.serialize_str(value.as_str()),

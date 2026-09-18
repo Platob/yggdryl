@@ -41,7 +41,6 @@ use super::msg::FixMsg;
 use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
 use crate::expression::Term;
-use crate::types::Code;
 use crate::{DataType, Field, Plan, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
@@ -361,7 +360,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
 /// how a rule over a `MultipleCharValue` says which of several held codes it
 /// is about without a grammar of its own for one.
 fn restated_tokens(held: &Scalar, named: &[SmolStr], text: &str) -> SmolStr {
-    if matches!(held, Scalar::Code(Code::State(_))) {
+    if matches!(held, Scalar::State(_)) {
         return SmolStr::new(text);
     }
     let Some(spelled) = wire_text(held) else {

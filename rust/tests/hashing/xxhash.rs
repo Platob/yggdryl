@@ -965,7 +965,7 @@ mod values {
 
     use yggdryl::hashing::xxhash::{Xxh3, xxh3};
     use yggdryl::types::{
-        Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal32, Decimal64, Geography,
+        Bytes, BytesLayout, BytesParameters, Currency, Decimal32, Decimal64, Geography,
         Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
     };
     use yggdryl::{
@@ -1069,9 +1069,9 @@ mod values {
             )),
             Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
             Scalar::String(stored("USD", fixed_ascii(4))),
-            Scalar::Code(Code::Currency(Currency::new("USD").unwrap())),
-            Scalar::Code(Code::Side(Side::new("BUY").unwrap())),
-            Scalar::Code(Code::TimeInForce(TimeInForce::new("1").unwrap())),
+            Scalar::Currency(Currency::new("USD").unwrap()),
+            Scalar::Side(Side::new("BUY").unwrap()),
+            Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
             Scalar::from(Codec::Gzip),
             Scalar::from(Codec::Zstd),
             Scalar::from(DataTypeId::Int128),
@@ -1297,7 +1297,7 @@ mod values {
         expected.extend_from_slice(&3_u64.to_le_bytes());
         expected.extend_from_slice(b"USD");
         assert_eq!(
-            feed(&Scalar::Code(Code::Currency(Currency::new("USD").unwrap()))),
+            feed(&Scalar::Currency(Currency::new("USD").unwrap())),
             expected
         );
     }

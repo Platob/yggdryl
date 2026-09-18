@@ -62,7 +62,7 @@ mod scalars;
 pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
 pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};
 pub use code::{
-    Bloomberg, Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State,
+    Bloomberg, Cfi, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State,
     TimeInForce,
 };
 pub(crate) use codes::{

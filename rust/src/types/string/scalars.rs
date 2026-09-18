@@ -677,7 +677,9 @@ impl From<SmolStr> for Scalar {
 pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
     Some(match value {
         Scalar::String(text) => Ok(text.clone()),
-        Scalar::Code(code) => Ok(Str::from(code.storage())),
+        code if code.is_code() => Ok(Str::from(
+            code.code_storage().expect("a code borrowed its storage"),
+        )),
         // A number of any width spells its own leaf's canonical `Display`.
         number if number.is_number() => {
             Ok(Str::from(format_smolstr!("{}", number.leaf_display()?)))

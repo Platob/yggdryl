@@ -2316,7 +2316,9 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Float32(value) => float_transport(value.as_f64()),
         Scalar::Float64(value) => float_transport(value.as_f64()),
         Scalar::String(value) => Ok(JsonValue::String(value.as_str().to_owned())),
-        Scalar::Code(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        code if code.is_code() => Ok(JsonValue::String(
+            code.as_str().expect("a code borrowed its text").to_owned(),
+        )),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(marker(
             "version",

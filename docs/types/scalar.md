@@ -192,7 +192,8 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
-| text and binary | `String`, `Code`, `Bytes`, `Geometry`, `Geography` |
+| text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
+| registered codes | `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` |
 | identifiers | `Uuid`, `Version`, `Url` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |

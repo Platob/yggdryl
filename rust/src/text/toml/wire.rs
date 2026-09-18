@@ -6,6 +6,7 @@ use base64::Engine as _;
 
 use crate::types::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, TimeUnit, Timezone};
+use crate::types::code_scalars;
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
@@ -283,7 +284,9 @@ fn write_scalar<W: Write>(
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
         Scalar::String(value) => write_quoted(writer, value.as_str())?,
-        Scalar::Code(value) => write_quoted(writer, value.as_str())?,
+        code_scalars!() => {
+            write_quoted(writer, value.as_str().expect("a code borrowed its text"))?;
+        }
         Scalar::Version(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Url(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Timezone(value) => write_quoted(writer, value.as_str())?,

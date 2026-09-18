@@ -190,7 +190,7 @@ fn each_identifier_is_a_registered_code_that_round_trips_everywhere() {
         // The value door: the check digit gates the space, the case folds,
         // and the stored value is the code under its own identity.
         let value = dtype.scalar(Scalar::from(*sample)).unwrap();
-        assert!(matches!(value, Scalar::Code(_)), "{name}");
+        assert!(value.is_code(), "{name}");
         assert_eq!(value.kind(), *name);
         assert_eq!(value.as_str(), Some(*sample));
         assert_eq!(value.dtype().unwrap(), *dtype);

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::{CfiField, Code, CountryField, CurrencyField, MicField};
+use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::{
     ArrowCast, ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar,
     StringEnum,
@@ -107,7 +107,7 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         // A value is the code leaf under its own identity, and its wire
         // shape is that identity's name over the text.
         let value = dtype.scalar(Scalar::from(*sample)).unwrap();
-        assert!(matches!(value, Scalar::Code(_)), "{name}");
+        assert!(value.is_code(), "{name}");
         assert_eq!(value.id(), dtype.id(), "{name}");
         assert_eq!(value.kind(), *name, "{name}");
         assert_eq!(value.as_str(), Some(*sample), "{name}");
@@ -155,7 +155,7 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     // The value contract accepts the text, rewrites it into the declared
     // representation, and answers an unchanged value untouched.
     let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
-    assert!(matches!(side, Scalar::Code(Code::Side(_))));
+    assert!(matches!(side, Scalar::Side(_)));
     assert_eq!(side.as_str(), Some("BUY"));
     assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
     // A side is read by its spelling: FIX's wire code and the
@@ -858,7 +858,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
 
 #[test]
 fn a_code_merges_to_the_better_statement() {
-    use yggdryl::types::{Cfi, Code, CodeValue, Currency, Isin, Mic, Side, State};
+    use yggdryl::types::{Cfi, CodeValue, Currency, Isin, Mic, Side, State};
 
     // A classification fills what it left unknown from the other, and stands
     // as it is beside another instrument's.
@@ -931,18 +931,16 @@ fn a_code_merges_to_the_better_statement() {
         apple
     );
 
-    // The family enum merges one kind of code, and keeps this one beside
-    // another kind.
-    let held = Code::Currency(Currency::new("XXX").unwrap());
+    // `XXX` is the currency that states none, so the other one stands.
+    let unstated = Currency::new("XXX").unwrap();
     assert_eq!(
-        held.clone()
-            .merge_with(&Code::Currency(Currency::new("USD").unwrap()))
+        unstated
+            .clone()
+            .merge_with(&Currency::new("USD").unwrap())
             .as_str(),
         "USD"
     );
-    assert_eq!(
-        held.clone()
-            .merge_with(&Code::Mic(Mic::new("XPAR").unwrap())),
-        held
-    );
+    // A code the other states nothing better than keeps what it had.
+    let stated = Currency::new("EUR").unwrap();
+    assert_eq!(stated.clone().merge_with(&unstated), stated);
 }

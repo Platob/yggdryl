@@ -23,6 +23,7 @@ use crate::text::{
 use crate::{Error, Field, Result};
 
 use self::parser::YamlParser;
+use crate::types::code_scalars;
 
 /// Maximum nesting accepted by Saphyr's YAML flow-collection grammar.
 ///
@@ -717,7 +718,17 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Float32(_)
             | Scalar::Float64(_)
             | Scalar::String(_)
-            | Scalar::Code(_)
+            | Scalar::Country(_)
+            | Scalar::Currency(_)
+            | Scalar::Mic(_)
+            | Scalar::Cfi(_)
+            | Scalar::Side(_)
+            | Scalar::State(_)
+            | Scalar::TimeInForce(_)
+            | Scalar::Isin(_)
+            | Scalar::Cusip(_)
+            | Scalar::Sedol(_)
+            | Scalar::Bloomberg(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
@@ -772,7 +783,9 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
         Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
-        Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
+        code_scalars!() => {
+            write_scalar_string(writer, value.as_str().expect("a code borrowed its text"))?;
+        }
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Timezone(value) => write_scalar_string(writer, value.as_str())?,

@@ -579,7 +579,7 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
 pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
         Scalar::String(text) => Some(text.as_str().as_bytes()),
-        Scalar::Code(code) => Some(code.as_str().as_bytes()),
+        code if code.is_code() => code.as_str().map(str::as_bytes),
         Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }

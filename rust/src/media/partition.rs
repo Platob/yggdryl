@@ -82,7 +82,12 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     // the formatter would spell as hex - and a code is the text it is.
     match value {
         crate::Scalar::String(text) => return Ok(text.storage().clone()),
-        crate::Scalar::Code(code) => return Ok(code.storage().clone()),
+        code if code.is_code() => {
+            return Ok(code
+                .code_storage()
+                .expect("a code borrowed its storage")
+                .clone());
+        }
         _ => {}
     }
     // The value is non-null here, so the typed pairing's own projection is the

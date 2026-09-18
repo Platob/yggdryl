@@ -36,7 +36,7 @@ use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
-use crate::types::{Code, Side, State};
+use crate::types::{Side, State};
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -2212,12 +2212,12 @@ fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Res
     match field.dtype() {
         DataType::State => {
             if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
-                return Ok(Scalar::Code(Code::State(state)));
+                return Ok(Scalar::State(state));
             }
         }
         DataType::Side => {
             if let Some(side) = view.code_name(spelling).and_then(Side::from_spelling) {
-                return Ok(Scalar::Code(Code::Side(side)));
+                return Ok(Scalar::Side(side));
             }
         }
         _ => {}

@@ -528,8 +528,9 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between, and each geospatial reading
-  likewise; `Code` is the one family enum left; shared logic goes through the
+  `Scalar` variant with no family enum between, each geospatial reading and
+  each registered code likewise - a code is `Scalar::Currency`, the way its
+  type is `DataType::Currency`; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
   `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
   family constructor picks the physical width once.

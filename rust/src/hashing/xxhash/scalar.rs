@@ -20,6 +20,7 @@ use crate::types::decimal::scalars as decimal;
 use crate::types::integer::scalars::integer_parts;
 use crate::types::temporal::scalars::temporal_key;
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Scalar, i256};
+use crate::types::code_scalars;
 
 /// The tag byte a value nested past the shared recursion limit feeds instead
 /// of descending further.
@@ -73,7 +74,11 @@ impl Scalar {
             | Self::Url(_)
             | Self::MediaType(_) => return None,
             Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Code(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            code_scalars!() => {
+                return Some(ValueBytes::borrowed(
+                    self.as_str().expect("a code borrowed its text").as_bytes(),
+                ));
+            }
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
@@ -175,7 +180,7 @@ impl Scalar {
     /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
     /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
     /// | `String` | `string` | length `u64` little-endian, then UTF-8 |
-    /// | `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
+    /// | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
@@ -294,9 +299,9 @@ impl Scalar {
             Self::Null => write_null(sink),
             Self::Boolean(value) => write_bool(sink, value.get()),
             Self::String(value) => write_string(sink, value.as_str()),
-            Self::Code(value) => {
-                write_tag(sink, value.identifier());
-                write_text(sink, value.as_str());
+            code_scalars!() => {
+                write_tag(sink, self.id());
+                write_text(sink, self.as_str().expect("a code borrowed its text"));
             }
             Self::Uuid(value) => {
                 write_tag(sink, DataTypeId::Uuid);

@@ -123,7 +123,7 @@ pub use types::protocol::{
 };
 pub use types::timezone::Timezone;
 pub use types::{
-    Bytes, Children, Code, CodeValue, Decimal, DecimalValue, Differences, Enum, Field, FieldRecord,
+    Bytes, Children, CodeValue, Decimal, DecimalValue, Differences, Enum, Field, FieldRecord,
     FieldRef, FieldScalar, FieldType, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
     OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, Str, TemporalFamily,
     TemporalValue, TypedField, TypedFieldRef, Value,

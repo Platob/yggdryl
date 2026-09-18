@@ -502,7 +502,7 @@ This is where the one string family changed stored digests: a value read from an
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
 | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
 | `String` | `string` | length `u64` little-endian, then the characters as UTF-8; the layout, charset and fixed width never feed |
-| `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
+| a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
 | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |

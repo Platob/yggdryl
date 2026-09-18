@@ -147,7 +147,7 @@ pub(super) fn emit_text(
 /// dictionary that never coded it; everything else spells as it does
 /// under no field.
 pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Option<SmolStr> {
-    let coded = matches!(value, crate::Scalar::Code(_))
+    let coded = value.is_code()
         || matches!(
             field.dtype(),
             crate::DataType::Side | crate::DataType::State
@@ -166,7 +166,8 @@ pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Op
 pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
     use crate::Scalar;
     match value {
-        Scalar::String(_) | Scalar::Code(_) => value.as_str().map(SmolStr::new),
+        Scalar::String(_) => value.as_str().map(SmolStr::new),
+        coded if coded.is_code() => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
