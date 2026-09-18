@@ -159,7 +159,7 @@ fn one_number_carries_the_maximum_or_the_width() {
     assert!(DataType::bytes(BytesLayout::FixedSizeBinary).is_err());
     let unwidened = DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary));
     assert!(unwidened.validate().is_err());
-    assert!(unwidened.into_arrow().is_err());
+    assert!(unwidened.into_arrow_datatype().is_err());
     // Every other spelling with a bound is a maximum.
     for spelling in ["large_binary(64)", "binary_view(64)"] {
         let parameters = DataType::from_str(spelling)
@@ -301,16 +301,16 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
     ];
     for (spelling, storage, document) in cases {
         let dtype = DataType::from_str(spelling).unwrap();
-        assert_eq!(dtype.clone().into_arrow().unwrap(), storage, "{spelling}");
+        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{spelling}");
         // A bare storage is the layout it names, with no maximum.
         assert_eq!(
-            DataType::from_arrow(&storage).unwrap(),
+            DataType::from_arrow_datatype(&storage).unwrap(),
             DataType::Bytes(dtype.bytes_parameters().unwrap().without_max()),
             "{spelling}"
         );
 
         let field = dtype.clone().nullable_field("payload");
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &storage, "{spelling}");
         assert_eq!(
             arrow
@@ -328,7 +328,7 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
             document,
             "{spelling}"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{spelling}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{spelling}");
     }
 
     // The document round-trips through its own door, and a document over a
@@ -357,7 +357,7 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
             .collect(),
         );
     assert_eq!(
-        Field::from_arrow(&foreign).unwrap().dtype(),
+        Field::from_arrow_field(&foreign).unwrap().dtype(),
         &DataType::large_binary()
     );
 }

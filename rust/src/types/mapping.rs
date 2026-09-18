@@ -445,3 +445,106 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     Ok(())
 }
 
+
+// ------------------------------------------------------------------------
+// Arrow projection: a map, and whether its keys are sorted within a row.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::DataType as ArrowDataType;
+    use arrow_schema::ffi::Flags;
+
+    use super::{MappingType, validate_map_entries};
+    use crate::types::family::ArrowFfiParts;
+    use crate::{DataType, Field, Result};
+
+    impl MappingType {
+        /// The Arrow storage this mapping lays out.
+        ///
+        /// Whether the keys are sorted is a leaf here and a flag there, so the
+        /// two spellings never disagree.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the entries are not the non-null two-child
+        /// struct a map declares, or have no Arrow projection.
+        pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            validate_map_entries(self.entries())?;
+            Ok(ArrowDataType::Map(
+                self.entries().clone().into_arrow_field_ref()?,
+                self.keys_sorted(),
+            ))
+        }
+
+        /// The same projection, consuming uniquely held entries.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
+            let keys_sorted = self.keys_sorted();
+            let entries = match Arc::try_unwrap(self.into_parameters()) {
+                Ok(parameters) => {
+                    validate_map_entries(&parameters.entries)?;
+                    parameters.entries.into_arrow_field_ref()?
+                }
+                Err(parameters) => {
+                    validate_map_entries(&parameters.entries)?;
+                    parameters.entries.clone().into_arrow_field_ref()?
+                }
+            };
+            Ok(ArrowDataType::Map(entries, keys_sorted))
+        }
+
+        /// The C Data Interface node this mapping writes.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
+            validate_map_entries(self.entries())?;
+            Ok(ArrowFfiParts {
+                format: "+m".to_owned(),
+                children: vec![self.entries().clone().into_arrow_field_ffi()?],
+                dictionary: None,
+                flags: if self.keys_sorted() {
+                    Flags::MAP_KEYS_SORTED
+                } else {
+                    Flags::empty()
+                },
+            })
+        }
+
+        /// The mapping datatype one Arrow map storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the entries cannot be imported or are not the
+        /// non-null two-child struct a map declares.
+        pub(crate) fn from_arrow_storage_at_depth(
+            entries: &arrow_schema::FieldRef,
+            keys_sorted: bool,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::map(
+                Field::from_arrow_field_ref_at_depth(Arc::clone(entries), depth)?,
+                keys_sorted,
+            )
+        }
+
+        /// The same import, consuming Arrow's shared entries field.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_storage_at_depth`] carries the rule.
+        pub(crate) fn from_arrow_storage_owned_at_depth(
+            entries: arrow_schema::FieldRef,
+            keys_sorted: bool,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::map(Field::from_arrow_field_ref_at_depth(entries, depth)?, keys_sorted)
+        }
+    }
+}

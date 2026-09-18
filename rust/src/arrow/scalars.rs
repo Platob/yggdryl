@@ -737,7 +737,7 @@ fn require_layout(field: &Field, array: &dyn Array) -> Result<()> {
     // A caller-built DataType can be arbitrarily deep, so bound the shape
     // before Arrow's recursive projection walks it.
     field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_ref()?.data_type().clone();
+    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
     if array.data_type() == &expected {
         return Ok(());
     }

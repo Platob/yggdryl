@@ -1027,7 +1027,7 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Res
         let scalar = crate::arrow::scalar_array(field, value)
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
         columns.push(repeat(&scalar, batch.num_rows())?);
-        fields.push(field.clone().into_arrow_ref()?);
+        fields.push(field.clone().into_arrow_field_ref()?);
     }
     let schema =
         Arc::new(ArrowSchema::new(fields).with_metadata(batch.schema().metadata().clone()));

@@ -1,7 +1,6 @@
 //! Core datatypes, fields, scalars, and their family-owned behavior.
 
 mod arithmetic;
-mod arrow;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
@@ -60,8 +59,6 @@ pub mod cast;
 pub use crate::{TimeUnit, UnionMode};
 pub(crate) use scalar::code_scalars;
 pub(crate) use arithmetic::Arithmetic;
-pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
-pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
 pub use boolean::*;
 pub use bytes::*;
 pub use decimal::*;
@@ -84,7 +81,9 @@ pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::*;
-pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+pub(crate) use geospatial::{
+    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, is_variant_storage,
+};
 pub use integer::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;

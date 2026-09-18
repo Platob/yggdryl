@@ -215,8 +215,8 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
     );
     let batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            event.into_arrow().expect("Arrow field"),
-            symbol.into_arrow().expect("Arrow field"),
+            event.into_arrow_field().expect("Arrow field"),
+            symbol.into_arrow_field().expect("Arrow field"),
         ])),
         vec![instants(), symbols],
     )

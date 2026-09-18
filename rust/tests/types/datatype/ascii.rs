@@ -469,9 +469,9 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
         ),
     ];
     for (dtype, storage, document) in cases {
-        assert_eq!(dtype.clone().into_arrow().unwrap(), storage, "{dtype}");
+        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{dtype}");
         let field = dtype.clone().nullable_field("ccy");
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &storage, "{dtype}");
         assert_eq!(
             arrow
@@ -489,7 +489,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
             Some(document),
             "{dtype}"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{dtype}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{dtype}");
 
         // A value crosses as itself in both directions.
         let value = dtype.scalar("USD").unwrap();
@@ -506,7 +506,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
     // name is nobody's: a field wearing it imports as its storage.
     let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, true);
     assert_eq!(
-        Field::from_arrow(&plain).unwrap().dtype(),
+        Field::from_arrow_field(&plain).unwrap().dtype(),
         &DataType::utf8()
     );
     let retired = plain.with_metadata(
@@ -521,7 +521,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
         .collect(),
     );
     assert_eq!(
-        Field::from_arrow(&retired).unwrap().dtype(),
+        Field::from_arrow_field(&retired).unwrap().dtype(),
         &DataType::utf8()
     );
 }
@@ -541,7 +541,7 @@ fn a_string_enum_needs_a_fixed_ascii_width_its_members_pack_into() {
             .try_with_string_enum(&sides)
             .unwrap_or_else(|error| panic!("{accepted}: {error}"));
         assert_eq!(field.string_enum().unwrap().as_ref(), Some(&sides));
-        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        let recovered = Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field, "{accepted}");
     }
     for refused in [

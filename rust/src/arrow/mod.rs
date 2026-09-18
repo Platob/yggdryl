@@ -317,9 +317,9 @@ pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
         fields
             .iter()
             .cloned()
-            .map(Field::into_arrow_ref)
+            .map(Field::into_arrow_field_ref)
             .collect::<crate::Result<Vec<_>>>()?,
-        field.as_metadata().clone().into_arrow(),
+        field.as_metadata().clone().into_arrow_metadata(),
     )))
 }
 
@@ -880,7 +880,7 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     // malformed foreign scalar reports a normal schema error rather than
     // exhausting the native stack.
     field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_ref()?.data_type().clone();
+    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
     if array.data_type() != &expected {
         return Err(Error::IncompatibleSchema(format!(
             "Arrow scalar datatype {:?} differs from expected {expected:?}",
@@ -1259,7 +1259,7 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     let fields = schema
         .fields()
         .iter()
-        .map(|field| Field::from_arrow_ref(field.clone()).map_err(Error::Core))
+        .map(|field| Field::from_arrow_field_ref(field.clone()).map_err(Error::Core))
         .collect::<Result<Vec<_>>>()?;
     let dtype = DataType::from_fields(fields)?;
     let mut field = Field::from_parts(name, dtype, false, metadata)?;

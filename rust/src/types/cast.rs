@@ -165,7 +165,7 @@ mod kernel {
                 return Ok(Arc::clone(array));
             }
             budget.add_array(target.dtype(), array.len())?;
-            let source_type = DataType::from_arrow(array.data_type())?;
+            let source_type = DataType::from_arrow_datatype(array.data_type())?;
             let full = [(0, array.len())];
             reserve_cast_output_payload(
                 array.as_ref(),
@@ -1523,7 +1523,7 @@ impl ArrayCastPlan {
             None => None,
         };
         check_extension_source(field, source_extension.as_ref())?;
-        let expected = field.clone().into_arrow_ref()?.data_type().clone();
+        let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
         // A geospatial target validates WKB on the way in and a string that
         // declares more than Arrow can say - a charset, a bound - validates
         // text, so an exact storage source must still take the planned path,
@@ -1974,7 +1974,7 @@ impl ArrayCastPlan {
                 let ArrowDataType::Map(target_entries, ordered) = expected else {
                     return Err(internal_target_error("map"));
                 };
-                let DataType::Mapping(source) = DataType::from_arrow(source_type)? else {
+                let DataType::Mapping(source) = DataType::from_arrow_datatype(source_type)? else {
                     return Err(Error::IncompatibleSchema(
                         "source Arrow Map did not import as a Map datatype".to_owned(),
                     ));
@@ -2046,7 +2046,7 @@ impl ArrayCastPlan {
                 DataType::RunEndEncoded(encoded),
                 ArrowDataType::RunEndEncoded(source_runs, source_values),
             ) if source_runs.data_type()
-                == encoded.run_ends().clone().into_arrow_ref()?.data_type() =>
+                == encoded.run_ends().clone().into_arrow_field_ref()?.data_type() =>
             {
                 ArrayCastKind::RunEndEncoded {
                     source_run_type: source_runs.data_type().clone(),
@@ -2360,7 +2360,7 @@ impl ArrayCastPlan {
                 budget,
             )?,
             ArrayCastKind::DeferredUnsupported { reason } => {
-                let source_type = DataType::from_arrow(array.data_type())?;
+                let source_type = DataType::from_arrow_datatype(array.data_type())?;
                 let exposed = exposure.map_or(array.len(), BooleanBuffer::count_set_bits);
                 let logical_nulls =
                     exposed_logical_null_count(array.as_ref(), &source_type, exposure)?;
@@ -3948,7 +3948,7 @@ pub(crate) mod columns {
                 |index| Ok((index, index + 1)),
                 budget,
             )?;
-            let source_type = DataType::from_arrow(array.data_type())?;
+            let source_type = DataType::from_arrow_datatype(array.data_type())?;
             reserve_source_selection(
                 array.as_ref(),
                 &source_type,
@@ -4383,7 +4383,7 @@ pub(crate) mod columns {
             exposure: Option<&BooleanBuffer>,
             budget: &mut MaterializationBudget,
         ) -> Result<ArrayRef> {
-            let arrow_type = field.clone().into_arrow_ref()?.data_type().clone();
+            let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
             if len == 0 {
                 return Ok(arrow_array::new_empty_array(&arrow_type));
             }

@@ -213,13 +213,13 @@ fn each_identifier_is_a_registered_code_that_round_trips_everywhere() {
         // Arrow: the text storage under the code's own extension name, and
         // the identity back from it.
         let field = Field::new(*name, dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}")
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
         // The packing is at the code's own width, and there is no
         // vocabulary to prebuild for an open identifier space.

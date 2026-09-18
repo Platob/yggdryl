@@ -171,3 +171,119 @@ pub(crate) fn validate_dictionary_key(key: &DataType) -> Result<()> {
 fn is_valid_dictionary_key(key: &DataType) -> bool {
     key.is_integer()
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: a key width over the values it stands for.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::DataType as ArrowDataType;
+    use arrow_schema::ffi::Flags;
+
+    use super::{EnumType, validate_dictionary_key};
+    use crate::types::family::ArrowFfiParts;
+    use crate::{DataType, Result};
+
+    impl EnumType {
+        /// The Arrow storage this encoding lays out.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the key is not an integer a dictionary may
+        /// use, or either half has no Arrow projection.
+        pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            let Self::Dictionary(dictionary) = self;
+            validate_dictionary_key(&dictionary.key)?;
+            Ok(ArrowDataType::Dictionary(
+                Box::new(dictionary.key.to_arrow_datatype()?),
+                Box::new(dictionary.value.to_arrow_datatype()?),
+            ))
+        }
+
+        /// The same projection, consuming a uniquely held encoding.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
+            let Self::Dictionary(dictionary) = self;
+            match Arc::try_unwrap(dictionary) {
+                Ok(dictionary) => {
+                    validate_dictionary_key(&dictionary.key)?;
+                    Ok(ArrowDataType::Dictionary(
+                        Box::new(dictionary.key.into_arrow_datatype()?),
+                        Box::new(dictionary.value.into_arrow_datatype()?),
+                    ))
+                }
+                Err(dictionary) => {
+                    validate_dictionary_key(&dictionary.key)?;
+                    Ok(ArrowDataType::Dictionary(
+                        Box::new(dictionary.key.clone().into_arrow_datatype()?),
+                        Box::new(dictionary.value.clone().into_arrow_datatype()?),
+                    ))
+                }
+            }
+        }
+
+        /// The C Data Interface node this encoding writes.
+        ///
+        /// An encoded extension declares its identity once, on the node the
+        /// field is: Arrow's dictionary values are a bare datatype, so an
+        /// importer reads the outer entries and never the ones a values
+        /// projection would carry. The outer node writes them instead.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
+            let Self::Dictionary(dictionary) = self;
+            validate_dictionary_key(&dictionary.key)?;
+            let key = dictionary.key.clone().into_arrow_datatype_ffi()?;
+            let mut values = dictionary.value.clone().into_arrow_datatype_ffi()?;
+            if dictionary.value.arrow_extension().is_some() {
+                values = values.with_metadata::<[(&str, &str); 0], _>([])?;
+            }
+            Ok(ArrowFfiParts {
+                format: key.format().to_owned(),
+                children: Vec::new(),
+                dictionary: Some(values),
+                flags: Flags::empty(),
+            })
+        }
+
+        /// The enum datatype one Arrow dictionary storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when either half cannot be imported, or the key is
+        /// not an integer a dictionary may use.
+        pub(crate) fn from_arrow_storage_at_depth(
+            key: &ArrowDataType,
+            values: &ArrowDataType,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::dictionary(
+                DataType::from_arrow_datatype_at_depth(key, depth)?,
+                DataType::from_arrow_datatype_at_depth(values, depth)?,
+            )
+        }
+
+        /// The same import, consuming Arrow's boxed halves.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_storage_at_depth`] carries the rule.
+        pub(crate) fn from_arrow_storage_owned_at_depth(
+            key: Box<ArrowDataType>,
+            values: Box<ArrowDataType>,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::dictionary(
+                DataType::from_arrow_datatype_owned_at_depth(*key, depth)?,
+                DataType::from_arrow_datatype_owned_at_depth(*values, depth)?,
+            )
+        }
+    }
+}

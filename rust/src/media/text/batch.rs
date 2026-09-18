@@ -276,7 +276,7 @@ impl Intake {
         for (column, child) in plan.columns().iter().zip(field.fields()) {
             let at = locate(schema, column);
             if let Some(at) = at {
-                let expected = child.clone().into_arrow_ref()?;
+                let expected = child.clone().into_arrow_field_ref()?;
                 let actual = schema.field(at);
                 if expected.data_type() != actual.data_type() {
                     return Err(crate::Error::InvalidRecord {

@@ -24,7 +24,7 @@ fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
         union.into_json().unwrap()
     );
     assert_eq!(
-        DataType::from_arrow(&variant.clone().into_arrow().unwrap()).unwrap(),
+        DataType::from_arrow_datatype(&variant.clone().into_arrow_datatype().unwrap()).unwrap(),
         variant
     );
 }
@@ -81,7 +81,7 @@ fn deeply_nested_variants_round_trip_without_a_second_logical_type() {
         value
     );
     assert_eq!(
-        DataType::from_arrow(&value.clone().into_arrow().unwrap()).unwrap(),
+        DataType::from_arrow_datatype(&value.clone().into_arrow_datatype().unwrap()).unwrap(),
         value
     );
 }

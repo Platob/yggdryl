@@ -787,3 +787,74 @@ pub(crate) fn integer_from_text(text: &str) -> Option<Scalar> {
         .map(Scalar::from)
         .or_else(|| text.parse::<u128>().ok().map(Scalar::from))
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: every integer width is one of Arrow's own.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::IntegerType;
+    use crate::types::invalid;
+    use crate::{DataType, Result};
+
+    impl IntegerType {
+        /// The Arrow storage this width lays out.
+        pub(crate) const fn arrow_storage(self) -> ArrowDataType {
+            match self {
+                Self::Int8 => ArrowDataType::Int8,
+                Self::Int16 => ArrowDataType::Int16,
+                Self::Int32 => ArrowDataType::Int32,
+                Self::Int64 => ArrowDataType::Int64,
+                Self::UInt8 => ArrowDataType::UInt8,
+                Self::UInt16 => ArrowDataType::UInt16,
+                Self::UInt32 => ArrowDataType::UInt32,
+                Self::UInt64 => ArrowDataType::UInt64,
+            }
+        }
+
+        /// The width one Arrow integer storage names, `None` for anything else.
+        pub(crate) const fn from_arrow_storage(value: &ArrowDataType) -> Option<Self> {
+            match value {
+                ArrowDataType::Int8 => Some(Self::Int8),
+                ArrowDataType::Int16 => Some(Self::Int16),
+                ArrowDataType::Int32 => Some(Self::Int32),
+                ArrowDataType::Int64 => Some(Self::Int64),
+                ArrowDataType::UInt8 => Some(Self::UInt8),
+                ArrowDataType::UInt16 => Some(Self::UInt16),
+                ArrowDataType::UInt32 => Some(Self::UInt32),
+                ArrowDataType::UInt64 => Some(Self::UInt64),
+                _ => None,
+            }
+        }
+    }
+
+    /// The Arrow storage one integer datatype lays out.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype belongs to another family.
+    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
+        Ok(IntegerType::try_from(dtype)?.arrow_storage())
+    }
+
+    /// The integer datatype one Arrow storage imports as.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
+        IntegerType::from_arrow_storage(value)
+            .map(DataType::from)
+            .ok_or_else(|| {
+                invalid(
+                    "integer",
+                    format_smolstr!("expected an integer storage, got {value}"),
+                )
+            })
+    }
+}
+
+pub(crate) use arrow::{arrow_storage, from_arrow_storage};

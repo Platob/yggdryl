@@ -99,3 +99,100 @@ pub(crate) fn validate_run_ends(run_ends: &Field) -> Result<()> {
     Ok(())
 }
 
+
+// ------------------------------------------------------------------------
+// Arrow projection: a run-end column beside the values it repeats.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::DataType as ArrowDataType;
+
+    use super::{RunEndEncodedType, validate_run_ends};
+    use crate::types::family::ArrowFfiParts;
+    use crate::{DataType, Field, Result};
+
+    impl RunEndEncodedType {
+        /// The Arrow storage this encoding lays out.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the run ends are not a non-null signed integer
+        /// column, or either child has no Arrow projection.
+        pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            validate_run_ends(&self.run_ends)?;
+            Ok(ArrowDataType::RunEndEncoded(
+                self.run_ends.clone().into_arrow_field_ref()?,
+                self.values.clone().into_arrow_field_ref()?,
+            ))
+        }
+
+        /// The same projection, consuming a uniquely held encoding.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(encoded: Arc<Self>) -> Result<ArrowDataType> {
+            match Arc::try_unwrap(encoded) {
+                Ok(encoded) => {
+                    validate_run_ends(&encoded.run_ends)?;
+                    Ok(ArrowDataType::RunEndEncoded(
+                        encoded.run_ends.into_arrow_field_ref()?,
+                        encoded.values.into_arrow_field_ref()?,
+                    ))
+                }
+                Err(encoded) => encoded.arrow_storage(),
+            }
+        }
+
+        /// The C Data Interface node this encoding writes.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
+            validate_run_ends(&self.run_ends)?;
+            Ok(ArrowFfiParts::nested(
+                "+r",
+                vec![
+                    self.run_ends.clone().into_arrow_field_ffi()?,
+                    self.values.clone().into_arrow_field_ffi()?,
+                ],
+            ))
+        }
+
+        /// The run-end datatype one Arrow run-end storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when either child cannot be imported or the run
+        /// ends are not a non-null signed integer column.
+        pub(crate) fn from_arrow_storage_at_depth(
+            run_ends: &arrow_schema::FieldRef,
+            values: &arrow_schema::FieldRef,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::run_end_encoded(
+                Field::from_arrow_field_ref_at_depth(Arc::clone(run_ends), depth)?,
+                Field::from_arrow_field_ref_at_depth(Arc::clone(values), depth)?,
+            )
+        }
+
+        /// The same import, consuming Arrow's shared children.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_storage_at_depth`] carries the rule.
+        pub(crate) fn from_arrow_storage_owned_at_depth(
+            run_ends: arrow_schema::FieldRef,
+            values: arrow_schema::FieldRef,
+            depth: usize,
+        ) -> Result<DataType> {
+            DataType::run_end_encoded(
+                Field::from_arrow_field_ref_at_depth(run_ends, depth)?,
+                Field::from_arrow_field_ref_at_depth(values, depth)?,
+            )
+        }
+    }
+}

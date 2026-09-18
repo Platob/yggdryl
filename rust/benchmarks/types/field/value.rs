@@ -209,7 +209,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     .expect("the static HTTP metadata is valid");
     http_field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .expect("the static HTTP field projects to Arrow");
     group.bench_function("http_content_type_exact", |bencher| {
         bencher.iter(|| black_box(&http_field).as_http().content_type());
@@ -335,7 +335,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("the static transform is valid");
         iceberg_field
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .expect("the static Iceberg field projects to Arrow");
 
         group.bench_function("iceberg_doc_exact", |bencher| {
@@ -411,7 +411,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 Metadata::from_entries([("comment", "analytics"), ("postgres:table", "trades")])
                     .expect("the static metadata is valid")
             },
-            |metadata| black_box(metadata.into_arrow()),
+            |metadata| black_box(metadata.into_arrow_metadata()),
             BatchSize::SmallInput,
         );
     });

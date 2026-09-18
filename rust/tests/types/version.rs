@@ -318,10 +318,10 @@ fn scalar_and_field_contracts_rewrite_text_once() {
 #[test]
 fn arrow_field_values_and_casts_keep_version_identity() {
     let field = Field::new("begin_string", DataType::Version, false);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.version");
-    assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+    assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
     let stored = scalar_array(&field, &Scalar::from(version("5.0.2"))).unwrap();
     assert_eq!(

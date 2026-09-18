@@ -176,7 +176,7 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
         ),
     ] {
         let field = Field::new("held", dtype.clone(), true);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             arrow
@@ -185,7 +185,7 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
                 .map(String::as_str),
             Some(extension)
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap().dtype(), &dtype);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap().dtype(), &dtype);
 
         let array = scalar_array(&field, &value).unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::Utf8);

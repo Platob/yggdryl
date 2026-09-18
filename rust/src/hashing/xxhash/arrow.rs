@@ -888,7 +888,7 @@ pub(crate) fn row_digests_with<S: ArrowDigestState>(
         .schema()
         .fields()
         .iter()
-        .map(|field| Field::from_arrow_ref(Arc::clone(field)).map_err(Error::from))
+        .map(|field| Field::from_arrow_field_ref(Arc::clone(field)).map_err(Error::from))
         .collect::<Result<_>>()?;
     let columns = batch.columns();
     let selected: Vec<usize> = fields

@@ -527,3 +527,14 @@ impl Value for Uuid {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: sixteen bytes, under the canonical `arrow.uuid` name.
+// ------------------------------------------------------------------------
+
+impl UuidType {
+    /// The Arrow storage a UUID column lays out.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::FixedSizeBinary(16)
+    }
+}

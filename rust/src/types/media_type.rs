@@ -128,3 +128,14 @@ impl From<MediaType> for Scalar {
 /// The Arrow extension name preserving [`crate::DataType::MediaType`] over its
 /// Utf8 storage.
 pub(crate) const MEDIATYPE_EXTENSION_NAME: &str = "yggdryl.mediatype";
+
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl MediaTypeType {
+    /// The Arrow storage a media type column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}

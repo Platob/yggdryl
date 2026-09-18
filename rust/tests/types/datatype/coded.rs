@@ -126,8 +126,8 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
 
         // Arrow: one type and back, losslessly, through a field.
         let field = Field::new(*name, dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        let arrow = field.clone().into_arrow_field().unwrap();
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
 
         // Merge and compatibility: with itself is itself; a number's
         // rendering does not fit a code, so absorbing one is no less than
@@ -382,7 +382,7 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
 fn every_code_stores_as_the_text_it_is_under_its_own_extension() {
     for (name, dtype, width, sample) in &CODED {
         let field = Field::new("code", dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8, "{name}");
         assert_eq!(
@@ -392,7 +392,7 @@ fn every_code_stores_as_the_text_it_is_under_its_own_extension() {
         );
         assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "", "{name}");
         // The identity round-trips: the same bytes come back the same code.
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
 
         // A value is stored as exactly its own bytes, and text cast into the
         // column becomes the same cell.
@@ -456,18 +456,18 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
 
     // Identical storage, different identity, so neither imports as the other:
     // the extension *name* is what separates them, never the storage.
-    let currency_arrow = currency.clone().into_arrow().unwrap();
-    let bounded_arrow = bounded.clone().into_arrow().unwrap();
+    let currency_arrow = currency.clone().into_arrow_field().unwrap();
+    let bounded_arrow = bounded.clone().into_arrow_field().unwrap();
     assert_eq!(currency_arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(bounded_arrow.data_type(), &ArrowDataType::Utf8);
     assert_ne!(currency_arrow.metadata(), bounded_arrow.metadata());
-    assert_eq!(Field::from_arrow(&currency_arrow).unwrap(), currency);
-    assert_eq!(Field::from_arrow(&bounded_arrow).unwrap(), bounded);
+    assert_eq!(Field::from_arrow_field(&currency_arrow).unwrap(), currency);
+    assert_eq!(Field::from_arrow_field(&bounded_arrow).unwrap(), bounded);
 
     // The same text under no extension at all stays plain text.
     let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, false);
     assert_eq!(
-        Field::from_arrow(&plain).unwrap().dtype(),
+        Field::from_arrow_field(&plain).unwrap().dtype(),
         &DataType::utf8()
     );
 
@@ -486,7 +486,7 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
             .collect(),
         );
     assert_eq!(
-        Field::from_arrow(&mismatched).unwrap().dtype(),
+        Field::from_arrow_field(&mismatched).unwrap().dtype(),
         &DataType::fixed_size_binary(3).unwrap()
     );
 }
@@ -563,14 +563,14 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
     for (name, dtype, _) in DataType::CODES {
         let encoded = DataType::dictionary(DataType::Int32, dtype.clone()).unwrap();
         let field = Field::new("code", encoded.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}"),
             "{name}"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
     }
 
     // The width keeps its own identity the same way, and a dictionary of
@@ -581,7 +581,7 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
         false,
     );
     assert_eq!(
-        Field::from_arrow(&width.clone().into_arrow().unwrap()).unwrap(),
+        Field::from_arrow_field(&width.clone().into_arrow_field().unwrap()).unwrap(),
         width
     );
     let plain = Field::new(
@@ -590,7 +590,7 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
         false,
     );
     assert_eq!(
-        Field::from_arrow(&plain.clone().into_arrow().unwrap()).unwrap(),
+        Field::from_arrow_field(&plain.clone().into_arrow_field().unwrap()).unwrap(),
         plain
     );
 }
@@ -749,7 +749,7 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
         // And it crosses Arrow as the text it is, extension name and all, so
         // a column round-trips without becoming anonymous text.
         let field = Field::new(name, dtype.clone(), true);
-        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        let recovered = Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field);
     }
 

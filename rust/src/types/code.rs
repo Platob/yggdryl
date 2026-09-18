@@ -331,3 +331,37 @@ pub(crate) fn folded_spelling(spelling: &str) -> SmolStr {
     }
     held.finish()
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: a code is the ASCII text it is.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::code_extension_name;
+    use crate::types::invalid;
+    use crate::{DataType, Result};
+
+    /// The Arrow storage one registered code lays out.
+    ///
+    /// A code is the ASCII text it is, so it rides Arrow's own text layout and
+    /// the `yggdryl.{country,currency,mic,...}` name beside it carries the
+    /// identity: three bytes under `yggdryl.currency` read back a currency.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype is not a registered code.
+    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
+        if code_extension_name(dtype).is_some() {
+            return Ok(ArrowDataType::Utf8);
+        }
+        Err(invalid(
+            "code",
+            format_smolstr!("expected a registered code datatype, got {dtype}"),
+        ))
+    }
+}
+
+pub(crate) use arrow::arrow_storage as code_arrow_storage;

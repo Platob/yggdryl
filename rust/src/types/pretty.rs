@@ -8,9 +8,9 @@
 //! solves.
 //!
 //! The readable form is the **alternate**: `{:#}` on either type, backed by a
-//! named [`Field::pretty`] / [`DataType::pretty`] adapter so a caller who
-//! dislikes format flags has a spelling too, and so one implementation sits
-//! behind both.
+//! named [`Field::into_pretty_str`] / [`DataType::into_pretty_str`] spelling so
+//! a caller who dislikes format flags has one too, and so one implementation
+//! sits behind both.
 //!
 //! Each level shows the name, the datatype, nullability, and only the
 //! attributes that are actually set - a `dictionary_id` of `0` or empty
@@ -35,7 +35,7 @@
 //!
 //! // Readable is the alternate, or the named adapter.
 //! let readable = format!("{order:#}");
-//! assert_eq!(readable, order.pretty().to_string());
+//! assert_eq!(readable, order.into_pretty_str());
 //! assert_eq!(
 //!     readable,
 //!     "\
@@ -63,7 +63,14 @@ impl Field {
     /// The named spelling of `{:#}`; both run the one implementation, and
     /// [`Pretty`] documents the shape they produce.
     #[must_use]
-    pub const fn pretty(&self) -> Pretty<'_> {
+    #[allow(clippy::wrong_self_convention, reason = "the rendering borrows; the string is new")]
+    pub fn into_pretty_str(&self) -> String {
+        self.pretty_view().to_string()
+    }
+
+    /// The borrowing adapter behind `{:#}` and [`Self::into_pretty_str`].
+    #[must_use]
+    pub const fn pretty_view(&self) -> Pretty<'_> {
         Pretty::Field(self)
     }
 }
@@ -82,7 +89,7 @@ impl DataType {
     /// );
     ///
     /// assert_eq!(
-    ///     rows.pretty().to_string(),
+    ///     rows.into_pretty_str(),
     ///     "\
     /// list
     ///   item: struct[1], nullable
@@ -92,15 +99,22 @@ impl DataType {
     /// # }
     /// ```
     #[must_use]
-    pub const fn pretty(&self) -> Pretty<'_> {
+    #[allow(clippy::wrong_self_convention, reason = "the rendering borrows; the string is new")]
+    pub fn into_pretty_str(&self) -> String {
+        self.pretty_view().to_string()
+    }
+
+    /// The borrowing adapter behind `{:#}` and [`Self::into_pretty_str`].
+    #[must_use]
+    pub const fn pretty_view(&self) -> Pretty<'_> {
         Pretty::DataType(self)
     }
 }
 
 /// A [`std::fmt::Display`] adapter rendering a schema node readably.
 ///
-/// Built by [`Field::pretty`] and [`DataType::pretty`]; borrowing, so building
-/// one allocates nothing and the rendering happens on write.
+/// Built by [`Field::pretty_view`] and [`DataType::pretty_view`]; borrowing, so
+/// building one allocates nothing and the rendering happens on write.
 #[derive(Clone, Copy, Debug)]
 pub enum Pretty<'node> {
     /// A field and everything under it.

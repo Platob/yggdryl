@@ -338,12 +338,12 @@ mod value {
     #[test]
     fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
         let field = Field::new("id", DataType::Uuid, false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
         assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
         assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
         // The stored bytes are the identifier; the value reads back exact.
         let array = yggdryl::arrow::scalar_array(&field, &Scalar::from(TEXT)).unwrap();

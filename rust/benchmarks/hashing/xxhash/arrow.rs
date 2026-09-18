@@ -84,7 +84,7 @@ fn fallback_batch() -> RecordBatch {
         arrays.push(
             yggdryl::arrow::array_from_value(&field, &values).expect("a valid column fixture"),
         );
-        fields.push(field.into_arrow().expect("the field projects to Arrow"));
+        fields.push(field.into_arrow_field().expect("the field projects to Arrow"));
     }
     RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("a valid batch fixture")
 }
@@ -120,7 +120,7 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     ) as ArrayRef;
     let missing = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.clone().into_arrow().expect("Arrow field"),
+            symbol.clone().into_arrow_field().expect("Arrow field"),
         ])),
         vec![Arc::clone(&symbols)],
     )
@@ -132,8 +132,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     };
     let defaults = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.clone().into_arrow().expect("Arrow field"),
-            digest.clone().into_arrow().expect("Arrow field"),
+            symbol.clone().into_arrow_field().expect("Arrow field"),
+            digest.clone().into_arrow_field().expect("Arrow field"),
         ])),
         vec![Arc::clone(&symbols), default_values],
     )
@@ -145,8 +145,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     };
     let populated = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.into_arrow().expect("Arrow field"),
-            digest.into_arrow().expect("Arrow field"),
+            symbol.into_arrow_field().expect("Arrow field"),
+            digest.into_arrow_field().expect("Arrow field"),
         ])),
         vec![symbols, populated_values],
     )

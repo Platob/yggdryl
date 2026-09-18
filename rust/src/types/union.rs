@@ -258,3 +258,150 @@ pub(crate) fn validate_union_values(values: &[(i8, Field)], validate_children: b
     }
     Ok(())
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: tagged members, and the layout mode they share.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::{
+        DataType as ArrowDataType, UnionFields as ArrowUnionFields, UnionMode as ArrowUnionMode,
+    };
+    use arrow_schema::ffi::Flags;
+
+    use super::UnionFields;
+    use crate::types::family::ArrowFfiParts;
+    use crate::{DataType, Field, Result, UnionMode};
+
+    impl From<UnionMode> for ArrowUnionMode {
+        fn from(value: UnionMode) -> Self {
+            match value {
+                UnionMode::Sparse => Self::Sparse,
+                UnionMode::Dense => Self::Dense,
+            }
+        }
+    }
+
+    impl From<ArrowUnionMode> for UnionMode {
+        fn from(value: ArrowUnionMode) -> Self {
+            match value {
+                ArrowUnionMode::Sparse => Self::Sparse,
+                ArrowUnionMode::Dense => Self::Dense,
+            }
+        }
+    }
+
+    impl UnionFields {
+        /// The Arrow storage these members lay out under one mode.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a member has no Arrow projection or Arrow
+        /// refuses the type IDs.
+        pub(crate) fn arrow_storage(&self, mode: UnionMode) -> Result<ArrowDataType> {
+            let mut type_ids = Vec::with_capacity(self.len());
+            let mut fields = Vec::with_capacity(self.len());
+            for (type_id, field) in self.iter() {
+                type_ids.push(type_id);
+                fields.push(field.clone().into_arrow_field_ref()?);
+            }
+            Ok(ArrowDataType::Union(
+                ArrowUnionFields::try_new(type_ids, fields)?,
+                mode.into(),
+            ))
+        }
+
+        /// The same projection, consuming uniquely held members.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(self, mode: UnionMode) -> Result<ArrowDataType> {
+            let members = self.into_fields();
+            let mut type_ids = Vec::with_capacity(members.len());
+            let mut fields = Vec::with_capacity(members.len());
+            for (type_id, field) in members {
+                type_ids.push(type_id);
+                fields.push(field.into_arrow_field_ref()?);
+            }
+            Ok(ArrowDataType::Union(
+                ArrowUnionFields::try_new(type_ids, fields)?,
+                mode.into(),
+            ))
+        }
+
+        /// The C Data Interface node these members write.
+        ///
+        /// The format string spells the mode and then every type ID in order,
+        /// so the tags survive the boundary exactly as declared.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a member has no Arrow projection.
+        pub(crate) fn arrow_ffi_parts(&self, mode: UnionMode) -> Result<ArrowFfiParts> {
+            let prefix = match mode {
+                UnionMode::Dense => "+ud:",
+                UnionMode::Sparse => "+us:",
+            };
+            let mut format = String::with_capacity(prefix.len() + self.len() * 4);
+            format.push_str(prefix);
+            let mut children = Vec::with_capacity(self.len());
+            for (index, (type_id, field)) in self.iter().enumerate() {
+                if index != 0 {
+                    format.push(',');
+                }
+                push_i8_decimal(&mut format, type_id);
+                children.push(field.clone().into_arrow_field_ffi()?);
+            }
+            Ok(ArrowFfiParts {
+                format,
+                children,
+                dictionary: None,
+                flags: Flags::empty(),
+            })
+        }
+
+        /// The union datatype one Arrow union storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a member cannot be imported or the type IDs
+        /// are not ones this crate accepts.
+        pub(crate) fn from_arrow_storage_at_depth(
+            fields: &ArrowUnionFields,
+            mode: ArrowUnionMode,
+            depth: usize,
+        ) -> Result<DataType> {
+            let members = fields
+                .iter()
+                .map(|(type_id, field)| {
+                    Ok((
+                        type_id,
+                        Field::from_arrow_field_ref_at_depth(Arc::clone(field), depth)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(DataType::Union(
+                Self::from_imported_fields(members)?,
+                mode.into(),
+            ))
+        }
+    }
+
+    /// Writes one signed type ID as decimal, without going through `format!`.
+    fn push_i8_decimal(output: &mut String, value: i8) {
+        let magnitude = value.unsigned_abs();
+        if value < 0 {
+            output.push('-');
+        }
+        if magnitude >= 100 {
+            output.push(char::from(b'0' + magnitude / 100));
+        }
+        if magnitude >= 10 {
+            output.push(char::from(b'0' + magnitude / 10 % 10));
+        }
+        output.push(char::from(b'0' + magnitude % 10));
+    }
+}

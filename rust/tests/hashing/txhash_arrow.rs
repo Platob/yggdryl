@@ -32,7 +32,7 @@ fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
     let fields = fields
         .iter()
         .cloned()
-        .map(Field::into_arrow)
+        .map(Field::into_arrow_field)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
@@ -545,7 +545,7 @@ fn quantity_field() -> Field {
 fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
     let inner = DataType::from_fields([event_field(), symbol_field()]).unwrap();
     let meta = Field::new("meta", inner, true);
-    let struct_fields = match meta.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match meta.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };
@@ -684,7 +684,7 @@ fn a_coupled_holder_under_a_null_struct_stays_untouched() {
         symbols(),
         Arc::new(FixedSizeBinaryArray::new(16, vec![0_u8; 48].into(), None)),
     ];
-    let struct_fields = match nested.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };
@@ -714,7 +714,7 @@ fn a_containing_holder_reads_a_nested_coupled_holder_as_its_bytes() {
     outer.as_digest_mut().set_holder().unwrap();
     outer.as_digest_mut().set_sources(["nested"]).unwrap();
     let root = struct_root([nested.clone(), outer]);
-    let struct_fields = match nested.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };

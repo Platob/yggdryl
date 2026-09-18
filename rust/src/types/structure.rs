@@ -1853,3 +1853,106 @@ impl Value for Record {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: named children, in the order they are declared.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef, Fields as ArrowFields};
+
+    use super::{Fields, StructureType};
+    use crate::types::family::ArrowFfiParts;
+    use crate::{DataType, Field, Result};
+
+    impl StructureType {
+        /// The Arrow storage these children lay out.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a child has no Arrow projection.
+        pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            Ok(ArrowDataType::Struct(into_arrow_fields(
+                &self.clone().into_fields(),
+            )?))
+        }
+
+        /// The same projection, consuming uniquely held children.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
+            let fields = self
+                .into_fields()
+                .into_fields()
+                .into_iter()
+                .map(Field::into_arrow_field_ref)
+                .collect::<Result<Vec<_>>>()?;
+            Ok(ArrowDataType::Struct(fields.into()))
+        }
+
+        /// The C Data Interface node these children write.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
+            Ok(ArrowFfiParts::nested(
+                "+s",
+                self.iter()
+                    .cloned()
+                    .map(Field::into_arrow_field_ffi)
+                    .collect::<Result<Vec<_>>>()?,
+            ))
+        }
+
+        /// The structure datatype one Arrow struct storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a child cannot be imported or the children do
+        /// not form a valid structure.
+        pub(crate) fn from_arrow_storage_at_depth(
+            fields: &ArrowFields,
+            depth: usize,
+        ) -> Result<DataType> {
+            Ok(DataType::Structure(
+                from_arrow_fields_at_depth(fields, depth)?.into(),
+            ))
+        }
+    }
+
+    /// Projects one ordered child list as Arrow's own.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a child has no Arrow projection.
+    pub(crate) fn into_arrow_fields(fields: &Fields) -> Result<ArrowFields> {
+        fields
+            .iter()
+            .cloned()
+            .map(Field::into_arrow_field_ref)
+            .collect::<Result<Vec<ArrowFieldRef>>>()
+            .map(Into::into)
+    }
+
+    /// Imports one ordered child list at an existing nesting depth.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a child cannot be imported or the children do not
+    /// form a valid child list.
+    pub(crate) fn from_arrow_fields_at_depth(
+        fields: &ArrowFields,
+        depth: usize,
+    ) -> Result<Fields> {
+        let fields = fields
+            .iter()
+            .cloned()
+            .map(|field| Field::from_arrow_field_ref_at_depth(field, depth))
+            .collect::<Result<Vec<_>>>()?;
+        Fields::from_imported_fields(fields)
+    }
+}
+

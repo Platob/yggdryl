@@ -703,7 +703,7 @@ mod layouts {
                 &cast.data_type().clone(),
                 dtype(target)
                     .required_field("value")
-                    .into_arrow_ref()
+                    .into_arrow_field_ref()
                     .unwrap()
                     .data_type(),
                 "{target}"

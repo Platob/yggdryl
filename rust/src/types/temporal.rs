@@ -59,7 +59,7 @@ pub(crate) mod casts {
         exposure: Option<&BooleanBuffer>,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
-        let source_type = DataType::from_arrow(array.data_type())?;
+        let source_type = DataType::from_arrow_datatype(array.data_type())?;
         let rows = array.len();
         budget.add_array(field.dtype(), rows)?;
         reserve_vec_bytes::<Option<smol_str::SmolStr>>(budget, rows)?;
@@ -3027,3 +3027,130 @@ pub(crate) mod scalars {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: the calendar, clock, and elapsed-count storages.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::{SmolStr, format_smolstr};
+
+    use super::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
+    use crate::types::invalid;
+    use crate::{DataType, Result, TimeUnit, Timezone};
+
+    /// The Arrow storage one temporal datatype lays out.
+    ///
+    /// A unit Arrow cannot state is refused here rather than silently widened:
+    /// the datatype is public, so `time32(nanosecond)` can reach this boundary
+    /// and this is where it stops.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the unit is not one the width carries, or when the
+    /// datatype belongs to another family.
+    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
+        Ok(match dtype {
+            DataType::DateTime64 { unit, timezone } => ArrowDataType::Timestamp(
+                unit.into_arrow_time()?,
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.as_smol_str().clone())),
+            ),
+            DataType::Date32 => ArrowDataType::Date32,
+            DataType::Date64 => ArrowDataType::Date64,
+            DataType::Time32(unit) => {
+                validate_time32_unit(*unit)?;
+                ArrowDataType::Time32(unit.into_arrow_time()?)
+            }
+            DataType::Time64(unit) => {
+                validate_time64_unit(*unit)?;
+                ArrowDataType::Time64(unit.into_arrow_time()?)
+            }
+            DataType::Duration32(unit) => {
+                validate_duration_unit("Duration32", *unit)?;
+                ArrowDataType::Duration(unit.into_arrow_time()?)
+            }
+            DataType::Duration64(unit) => {
+                validate_duration_unit("Duration64", *unit)?;
+                ArrowDataType::Duration(unit.into_arrow_time()?)
+            }
+            DataType::Interval(unit) => ArrowDataType::Interval(unit.into_arrow_interval()?),
+            other => {
+                return Err(invalid(
+                    "temporal",
+                    format_smolstr!("expected a temporal datatype, got {other}"),
+                ));
+            }
+        })
+    }
+
+    /// The same projection, consuming the zone name rather than cloning it.
+    ///
+    /// # Errors
+    ///
+    /// [`arrow_storage`] carries the rule.
+    pub(crate) fn into_arrow_storage(dtype: DataType) -> Result<ArrowDataType> {
+        match dtype {
+            DataType::DateTime64 { unit, timezone } => Ok(ArrowDataType::Timestamp(
+                unit.into_arrow_time()?,
+                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.into_smol_str())),
+            )),
+            other => arrow_storage(&other),
+        }
+    }
+
+    /// The temporal datatype one Arrow storage imports as.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the zone name is not one this crate canonicalizes,
+    /// when the unit is not one the width carries, or when the storage belongs
+    /// to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
+        match value {
+            ArrowDataType::Timestamp(unit, timezone) => {
+                let timezone = timezone
+                    .as_ref()
+                    .map_or(Ok(Timezone::NAIVE), |value| {
+                        Timezone::from_smol_str(SmolStr::from(Arc::clone(value)))
+                    })?;
+                DataType::datetime64(TimeUnit::from_arrow_time(*unit), timezone)
+            }
+            ArrowDataType::Date32 => Ok(DataType::Date32),
+            ArrowDataType::Date64 => Ok(DataType::Date64),
+            ArrowDataType::Time32(unit) => DataType::time32(TimeUnit::from_arrow_time(*unit)),
+            ArrowDataType::Time64(unit) => DataType::time64(TimeUnit::from_arrow_time(*unit)),
+            ArrowDataType::Duration(unit) => DataType::duration64(TimeUnit::from_arrow_time(*unit)),
+            ArrowDataType::Interval(unit) => {
+                Ok(DataType::Interval(TimeUnit::from_arrow_interval(*unit)))
+            }
+            other => Err(invalid(
+                "temporal",
+                format_smolstr!("expected a temporal storage, got {other}"),
+            )),
+        }
+    }
+
+    /// The same import, consuming Arrow's shared zone name rather than cloning.
+    ///
+    /// # Errors
+    ///
+    /// [`from_arrow_storage`] carries the rule.
+    pub(crate) fn from_arrow_storage_owned(value: ArrowDataType) -> Result<DataType> {
+        match value {
+            ArrowDataType::Timestamp(unit, timezone) => {
+                let timezone = timezone.map_or(Ok(Timezone::NAIVE), |value| {
+                    Timezone::from_smol_str(SmolStr::from(value))
+                })?;
+                DataType::datetime64(TimeUnit::from_arrow_time(unit), timezone)
+            }
+            other => from_arrow_storage(&other),
+        }
+    }
+}
+
+pub(crate) use arrow::{
+    arrow_storage, from_arrow_storage, from_arrow_storage_owned, into_arrow_storage,
+};

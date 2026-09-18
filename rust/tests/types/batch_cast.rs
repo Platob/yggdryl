@@ -67,7 +67,7 @@ fn columns_reconcile_by_name_and_extra_columns_are_dropped() {
 fn an_exact_batch_keeps_its_own_arrays() {
     let target = root([DataType::Int32.required_field("id")]);
     let schema = Arc::new(Schema::new(vec![
-        target.fields()[0].clone().into_arrow_ref().unwrap(),
+        target.fields()[0].clone().into_arrow_field_ref().unwrap(),
     ]));
     let column: arrow_array::ArrayRef = Arc::new(Int32Array::from(vec![7]));
     let batch = RecordBatch::try_new(schema, vec![Arc::clone(&column)]).unwrap();

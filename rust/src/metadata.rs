@@ -308,7 +308,7 @@ impl Metadata {
     }
 
     /// Imports Arrow's borrowed metadata map.
-    pub fn from_arrow(values: &HashMap<String, String>) -> Result<Self> {
+    pub fn from_arrow_metadata(values: &HashMap<String, String>) -> Result<Self> {
         Self::from_entries(values)
     }
 
@@ -532,7 +532,7 @@ impl Metadata {
     ///
     /// When uniquely owned, key and value allocations move directly into the
     /// Arrow map. Shared snapshots clone only because Arrow's map is mutable.
-    pub fn into_arrow(self) -> HashMap<String, String> {
+    pub fn into_arrow_metadata(self) -> HashMap<String, String> {
         self.into_map().into_iter().collect()
     }
 
@@ -748,7 +748,7 @@ impl TryFrom<&HashMap<String, String>> for Metadata {
     type Error = Error;
 
     fn try_from(values: &HashMap<String, String>) -> Result<Self> {
-        Self::from_arrow(values)
+        Self::from_arrow_metadata(values)
     }
 }
 
@@ -762,7 +762,7 @@ impl TryFrom<BTreeMap<String, String>> for Metadata {
 
 impl From<Metadata> for HashMap<String, String> {
     fn from(value: Metadata) -> Self {
-        value.into_arrow()
+        value.into_arrow_metadata()
     }
 }
 

@@ -38,7 +38,7 @@ use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub(crate) use arrow::{arrow_storage, describes_storage, needs_extension};
+pub(crate) use arrow::{arrow_storage, describes_storage, from_arrow_storage, needs_extension};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -103,6 +103,46 @@ mod arrow {
         storage: &ArrowDataType,
     ) -> Result<bool> {
         Ok(arrow_storage(parameters)? == *storage)
+    }
+
+    /// The width an Arrow fixed binary declares, as the count this crate
+    /// bounds bytes in. Arrow's field is signed; a negative width is no width.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the width when it is negative.
+    pub(crate) fn arrow_fixed_width(width: i32) -> Result<u32> {
+        u32::try_from(width).map_err(|_| {
+            crate::types::invalid(
+                "bytes",
+                smol_str::format_smolstr!("width must be non-negative: {width}"),
+            )
+        })
+    }
+
+    /// The byte datatype one Arrow storage imports as.
+    ///
+    /// A bound is a `yggdryl.bytes` document on the field, so a bare storage
+    /// imports as the unbounded layout it is; the field level puts the bound
+    /// back when the document is there.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a fixed width is negative, or when the storage
+    /// belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<crate::DataType> {
+        match value {
+            ArrowDataType::Binary => Ok(crate::DataType::binary()),
+            ArrowDataType::LargeBinary => Ok(crate::DataType::large_binary()),
+            ArrowDataType::BinaryView => Ok(crate::DataType::binary_view()),
+            ArrowDataType::FixedSizeBinary(width) => {
+                crate::DataType::fixed_size_binary(arrow_fixed_width(*width)?)
+            }
+            other => Err(crate::types::invalid(
+                "bytes",
+                smol_str::format_smolstr!("expected a byte storage, got {other}"),
+            )),
+        }
     }
 }
 /// Binary layout accounting and identity checks for Arrow casts.

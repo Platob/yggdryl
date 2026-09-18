@@ -424,7 +424,7 @@ mod arrow {
             match held {
                 Some(index) => columns[index] = array,
                 None => {
-                    fields.push(child.clone().into_arrow_ref()?);
+                    fields.push(child.clone().into_arrow_field_ref()?);
                     columns.push(array);
                 }
             }

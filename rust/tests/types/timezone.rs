@@ -109,7 +109,7 @@ fn structured_text_round_trips_the_canonical_spelling() {
 #[test]
 fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_trip() {
     let field = Field::new("zone", DataType::Timezone, true);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(
         arrow
@@ -119,7 +119,7 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
         Some("yggdryl.timezone")
     );
     assert_eq!(
-        Field::from_arrow(&arrow).unwrap().dtype(),
+        Field::from_arrow_field(&arrow).unwrap().dtype(),
         &DataType::Timezone
     );
 

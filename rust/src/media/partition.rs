@@ -187,7 +187,7 @@ pub fn with_partitions(
         // fact the batch would otherwise lose, and it is what lets a read of a
         // lake be written back out with the same layout.
         let restored = match child {
-            Some(child) => child.clone().into_arrow()?,
+            Some(child) => child.clone().into_arrow_field()?,
             // A path value is spelled out, so it is never null.
             None => ArrowField::new(column, ArrowDataType::Utf8, false),
         };
@@ -487,7 +487,7 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
         // datatype's own path. A code already rides text storage, so its
         // column is formatted where it stands.
         let schema = batch.schema();
-        let field = Field::from_arrow(schema.field(index))?;
+        let field = Field::from_arrow_field(schema.field(index))?;
         let dtype = field.dtype();
         let stored_as_bytes = dtype
             .string_parameters()

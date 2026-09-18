@@ -104,27 +104,27 @@ fn canonical_display_json_and_arrow_round_trip() {
         Field::from_json(&field.clone().into_json().unwrap()).unwrap(),
         field
     );
-    let arrow = field.clone().into_arrow_ref().unwrap();
-    assert_eq!(arrow, field.clone().into_arrow_ref().unwrap());
-    assert_eq!(Field::from_arrow(arrow.as_ref()).unwrap(), field);
+    let arrow = field.clone().into_arrow_field_ref().unwrap();
+    assert_eq!(arrow, field.clone().into_arrow_field_ref().unwrap());
+    assert_eq!(Field::from_arrow_field(arrow.as_ref()).unwrap(), field);
 }
 
 #[test]
 fn borrowing_the_arrow_projection_builds_it_once() {
     let field = Field::from_str("price decimal(18,4) not null").unwrap();
 
-    let first = field.as_arrow_ref().unwrap();
-    let second = field.as_arrow_ref().unwrap();
+    let first = field.as_arrow_field_ref().unwrap();
+    let second = field.as_arrow_field_ref().unwrap();
     // The second call answers the cached projection, not a rebuilt one.
     assert!(Arc::ptr_eq(first, second));
 
     // Borrowing and consuming agree, and the field survives the borrow.
     assert_eq!(
-        field.as_arrow_ref().unwrap(),
-        &field.clone().into_arrow_ref().unwrap()
+        field.as_arrow_field_ref().unwrap(),
+        &field.clone().into_arrow_field_ref().unwrap()
     );
     assert_eq!(
-        Field::from_arrow(field.as_arrow_ref().unwrap().as_ref()).unwrap(),
+        Field::from_arrow_field(field.as_arrow_field_ref().unwrap().as_ref()).unwrap(),
         field
     );
 }
@@ -169,38 +169,38 @@ fn arrow_display_and_dictionary_state_round_trip_after_cache_invalidation() {
         "source".to_owned(),
         "ipc".to_owned(),
     )]));
-    let field = Field::from_arrow(&arrow).unwrap();
+    let field = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(Field::from_str(&arrow.to_string()).unwrap(), field);
     assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
     assert_eq!(field.dictionary_id(), Some(42));
     assert_eq!(field.dictionary_is_ordered(), Some(true));
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     field.set_dictionary_options(42, true).unwrap();
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     field.set_dictionary_options(7, false).unwrap();
     assert!(!Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     field.set_dictionary_options(42, true).unwrap();
 
     field.set_name("renamed");
-    let rebuilt = field.into_arrow().unwrap();
+    let rebuilt = field.into_arrow_field().unwrap();
     assert_eq!(rebuilt.dict_id(), Some(42));
     assert_eq!(rebuilt.dict_is_ordered(), Some(true));
 
     let shared = Arc::new(arrow);
-    let imported = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
-    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_ref().unwrap()));
+    let imported = Field::from_arrow_field_ref(Arc::clone(&shared)).unwrap();
+    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_field_ref().unwrap()));
 }
 
 #[test]
@@ -240,12 +240,12 @@ fn metadata_updates_are_sorted_atomic_and_cache_aware() {
         field.metadata_iter().collect::<Vec<_>>(),
         vec![("a", "first"), ("z", "last")]
     );
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.insert_metadata("a", "first").unwrap();
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     assert!(field.update_metadata([("", "bad")]).is_err());
     assert_eq!(field.metadata_len(), 2);
@@ -264,6 +264,6 @@ fn native_order_hash_and_stable_hash_ignore_cache() {
     hashed.insert(second.clone());
     assert!(hashed.contains(&second));
     let before = second.stable_hash();
-    second.clone().into_arrow_ref().unwrap();
+    second.clone().into_arrow_field_ref().unwrap();
     assert_eq!(before, second.stable_hash());
 }

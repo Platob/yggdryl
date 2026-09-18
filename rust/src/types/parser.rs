@@ -815,7 +815,7 @@ impl fmt::Display for DataType {
         // `{:#}` is the readable, indented rendering; the plain form is the
         // canonical expression, which round-trips through `from_str`.
         if formatter.alternate() {
-            return fmt::Display::fmt(&self.pretty(), formatter);
+            return fmt::Display::fmt(&self.pretty_view(), formatter);
         }
         use DataType as D;
         match self {

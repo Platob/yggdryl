@@ -256,7 +256,7 @@ fn a_code_partition_column_keeps_its_identity_through_the_path() {
         let batch = batch.unwrap();
         // A code stores as the text it is, so the restored column holds the
         // path's own spelling and reads back a currency.
-        let restored = yggdryl::Field::from_arrow(batch.schema().field(0)).unwrap();
+        let restored = yggdryl::Field::from_arrow_field(batch.schema().field(0)).unwrap();
         assert_eq!(restored.dtype(), &DataType::Currency);
         let ccy = batch
             .column_by_name("ccy")

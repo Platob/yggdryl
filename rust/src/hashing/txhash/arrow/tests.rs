@@ -38,7 +38,7 @@ fn accepts_time_agrees_with_the_column_reader() {
         DataType::Time64(TimeUnit::Microsecond),
         DataType::Duration64(TimeUnit::Second),
     ] {
-        let arrow = Field::new("x", dtype.clone(), true).into_arrow().unwrap();
+        let arrow = Field::new("x", dtype.clone(), true).into_arrow_field().unwrap();
         let empty = arrow_array::new_empty_array(arrow.data_type());
         assert_eq!(
             accepts_time(&dtype),

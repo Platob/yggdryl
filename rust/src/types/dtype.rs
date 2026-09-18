@@ -763,3 +763,463 @@ define_field_types!(VariantType, Variant);
 
 
 
+
+// ------------------------------------------------------------------------
+// Arrow projection and import: this enum names the family and nothing else.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
+    use smol_str::format_smolstr;
+
+    use super::{DataType, VariantType, invalid};
+    use crate::types::boolean::{BooleanType, NullType};
+    use crate::types::enums::EnumType;
+    use crate::types::geospatial::geospatial_arrow_storage;
+    use crate::types::media_type::MediaTypeType;
+    use crate::types::mime_type::MimeTypeType;
+    use crate::types::runend::RunEndEncodedType;
+    use crate::types::sequence::SequenceType;
+    use crate::types::structure::StructureType;
+    use crate::types::timezone::TimezoneType;
+    use crate::types::union::UnionFields;
+    use crate::types::url::UrlType;
+    use crate::types::uuid::UuidType;
+    use crate::types::version::VersionType;
+    use crate::types::{bytes, code, decimal, floating, integer, string, temporal};
+    use crate::types::mapping::MappingType;
+    use crate::{Error, Field, Result};
+
+    impl DataType {
+        /// Projects this datatype as the Arrow storage its family lays out.
+        ///
+        /// This enum owns no projection: each arm names the family that does,
+        /// and the family answers for every leaf it holds - which is why a new
+        /// leaf never reaches this match.
+        ///
+        /// An extension type projects as its *storage*: an Arrow datatype has
+        /// nowhere to carry the `ARROW:extension:*` entries, which is what
+        /// [`Self::arrow_extension`] answers and what the field projection and
+        /// [`Self::into_arrow_datatype_ffi`] carry.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the datatype states something Arrow cannot
+        /// lay out: a unit a width does not carry, a precision wider than its
+        /// backing integer, a negative fixed length.
+        pub fn to_arrow_datatype(&self) -> Result<ArrowDataType> {
+            use DataType as R;
+            Ok(match self {
+                R::Null => NullType::arrow_storage(),
+                R::Boolean => BooleanType::arrow_storage(),
+                R::Int8 | R::Int16 | R::Int32 | R::Int64 | R::UInt8 | R::UInt16 | R::UInt32
+                | R::UInt64 => integer::arrow_storage(self)?,
+                R::Float16 | R::Float32 | R::Float64 => floating::arrow_storage(self)?,
+                R::DateTime64 { .. }
+                | R::Date32
+                | R::Date64
+                | R::Time32(_)
+                | R::Time64(_)
+                | R::Duration32(_)
+                | R::Duration64(_)
+                | R::Interval(_) => temporal::arrow_storage(self)?,
+                R::Bytes(parameters) => bytes::arrow_storage(*parameters)?,
+                R::String(parameters) => string::arrow_storage(*parameters)?,
+                R::Country
+                | R::Currency
+                | R::Mic
+                | R::Cfi
+                | R::Isin
+                | R::Cusip
+                | R::Sedol
+                | R::Bloomberg
+                | R::Side
+                | R::State
+                | R::TimeInForce => code::code_arrow_storage(self)?,
+                R::Version => VersionType::arrow_storage(),
+                R::Url => UrlType::arrow_storage(),
+                R::Timezone => TimezoneType::arrow_storage(),
+                R::MimeType => MimeTypeType::arrow_storage(),
+                R::MediaType => MediaTypeType::arrow_storage(),
+                R::Uuid => UuidType::arrow_storage(),
+                R::Decimal32 { .. }
+                | R::Decimal64 { .. }
+                | R::Decimal128 { .. }
+                | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
+                R::Sequence(sequence) => sequence.arrow_storage()?,
+                R::Structure(structure) => structure.arrow_storage()?,
+                R::Union(fields, mode) => fields.arrow_storage(*mode)?,
+                R::Enum(enumeration) => enumeration.arrow_storage()?,
+                R::Mapping(mapping) => mapping.arrow_storage()?,
+                R::RunEndEncoded(encoded) => encoded.arrow_storage()?,
+                R::Variant => VariantType::arrow_storage(),
+                R::Geometry(_) | R::Geography(_) => geospatial_arrow_storage(),
+            })
+        }
+
+        /// Consumes this datatype and returns its Arrow storage.
+        ///
+        /// The same projection [`Self::to_arrow_datatype`] makes, except that a
+        /// family holding uniquely shared children consumes them rather than
+        /// cloning a subtree it is about to drop.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::to_arrow_datatype`] carries the rule.
+        pub fn into_arrow_datatype(self) -> Result<ArrowDataType> {
+            use DataType as R;
+            match self {
+                R::DateTime64 { .. } => temporal::into_arrow_storage(self),
+                R::Sequence(sequence) => sequence.into_arrow_storage(),
+                R::Structure(structure) => structure.into_arrow_storage(),
+                R::Union(fields, mode) => fields.into_arrow_storage(mode),
+                R::Enum(enumeration) => enumeration.into_arrow_storage(),
+                R::Mapping(mapping) => mapping.into_arrow_storage(),
+                R::RunEndEncoded(encoded) => RunEndEncodedType::into_arrow_storage(encoded),
+                ref other => other.to_arrow_datatype(),
+            }
+        }
+
+        /// Imports an Arrow datatype and validates every nested invariant.
+        ///
+        /// An Arrow datatype carries no metadata, so an extension type arrives
+        /// as the storage it is written over: `fixed_size_binary(3)` and not
+        /// `currency`, `binary` and not `geometry`. The identity lives on the
+        /// field - [`Field::from_arrow_field`](crate::Field::from_arrow_field)
+        /// reads it, and [`Self::into_arrow_datatype_ffi`] projects a node that
+        /// carries it - so a schema round trip keeps every first-class datatype
+        /// and only this bare pair answers storage.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the storage states something this crate
+        /// refuses, or when the nesting is deeper than the parser's limit.
+        pub fn from_arrow_datatype(value: &ArrowDataType) -> Result<Self> {
+            Self::from_arrow_datatype_at_depth(value, 0)
+        }
+
+        /// Imports Arrow state at an existing datatype nesting depth.
+        ///
+        /// Field import paths use this entry point to preserve one shared depth
+        /// budget across alternating Arrow datatype and field nodes.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_datatype`] carries the rule.
+        pub(crate) fn from_arrow_datatype_at_depth(
+            value: &ArrowDataType,
+            depth: usize,
+        ) -> Result<Self> {
+            check_arrow_import_depth(depth)?;
+            let children = depth + 1;
+            use ArrowDataType as A;
+            match value {
+                A::Null | A::Boolean => crate::types::boolean::from_arrow_storage(value),
+                A::Int8 | A::Int16 | A::Int32 | A::Int64 | A::UInt8 | A::UInt16 | A::UInt32
+                | A::UInt64 => integer::from_arrow_storage(value),
+                A::Float16 | A::Float32 | A::Float64 => floating::from_arrow_storage(value),
+                A::Timestamp(..)
+                | A::Date32
+                | A::Date64
+                | A::Time32(_)
+                | A::Time64(_)
+                | A::Duration(_)
+                | A::Interval(_) => temporal::from_arrow_storage(value),
+                A::Binary | A::LargeBinary | A::BinaryView | A::FixedSizeBinary(_) => {
+                    bytes::from_arrow_storage(value)
+                }
+                A::Utf8 | A::LargeUtf8 | A::Utf8View => string::from_arrow_storage(value),
+                A::Decimal32(..) | A::Decimal64(..) | A::Decimal128(..) | A::Decimal256(..) => {
+                    decimal::from_arrow_storage(value)
+                }
+                A::List(_)
+                | A::ListView(_)
+                | A::FixedSizeList(..)
+                | A::LargeList(_)
+                | A::LargeListView(_) => {
+                    SequenceType::from_arrow_storage_at_depth(value, children)
+                }
+                A::Struct(fields) => StructureType::from_arrow_storage_at_depth(fields, children),
+                A::Union(fields, mode) => {
+                    UnionFields::from_arrow_storage_at_depth(fields, *mode, children)
+                }
+                A::Dictionary(key, values) => {
+                    EnumType::from_arrow_storage_at_depth(key, values, children)
+                }
+                A::Map(entries, keys_sorted) => {
+                    MappingType::from_arrow_storage_at_depth(entries, *keys_sorted, children)
+                }
+                A::RunEndEncoded(run_ends, values) => {
+                    RunEndEncodedType::from_arrow_storage_at_depth(run_ends, values, children)
+                }
+            }
+        }
+
+        /// The same import, consuming the Arrow node rather than cloning it.
+        ///
+        /// Only the layouts whose children Arrow hands over by value differ
+        /// here; everything else reads exactly as the borrowed walk does.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_datatype`] carries the rule.
+        pub(crate) fn from_arrow_datatype_owned_at_depth(
+            value: ArrowDataType,
+            depth: usize,
+        ) -> Result<Self> {
+            check_arrow_import_depth(depth)?;
+            let children = depth + 1;
+            use ArrowDataType as A;
+            match value {
+                A::Timestamp(..) => temporal::from_arrow_storage_owned(value),
+                A::List(_)
+                | A::ListView(_)
+                | A::FixedSizeList(..)
+                | A::LargeList(_)
+                | A::LargeListView(_) => {
+                    SequenceType::from_arrow_storage_owned_at_depth(value, children)
+                }
+                A::Union(fields, mode) => {
+                    UnionFields::from_arrow_storage_at_depth(&fields, mode, children)
+                }
+                A::Dictionary(key, values) => {
+                    EnumType::from_arrow_storage_owned_at_depth(key, values, children)
+                }
+                A::Map(entries, keys_sorted) => {
+                    MappingType::from_arrow_storage_owned_at_depth(entries, keys_sorted, children)
+                }
+                A::RunEndEncoded(run_ends, values) => {
+                    RunEndEncodedType::from_arrow_storage_owned_at_depth(run_ends, values, children)
+                }
+                ref other => Self::from_arrow_datatype_at_depth(other, depth),
+            }
+        }
+
+        /// Projects this datatype to an owned Arrow C Data Interface schema.
+        ///
+        /// This uses the same validated Arrow projection as
+        /// [`Self::into_arrow_datatype`] and preserves datatype flags
+        /// recursively, including sorted map keys. Arrow's generic
+        /// Field-to-C-schema conversion overwrites those flags when adding
+        /// field flags, so each nested family writes its own node here.
+        ///
+        /// A C schema is a field node, so unlike [`Self::into_arrow_datatype`]
+        /// this keeps an extension identity - a code, a UUID, a version, a
+        /// variant, a geospatial parameter set - including under a dictionary
+        /// encoding, where the entries belong to the outer node.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::to_arrow_datatype`] carries the rule.
+        pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema> {
+            use DataType as R;
+            let parts = match &self {
+                R::Sequence(sequence) => sequence.arrow_ffi_parts()?,
+                R::Structure(structure) => structure.arrow_ffi_parts()?,
+                R::Union(fields, mode) => fields.arrow_ffi_parts(*mode)?,
+                R::Enum(enumeration) => enumeration.arrow_ffi_parts()?,
+                R::Mapping(mapping) => mapping.arrow_ffi_parts()?,
+                R::RunEndEncoded(encoded) => encoded.arrow_ffi_parts()?,
+                // The extension identity of an extension-typed variant is
+                // metadata, and a C schema is a field, so the storage
+                // projection carries the two `ARROW:extension:*` entries here.
+                // `Field::into_arrow_field_ffi` merges the same entries with
+                // the field's own metadata.
+                //
+                // Which datatypes those are is asked of the function that
+                // answers it rather than re-listed: a list spelled here drifts
+                // behind the families, and a datatype that falls through
+                // crosses the C Data Interface as anonymous storage, which is
+                // exactly what this arm exists to prevent.
+                other => {
+                    let storage = other.to_arrow_datatype()?;
+                    let schema = FFI_ArrowSchema::try_from(&storage)?;
+                    let Some((name, document)) = other.arrow_extension() else {
+                        return Ok(schema);
+                    };
+                    return with_extension(schema, name, &document);
+                }
+            };
+            let schema =
+                FFI_ArrowSchema::try_new(&parts.format, parts.children, parts.dictionary)
+                    .and_then(|schema| schema.with_flags(parts.flags))?;
+            // A dictionary-encoded extension is still that extension, and the C
+            // schema is the field that says so: the entries the plain
+            // projection writes above ride here for the encoded shape too.
+            let Some((name, document)) = self.arrow_extension() else {
+                return Ok(schema);
+            };
+            with_extension(schema, name, &document)
+        }
+
+        /// The Arrow extension name and document this datatype rides under,
+        /// `None` for every datatype that is Arrow's own.
+        ///
+        /// A dictionary answers what its values would. Arrow's `Dictionary`
+        /// holds a bare datatype for its values rather than a field, so a
+        /// dictionary-encoded currency has nowhere but the field itself to
+        /// carry its identity - and a dictionary-encoded code is the ordinary
+        /// case, not an edge one.
+        #[must_use]
+        pub fn arrow_extension(&self) -> Option<(&'static str, String)> {
+            match self {
+                Self::Enum(EnumType::Dictionary(dictionary)) => {
+                    dictionary.value().arrow_extension()
+                }
+                Self::Variant => Some((crate::types::VARIANT_EXTENSION_NAME, String::new())),
+                Self::Geometry(geospatial) | Self::Geography(geospatial) => Some((
+                    crate::types::GEOARROW_WKB_EXTENSION_NAME,
+                    geospatial.geoarrow_json(),
+                )),
+                // A charset, a length bound, and which of the two view layouts
+                // this is: three facts Arrow has nowhere to put, so they ride
+                // here when the string declares any of them; plain UTF-8 is
+                // Arrow's own.
+                Self::String(parameters) if string::needs_extension(*parameters) => Some((
+                    crate::types::STRING_EXTENSION_NAME,
+                    parameters.extension_json(),
+                )),
+                // A maximum on a variable layout is the one fact about bytes
+                // Arrow has nowhere to put; the four layouts and a fixed width
+                // are its own.
+                Self::Bytes(parameters) if bytes::needs_extension(*parameters) => Some((
+                    crate::types::BYTES_EXTENSION_NAME,
+                    parameters.extension_json(),
+                )),
+                Self::Uuid => Some((crate::types::UUID_EXTENSION_NAME, String::new())),
+                Self::Version => Some((crate::types::VERSION_EXTENSION_NAME, String::new())),
+                Self::Url => Some((crate::types::URL_EXTENSION_NAME, String::new())),
+                Self::Timezone => Some((crate::types::TIMEZONE_EXTENSION_NAME, String::new())),
+                Self::MimeType => Some((crate::types::MIMETYPE_EXTENSION_NAME, String::new())),
+                Self::MediaType => Some((crate::types::MEDIATYPE_EXTENSION_NAME, String::new())),
+                // A code carries its own name, so the identity survives Arrow:
+                // three bytes under `yggdryl.currency` read back a currency.
+                code => crate::types::code_extension_name(code).map(|name| (name, String::new())),
+            }
+        }
+
+        /// Projects this Struct datatype as an Arrow schema.
+        ///
+        /// A schema is the columns of a struct, so this is the same projection
+        /// a non-null Struct [`Field`] makes, without a name or metadata.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error unless this is a bounded Struct datatype.
+        pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
+            Field::new("row", self, false).into_arrow_schema()
+        }
+
+        /// Materializes [`DataType::default_value`] as an exact one-row array.
+        ///
+        /// The bounded core default planner selects the value, so
+        /// [`DataType::Null`] and transparent logical wrappers with a null-only
+        /// canonical default materialize as logical null; every other datatype
+        /// materializes its present zero/empty default.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when no physically valid default exists or Arrow
+        /// cannot materialize the datatype.
+        pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
+            crate::arrow::default_dtype_scalar_array(self)
+        }
+
+        /// Reports whether an imported datatype can reuse its enclosing Arrow
+        /// field.
+        ///
+        /// Scalar and parameter-only variants import without canonicalization.
+        /// Nested fields retain their incoming projection only when their
+        /// complete subtree is equivalent, so inspecting each direct child
+        /// propagates that result through the tree in one pass without
+        /// allocating an Arrow copy.
+        pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
+            match self {
+                Self::Sequence(sequence) => {
+                    sequence.item().arrow_import_is_projection_equivalent()
+                }
+                Self::Structure(fields) => fields
+                    .iter()
+                    .all(Field::arrow_import_is_projection_equivalent),
+                Self::Union(fields, _) => fields
+                    .iter()
+                    .all(|(_, field)| field.arrow_import_is_projection_equivalent()),
+                Self::Enum(EnumType::Dictionary(dictionary)) => {
+                    dictionary.key().arrow_import_is_projection_equivalent()
+                        && dictionary.value().arrow_import_is_projection_equivalent()
+                }
+                Self::Mapping(mapping) => mapping.entries().arrow_import_is_projection_equivalent(),
+                Self::RunEndEncoded(encoded) => {
+                    encoded.run_ends().arrow_import_is_projection_equivalent()
+                        && encoded.values().arrow_import_is_projection_equivalent()
+                }
+                _ => true,
+            }
+        }
+    }
+
+    /// Writes one extension identity onto a finished C schema node.
+    fn with_extension(
+        schema: FFI_ArrowSchema,
+        name: &'static str,
+        document: &str,
+    ) -> Result<FFI_ArrowSchema> {
+        schema
+            .with_metadata([
+                (arrow_schema::extension::EXTENSION_TYPE_NAME_KEY, name),
+                (arrow_schema::extension::EXTENSION_TYPE_METADATA_KEY, document),
+            ])
+            .map_err(Error::from)
+    }
+
+    /// Refuses an Arrow import nested deeper than the parser's own limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the limit.
+    pub(crate) fn check_arrow_import_depth(depth: usize) -> Result<()> {
+        if depth >= DataType::PARSE_RECURSION_LIMIT {
+            Err(invalid(
+                "ArrowImport",
+                format_smolstr!(
+                    "datatype nesting exceeds the limit of {}",
+                    DataType::PARSE_RECURSION_LIMIT
+                ),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    impl TryFrom<&DataType> for ArrowDataType {
+        type Error = Error;
+
+        fn try_from(value: &DataType) -> Result<Self> {
+            value.to_arrow_datatype()
+        }
+    }
+
+    impl TryFrom<DataType> for ArrowDataType {
+        type Error = Error;
+
+        fn try_from(value: DataType) -> Result<Self> {
+            value.into_arrow_datatype()
+        }
+    }
+
+    impl TryFrom<&ArrowDataType> for DataType {
+        type Error = Error;
+
+        fn try_from(value: &ArrowDataType) -> Result<Self> {
+            Self::from_arrow_datatype_at_depth(value, 0)
+        }
+    }
+
+    impl TryFrom<ArrowDataType> for DataType {
+        type Error = Error;
+
+        fn try_from(value: ArrowDataType) -> Result<Self> {
+            Self::from_arrow_datatype_owned_at_depth(value, 0)
+        }
+    }
+}

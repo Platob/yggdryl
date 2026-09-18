@@ -1870,13 +1870,13 @@ impl Scalar {
 
     /// Wrap one Arrow payload as the scalar it is.
     #[must_use]
-    pub fn from_arrow(value: crate::arrow::ArrowScalar) -> Self {
+    pub fn from_arrow_scalar(value: crate::arrow::ArrowScalar) -> Self {
         Self::Arrow(Arc::new(value))
     }
 
     /// Borrow the Arrow payload, if this value is one.
     #[must_use]
-    pub fn as_arrow(&self) -> Option<&crate::arrow::ArrowScalar> {
+    pub fn as_arrow_scalar(&self) -> Option<&crate::arrow::ArrowScalar> {
         match self {
             Self::Arrow(value) => Some(value),
             _ => None,

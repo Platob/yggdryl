@@ -13,12 +13,12 @@ fn arrow_is_a_cache_preserving_validated_noop() {
         [("owner", "yggdryl")],
     )
     .unwrap();
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     let compatible = field.clone().into_scheme_compat(&Scheme::ARROW).unwrap();
 
     assert_eq!(compatible, field);
-    assert!(Arc::ptr_eq(&cached, &compatible.into_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(&cached, &compatible.into_arrow_field_ref().unwrap()));
 }
 
 #[test]
@@ -450,7 +450,7 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     )
     .unwrap();
     field.set_dictionary_options(42, true).unwrap();
-    let cached = field.clone().into_arrow_ref().unwrap();
+    let cached = field.clone().into_arrow_field_ref().unwrap();
     let transformed = field.clone().into_scheme_compat(&Scheme::SPARK).unwrap();
     assert_eq!(transformed.name(), field.name());
     assert!(transformed.is_nullable());
@@ -460,7 +460,7 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     assert_eq!(transformed.dictionary_is_ordered(), None);
     assert!(!Arc::ptr_eq(
         &cached,
-        &transformed.into_arrow_ref().unwrap()
+        &transformed.into_arrow_field_ref().unwrap()
     ));
 }
 
@@ -756,7 +756,7 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
 
     // An imported geometry no longer carries its extension keys - they are
     // stripped as transport - so nothing trips the extension-storage rule.
-    let imported = Field::from_arrow(&geometry.clone().into_arrow().unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&geometry.clone().into_arrow_field().unwrap()).unwrap();
     assert!(!imported.has_metadata("ARROW:extension:name"));
     assert_eq!(
         imported.into_scheme_compat(&Scheme::ICEBERG).unwrap(),

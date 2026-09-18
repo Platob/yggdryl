@@ -59,7 +59,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     black_box(&field)
                         .clone()
-                        .into_arrow()
+                        .into_arrow_field()
                         .expect("the benchmark field is valid")
                 });
             },

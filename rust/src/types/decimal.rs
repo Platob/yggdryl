@@ -1619,3 +1619,73 @@ mod tests {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: the four exact-decimal widths.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::validate_decimal;
+    use crate::types::invalid;
+    use crate::{DataType, Result};
+
+    /// The Arrow storage one decimal datatype lays out.
+    ///
+    /// The variants are public, so a precision wider than the width holds can
+    /// reach this boundary; each width states its own maximum here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision or scale is outside what the width
+    /// carries, or when the datatype belongs to another family.
+    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
+        Ok(match dtype {
+            DataType::Decimal32 { precision, scale } => {
+                validate_decimal("Decimal32", *precision, *scale, 9)?;
+                ArrowDataType::Decimal32(*precision, *scale)
+            }
+            DataType::Decimal64 { precision, scale } => {
+                validate_decimal("Decimal64", *precision, *scale, 18)?;
+                ArrowDataType::Decimal64(*precision, *scale)
+            }
+            DataType::Decimal128 { precision, scale } => {
+                validate_decimal("Decimal128", *precision, *scale, 38)?;
+                ArrowDataType::Decimal128(*precision, *scale)
+            }
+            DataType::Decimal256 { precision, scale } => {
+                validate_decimal("Decimal256", *precision, *scale, 76)?;
+                ArrowDataType::Decimal256(*precision, *scale)
+            }
+            other => {
+                return Err(invalid(
+                    "decimal",
+                    format_smolstr!("expected a decimal datatype, got {other}"),
+                ));
+            }
+        })
+    }
+
+    /// The decimal datatype one Arrow storage imports as.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision or scale is outside what the width
+    /// carries, or when the storage belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
+        match value {
+            ArrowDataType::Decimal32(precision, scale) => DataType::decimal32(*precision, *scale),
+            ArrowDataType::Decimal64(precision, scale) => DataType::decimal64(*precision, *scale),
+            ArrowDataType::Decimal128(precision, scale) => DataType::decimal128(*precision, *scale),
+            ArrowDataType::Decimal256(precision, scale) => DataType::decimal256(*precision, *scale),
+            other => Err(invalid(
+                "decimal",
+                format_smolstr!("expected a decimal storage, got {other}"),
+            )),
+        }
+    }
+}
+
+pub(crate) use arrow::{arrow_storage, from_arrow_storage};

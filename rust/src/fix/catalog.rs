@@ -448,6 +448,23 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     }
 }
 
+/// Whether an occurrence's datatype restates the definition it references.
+///
+/// Equality, except that the container holding an occurrence may narrow how it
+/// stores the shape it was handed: a mapping stores its entries as the
+/// two-child [`crate::Struct2Type`] leaf, so a component declared as an
+/// ordinary two-child struct and then used as map entries still restates it.
+/// Which structure leaf holds the children is the container's business; what
+/// the reference restates is the children.
+fn restates_datatype(occurrence: &DataType, target: &DataType) -> bool {
+    match (occurrence, target) {
+        (DataType::Structure(held), DataType::Structure(declared)) => {
+            held.as_fields() == declared.as_fields()
+        }
+        (held, declared) => held == declared,
+    }
+}
+
 /// The occurrence a group's list or map holds.
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
@@ -1357,7 +1374,7 @@ impl FixRegistry {
             } else {
                 field
             };
-            if occurrence.dtype() != target.dtype() {
+            if !restates_datatype(occurrence.dtype(), target.dtype()) {
                 return Err(invalid(
                     field,
                     format_args!(

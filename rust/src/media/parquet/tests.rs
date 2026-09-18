@@ -129,7 +129,7 @@ fn a_code_column_writes_parquet_string_and_keeps_its_identity() {
         .unwrap()
         .map(|batch| batch.unwrap())
         .collect();
-    let restored = Field::from_arrow(batches[0].schema().field(1)).unwrap();
+    let restored = Field::from_arrow_field(batches[0].schema().field(1)).unwrap();
     assert_eq!(restored.dtype(), &DataType::Currency);
     assert_eq!(restored.name(), "ccy");
     let cells = batches[0]
@@ -388,7 +388,7 @@ fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
     let declared = crate::Field::new("ccy", crate::DataType::fixed_ascii(4).unwrap(), true);
     let media = written(
         "ascii.parquet",
-        vec![declared.clone().into_arrow().unwrap()],
+        vec![declared.clone().into_arrow_field().unwrap()],
         vec![Arc::new(
             arrow_array::FixedSizeBinaryArray::try_from_sparse_iter_with_size(
                 [Some(b"USD\0".as_slice()), None].into_iter(),
@@ -401,7 +401,7 @@ fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
     // Our writer embeds the Arrow schema, so the width comes back as
     // the first-class datatype rather than its fixed-binary storage.
     let schema = media.read_arrow_schema().unwrap();
-    let field = crate::Field::from_arrow(schema.field_with_name("ccy").unwrap()).unwrap();
+    let field = crate::Field::from_arrow_field(schema.field_with_name("ccy").unwrap()).unwrap();
     assert_eq!(field, declared);
 
     // The stored padding reads back as the trimmed text under a text

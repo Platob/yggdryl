@@ -275,3 +275,156 @@ impl Value for Sequence {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: five layouts over one item field.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use std::sync::Arc;
+
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::SequenceType;
+    use crate::types::family::ArrowFfiParts;
+    use crate::types::field::arrow_field_ref_from_shared;
+    use crate::types::{invalid, validate_non_negative};
+    use crate::{DataType, Field, Result};
+
+    impl SequenceType {
+        /// The Arrow storage this layout lays out.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the fixed length is negative or the item field
+        /// has no Arrow projection.
+        pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            Ok(match self {
+                Self::List(item) => {
+                    ArrowDataType::List(item.as_ref().clone().into_arrow_field_ref()?)
+                }
+                Self::ListView(item) => {
+                    ArrowDataType::ListView(item.as_ref().clone().into_arrow_field_ref()?)
+                }
+                Self::FixedSizeList(item, length) => {
+                    validate_non_negative("FixedSizeList", "length", *length)?;
+                    ArrowDataType::FixedSizeList(
+                        item.as_ref().clone().into_arrow_field_ref()?,
+                        *length,
+                    )
+                }
+                Self::LargeList(item) => {
+                    ArrowDataType::LargeList(item.as_ref().clone().into_arrow_field_ref()?)
+                }
+                Self::LargeListView(item) => {
+                    ArrowDataType::LargeListView(item.as_ref().clone().into_arrow_field_ref()?)
+                }
+            })
+        }
+
+        /// The same projection, consuming a uniquely held item field.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
+            Ok(match self {
+                Self::List(item) => ArrowDataType::List(arrow_field_ref_from_shared(item)?),
+                Self::ListView(item) => ArrowDataType::ListView(arrow_field_ref_from_shared(item)?),
+                Self::FixedSizeList(item, length) => {
+                    validate_non_negative("FixedSizeList", "length", length)?;
+                    ArrowDataType::FixedSizeList(arrow_field_ref_from_shared(item)?, length)
+                }
+                Self::LargeList(item) => ArrowDataType::LargeList(arrow_field_ref_from_shared(item)?),
+                Self::LargeListView(item) => {
+                    ArrowDataType::LargeListView(arrow_field_ref_from_shared(item)?)
+                }
+            })
+        }
+
+        /// The C Data Interface node this layout writes.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::arrow_storage`] carries the rule.
+        pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
+            let child = vec![self.item().clone().into_arrow_field_ffi()?];
+            Ok(match self {
+                Self::List(_) => ArrowFfiParts::nested("+l", child),
+                Self::ListView(_) => ArrowFfiParts::nested("+vl", child),
+                Self::FixedSizeList(_, length) => {
+                    validate_non_negative("FixedSizeList", "length", *length)?;
+                    ArrowFfiParts::nested(format!("+w:{length}"), child)
+                }
+                Self::LargeList(_) => ArrowFfiParts::nested("+L", child),
+                Self::LargeListView(_) => ArrowFfiParts::nested("+vL", child),
+            })
+        }
+
+        /// The sequence datatype one Arrow list storage imports as.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the item field cannot be imported, when the
+        /// fixed length is negative, or when the storage belongs to another
+        /// family.
+        pub(crate) fn from_arrow_storage_at_depth(
+            value: &ArrowDataType,
+            depth: usize,
+        ) -> Result<DataType> {
+            match value {
+                ArrowDataType::List(item) => Ok(DataType::list(Field::from_arrow_field_ref_at_depth(
+                    Arc::clone(item),
+                    depth,
+                )?)),
+                ArrowDataType::ListView(item) => Ok(DataType::list_view(
+                    Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
+                )),
+                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_list(
+                    Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
+                    *length,
+                ),
+                ArrowDataType::LargeList(item) => Ok(DataType::large_list(
+                    Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
+                )),
+                ArrowDataType::LargeListView(item) => Ok(DataType::large_list_view(
+                    Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
+                )),
+                other => Err(invalid(
+                    "sequence",
+                    format_smolstr!("expected a list storage, got {other}"),
+                )),
+            }
+        }
+
+        /// The same import, consuming Arrow's shared item field.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::from_arrow_storage_at_depth`] carries the rule.
+        pub(crate) fn from_arrow_storage_owned_at_depth(
+            value: ArrowDataType,
+            depth: usize,
+        ) -> Result<DataType> {
+            match value {
+                ArrowDataType::List(item) => {
+                    Ok(DataType::list(Field::from_arrow_field_ref_at_depth(item, depth)?))
+                }
+                ArrowDataType::ListView(item) => Ok(DataType::list_view(
+                    Field::from_arrow_field_ref_at_depth(item, depth)?,
+                )),
+                ArrowDataType::FixedSizeList(item, length) => {
+                    DataType::fixed_size_list(Field::from_arrow_field_ref_at_depth(item, depth)?, length)
+                }
+                ArrowDataType::LargeList(item) => Ok(DataType::large_list(
+                    Field::from_arrow_field_ref_at_depth(item, depth)?,
+                )),
+                ArrowDataType::LargeListView(item) => Ok(DataType::large_list_view(
+                    Field::from_arrow_field_ref_at_depth(item, depth)?,
+                )),
+                other => Self::from_arrow_storage_at_depth(&other, depth),
+            }
+        }
+    }
+}

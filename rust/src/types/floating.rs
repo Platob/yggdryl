@@ -881,3 +881,64 @@ float_operators!(Float64, f64, as_f64, from_f64);
 pub(crate) fn float_from_text(text: &str) -> Option<Scalar> {
     text.trim().parse::<f64>().ok().map(Scalar::from)
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: every IEEE width is one of Arrow's own.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::FloatingType;
+    use crate::types::invalid;
+    use crate::{DataType, Result};
+
+    impl FloatingType {
+        /// The Arrow storage this width lays out.
+        pub(crate) const fn arrow_storage(self) -> ArrowDataType {
+            match self {
+                Self::Float16 => ArrowDataType::Float16,
+                Self::Float32 => ArrowDataType::Float32,
+                Self::Float64 => ArrowDataType::Float64,
+            }
+        }
+
+        /// The width one Arrow floating storage names, `None` for anything else.
+        pub(crate) const fn from_arrow_storage(value: &ArrowDataType) -> Option<Self> {
+            match value {
+                ArrowDataType::Float16 => Some(Self::Float16),
+                ArrowDataType::Float32 => Some(Self::Float32),
+                ArrowDataType::Float64 => Some(Self::Float64),
+                _ => None,
+            }
+        }
+    }
+
+    /// The Arrow storage one floating datatype lays out.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the datatype belongs to another family.
+    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
+        Ok(FloatingType::try_from(dtype)?.arrow_storage())
+    }
+
+    /// The floating datatype one Arrow storage imports as.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
+        FloatingType::from_arrow_storage(value)
+            .map(DataType::from)
+            .ok_or_else(|| {
+                invalid(
+                    "floating",
+                    format_smolstr!("expected a floating storage, got {value}"),
+                )
+            })
+    }
+}
+
+pub(crate) use arrow::{arrow_storage, from_arrow_storage};

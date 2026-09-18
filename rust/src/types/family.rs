@@ -444,3 +444,40 @@ payload_datatype!(
     read DataType::Geography(parameters) => Self::new(std::sync::Arc::clone(parameters)),
     write DataType::Geography(parameters),
 );
+
+// ------------------------------------------------------------------------
+// The C Data Interface parts a nested family writes.
+// ------------------------------------------------------------------------
+
+/// What one nested datatype contributes to its C Data Interface schema.
+///
+/// Arrow's own `FFI_ArrowSchema` conversion drops the flags a nested datatype
+/// owns - sorted map keys above all - when it adds a field's flags on top, so
+/// this crate builds the node itself. Each family answers the four parts of
+/// its own node here and [`crate::DataType::into_arrow_datatype_ffi`] assembles
+/// them, so no family's flags are lost to a shared walker.
+pub(crate) struct ArrowFfiParts {
+    /// The format string Arrow's C interface names this layout by.
+    pub(crate) format: String,
+    /// One C schema per child field, in the order the layout declares them.
+    pub(crate) children: Vec<arrow_schema::ffi::FFI_ArrowSchema>,
+    /// The values schema, for a layout whose values are dictionary-encoded.
+    pub(crate) dictionary: Option<arrow_schema::ffi::FFI_ArrowSchema>,
+    /// The flags this layout owns, before a field adds its own.
+    pub(crate) flags: arrow_schema::ffi::Flags,
+}
+
+impl ArrowFfiParts {
+    /// The parts of a node that carries children and no flags of its own.
+    pub(crate) fn nested(
+        format: impl Into<String>,
+        children: Vec<arrow_schema::ffi::FFI_ArrowSchema>,
+    ) -> Self {
+        Self {
+            format: format.into(),
+            children,
+            dictionary: None,
+            flags: arrow_schema::ffi::Flags::empty(),
+        }
+    }
+}

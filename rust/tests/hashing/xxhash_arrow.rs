@@ -20,7 +20,7 @@ fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
     let fields = fields
         .iter()
         .cloned()
-        .map(Field::into_arrow)
+        .map(Field::into_arrow_field)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
@@ -666,6 +666,40 @@ fn columns() -> Vec<(Field, Scalar)> {
         ),
         (
             Field::new(
+                "sorted_map",
+                DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
+                true,
+            ),
+            // The sorted leaf hashes its rows exactly as the unsorted one
+            // does: the promise is about key order within a row, and a digest
+            // reads the entries in the order the row stores them.
+            Scalar::from_sequence([
+                Scalar::from_mapping([
+                    (Scalar::from("AAPL"), Scalar::from(100)),
+                    (Scalar::from("MSFT"), Scalar::from(200)),
+                ])
+                .unwrap(),
+                Scalar::from_mapping([]).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "struct2",
+                DataType::struct2(
+                    Field::new("key", DataType::utf8(), false),
+                    Field::new("value", DataType::Int64, true),
+                ),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100)]),
+                Scalar::from_sequence([Scalar::from("MSFT"), Scalar::Null]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
                 "dictionary",
                 DataType::from_str("dictionary<int32, utf8>").unwrap(),
                 true,
@@ -804,7 +838,7 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         .as_fields()
         .expect("a struct root")
         .iter()
-        .map(|field| field.clone().into_arrow())
+        .map(|field| field.clone().into_arrow_field())
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     let batch = RecordBatch::try_new(Arc::new(Schema::new(arrow_fields)), arrays).unwrap();
@@ -860,7 +894,7 @@ fn a_variant_column_refuses_by_name_rather_than_hashing_its_storage() {
     // other column; it answers the boundary's refusal rather than silently
     // hashing the two binaries its storage happens to lay out.
     let field = DataType::Variant.nullable_field("payload");
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     let ArrowDataType::Struct(children) = arrow.data_type().clone() else {
         panic!("a variant lays out as the canonical metadata-and-value struct");
     };
@@ -1016,7 +1050,7 @@ fn row_digest_roles_exclude_holders_and_nothing_else_narrows_the_input() {
         Arc::new(Schema::new(vec![
             ArrowField::new("symbol", ArrowDataType::Utf8, false),
             ArrowField::new("quantity", ArrowDataType::Int64, false),
-            holder.into_arrow().unwrap(),
+            holder.into_arrow_field().unwrap(),
         ])),
         vec![
             Arc::clone(&symbol),
@@ -1040,7 +1074,7 @@ fn rows_with_only_digest_holders_hash_as_empty_sequences() {
     let mut holder = Field::new("row_digest", DataType::Int64, false);
     holder.as_digest_mut().set_holder().unwrap();
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![holder.into_arrow().unwrap()])),
+        Arc::new(Schema::new(vec![holder.into_arrow_field().unwrap()])),
         vec![Arc::new(Int64Array::from(vec![11, 22]))],
     )
     .unwrap();
@@ -1703,7 +1737,7 @@ fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
     let root = root([nested, holder("row_digest", DataType::UInt64)]);
 
     let inner = StructArray::from(vec![(
-        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(inner_value.into_arrow_field().unwrap()),
         Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
     )]);
     let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();
@@ -1788,7 +1822,7 @@ fn a_nested_struct_holder_is_read_rather_than_recomputed() {
     let root = root([nested, holder("row_digest", DataType::UInt64)]);
 
     let inner = StructArray::from(vec![(
-        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(inner_value.into_arrow_field().unwrap()),
         Arc::new(Int64Array::from(vec![7])) as ArrayRef,
     )]);
     let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();

@@ -104,3 +104,14 @@ text_scalar_value!(MimeType, MimeType, DataTypeId::MimeType, DataType::MimeType)
 /// The Arrow extension name preserving [`crate::DataType::MimeType`] over its
 /// Utf8 storage.
 pub(crate) const MIMETYPE_EXTENSION_NAME: &str = "yggdryl.mimetype";
+
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl MimeTypeType {
+    /// The Arrow storage a MIME type column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}

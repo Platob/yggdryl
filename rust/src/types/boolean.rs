@@ -130,3 +130,48 @@ pub(crate) fn boolean_from_text(text: &str) -> Option<Scalar> {
         _ => None,
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: the two logic-free datatypes are Arrow's own.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::DataType as ArrowDataType;
+    use smol_str::format_smolstr;
+
+    use super::{BooleanType, NullType};
+    use crate::types::invalid;
+    use crate::{DataType, Result};
+
+    impl NullType {
+        /// The Arrow storage a null column lays out.
+        pub(crate) const fn arrow_storage() -> ArrowDataType {
+            ArrowDataType::Null
+        }
+    }
+
+    impl BooleanType {
+        /// The Arrow storage a boolean column lays out.
+        pub(crate) const fn arrow_storage() -> ArrowDataType {
+            ArrowDataType::Boolean
+        }
+    }
+
+    /// The datatype one of Arrow's two logic-free storages imports as.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
+        match value {
+            ArrowDataType::Null => Ok(DataType::Null),
+            ArrowDataType::Boolean => Ok(DataType::Boolean),
+            other => Err(invalid(
+                "Boolean",
+                format_smolstr!("expected a null or boolean storage, got {other}"),
+            )),
+        }
+    }
+}
+
+pub(crate) use arrow::from_arrow_storage;

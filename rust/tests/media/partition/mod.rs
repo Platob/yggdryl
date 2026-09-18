@@ -86,7 +86,7 @@ fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
         .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
         .expect("the ASCII storage, as the schema declares");
     assert_eq!(ccy.value(0), b"USD\0");
-    let field = Field::from_arrow(restored.schema().field(1)).unwrap();
+    let field = Field::from_arrow_field(restored.schema().field(1)).unwrap();
     assert_eq!(field.dtype(), &DataType::fixed_ascii(4).unwrap());
     assert!(field.is_partition());
 }
@@ -222,7 +222,7 @@ fn a_derived_column_is_not_marked_as_one_a_path_spells_out() {
 
     // `field:partition` says a directory carries the column. This one is
     // computed from the rows, so the declaration travels unchanged.
-    let declared = Field::from_arrow(filled.schema().field(1)).unwrap();
+    let declared = Field::from_arrow_field(filled.schema().field(1)).unwrap();
     assert!(!declared.is_partition());
     assert_eq!(
         declared.as_partition().sources().unwrap(),

@@ -284,10 +284,10 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
     ];
     for (spelling, storage) in cases {
         let dtype = DataType::from_str(spelling).unwrap();
-        assert_eq!(dtype.clone().into_arrow().unwrap(), storage, "{spelling}");
+        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{spelling}");
 
         let field = dtype.clone().nullable_field("value");
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(
             arrow
                 .metadata()
@@ -303,7 +303,7 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
                 .is_some_and(|document| document.contains("\"layout\"")),
             "{spelling} should declare its layout"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{spelling}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{spelling}");
     }
 
     // Plain UTF-8 is Arrow's own datatype and crosses bare.
@@ -312,7 +312,7 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
         DataType::large_utf8(),
         DataType::utf8_view(),
     ] {
-        let arrow = dtype.clone().nullable_field("value").into_arrow().unwrap();
+        let arrow = dtype.clone().nullable_field("value").into_arrow_field().unwrap();
         assert!(
             !arrow.metadata().contains_key(EXTENSION_TYPE_NAME_KEY),
             "{dtype} should cross bare"
@@ -328,12 +328,12 @@ fn the_two_view_layouts_share_one_arrow_layout_and_stay_distinct_here() {
     let large = DataType::from_str("large_utf8_view").unwrap();
     assert_ne!(view, large);
     assert_eq!(
-        view.clone().into_arrow().unwrap(),
-        large.clone().into_arrow().unwrap()
+        view.clone().into_arrow_datatype().unwrap(),
+        large.clone().into_arrow_datatype().unwrap()
     );
     let field = large.clone().nullable_field("value");
     assert_eq!(
-        Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap(),
+        Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap(),
         field
     );
 }
@@ -659,7 +659,7 @@ fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
         Charset::Cp1252,
     ));
     assert!(unwidened.validate().is_err());
-    assert!(unwidened.clone().into_arrow().is_err());
+    assert!(unwidened.clone().into_arrow_datatype().is_err());
 }
 
 #[test]
@@ -704,8 +704,8 @@ fn a_cast_into_another_charset_re_encodes_and_refuses_what_it_cannot_spell() {
     assert!(lenient.is_null(1));
 
     // A field already in that exact string reads back as itself.
-    let arrow = target.clone().into_arrow().unwrap();
-    assert_eq!(Field::from_arrow(&arrow).unwrap(), target);
+    let arrow = target.clone().into_arrow_field().unwrap();
+    assert_eq!(Field::from_arrow_field(&arrow).unwrap(), target);
 }
 
 #[test]

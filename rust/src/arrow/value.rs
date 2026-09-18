@@ -47,7 +47,7 @@ use crate::types::enums::EnumType;
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
     let dtype = field.dtype();
-    let arrow_type = field.clone().into_arrow_ref()?.data_type().clone();
+    let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
     // Arrow owns the canonical empty representation for every validated
     // datatype. Taking this path before schema-directed value materialization
     // avoids inventing defaults for children that have no physical slots.
@@ -695,7 +695,7 @@ fn list_parts<'a, O: Offset>(values: &'a [&Scalar]) -> Result<ListParts<'a, O>> 
 fn list_array<O: Offset>(child: &Field, values: &[&Scalar], kind: ListKind) -> Result<ArrayRef> {
     let (offsets, _, flattened, nulls) = list_parts::<O>(values)?;
     let child_array = array_from_values(child, &flattened)?;
-    let child = child.clone().into_arrow_ref()?;
+    let child = child.clone().into_arrow_field_ref()?;
     let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
     match kind {
         ListKind::List => Ok(Arc::new(ListArray::try_new(
@@ -722,7 +722,7 @@ fn list_view_array<O: Offset>(
     let (offsets, sizes, flattened, nulls) = list_parts::<O>(values)?;
     let offsets = offsets.into_iter().take(values.len()).collect::<Vec<_>>();
     let child_array = array_from_values(child, &flattened)?;
-    let child = child.clone().into_arrow_ref()?;
+    let child = child.clone().into_arrow_field_ref()?;
     match kind {
         ListKind::ListView => Ok(Arc::new(ListViewArray::try_new(
             child,
@@ -819,7 +819,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     }
     let child_array = array_from_values(child, &flattened)?;
     Ok(Arc::new(FixedSizeListArray::try_new_with_length(
-        child.clone().into_arrow_ref()?,
+        child.clone().into_arrow_field_ref()?,
         size,
         child_array,
         nulls(validity),
@@ -846,7 +846,7 @@ fn struct_array(fields: &crate::StructureType, values: &[&Scalar]) -> Result<Arr
     let arrow_fields = fields
         .iter()
         .cloned()
-        .map(Field::into_arrow_ref)
+        .map(Field::into_arrow_field_ref)
         .collect::<crate::Result<Vec<_>>>()?;
     if fields.is_empty() {
         return Ok(Arc::new(StructArray::new_empty_fields(
@@ -1011,7 +1011,7 @@ fn union_array(
 
 fn fields_to_arrow_union(fields: &crate::UnionFields, mode: UnionMode) -> Result<ArrowDataType> {
     let dtype = DataType::union(fields.iter().map(|(id, field)| (id, field.clone())), mode)?;
-    dtype.into_arrow().map_err(Into::into)
+    dtype.into_arrow_datatype().map_err(Into::into)
 }
 
 fn dictionary_array(dictionary: &crate::DictionaryType, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -1097,8 +1097,8 @@ fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
     let vals = entries.iter().map(|(_, value)| value).collect::<Vec<_>>();
     let entries_array = StructArray::try_new_with_length(
         vec![
-            fields[0].clone().into_arrow_ref()?,
-            fields[1].clone().into_arrow_ref()?,
+            fields[0].clone().into_arrow_field_ref()?,
+            fields[1].clone().into_arrow_field_ref()?,
         ]
         .into(),
         vec![
@@ -1109,7 +1109,7 @@ fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
         entries.len(),
     )?;
     Ok(Arc::new(MapArray::try_new(
-        map.entries().clone().into_arrow_ref()?,
+        map.entries().clone().into_arrow_field_ref()?,
         OffsetBuffer::new(ScalarBuffer::from(offsets)),
         entries_array,
         nulls(validity),
@@ -1130,8 +1130,8 @@ fn run_array(encoded: &crate::RunEndEncodedType, values: &[&Scalar]) -> Result<A
     }
     let values_array = array_from_values(encoded.values(), &run_values)?;
     let arrow_type = ArrowDataType::RunEndEncoded(
-        encoded.run_ends().clone().into_arrow_ref()?,
-        encoded.values().clone().into_arrow_ref()?,
+        encoded.run_ends().clone().into_arrow_field_ref()?,
+        encoded.values().clone().into_arrow_field_ref()?,
     );
     macro_rules! run {
         ($key:ty, $array:ty) => {{

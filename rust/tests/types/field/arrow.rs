@@ -45,17 +45,17 @@ fn arrow_import_rebuilds_noncanonical_http_metadata_for_every_ownership_path() {
             ("HTTP:Content-Length".to_owned(), "00042".to_owned()),
         ]));
 
-    let borrowed = Field::from_arrow(&arrow).unwrap();
-    assert_canonical_http_metadata(&borrowed.into_arrow().unwrap());
+    let borrowed = Field::from_arrow_field(&arrow).unwrap();
+    assert_canonical_http_metadata(&borrowed.into_arrow_field().unwrap());
 
     let shared = Arc::new(arrow.clone());
-    let shared_import = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
-    let shared_projection = shared_import.into_arrow_ref().unwrap();
+    let shared_import = Field::from_arrow_field_ref(Arc::clone(&shared)).unwrap();
+    let shared_projection = shared_import.into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&shared, &shared_projection));
     assert_canonical_http_metadata(shared_projection.as_ref());
 
     let owned = Field::try_from(arrow).unwrap();
-    assert_canonical_http_metadata(&owned.into_arrow().unwrap());
+    assert_canonical_http_metadata(&owned.into_arrow_field().unwrap());
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     let map = DataType::map(entries, true).unwrap();
     let root = Field::from_parts("lookup", map, true, [("owner", "core")]).unwrap();
 
-    let schema = root.clone().into_arrow_ffi().unwrap();
+    let schema = root.clone().into_arrow_field_ffi().unwrap();
     assert_eq!(schema.name(), Some("lookup"));
     assert_eq!(
         schema.metadata().unwrap().get("owner"),
@@ -99,8 +99,8 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     assert_flag(encoded, Flags::DICTIONARY_ORDERED);
     assert!(encoded.dictionary().is_some());
 
-    root.clone().into_arrow_ref().unwrap();
-    let cached = root.into_arrow_ffi().unwrap();
+    root.clone().into_arrow_field_ref().unwrap();
+    let cached = root.into_arrow_field_ffi().unwrap();
     assert_flag(&cached, Flags::NULLABLE);
     assert_flag(&cached, Flags::MAP_KEYS_SORTED);
     assert_flag(cached.child(0).child(1), Flags::DICTIONARY_ORDERED);
@@ -111,7 +111,7 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
     let map = DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap();
     let dtype = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
 
-    let schema = dtype.into_arrow_ffi().unwrap();
+    let schema = dtype.into_arrow_datatype_ffi().unwrap();
     let map = schema.child(0);
     assert_flag(map, Flags::NULLABLE);
     assert_flag(map, Flags::MAP_KEYS_SORTED);
@@ -119,7 +119,7 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
     // A fixed layout built by hand with no width is what `validate` catches.
     assert!(
         DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary))
-            .into_arrow_ffi()
+            .into_arrow_datatype_ffi()
             .is_err()
     );
     assert!(
@@ -131,7 +131,7 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
             },
             false,
         )
-        .into_arrow_ffi()
+        .into_arrow_field_ffi()
         .is_err()
     );
 }
@@ -146,7 +146,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     )
     .unwrap();
 
-    let schema = geography.clone().into_arrow_ffi().unwrap();
+    let schema = geography.clone().into_arrow_field_ffi().unwrap();
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
@@ -158,19 +158,19 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
 
     // A round trip through the C schema restores the exact field.
-    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported, geography);
 
     // The cached projection path serves the same identity.
-    geography.clone().into_arrow_ref().unwrap();
-    let cached = geography.into_arrow_ffi().unwrap();
+    geography.clone().into_arrow_field_ref().unwrap();
+    let cached = geography.into_arrow_field_ffi().unwrap();
     assert_eq!(
         cached.metadata().unwrap().get("ARROW:extension:name"),
         Some(&"geoarrow.wkb".to_owned())
     );
 
     // A bare datatype carries the identity too, variant included.
-    let schema = DataType::variant().into_arrow_ffi().unwrap();
+    let schema = DataType::variant().into_arrow_datatype_ffi().unwrap();
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
@@ -180,7 +180,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
         metadata.get("ARROW:extension:metadata"),
         Some(&String::new())
     );
-    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported.dtype(), &DataType::Variant);
 }
 
@@ -194,7 +194,7 @@ fn fixed_ascii_ffi_schemas_carry_the_string_document() {
     )
     .unwrap();
 
-    let schema = currency.clone().into_arrow_ffi().unwrap();
+    let schema = currency.clone().into_arrow_field_ffi().unwrap();
     assert_eq!(schema.format(), "w:4");
     let metadata = schema.metadata().unwrap();
     assert_eq!(
@@ -208,17 +208,17 @@ fn fixed_ascii_ffi_schemas_carry_the_string_document() {
     assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
 
     // A round trip through the C schema restores the exact field.
-    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported, currency);
 
     // A bare datatype carries the identity too.
-    let schema = DataType::fixed_ascii(16).unwrap().into_arrow_ffi().unwrap();
+    let schema = DataType::fixed_ascii(16).unwrap().into_arrow_datatype_ffi().unwrap();
     assert_eq!(schema.format(), "w:16");
     assert_eq!(
         schema.metadata().unwrap().get("ARROW:extension:name"),
         Some(&"yggdryl.string".to_owned())
     );
-    let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported.dtype(), &DataType::fixed_ascii(16).unwrap());
 }
 
@@ -802,7 +802,7 @@ fn variant_storage() -> ArrowDataType {
 #[test]
 fn a_geometry_field_projects_the_geoarrow_extension_and_reimports_itself() {
     let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
     assert_eq!(arrow.extension_type_name(), Some("geoarrow.wkb"));
     assert_eq!(
@@ -810,7 +810,7 @@ fn a_geometry_field_projects_the_geoarrow_extension_and_reimports_itself() {
         Some(r#"{"crs":"OGC:CRS84"}"#)
     );
 
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported, field);
     // The extension keys are transport: they never reach Field metadata.
     assert!(imported.as_metadata().is_empty());
@@ -823,23 +823,23 @@ fn a_geography_projection_carries_the_edge_algorithm_and_round_trips() {
         DataType::geography(Some("EPSG:4326"), Some(EdgeAlgorithm::Vincenty)).unwrap(),
         false,
     );
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(
         arrow.extension_type_metadata(),
         Some(r#"{"crs":"EPSG:4326","edges":"vincenty"}"#)
     );
-    assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+    assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 }
 
 #[test]
 fn a_variant_field_projects_the_canonical_struct_and_reimports_itself() {
     let field = Field::new("payload", DataType::variant(), true);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &variant_storage());
     assert_eq!(arrow.extension_type_name(), Some("arrow.parquet.variant"));
     assert_eq!(arrow.extension_type_metadata(), Some(""));
 
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported.dtype(), &DataType::Variant);
     assert!(imported.as_metadata().is_empty());
     assert_eq!(imported, field);
@@ -852,9 +852,9 @@ fn a_bare_geoarrow_document_imports_as_the_default_geometry() {
             EXTENSION_TYPE_NAME_KEY.to_owned(),
             "geoarrow.wkb".to_owned(),
         )]));
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported.dtype(), &DataType::geometry(None).unwrap());
-    let shared = Field::from_arrow_ref(Arc::new(arrow.clone())).unwrap();
+    let shared = Field::from_arrow_field_ref(Arc::new(arrow.clone())).unwrap();
     assert_eq!(shared, imported);
     let owned = Field::try_from(arrow).unwrap();
     assert_eq!(owned, imported);
@@ -869,13 +869,13 @@ fn an_unknown_extension_name_keeps_todays_import_exactly() {
         ),
         (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
     ]));
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported.dtype(), &DataType::binary());
     assert_eq!(
         imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
         Some("someorg.blob")
     );
-    assert_eq!(imported.into_arrow().unwrap(), arrow);
+    assert_eq!(imported.into_arrow_field().unwrap(), arrow);
 }
 
 #[test]
@@ -887,7 +887,7 @@ fn our_extension_name_over_a_foreign_storage_keeps_todays_import() {
                 "geoarrow.wkb".to_owned(),
             ),
         ]));
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported.dtype(), &DataType::large_binary());
     assert_eq!(
         imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
@@ -908,7 +908,7 @@ fn a_malformed_geoarrow_document_is_refused_naming_the_key() {
                 r#"{"crs":7}"#.to_owned(),
             ),
         ]));
-    let refused = Field::from_arrow(&arrow).unwrap_err().to_string();
+    let refused = Field::from_arrow_field(&arrow).unwrap_err().to_string();
     assert!(refused.contains(EXTENSION_TYPE_METADATA_KEY), "{refused}");
     assert!(refused.contains("crs"), "{refused}");
 }
@@ -922,7 +922,7 @@ fn a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both
         [(EXTENSION_TYPE_NAME_KEY, "someorg.other")],
     )
     .unwrap();
-    let refused = field.into_arrow().unwrap_err().to_string();
+    let refused = field.into_arrow_field().unwrap_err().to_string();
     assert!(refused.contains("someorg.other"), "{refused}");
     assert!(refused.contains("geoarrow.wkb"), "{refused}");
 
@@ -933,7 +933,7 @@ fn a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both
         [(EXTENSION_TYPE_METADATA_KEY, "shredded")],
     )
     .unwrap();
-    let refused = variant.into_arrow().unwrap_err().to_string();
+    let refused = variant.into_arrow_field().unwrap_err().to_string();
     assert!(refused.contains("shredded"), "{refused}");
     assert!(refused.contains("arrow.parquet.variant"), "{refused}");
 }
@@ -951,7 +951,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
                 "shredded".to_owned(),
             ),
         ]));
-    let imported = Field::from_arrow(&shredded).unwrap();
+    let imported = Field::from_arrow_field(&shredded).unwrap();
     assert!(matches!(imported.dtype(), DataType::Structure(_)));
 
     let swapped = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
@@ -962,7 +962,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
         EXTENSION_TYPE_NAME_KEY.to_owned(),
         "arrow.parquet.variant".to_owned(),
     )]));
-    let imported = Field::from_arrow(&swapped).unwrap();
+    let imported = Field::from_arrow_field(&swapped).unwrap();
     assert!(matches!(imported.dtype(), DataType::Structure(_)));
 }
 
@@ -994,12 +994,12 @@ fn an_ascii_field_projects_the_string_extension_and_reimports_itself() {
         ),
     ] {
         let field = Field::new("ccy", dtype, false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &storage);
         assert_eq!(arrow.extension_type_name(), Some("yggdryl.string"));
         assert_eq!(arrow.extension_type_metadata(), Some(document));
 
-        let imported = Field::from_arrow(&arrow).unwrap();
+        let imported = Field::from_arrow_field(&arrow).unwrap();
         assert_eq!(imported, field);
         assert!(imported.as_metadata().is_empty());
     }
@@ -1018,13 +1018,13 @@ fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import()
             ),
             (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
         ]));
-    let imported = Field::from_arrow(&large).unwrap();
+    let imported = Field::from_arrow_field(&large).unwrap();
     assert_eq!(imported.dtype(), &DataType::large_binary());
     assert_eq!(
         imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
         Some("yggdryl.string")
     );
-    assert_eq!(imported.into_arrow().unwrap(), large);
+    assert_eq!(imported.into_arrow_field().unwrap(), large);
 
     // `yggdryl.ascii` names nothing this crate has.
     let retired = ArrowField::new("ccy", ArrowDataType::FixedSizeBinary(4), true).with_metadata(
@@ -1033,9 +1033,9 @@ fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import()
             "yggdryl.ascii".to_owned(),
         )]),
     );
-    let imported = Field::from_arrow(&retired).unwrap();
+    let imported = Field::from_arrow_field(&retired).unwrap();
     assert_eq!(imported.dtype(), &DataType::fixed_size_binary(4).unwrap());
-    assert_eq!(imported.into_arrow().unwrap(), retired);
+    assert_eq!(imported.into_arrow_field().unwrap(), retired);
 }
 
 #[test]
@@ -1046,14 +1046,14 @@ fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
         .try_with_bound(16)
         .unwrap();
     let field = Field::new("key", DataType::bytes(bounded).unwrap(), true);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
     assert_eq!(arrow.extension_type_name(), Some("yggdryl.bytes"));
     assert_eq!(
         arrow.extension_type_metadata(),
         Some(r#"{"layout":"binary","max":16}"#)
     );
-    let imported = Field::from_arrow(&arrow).unwrap();
+    let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported, field);
     assert!(imported.as_metadata().is_empty());
 
@@ -1063,7 +1063,7 @@ fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
         DataType::binary_view(),
         DataType::fixed_size_binary(16).unwrap(),
     ] {
-        let arrow = Field::new("key", dtype, true).into_arrow().unwrap();
+        let arrow = Field::new("key", dtype, true).into_arrow_field().unwrap();
         assert_eq!(arrow.extension_type_name(), None, "{arrow:?}");
     }
 }
@@ -1079,20 +1079,20 @@ fn a_bytes_extension_over_other_storage_keeps_todays_import() {
             ),
             (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
         ]));
-    let imported = Field::from_arrow(&large).unwrap();
+    let imported = Field::from_arrow_field(&large).unwrap();
     assert_eq!(imported.dtype(), &DataType::large_binary());
     assert_eq!(
         imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
         Some("yggdryl.bytes")
     );
-    assert_eq!(imported.into_arrow().unwrap(), large);
+    assert_eq!(imported.into_arrow_field().unwrap(), large);
 }
 
 #[test]
 fn a_negative_arrow_fixed_binary_width_is_refused() {
-    let refused = DataType::from_arrow(&ArrowDataType::FixedSizeBinary(-1))
+    let refused = DataType::from_arrow_datatype(&ArrowDataType::FixedSizeBinary(-1))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("-1"), "{refused}");
-    assert!(DataType::from_arrow(&ArrowDataType::FixedSizeBinary(0)).is_err());
+    assert!(DataType::from_arrow_datatype(&ArrowDataType::FixedSizeBinary(0)).is_err());
 }

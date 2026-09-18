@@ -137,10 +137,10 @@ fn canonical_display_json_and_arrow_are_lossless() {
         value
     );
 
-    let arrow = value.clone().into_arrow().unwrap();
-    assert_eq!(DataType::from_arrow(&arrow).unwrap(), value);
+    let arrow = value.clone().into_arrow_datatype().unwrap();
+    assert_eq!(DataType::from_arrow_datatype(&arrow).unwrap(), value);
     assert_eq!(
-        DataType::try_from(value.clone().into_arrow().unwrap()).unwrap(),
+        DataType::try_from(value.clone().into_arrow_datatype().unwrap()).unwrap(),
         value
     );
 }
@@ -466,7 +466,7 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
     ];
 
     for source in values {
-        let arrow: ArrowDataType = source.clone().into_arrow().unwrap();
+        let arrow: ArrowDataType = source.clone().into_arrow_datatype().unwrap();
         let arrow_debug = format!("{arrow:?}");
         let parsed_debug = DataType::from_str(&arrow_debug)
             .unwrap_or_else(|error| panic!("failed to parse {arrow_debug}: {error}"));
@@ -489,27 +489,27 @@ fn arrow_import_preserves_nested_field_projection_arcs() {
     ));
     let arrow = ArrowDataType::List(Arc::clone(&outer));
 
-    let borrowed = DataType::from_arrow(&arrow).unwrap();
+    let borrowed = DataType::from_arrow_datatype(&arrow).unwrap();
     let borrowed_outer = borrowed.get_field(0).unwrap();
     assert!(Arc::ptr_eq(
-        &borrowed_outer.clone().into_arrow_ref().unwrap(),
+        &borrowed_outer.clone().into_arrow_field_ref().unwrap(),
         &outer
     ));
     let borrowed_inner = borrowed_outer.dtype().get_field(0).unwrap();
     assert!(Arc::ptr_eq(
-        &borrowed_inner.clone().into_arrow_ref().unwrap(),
+        &borrowed_inner.clone().into_arrow_field_ref().unwrap(),
         &inner
     ));
 
     let owned = DataType::try_from(arrow).unwrap();
     let owned_outer = owned.get_field(0).unwrap();
     assert!(Arc::ptr_eq(
-        &owned_outer.clone().into_arrow_ref().unwrap(),
+        &owned_outer.clone().into_arrow_field_ref().unwrap(),
         &outer
     ));
     let owned_inner = owned_outer.dtype().get_field(0).unwrap();
     assert!(Arc::ptr_eq(
-        &owned_inner.clone().into_arrow_ref().unwrap(),
+        &owned_inner.clone().into_arrow_field_ref().unwrap(),
         &inner
     ));
 }
@@ -522,7 +522,7 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
         Some(Arc::clone(&timezone)),
     );
 
-    let borrowed = DataType::from_arrow(&arrow).unwrap();
+    let borrowed = DataType::from_arrow_datatype(&arrow).unwrap();
     let DataType::DateTime64 {
         unit: _,
         timezone: borrowed_timezone,
@@ -532,7 +532,7 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     };
     let borrowed_timezone = *borrowed_timezone;
 
-    let borrowed_arrow = borrowed.into_arrow().unwrap();
+    let borrowed_arrow = borrowed.into_arrow_datatype().unwrap();
     let ArrowDataType::Timestamp(_, Some(borrowed_arrow_timezone)) = borrowed_arrow else {
         panic!("timestamp projection changed variant");
     };
@@ -551,7 +551,7 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
         owned_timezone.as_smol_str()
     ));
 
-    let owned_arrow = owned.into_arrow().unwrap();
+    let owned_arrow = owned.into_arrow_datatype().unwrap();
     let ArrowDataType::Timestamp(_, Some(owned_arrow_timezone)) = owned_arrow else {
         panic!("timestamp projection changed variant");
     };
@@ -569,11 +569,11 @@ fn arrow_import_enforces_one_shared_recursion_budget() {
     }
 
     let maximum = nested_list(DataType::PARSE_RECURSION_LIMIT - 1);
-    assert!(DataType::from_arrow(&maximum).is_ok());
+    assert!(DataType::from_arrow_datatype(&maximum).is_ok());
     assert!(DataType::try_from(maximum).is_ok());
 
     let over_limit = nested_list(DataType::PARSE_RECURSION_LIMIT);
-    assert!(DataType::from_arrow(&over_limit).is_err());
+    assert!(DataType::from_arrow_datatype(&over_limit).is_err());
     assert!(DataType::try_from(over_limit).is_err());
 }
 

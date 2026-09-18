@@ -19,9 +19,9 @@ fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &
 fn borrowed_and_consuming_arrow_datatype_paths_are_lossless() {
     let dtype =
         DataType::from_str("struct<id:bigint,values:map<string,array<decimal(38,18)>>>").unwrap();
-    let borrowed = dtype.clone().into_arrow().unwrap();
-    assert_eq!(DataType::from_arrow(&borrowed).unwrap(), dtype);
-    let owned = dtype.clone().into_arrow().unwrap();
+    let borrowed = dtype.clone().into_arrow_datatype().unwrap();
+    assert_eq!(DataType::from_arrow_datatype(&borrowed).unwrap(), dtype);
+    let owned = dtype.clone().into_arrow_datatype().unwrap();
     assert_eq!(DataType::try_from(owned).unwrap(), dtype);
 }
 
@@ -34,8 +34,8 @@ fn direct_arrow_values_round_trip_through_core() {
         ]
         .into(),
     );
-    let core = DataType::from_arrow(&arrow).unwrap();
-    assert_eq!(core.clone().into_arrow().unwrap(), arrow);
+    let core = DataType::from_arrow_datatype(&arrow).unwrap();
+    assert_eq!(core.clone().into_arrow_datatype().unwrap(), arrow);
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
         core.get_field_by_path("name").unwrap().dtype(),
@@ -77,10 +77,10 @@ fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
 
     for value in values {
         value.validate().unwrap();
-        let arrow = value.clone().into_arrow().unwrap();
-        assert_eq!(DataType::from_arrow(&arrow).unwrap(), value);
+        let arrow = value.clone().into_arrow_datatype().unwrap();
+        assert_eq!(DataType::from_arrow_datatype(&arrow).unwrap(), value);
         assert_eq!(DataType::try_from(arrow.clone()).unwrap(), value);
-        assert_eq!(value.clone().into_arrow().unwrap(), arrow);
+        assert_eq!(value.clone().into_arrow_datatype().unwrap(), arrow);
 
         let displayed = value.to_string();
         assert_eq!(DataType::from_str(&displayed).unwrap(), value);
@@ -99,13 +99,13 @@ fn duration32_projects_to_arrow_and_imports_at_arrows_native_width() {
         TimeUnit::Nanosecond,
     ] {
         let narrow = DataType::duration32(unit).unwrap();
-        let arrow = narrow.into_arrow().unwrap();
+        let arrow = narrow.into_arrow_datatype().unwrap();
         assert_eq!(
             arrow,
             ArrowDataType::Duration(unit.into_arrow_time().unwrap())
         );
         assert_eq!(
-            DataType::from_arrow(&arrow).unwrap(),
+            DataType::from_arrow_datatype(&arrow).unwrap(),
             DataType::Duration64(unit)
         );
     }
@@ -186,12 +186,12 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     ];
 
     for value in values {
-        let borrowed = value.clone().into_arrow().unwrap();
-        let ffi = value.clone().into_arrow_ffi().unwrap();
+        let borrowed = value.clone().into_arrow_datatype().unwrap();
+        let ffi = value.clone().into_arrow_datatype_ffi().unwrap();
         assert_eq!(ArrowDataType::try_from(&ffi).unwrap(), borrowed);
-        assert_eq!(DataType::from_arrow(&borrowed).unwrap(), value);
+        assert_eq!(DataType::from_arrow_datatype(&borrowed).unwrap(), value);
         assert_eq!(DataType::try_from(borrowed.clone()).unwrap(), value);
-        assert_eq!(value.clone().into_arrow().unwrap(), borrowed);
+        assert_eq!(value.clone().into_arrow_datatype().unwrap(), borrowed);
         assert_eq!(DataType::from_str(&value.to_string()).unwrap(), value);
         assert_eq!(
             DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
@@ -241,25 +241,25 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
             .unwrap(),
         ] {
             let field = Field::new("f", held.clone(), true);
-            let arrow = field.clone().into_arrow().unwrap();
-            assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{held}");
+            let arrow = field.clone().into_arrow_field().unwrap();
+            assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{held}");
 
             // The C schema is a field node too, so it carries the same
             // identity, dictionary encoding included.
-            let ffi = field.clone().into_arrow_ffi().unwrap();
+            let ffi = field.clone().into_arrow_field_ffi().unwrap();
             let imported = ArrowField::try_from(&ffi).unwrap();
             assert_eq!(
-                Field::from_arrow(&imported).unwrap().dtype(),
+                Field::from_arrow_field(&imported).unwrap().dtype(),
                 &held,
                 "{held}"
             );
 
             // A bare datatype has nowhere to carry it in Arrow, but its own C
             // schema does.
-            let ffi = held.clone().into_arrow_ffi().unwrap();
+            let ffi = held.clone().into_arrow_datatype_ffi().unwrap();
             let imported = ArrowField::try_from(&ffi).unwrap();
             assert_eq!(
-                Field::from_arrow(&imported).unwrap().dtype(),
+                Field::from_arrow_field(&imported).unwrap().dtype(),
                 &held,
                 "{held}"
             );
@@ -267,8 +267,8 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
 
         // The documented exception: an Arrow datatype is storage, because it
         // has no metadata to name an extension with.
-        let storage = dtype.clone().into_arrow().unwrap();
-        assert_ne!(DataType::from_arrow(&storage).unwrap(), dtype, "{dtype}");
+        let storage = dtype.clone().into_arrow_datatype().unwrap();
+        assert_ne!(DataType::from_arrow_datatype(&storage).unwrap(), dtype, "{dtype}");
     }
 }
 
@@ -327,7 +327,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         DataType::Interval(TimeUnit::Second),
     ] {
         assert!(invalid.validate().is_err());
-        assert!(invalid.clone().into_arrow().is_err());
+        assert!(invalid.clone().into_arrow_datatype().is_err());
         assert!(invalid.into_json().is_err());
     }
     assert!(DataType::fixed_size_binary(0).is_err());
@@ -365,7 +365,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         ]
         .into(),
     );
-    assert!(DataType::from_arrow(&duplicate_arrow).is_err());
+    assert!(DataType::from_arrow_datatype(&duplicate_arrow).is_err());
     assert!(DataType::try_from(duplicate_arrow).is_err());
 }
 
@@ -375,8 +375,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     for error in [
         DataType::time32(TimeUnit::Nanosecond).unwrap_err(),
         invalid_time.validate().unwrap_err(),
-        invalid_time.clone().into_arrow().unwrap_err(),
-        invalid_time.into_arrow_ffi().unwrap_err(),
+        invalid_time.clone().into_arrow_datatype().unwrap_err(),
+        invalid_time.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "Time32", "unit must be second or millisecond");
     }
@@ -392,8 +392,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     let invalid_binary = DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary));
     for error in [
         invalid_binary.validate().unwrap_err(),
-        invalid_binary.clone().into_arrow().unwrap_err(),
-        invalid_binary.into_arrow_ffi().unwrap_err(),
+        invalid_binary.clone().into_arrow_datatype().unwrap_err(),
+        invalid_binary.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(
             error,
@@ -407,8 +407,8 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     for error in [
         DataType::fixed_size_list(item, -1).unwrap_err(),
         invalid_list.validate().unwrap_err(),
-        invalid_list.clone().into_arrow().unwrap_err(),
-        invalid_list.into_arrow_ffi().unwrap_err(),
+        invalid_list.clone().into_arrow_datatype().unwrap_err(),
+        invalid_list.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "FixedSizeList", "length must be non-negative: -1");
     }
@@ -448,7 +448,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
     ];
 
     for dtype in extension_typed {
-        let ffi = dtype.clone().into_arrow_ffi().unwrap();
+        let ffi = dtype.clone().into_arrow_datatype_ffi().unwrap();
         let arrow = ArrowField::try_from(&ffi)
             .unwrap_or_else(|error| panic!("{dtype} did not project a C schema: {error}"));
         let name = arrow
@@ -461,7 +461,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         );
         // And what came back reads as the datatype that was sent.
         assert_eq!(
-            Field::from_arrow(&arrow).unwrap().dtype(),
+            Field::from_arrow_field(&arrow).unwrap().dtype(),
             &dtype,
             "{dtype} did not read back as itself"
         );

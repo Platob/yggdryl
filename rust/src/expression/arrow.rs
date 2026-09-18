@@ -564,7 +564,7 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             let array = evaluate(inner, context)?.into_column(rows)?;
             // The operand's Field keeps its extension identity in the cast:
             // an ASCII column meets a text literal as its trimmed text.
-            let source = inner.field.clone().into_arrow_ref()?;
+            let source = inner.field.clone().into_arrow_field_ref()?;
             Ok(Vector::Column(cast_field_array(
                 &node.field,
                 Some(source.metadata()),
@@ -636,7 +636,7 @@ fn segment_array(
             }
         }
         FieldSegment::Range { start, end } => {
-            let item = reached.clone().into_arrow_ref()?;
+            let item = reached.clone().into_arrow_field_ref()?;
             let item = match item.data_type() {
                 arrow_schema::DataType::List(item) => Some(Arc::clone(item)),
                 _ => None,

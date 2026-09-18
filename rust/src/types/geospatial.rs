@@ -535,3 +535,56 @@ macro_rules! geospatial_value {
 
 geospatial_value!(Geometry, DataType::geometry(None));
 geospatial_value!(Geography, DataType::geography(None, None));
+
+// ------------------------------------------------------------------------
+// Arrow projection: WKB bytes, and the canonical variant storage struct.
+// ------------------------------------------------------------------------
+
+mod arrow {
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
+
+    use crate::types::VariantType;
+
+    impl VariantType {
+        /// The Arrow storage a variant column lays out.
+        ///
+        /// The canonical `arrow.parquet.variant` struct: a non-nullable
+        /// `metadata` binary followed by a non-nullable `value` binary.
+        /// Shredding is a physical layout, so nothing else appears here.
+        pub(crate) fn arrow_storage() -> ArrowDataType {
+            ArrowDataType::Struct(ArrowFields::from(vec![
+                ArrowField::new("metadata", ArrowDataType::Binary, false),
+                ArrowField::new("value", ArrowDataType::Binary, false),
+            ]))
+        }
+    }
+
+    /// The Arrow storage a geospatial column lays out: Well-Known Binary.
+    ///
+    /// The `geoarrow.wkb` name and the GeoArrow document ride on the field
+    /// beside it, because an Arrow datatype has nowhere to carry them.
+    pub(crate) const fn geospatial_arrow_storage() -> ArrowDataType {
+        ArrowDataType::Binary
+    }
+
+    /// Reports whether an Arrow datatype is exactly the canonical variant
+    /// storage: a struct of a non-nullable `metadata` Binary followed by a
+    /// non-nullable `value` Binary.
+    ///
+    /// Child field metadata does not participate - it is transport, not
+    /// identity - but the order is fixed because Arrow's own struct casting is
+    /// positional and would silently relabel swapped children.
+    pub(crate) fn is_variant_storage(dtype: &ArrowDataType) -> bool {
+        let ArrowDataType::Struct(fields) = dtype else {
+            return false;
+        };
+        fields.len() == 2
+            && fields[0].name() == "metadata"
+            && fields[1].name() == "value"
+            && fields
+                .iter()
+                .all(|field| field.data_type() == &ArrowDataType::Binary && !field.is_nullable())
+    }
+}
+
+pub(crate) use arrow::{geospatial_arrow_storage, is_variant_storage};

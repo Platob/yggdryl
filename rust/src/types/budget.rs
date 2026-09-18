@@ -1285,7 +1285,7 @@ pub(crate) fn reserve_selected_source_take(
     output_copies: usize,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
-    let source_type = DataType::from_arrow(array.data_type())?;
+    let source_type = DataType::from_arrow_datatype(array.data_type())?;
     let selection = SourceSelection::Indices(selected);
     reserve_source_selection(array, &source_type, selection, budget)?;
     for _ in 0..output_copies {

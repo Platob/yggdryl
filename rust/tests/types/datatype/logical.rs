@@ -114,7 +114,7 @@ fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
     let venue = Field::new("venue", DataType::Mic, false)
         .try_with_string_enum(&venues)
         .unwrap();
-    let recovered = Field::from_arrow(&venue.clone().into_arrow().unwrap()).unwrap();
+    let recovered = Field::from_arrow_field(&venue.clone().into_arrow_field().unwrap()).unwrap();
     assert_eq!(recovered, venue);
     assert_eq!(recovered.string_enum().unwrap().as_ref(), Some(&venues));
 

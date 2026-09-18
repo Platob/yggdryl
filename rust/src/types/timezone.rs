@@ -1730,3 +1730,14 @@ mod tests {
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl TimezoneType {
+    /// The Arrow storage a time zone column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}

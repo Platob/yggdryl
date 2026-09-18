@@ -121,3 +121,14 @@ impl From<Url> for Scalar {
 /// The Arrow extension name preserving [`crate::DataType::Url`] over its Utf8
 /// storage.
 pub(crate) const URL_EXTENSION_NAME: &str = "yggdryl.url";
+
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl UrlType {
+    /// The Arrow storage a URL column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}

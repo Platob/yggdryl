@@ -585,7 +585,7 @@ order: struct[3], required
     );
 
     // `{:#}` and the named adapter are one implementation.
-    assert_eq!(format!("{field:#}"), field.pretty().to_string());
+    assert_eq!(format!("{field:#}"), field.into_pretty_str());
 
     // Unset attributes are absent: no dictionary_id=0, no empty metadata blob.
     let plain = DataType::Int64.required_field("id");

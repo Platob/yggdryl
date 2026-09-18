@@ -1116,7 +1116,7 @@ mod arrow {
             let mut columns = Vec::with_capacity(self.projections.len());
             for (bound, field) in self.projections.iter().zip(self.output.fields()) {
                 let evaluated = bound.evaluate(batch)?;
-                let declared = field.clone().into_arrow_ref()?;
+                let declared = field.clone().into_arrow_field_ref()?;
                 let array = if evaluated.data_type() == declared.data_type() {
                     evaluated
                 } else {

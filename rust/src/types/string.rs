@@ -43,7 +43,9 @@ use std::fmt;
 
 use std::num::NonZeroU32;
 
-pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
+pub(crate) use arrow::{
+    arrow_storage, describes_storage, from_arrow_storage, is_text_storage, needs_extension,
+};
 
 pub(crate) use scalars::str_from_value;
 
@@ -152,6 +154,27 @@ mod arrow {
         storage: &ArrowDataType,
     ) -> Result<bool> {
         Ok(arrow_storage(parameters)? == *storage)
+    }
+
+    /// The string datatype one Arrow text storage imports as.
+    ///
+    /// A charset and a bound are a `yggdryl.string` document on the field, so a
+    /// bare storage imports as the plain UTF-8 layout it is; the field level
+    /// puts the document's parameters back when it is there.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the storage belongs to another family.
+    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<crate::DataType> {
+        match value {
+            ArrowDataType::Utf8 => Ok(crate::DataType::utf8()),
+            ArrowDataType::LargeUtf8 => Ok(crate::DataType::large_utf8()),
+            ArrowDataType::Utf8View => Ok(crate::DataType::utf8_view()),
+            other => Err(crate::types::invalid(
+                "string",
+                smol_str::format_smolstr!("expected a text storage, got {other}"),
+            )),
+        }
     }
 }
 
