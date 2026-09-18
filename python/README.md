@@ -245,5 +245,7 @@ disambiguates. `types.variant` builds the bare Variant field,
 `types.dense_union` the union one, and explicit `types.union` remains
 available for custom IDs or sparse layout.
 
-Start with the [Python guide](https://platob.github.io/yggdryl/extensions/python/)
-and the [field classes guide](FIELDS.md).
+Every page of the [documentation](https://platob.github.io/yggdryl/) shows its
+operation in Rust, Python and JavaScript, so a Python spelling is documented
+where the vocabulary it belongs to is. The field classes are their own
+[guide](FIELDS.md).

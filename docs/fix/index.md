@@ -38,7 +38,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Identifiers | A component declares its own direct scalar members through `fix:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
 | Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` List/LargeList occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors) |
-| Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); the id crosses as an integer, membership as a list of strings |
+| Bindings | Python `field.fix` and `yggdryl.fix`; JavaScript `field.fix` and its `fix` namespace; the id crosses as an integer, membership as a list of strings |
 
 ## Use
 

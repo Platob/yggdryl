@@ -108,7 +108,7 @@ The view remembers the scheme; the caller writes the bare name.
         `IdentityField`, and seventeen others) are Rust-only. Python reads the generic property
         mapping through `field.iceberg`, and the validated HTTP values stay attributes on the
         field. `field.fix`, `field.digest`, `field.partition` and
-        [`field.python`](../extensions/python.md#the-declaring-class) are the exceptions: `id`,
+        `field.python` are the exceptions: `id`,
         `tag`, `tags`, `aliases`, `branches`, `identifiers`, `description`, `nulls`, `directions`
         and the catalog references on the first; `is_holder`, `algorithm`, `sources`, `time`,
         `unit`, `is_coupled` and `apply_arrow_batch` on the second; `sources`, `transform` and
@@ -294,7 +294,7 @@ depend on.
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `term`, `is_derived`, and the two setters; the declaration is applied through the [transform](../expression/selectors.md#a-selector-declares-a-schema) view, `as_transform().apply_arrow_batch` |
-| [`PythonField`, `PythonFieldMut`](../extensions/python.md#the-declaring-class) | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
+| `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their sources
 

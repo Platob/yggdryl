@@ -78,7 +78,6 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
 | Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `digest:time` holder | [hashing](hashing.md) |
 | FIX | Protocol vocabulary, registries, and messages over `Field`, with a live [explorer](fix/explorer.md), [decoder](fix/decode.md) and [composer](fix/encode.md) | [fix](fix/index.md) |
-| Extensions | What crosses the Python and JavaScript boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Install
 

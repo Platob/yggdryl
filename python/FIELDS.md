@@ -142,7 +142,7 @@ extension identity, and dictionary transport state. `into_dataclass()` derives
 Python annotations from that exact graph rather than re-inferring the schema.
 
 See the [Field page](../docs/types/field.md) and the
-[Python boundary guide](../docs/extensions/python.md) for the complete API.
+[documentation](https://platob.github.io/yggdryl/) for the complete API.
 The reproducible decorator benchmarks are:
 
 ```console

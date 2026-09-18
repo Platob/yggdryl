@@ -178,8 +178,8 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 - Python or JavaScript `Field` with no nullability argument -> nullable, so its default is null.
 - Python registered `ExtensionType` -> rehydrates, never its storage type.
 - JavaScript `int64` -> `BigInt` (`0n`).
-- Python: `DataType.arrow_scalar`, `Field.arrow_scalar`, `Field.cast_arrow_array`, `Field.cast_arrow_batch` -> [../extensions/python.md](../extensions/python.md).
-- JavaScript: `defaultArrowScalar` only; `fromArrow` -> [../types/datatype.md](../types/datatype.md), [../types/field.md](../types/field.md), [../extensions/javascript.md](../extensions/javascript.md).
+- Python only: `DataType.arrow_scalar`, `Field.arrow_scalar`, `Field.cast_arrow_array`, `Field.cast_arrow_batch`.
+- JavaScript: `defaultArrowScalar` only; `fromArrow` -> [../types/datatype.md](../types/datatype.md), [../types/field.md](../types/field.md).
 
 ## Commands
 

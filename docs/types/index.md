@@ -8,7 +8,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | --- | --- |
 | Owns | `DataType`, `Field`, `Scalar`, and the shared enums re-exported at the crate root |
 | Arrow | projection sits behind the default `arrow` feature |
-| Bindings | Rust, [Python](../extensions/python.md), [JavaScript](../extensions/javascript.md) |
+| Bindings | Rust, Python, JavaScript |
 | Rust bench target | one, `types`; each page scopes it with a Criterion filter |
 | Rust test target | one integration target, `types`, requiring `arrow` |
 

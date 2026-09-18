@@ -371,6 +371,7 @@ one operation-wide budget. A zero limit does not inspect the source: append is
 a synchronous no-op, overwrite publishes an explicitly typed empty value, and
 a limited merge is rejected.
 
-Use the complete [JavaScript guide](https://platob.github.io/yggdryl/extensions/javascript/)
-for field conversion, typed rows, copied IPC interoperability, and codec
-format inference.
+Every page of the [documentation](https://platob.github.io/yggdryl/) shows its
+operation in Rust, Python and JavaScript, so field conversion, typed rows,
+copied IPC interoperability and codec format inference are each documented on
+the page owning the vocabulary they belong to.

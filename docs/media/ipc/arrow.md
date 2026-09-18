@@ -11,7 +11,7 @@ Batch readers in and out of an IPC stream, with the projection and schema rules 
 | Lazy | a batch is encoded as the writer pulls it and decoded as the reader is stepped; only the current one is alive |
 | Pushdown | `field`, a non-null struct root naming a subset, drops columns at decode; it never casts and never skips the message body |
 | Schema | self-describing, so a reader that declares nothing recovers it; only the root name is chosen on this side |
-| Bindings | Python `pyarrow.RecordBatchReader` over the Arrow C Stream; JavaScript Arrow JS over the copied [IPC boundary](../../extensions/javascript.md) |
+| Bindings | Python `pyarrow.RecordBatchReader` over the Arrow C Stream; JavaScript Arrow JS over the copied IPC bytes |
 
 ## Use
 

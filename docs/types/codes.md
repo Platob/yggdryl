@@ -425,7 +425,9 @@ intact; message definitions have no generic datatype or code field helper.
 | leading digit | `_` prefixed |
 | opens and closes with `_` | trailing `_` dropped |
 
-Python-only enum bases: [Python boundary](../extensions/python.md).
+The enum bases over these codes are Python-only: `yggdryl.enums` builds a
+`StringEnum` over a fixed US-ASCII width, which Rust and JavaScript express as
+the datatype alone.
 
 ## A state sorts by its lifecycle
 

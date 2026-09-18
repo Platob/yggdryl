@@ -18,7 +18,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 | Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip` |
-| Bindings | `Scalar` rows in Rust and [Python](../extensions/python.md); Python and [JavaScript](../extensions/javascript.md) cast Arrow data and pass both answers explicitly |
+| Bindings | `Scalar` rows in Rust and Python; Python and JavaScript cast Arrow data and pass both answers explicitly |
 
 ## Use
 

@@ -247,10 +247,6 @@ nav:
     - Capture: fix/capture.md
     - Lifecycle: fix/lifecycle.md
     - CLI: fix/cli.md
-  - Extensions:
-    - extensions/index.md
-    - Python: extensions/python.md
-    - JavaScript: extensions/javascript.md
 
 validation:
   links:

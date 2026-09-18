@@ -12,7 +12,7 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 | Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
 | Errors | `Error::IncompatibleSchema` (root), `Error::Core(InvalidMetadataValue)` (sidecar) |
 | Feature flag | `arrow` (default) |
-| Bindings | Rust; [Python](../extensions/python.md) `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
+| Bindings | Rust; Python `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
 | Per-field | `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow`: [Field](../types/field.md), [DataType](../types/datatype.md) |
 
 ## Use

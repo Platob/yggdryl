@@ -1326,8 +1326,11 @@ section change together. What binds every page:
 - Root `mkdocs.yml` is authoritative - strict build, nav, and links change
   together, README stays a short landing page. A family page lives under
   `docs/<layer>/` for the layer owning the vocabulary, with
-  `docs/<layer>/index.md` as its overview; extension pages document boundaries
-  only. `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
+  `docs/<layer>/index.md` as its overview. There is no per-language page: a
+  binding fact is documented on the page owning the vocabulary it belongs to,
+  in that page's Python or JavaScript tab, so one operation is described once
+  and every language spelling of it sits beside the others.
+  `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
   Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
   `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
   batches; `text/` documents there too, as three of those schemes.

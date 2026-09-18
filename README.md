@@ -33,7 +33,6 @@ page per family in that layer, so the site tree and source tree agree:
 | Structured documents | [media/structured](docs/media/structured.md) |
 | Identifiers | [uri](docs/uri/index.md) |
 | Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [fix](docs/fix/index.md) |
-| Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
 and the site keeps that context while you move between pages.

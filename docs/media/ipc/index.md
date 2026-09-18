@@ -15,7 +15,7 @@
 | Cached | `open` caches schema and dimensions until `close`; writes and every `Ipc` builder drop the cache |
 | Format settings | none beyond the shared [`IORecordOptions`](../options.md) fields |
 | Errors | bytes that are not a stream fail `read_field` and `read_batch_reader` at once |
-| Bindings | Rust: free functions and `Ipc<H>`; Python: `yggdryl.media.Ipc`, the class an `.arrows` handle answers, with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../../extensions/javascript.md) |
+| Bindings | Rust: free functions and `Ipc<H>`; Python: `yggdryl.media.Ipc`, the class an `.arrows` handle answers, with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied IPC bytes |
 
 ## Surfaces
 

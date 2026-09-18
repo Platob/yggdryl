@@ -18,8 +18,6 @@ Whole-value byte conveniences, digests, structured JSON, YAML, and TOML scalars,
 
 ## Use
 
-The inferring `read_range` and `append` entry points sit on the [Python](../../extensions/python.md) and [JavaScript](../../extensions/javascript.md) pages.
-
 === "Rust"
 
     ```rust
