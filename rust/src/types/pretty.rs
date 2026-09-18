@@ -173,7 +173,7 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
         D::LargeList(_) => formatter.write_str("large_list"),
         D::LargeListView(_) => formatter.write_str("large_list_view"),
         D::FixedSizeList(_, length) => write!(formatter, "fixed_size_list[{length}]"),
-        D::Map(map) => {
+        D::Mapping(map) => {
             formatter.write_str("map")?;
             if map.keys_sorted() {
                 formatter.write_str("[keys_sorted]")?;
@@ -212,7 +212,7 @@ fn write_children(
             formatter.write_str("\n")?;
             write_field(formatter, field, columns)
         }
-        D::Map(map) => {
+        D::Mapping(map) => {
             formatter.write_str("\n")?;
             write_field(formatter, map.entries(), columns)
         }

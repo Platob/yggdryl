@@ -368,7 +368,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
                 )
             }))
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let entries = map.entries();
             let key = entries.get_field(0).ok_or_else(|| {
                 invalid(format_smolstr!(

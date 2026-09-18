@@ -132,7 +132,7 @@ fn temporal_casts_preserve_family_and_timezone() {
 /// The spellings a value takes on the way into a datatype, and the ones it
 /// prints on the way out - the same readings a column takes and prints.
 mod readings {
-    use yggdryl::types::Mapping;
+    use yggdryl::types::{Map, Mapping};
     use yggdryl::{DataType, Scalar};
 
     fn dtype(expression: &str) -> DataType {
@@ -293,12 +293,12 @@ mod readings {
 
     #[test]
     fn a_map_carries_its_invariants_however_its_entries_were_built() {
-        // `Mapping::new` takes already-unique entries on trust, so the value
+        // `Map::new` takes already-unique entries on trust, so the value
         // contract is what refuses a map that is not a function.
-        let duplicates = Scalar::Mapping(Mapping::new(vec![
+        let duplicates = Scalar::Mapping(Mapping::Map(Map::new(vec![
             (Scalar::from("a"), Scalar::from(1_i32)),
             (Scalar::from("a"), Scalar::from(2_i32)),
-        ]));
+        ])));
         let refused = dtype("map<utf8, int32>")
             .scalar(duplicates)
             .unwrap_err()
@@ -306,10 +306,10 @@ mod readings {
         assert!(refused.contains("collide"), "{refused}");
 
         // A declared ordering is checked whether or not anything was restated.
-        let unsorted = Scalar::Mapping(Mapping::new(vec![
+        let unsorted = Scalar::Mapping(Mapping::Map(Map::new(vec![
             (Scalar::from("b"), Scalar::from(1_i32)),
             (Scalar::from("a"), Scalar::from(2_i32)),
-        ]));
+        ])));
         let sorted = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
         let refused = sorted.scalar(unsorted.clone()).unwrap_err().to_string();
         assert!(refused.contains("not sorted"), "{refused}");

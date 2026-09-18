@@ -49,7 +49,7 @@ use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
 use super::integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, compare_integer_parts, integer_parts};
 use super::nested::Children;
-use super::nested::Mapping;
+use super::mapping::{Map, Mapping};
 use super::nested::Record;
 use super::nested::Sequence;
 use super::string::Str;
@@ -1263,9 +1263,9 @@ impl Scalar {
     /// The one shared empty mapping.
     fn empty_mapping() -> Self {
         static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
-        Self::Mapping(Mapping::new(Arc::clone(
+        Self::Mapping(Mapping::Map(Map::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
-        )))
+        ))))
     }
 
     /// Construct an ordered sequence.
@@ -1303,7 +1303,7 @@ impl Scalar {
                 }
             }
         }
-        Ok(Self::Mapping(Mapping::new(entries)))
+        Ok(Self::Mapping(Mapping::Map(Map::new(entries))))
     }
 
     /// Construct a deterministic record sorted by field name.

@@ -81,7 +81,7 @@ fn nested_helper_values_have_total_order_and_hash() {
 
     let first = DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap();
     let later = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
-    let (DataType::Map(first), DataType::Map(later)) = (first, later) else {
+    let (DataType::Mapping(first), DataType::Mapping(later)) = (first, later) else {
         unreachable!()
     };
     assert!(first < later);

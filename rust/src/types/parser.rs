@@ -915,10 +915,10 @@ impl fmt::Display for DataType {
             D::Decimal256 { precision, scale } => {
                 write!(formatter, "decimal256({precision},{scale})")
             }
-            D::Map(map) => {
+            D::Mapping(map) => {
                 formatter.write_str("map(")?;
-                fmt_field(formatter, &map.entries)?;
-                write!(formatter, ",keys_sorted={})", map.keys_sorted)
+                fmt_field(formatter, map.entries())?;
+                write!(formatter, ",keys_sorted={})", map.keys_sorted())
             }
             D::RunEndEncoded(encoded) => {
                 formatter.write_str("run_end_encoded(")?;

@@ -1059,7 +1059,7 @@ fn group_from_entry(
     let occurrence = DataType::from_fields(union)?.required_field(name);
     let dtype = match known.dtype() {
         DataType::LargeList(_) => DataType::large_list(occurrence),
-        DataType::Map(map) => DataType::map(occurrence, map.keys_sorted())?,
+        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
         _ => DataType::list(occurrence),
     };
     // A group the dictionary does not declare stands under the counter's own
@@ -1128,7 +1128,7 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Mapping(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -1695,7 +1695,7 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                     .collect::<Vec<_>>(),
             ))
         }),
-        DataType::Map(map) => value.as_mapping().map(|stated| {
+        DataType::Mapping(map) => value.as_mapping().map(|stated| {
             // A pair whose key will not read names nothing, so it is left
             // out; one whose value will not read keeps its name and loses
             // the value, which is what every other column does.

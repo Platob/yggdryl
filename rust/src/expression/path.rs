@@ -189,7 +189,7 @@ impl FieldSegment {
         match self {
             Self::Field(name) => match dtype {
                 DataType::Struct(_) => struct_child_field(field, name),
-                DataType::Map(map) => Ok(map_value_field(map)?.with_nullable(true)),
+                DataType::Mapping(map) => Ok(map_value_field(map)?.with_nullable(true)),
                 other => Err(typing_error(format_smolstr!(
                     "expected a struct or a map to reach .{name} through, got {other}"
                 ))),
@@ -212,7 +212,7 @@ impl FieldSegment {
                 Ok(kept_list_field(field, &element))
             }
             Self::Key(key) => match dtype {
-                DataType::Map(map) => {
+                DataType::Mapping(map) => {
                     let keys = map_key_field(map)?;
                     common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
                         typing_error(format_smolstr!(
@@ -459,14 +459,14 @@ pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
     }
 }
 
-fn map_key_field(map: &crate::MapType) -> Result<Field> {
+fn map_key_field(map: &crate::MappingType) -> Result<Field> {
     map.entries()
         .get_field(0)
         .cloned()
         .ok_or_else(|| typing_error("expected a map whose entries carry a key field"))
 }
 
-fn map_value_field(map: &crate::MapType) -> Result<Field> {
+fn map_value_field(map: &crate::MappingType) -> Result<Field> {
     map.entries()
         .get_field(1)
         .cloned()

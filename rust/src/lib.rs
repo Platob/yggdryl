@@ -130,10 +130,10 @@ pub use types::{
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,
-    GeospatialType, IntegerType, MapType, MediaTypeField, MediaTypeType, MimeTypeField,
-    MimeTypeType, NestedType, RunEndEncodedType, StringEnum, StringType, TemporalType,
-    TimezoneField, TimezoneType, UnionFields, UrlField, UrlType, Version, VersionField,
-    VersionType,
+    GeospatialType, IntegerType, MapField, MapType, MappingField, MappingType, MediaTypeField,
+    MediaTypeType, MimeTypeField, MimeTypeType, NestedType, RunEndEncodedType, SortedMapField,
+    StringEnum, StringType, TemporalType, TimezoneField, TimezoneType, UnionFields, UrlField,
+    UrlType, Version, VersionField, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

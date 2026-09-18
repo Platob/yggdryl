@@ -179,7 +179,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 target.engine()
             ),
         ),
-        D::Map(map) if target.supports_map() => {
+        D::Mapping(map) if target.supports_map() => {
             let entries_path = path.child(Segment::MapEntries);
             let (entries, changed) = normalize_field(target, map.entries(), &entries_path)?;
             if changed {
@@ -188,7 +188,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 Ok((dtype.clone(), false))
             }
         }
-        D::Map(_) => incompatible(
+        D::Mapping(_) => incompatible(
             target,
             path,
             format_smolstr!(

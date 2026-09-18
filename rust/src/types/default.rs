@@ -193,7 +193,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
                 pending.push((dictionary.key(), child_depth));
                 pending.push((dictionary.value(), child_depth));
             }
-            DataType::Map(map) => {
+            DataType::Mapping(map) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((map.entries().dtype(), child_depth));
             }
@@ -418,7 +418,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Variant => scalar(DefaultPlan::Null, false),
         // The geospatial pair's present empty value is `POINT EMPTY`.
         D::Geometry(_) | D::Geography(_) => scalar(DefaultPlan::PointEmpty, false),
-        D::Map(_) => scalar(DefaultPlan::EmptyMapping, false),
+        D::Mapping(_) => scalar(DefaultPlan::EmptyMapping, false),
         D::RunEndEncoded(encoded) => {
             path.push(PathSegment::RunEndValues);
             let present = plan_present_field(encoded.values(), path);

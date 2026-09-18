@@ -272,7 +272,7 @@ fn merge_nested(
         (DataType::Struct(left_fields), DataType::Struct(right_fields)) => {
             merge_struct(left_fields.as_ref(), right_fields.as_ref(), how, recode).map(Some)
         }
-        (DataType::Map(left_map), DataType::Map(right_map)) => {
+        (DataType::Mapping(left_map), DataType::Mapping(right_map)) => {
             let entries = left_map.entries().merge(right_map.entries(), how, recode)?;
             // Sorted keys are only a promise the merged map can keep if both
             // sides made it.
@@ -461,7 +461,7 @@ fn merge_scalar(
 fn is_mergeable_into_bytes(dtype: &DataType) -> bool {
     !matches!(
         dtype,
-        DataType::Struct(_) | DataType::Union(..) | DataType::Map(_)
+        DataType::Struct(_) | DataType::Union(..) | DataType::Mapping(_)
     ) && list_parts(dtype).is_none()
 }
 

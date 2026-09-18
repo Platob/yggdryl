@@ -409,7 +409,7 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
 fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     let map = DataType::map_of(DataType::utf8_view(), DataType::UInt8, true).unwrap();
     let transformed = map.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::Map(map) = transformed else {
+    let DataType::Mapping(map) = transformed else {
         panic!("expected map");
     };
     assert!(map.keys_sorted());
@@ -694,7 +694,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     let nested = fields[2].dtype().as_fields().unwrap();
     assert_eq!(nested[0].name(), "half");
     assert_eq!(nested[0].dtype(), &DataType::Float32);
-    let DataType::Map(map) = fields[3].dtype() else {
+    let DataType::Mapping(map) = fields[3].dtype() else {
         panic!("expected a retained map");
     };
     assert!(map.keys_sorted());

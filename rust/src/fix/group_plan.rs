@@ -302,7 +302,7 @@ mod tests {
         field.as_fix_mut().set_tag(65_090).unwrap();
         field.as_fix_mut().set_counter(65_090).unwrap();
         let plan = GroupPlan::from_field(&field).unwrap();
-        let DataType::Map(map) = plan.field().dtype() else {
+        let DataType::Mapping(map) = plan.field().dtype() else {
             panic!("the native Map layout is preserved")
         };
         assert!(map.keys_sorted());

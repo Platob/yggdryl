@@ -1455,7 +1455,7 @@ impl FixMsg {
         self.registry.get_field_by_tag(tag).or_else(|| {
             self.registry
                 .get_group_by_tag(tag)
-                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
         })
     }
 
@@ -1526,7 +1526,7 @@ impl FixMsg {
                 };
                 Some((item.as_ref().clone(), value.get(at)?.clone()))
             }
-            DataType::Map(map) => {
+            DataType::Mapping(map) => {
                 let FieldSegment::Key(key) = segment else {
                     return None;
                 };
@@ -1625,7 +1625,7 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
             let members = entries_of(field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }
-        DataType::Map(_) => {
+        DataType::Mapping(_) => {
             let members = value
                 .as_mapping()?
                 .iter()

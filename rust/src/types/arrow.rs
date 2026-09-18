@@ -1241,7 +1241,7 @@ impl DataType {
                 dictionary.key().arrow_import_is_projection_equivalent()
                     && dictionary.value().arrow_import_is_projection_equivalent()
             }
-            Self::Map(map) => map.entries().arrow_import_is_projection_equivalent(),
+            Self::Mapping(mapping) => mapping.entries().arrow_import_is_projection_equivalent(),
             Self::RunEndEncoded(encoded) => {
                 encoded.run_ends().arrow_import_is_projection_equivalent()
                     && encoded.values().arrow_import_is_projection_equivalent()
@@ -1379,9 +1379,12 @@ impl TryFrom<&DataType> for ArrowDataType {
                 validate_decimal("Decimal256", *precision, *scale, 76)?;
                 Self::Decimal256(*precision, *scale)
             }
-            R::Map(map) => {
-                validate_map_entries(&map.entries)?;
-                Self::Map(map.entries.clone().into_arrow_ref()?, map.keys_sorted)
+            R::Mapping(mapping) => {
+                validate_map_entries(mapping.entries())?;
+                Self::Map(
+                    mapping.entries().clone().into_arrow_ref()?,
+                    mapping.keys_sorted(),
+                )
             }
             R::RunEndEncoded(encoded) => {
                 validate_run_ends(&encoded.run_ends)?;
@@ -1527,16 +1530,19 @@ impl TryFrom<DataType> for ArrowDataType {
                 validate_decimal("Decimal256", precision, scale, 76)?;
                 Self::Decimal256(precision, scale)
             }
-            R::Map(map) => match Arc::try_unwrap(map) {
-                Ok(map) => {
-                    validate_map_entries(&map.entries)?;
-                    Self::Map(map.entries.into_arrow_ref()?, map.keys_sorted)
+            R::Mapping(mapping) => {
+                let keys_sorted = mapping.keys_sorted();
+                match Arc::try_unwrap(mapping.into_parameters()) {
+                    Ok(parameters) => {
+                        validate_map_entries(&parameters.entries)?;
+                        Self::Map(parameters.entries.into_arrow_ref()?, keys_sorted)
+                    }
+                    Err(parameters) => {
+                        validate_map_entries(&parameters.entries)?;
+                        Self::Map(parameters.entries.clone().into_arrow_ref()?, keys_sorted)
+                    }
                 }
-                Err(map) => {
-                    validate_map_entries(&map.entries)?;
-                    Self::Map(map.entries.clone().into_arrow_ref()?, map.keys_sorted)
-                }
-            },
+            }
             R::RunEndEncoded(encoded) => match Arc::try_unwrap(encoded) {
                 Ok(encoded) => {
                     validate_run_ends(&encoded.run_ends)?;
@@ -1801,13 +1807,13 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
                 Flags::empty(),
             )
         }
-        DataType::Map(map) => {
-            validate_map_entries(&map.entries)?;
+        DataType::Mapping(mapping) => {
+            validate_map_entries(mapping.entries())?;
             (
                 "+m".to_owned(),
-                vec![map.entries.clone().into_arrow_ffi()?],
+                vec![mapping.entries().clone().into_arrow_ffi()?],
                 None,
-                if map.keys_sorted {
+                if mapping.keys_sorted() {
                     Flags::MAP_KEYS_SORTED
                 } else {
                     Flags::empty()

@@ -713,7 +713,7 @@ fn function_field(
                     | DataType::FixedSizeList(..)
                     | DataType::LargeList(_)
                     | DataType::LargeListView(_)
-                    | DataType::Map(_)
+                    | DataType::Mapping(_)
             ) {
                 return Err(typing_error(format_smolstr!(
                     "expected a list or a map for size, got {first}"

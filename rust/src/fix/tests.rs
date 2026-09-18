@@ -113,9 +113,9 @@ fn crate_names_of(groups: bool) -> Vec<&'static str> {
         .iter()
         .filter(|field| {
             if groups {
-                matches!(field.dtype(), DataType::Map(_))
+                matches!(field.dtype(), DataType::Mapping(_))
             } else {
-                !matches!(field.dtype(), DataType::Map(_) | DataType::Struct(_))
+                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Struct(_))
             }
         })
         .map(Field::name)
@@ -3983,7 +3983,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     let mut entries = HashSet::new();
     for field in registry.definitions(FixCategory::Groups) {
         assert!(groups.insert(field.name()));
-        if let DataType::Map(map) = field.dtype() {
+        if let DataType::Mapping(map) = field.dtype() {
             // The crate's two Map groups, each counted by its own tag and
             // reached through the counter door, as every group is.
             let (tag, name) = [super::IDENTIFIERS_TAG_NAME, super::METADATA_TAG_NAME]
@@ -4047,7 +4047,7 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
     for field in registry.definitions(FixCategory::Groups) {
         let DataType::List(item) = field.dtype() else {
             assert!(
-                matches!(field.dtype(), DataType::Map(_)),
+                matches!(field.dtype(), DataType::Mapping(_)),
                 "{}: a group is a List, or one of the crate's Maps",
                 field.name()
             );

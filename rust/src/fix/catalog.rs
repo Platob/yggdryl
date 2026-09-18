@@ -441,7 +441,7 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
         {
             Some(FixCategory::Groups)
         }
-        DataType::Map(_) => Some(FixCategory::Groups),
+        DataType::Mapping(_) => Some(FixCategory::Groups),
         DataType::Struct(_) => Some(FixCategory::Components),
         _ => None,
     }
@@ -451,7 +451,7 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
         DataType::List(item) | DataType::LargeList(item) => Some(item),
-        DataType::Map(map) => Some(map.entries()),
+        DataType::Mapping(map) => Some(map.entries()),
         _ => None,
     }
 }
@@ -461,7 +461,7 @@ fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
     match group.dtype() {
         DataType::List(_) => Ok(DataType::list(occurrence)),
         DataType::LargeList(_) => Ok(DataType::large_list(occurrence)),
-        DataType::Map(map) => DataType::map(occurrence, map.keys_sorted()),
+        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted()),
         _ => Err(invalid(
             group,
             "a List of non-null Struct occurrences or a Map",
@@ -604,7 +604,7 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Mapping(_) => {
             let item = occurrence_of(&field).expect("a group has an occurrence");
             Some(group_dtype(
                 &field,
@@ -1114,7 +1114,7 @@ impl FixRegistry {
     pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
-            DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Map(_)) => {
+            DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Mapping(_)) => {
                 Some(plan)
             }
             _ => None,
@@ -1187,7 +1187,7 @@ impl FixRegistry {
         field.as_fix().validate_names()?;
         let counter = field.as_fix().counter()?;
         let map_group =
-            category == FixCategory::Groups && matches!(field.dtype(), DataType::Map(_));
+            category == FixCategory::Groups && matches!(field.dtype(), DataType::Mapping(_));
         if map_group {
             let tag = field
                 .as_fix()
@@ -1241,7 +1241,7 @@ impl FixRegistry {
         } else if category == FixCategory::Fields {
             if let Some(group) = self
                 .get_definition(FixCategory::Groups, field.name())
-                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
             {
                 return Err(Error::conflict(
                     "a scalar field name free of canonical Map group names",
@@ -1257,7 +1257,7 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .and_then(|tag| self.get_group_by_tag(tag))
-                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
             {
                 return Err(Error::conflict(
                     "a scalar field tag free of Map group counters",

@@ -512,11 +512,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// removed is marked `fix:deprecated`. It last moved when the market numbers
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
-/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block.
+/// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
+/// last moved when key order became the mapping leaf: `identifiers` and
+/// `metadata` declare sorted keys, so they are `sorted_map` and hash under
+/// that identifier rather than under `map` beside a flag.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_181_957_206_944_849_792);
+    assert_eq!(registry.stable_hash(), 10_990_004_782_073_536_976);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

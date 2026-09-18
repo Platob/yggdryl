@@ -583,7 +583,9 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
+    use yggdryl::types::{
+        bytes, decimal, geospatial, integer, mapping, nested, string, temporal, uuid,
+    };
 
     let integer = integer::Int32::new(-7);
     assert_eq!(integer.get(), -7);
@@ -661,7 +663,10 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
     let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
     assert_eq!(sequence.as_slice().len(), 2);
-    let mapping = nested::Mapping::new(Arc::from([(Scalar::from("one"), Scalar::from(1_i32))]));
+    let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
+        Scalar::from("one"),
+        Scalar::from(1_i32),
+    )])));
     assert_eq!(mapping.as_slice().len(), 1);
     let record = nested::Record::new(Arc::new(std::collections::BTreeMap::from([(
         "one".into(),

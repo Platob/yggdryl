@@ -18,6 +18,7 @@ use crate::{DataType, Field, UnionMode};
 
 /// Bounded Arrow materialization accounting.
 mod limits {
+    
     use crate::arrow::{Error, Result};
     use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
 
@@ -346,7 +347,7 @@ mod limits {
                 | DataType::MimeType
                 | DataType::MediaType
                 | DataType::List(_)
-                | DataType::Map(_)
+                | DataType::Mapping(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
                 | DataType::Geography(_) => {
@@ -460,7 +461,7 @@ mod limits {
                 | DataType::MimeType
                 | DataType::MediaType
                 | DataType::List(_)
-                | DataType::Map(_)
+                | DataType::Mapping(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
                 | DataType::Geography(_) => {
@@ -1089,7 +1090,7 @@ fn reserve_source_children_and_payload(
                 reserve_source_selection(child.as_ref(), field.dtype(), selection, budget)?;
             }
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let array = downcast::<MapArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1263,7 +1264,7 @@ pub(crate) fn reserve_cast_output_payload(
         | DataType::LargeList(_)
         | DataType::FixedSizeList(..)
         | DataType::Struct(_)
-        | DataType::Map(_)
+        | DataType::Mapping(_)
         | DataType::Union(..)
         | DataType::Dictionary(_)
         | DataType::RunEndEncoded(_) => {
@@ -1344,7 +1345,7 @@ pub(crate) fn reserve_concat_copy(
                 reserve_concat_copy(child.as_ref(), field.dtype(), budget)?;
             }
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let array = downcast::<MapArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1472,7 +1473,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 )?;
             }
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let output: ArrayRef =
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());
             let source: ArrayRef =
@@ -1678,7 +1679,7 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
             child.dtype(),
             budget,
         )?,
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let output: ArrayRef =
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());
             let source: ArrayRef =

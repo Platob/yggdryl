@@ -201,7 +201,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
                 .clone(),
         )
         .unwrap();
-        let DataType::Map(map) = component.fields()[0].dtype() else {
+        let DataType::Mapping(map) = component.fields()[0].dtype() else {
             panic!("compacting references preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -225,7 +225,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
             registry.update(changed).unwrap();
         }
         let component = registry.field_by_name("lookup").unwrap();
-        let DataType::Map(map) = component.fields()[0].dtype() else {
+        let DataType::Mapping(map) = component.fields()[0].dtype() else {
             panic!("reference refresh preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -288,7 +288,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         )
         .unwrap();
         assert_eq!(stored.name(), "mappedlookup");
-        let DataType::Map(map) = stored.fields()[0].dtype() else {
+        let DataType::Mapping(map) = stored.fields()[0].dtype() else {
             panic!("a persisted Map keeps its entries Struct")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -345,7 +345,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         registry.update(changed).unwrap();
         let containing = registry.field_by_name("mappedlookup").unwrap();
         let mapping = &containing.fields()[0];
-        let DataType::Map(map) = mapping.dtype() else {
+        let DataType::Mapping(map) = mapping.dtype() else {
             panic!("reference refresh preserves Map")
         };
         assert!(mapping.is_nullable());

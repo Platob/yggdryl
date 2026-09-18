@@ -278,7 +278,7 @@ impl MsgType {
 
     pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let plan = &self.groups.get(&tag)?.as_ref()?.plan;
-        (!matches!(plan.field().dtype(), DataType::Map(_))).then_some(plan)
+        (!matches!(plan.field().dtype(), DataType::Mapping(_))).then_some(plan)
     }
 
     fn index_groups(

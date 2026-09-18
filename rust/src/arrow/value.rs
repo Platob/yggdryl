@@ -257,7 +257,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Decimal256 { scale, .. } => {
             physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
         }
-        DataType::Map(map) => map_array(map, values)?,
+        DataType::Mapping(map) => map_array(map, values)?,
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
         // A geospatial value *is* its WKB payload, so the array is the bytes;
         // both the canonical `Geospatial` spelling and plain bytes build it.
@@ -601,7 +601,7 @@ pub(crate) fn value_from_array(
             let value = downcast::<Decimal256Array>(array)?.value(index);
             Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let entries = downcast::<MapArray>(array)?.value(index);
             let fields = map
                 .entries()
@@ -1064,7 +1064,7 @@ fn dictionary_array(dictionary: &crate::DictionaryType, values: &[&Scalar]) -> R
     }
 }
 
-fn map_array(map: &crate::MapType, values: &[&Scalar]) -> Result<ArrayRef> {
+fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut validity = Vec::with_capacity(values.len());
     let mut entries = Vec::new();

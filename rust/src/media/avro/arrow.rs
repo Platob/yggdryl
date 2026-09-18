@@ -268,7 +268,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             }
             Scalar::from_record([("type", Scalar::from("array")), ("items", items)])
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let entries = map.entries().fields();
             let key = entries.first().ok_or_else(|| unspellable(dtype))?;
             let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;

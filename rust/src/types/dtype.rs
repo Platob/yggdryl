@@ -7,7 +7,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::dictionary::DictionaryType;
 use crate::types::structure::Fields;
-use crate::types::map::MapType;
+use crate::types::mapping::MappingType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
@@ -165,8 +165,12 @@ pub enum DataType {
         precision: u8,
         scale: i8,
     },
-    /// Arrow map entries and key-order flag.
-    Map(Arc<MapType>),
+    /// Keys to values: one variant for the whole mapping family.
+    ///
+    /// The leaf - Arrow's map today - is [`MappingType`]'s business, not this
+    /// enum's. A second key-to-value layout joins the family there and no
+    /// call site here learns a new variant.
+    Mapping(MappingType),
     /// Run-end encoding child fields.
     RunEndEncoded(Arc<RunEndEncodedType>),
     /// Self-describing semi-structured values.
@@ -311,7 +315,8 @@ impl DataType {
             Self::Decimal64 { .. } => DataTypeId::Decimal64,
             Self::Decimal128 { .. } => DataTypeId::Decimal128,
             Self::Decimal256 { .. } => DataTypeId::Decimal256,
-            Self::Map(_) => DataTypeId::Map,
+            Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
+            Self::Mapping(MappingType::SortedMap(_)) => DataTypeId::SortedMap,
             Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
             Self::Variant => DataTypeId::Variant,
             Self::Geometry(_) => DataTypeId::Geometry,
@@ -463,9 +468,9 @@ impl DataType {
             Self::Decimal256 { precision, scale } => {
                 validate_decimal("Decimal256", *precision, *scale, 76)
             }
-            Self::Map(map) => {
-                validate_map_entries(&map.entries)?;
-                map.entries.validate()
+            Self::Mapping(mapping) => {
+                validate_map_entries(mapping.entries())?;
+                mapping.entries().validate()
             }
             Self::RunEndEncoded(encoded) => {
                 validate_run_ends(&encoded.run_ends)?;
@@ -556,7 +561,7 @@ impl Ord for DataType {
                 },
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
             (D::String(left), D::String(right)) => left.cmp(right),
-            (D::Map(left), D::Map(right)) => left.cmp(right),
+            (D::Mapping(left), D::Mapping(right)) => left.cmp(right),
             (D::RunEndEncoded(left), D::RunEndEncoded(right)) => left.cmp(right),
             (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
                 left.cmp(right)
@@ -619,7 +624,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Decimal64 { .. } => 45,
         DataType::Decimal128 { .. } => 46,
         DataType::Decimal256 { .. } => 47,
-        DataType::Map(_) => 48,
+        DataType::Mapping(_) => 48,
         DataType::RunEndEncoded(_) => 49,
         DataType::Variant => 50,
         DataType::Geometry(_) => 51,

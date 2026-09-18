@@ -1229,7 +1229,7 @@ fn feed_cell(
         | DataType::Struct(_)
         | DataType::Union(..)
         | DataType::Dictionary(_)
-        | DataType::Map(_)
+        | DataType::Mapping(_)
         | DataType::RunEndEncoded(_)
         | DataType::Variant
         | DataType::Geometry(_)

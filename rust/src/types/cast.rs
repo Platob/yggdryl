@@ -1419,7 +1419,7 @@ enum ArrayCastKind {
         kind: ListPlanKind,
     },
     Map {
-        source: Arc<crate::MapType>,
+        source: crate::MappingType,
         field: ArrowFieldRef,
         ordered: bool,
         entries: Box<ArrayCastPlan>,
@@ -1991,11 +1991,11 @@ impl ArrayCastPlan {
                     kind: source_list_kind(source_type)?,
                 }
             }
-            (DataType::Map(map), ArrowDataType::Map(source_entries, _)) => {
+            (DataType::Mapping(map), ArrowDataType::Map(source_entries, _)) => {
                 let ArrowDataType::Map(target_entries, ordered) = expected else {
                     return Err(internal_target_error("map"));
                 };
-                let DataType::Map(source) = DataType::from_arrow(source_type)? else {
+                let DataType::Mapping(source) = DataType::from_arrow(source_type)? else {
                     return Err(Error::IncompatibleSchema(
                         "source Arrow Map did not import as a Map datatype".to_owned(),
                     ));

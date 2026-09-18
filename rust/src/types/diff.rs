@@ -8,8 +8,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::metadata::write_json_string as write_quoted;
-use crate::{DataType, Fields, MapType, Metadata, RunEndEncodedType, UnionFields, hashing::stable_hash_display};
+use crate::{DataType, Fields, Metadata, RunEndEncodedType, UnionFields, hashing::stable_hash_display};
 use super::Field;
+use crate::types::mapping::MappingType;
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -115,7 +116,7 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
             left_mode == right_mode && left.shares_storage_with(right)
         }
         (D::Dictionary(left), D::Dictionary(right)) => Arc::ptr_eq(left, right),
-        (D::Map(left), D::Map(right)) => Arc::ptr_eq(left, right),
+        (D::Mapping(left), D::Mapping(right)) => left.shares_storage_with(right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => Arc::ptr_eq(left, right),
         // Every remaining variant is scalar or carries only compact parameters.
         _ => left == right,
@@ -449,7 +450,7 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::Map(left), D::Map(right)) => {
+            (D::Mapping(left), D::Mapping(right)) => {
                 if left.keys_sorted() != right.keys_sorted() {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "keys_sorted"),
@@ -946,7 +947,7 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
             dtypes_equal(left.key(), right.key(), false)
                 && dtypes_equal(left.value(), right.value(), false)
         }
-        (D::Map(left), D::Map(right)) => {
+        (D::Mapping(left), D::Mapping(right)) => {
             left.keys_sorted() == right.keys_sorted()
                 && fields_equal(left.entries(), right.entries(), false)
         }
@@ -1134,13 +1135,13 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
         (D::Dictionary(left), D::Dictionary(right)) => {
             dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
         }
-        (D::Map(left), D::Map(right)) => map_layout_eq(left, right),
+        (D::Mapping(left), D::Mapping(right)) => map_layout_eq(left, right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),
         _ => left == right,
     }
 }
 
-fn map_layout_eq(left: &MapType, right: &MapType) -> bool {
+fn map_layout_eq(left: &MappingType, right: &MappingType) -> bool {
     left.keys_sorted() == right.keys_sorted() && field_layout_eq(left.entries(), right.entries())
 }
 

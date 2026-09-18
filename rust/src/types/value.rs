@@ -490,7 +490,7 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // A record is a name-to-value map, so a map column reads it as its
         // entries; the key field then reads each name as its own datatype,
         // exactly as a struct root reads a record's field names.
-        D::Map(_) => {
+        D::Mapping(_) => {
             let record = value.as_record()?;
             Some(Scalar::from_mapping(
                 record
@@ -878,7 +878,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Time64(_)
         | D::Duration32(_)
         | D::Duration64(_) => unreachable!("typed scalars returned above"),
-        D::Map(map) => canonical_map(map, value),
+        D::Mapping(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant value is any value: the tree describes itself.
         D::Variant => Ok((value.clone(), false)),
@@ -1117,12 +1117,12 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     }
 }
 
-fn canonical_map(map: &crate::MapType, value: &Scalar) -> Result<(Scalar, bool)> {
+fn canonical_map(map: &crate::MappingType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(entries) = value.as_mapping() else {
-        return canonicalization_failure(&DataType::Map(map.clone().into()));
+        return canonicalization_failure(&DataType::Mapping(map.clone()));
     };
     let Some([key_field, value_field]) = map.entries().dtype().as_fields() else {
-        return canonicalization_failure(&DataType::Map(map.clone().into()));
+        return canonicalization_failure(&DataType::Mapping(map.clone()));
     };
     for (index, (key, entry_value)) in entries.iter().enumerate() {
         let (canonical_key, key_changed) = canonicalize_field_payload(key_field, key)
@@ -1173,7 +1173,7 @@ fn canonical_map(map: &crate::MapType, value: &Scalar) -> Result<(Scalar, bool)>
 /// declares and checks them again once canonicalization has run - narrowing
 /// two distinct keys can collide them, and restating them can reorder them.
 fn broken_map_invariant(
-    map: &crate::MapType,
+    map: &crate::MappingType,
     entries: &[(Scalar, Scalar)],
 ) -> Option<(usize, &'static str)> {
     if let Some(index) = duplicate_mapping_key_index(entries) {
@@ -1532,7 +1532,7 @@ fn validate_dtype_value(
         D::Decimal64 { precision, .. } => validate_decimal_value(value, *precision, 64),
         D::Decimal128 { precision, .. } => validate_decimal_value(value, *precision, 128),
         D::Decimal256 { precision, scale } => validate_decimal256_value(value, *precision, *scale),
-        D::Map(map) => validate_map(map, value, depth + 1),
+        D::Mapping(map) => validate_map(map, value, depth + 1),
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)
         }
@@ -1721,7 +1721,7 @@ fn require(
 /// A map is an ordered mapping whose entries struct declares exactly a key and
 /// a value field; every entry is validated against those two.
 fn validate_map(
-    map: &crate::MapType,
+    map: &crate::MappingType,
     value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {

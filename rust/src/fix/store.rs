@@ -249,7 +249,7 @@ impl Resolver<'_> {
                     DataType::large_list(item)
                 })
             }
-            DataType::Map(map) => {
+            DataType::Mapping(map) => {
                 let mut entries = map.entries().clone();
                 if reference(&entries).is_some() {
                     // A persisted Map must retain its entries Struct. Only
@@ -313,7 +313,7 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         DataType::LargeList(item) => {
             Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             // Keep the entries Struct for Map validation, but its component
             // reference inherits metadata from the same owner as any other.
             let mut entries = compact(map.entries().clone(), true)?;

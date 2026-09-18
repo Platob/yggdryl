@@ -1110,7 +1110,7 @@ fn list_item_type(field: &Field) -> Option<DataType> {
 /// The declared key and value types of a map field.
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
     match field.dtype() {
-        DataType::Map(map) => (
+        DataType::Mapping(map) => (
             map.entries().get_field(0).map(|held| held.dtype().clone()),
             map.entries().get_field(1).map(|held| held.dtype().clone()),
         ),

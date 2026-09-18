@@ -57,7 +57,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
             ),
         ),
         DataType::RunEndEncoded(encoded) => into_natural(value, encoded.values()),
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             let fields = map.entries().fields();
             let [_, value_field] = fields else {
                 return Err(invalid(
@@ -135,7 +135,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         DataType::Struct(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
         DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
-        DataType::Map(map) => mapping(value, map, field),
+        DataType::Mapping(map) => mapping(value, map, field),
         DataType::RunEndEncoded(encoded) => prepare(value, encoded.values()),
         _ => Ok(value),
     }
@@ -221,7 +221,7 @@ fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Sc
 }
 
 /// Descend a document mapping or object under a map's key and value fields.
-fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar> {
+fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Scalar> {
     let fields = map.entries().fields();
     let [key_field, value_field] = fields else {
         return Err(invalid(
@@ -263,7 +263,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
             .iter()
             .any(|(_, field)| holds_byte_leaf(field.dtype())),
         DataType::Dictionary(dictionary) => holds_byte_leaf(dictionary.value()),
-        DataType::Map(map) => holds_byte_leaf(map.entries().dtype()),
+        DataType::Mapping(map) => holds_byte_leaf(map.entries().dtype()),
         _ => false,
     }
 }

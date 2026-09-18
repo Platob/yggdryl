@@ -39,7 +39,7 @@ impl DataType {
             | Self::FixedSizeList(..)
             | Self::LargeList(_)
             | Self::LargeListView(_)
-            | Self::Map(_) => 1,
+            | Self::Mapping(_) => 1,
             Self::Struct(fields) => fields.len(),
             Self::Union(fields, _) => fields.len(),
             Self::RunEndEncoded(_) => 2,
@@ -57,7 +57,7 @@ impl DataType {
             | Self::LargeListView(field) => (index == 0).then_some(field),
             Self::Struct(fields) => fields.get(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
-            Self::Map(map) => (index == 0).then_some(&map.entries),
+            Self::Mapping(mapping) => (index == 0).then_some(mapping.entries()),
             Self::RunEndEncoded(encoded) => match index {
                 0 => Some(&encoded.run_ends),
                 1 => Some(&encoded.values),
@@ -80,7 +80,7 @@ impl DataType {
             | Self::LargeListView(field) => (field.name() == name).then_some(field),
             Self::Struct(fields) => fields.get_by_name(name),
             Self::Union(fields, _) => fields.get_by_name(name).map(|(_, field)| field),
-            Self::Map(map) => (map.entries.name() == name).then_some(&map.entries),
+            Self::Mapping(mapping) => (mapping.entries().name() == name).then_some(mapping.entries()),
             Self::RunEndEncoded(encoded) => {
                 if encoded.run_ends.name() == name {
                     Some(&encoded.run_ends)
@@ -772,7 +772,7 @@ impl DataType {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();
                 Self::union(ids.into_iter().zip(children), *mode)?
             }
-            Self::Map(map) => Self::map(next(), map.keys_sorted())?,
+            Self::Mapping(mapping) => Self::map(next(), mapping.keys_sorted())?,
             Self::RunEndEncoded(_) => {
                 let run_ends = next();
                 Self::run_end_encoded(run_ends, next())?

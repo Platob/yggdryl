@@ -778,9 +778,9 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Map(map) => Self::Map {
-                entries: &map.entries,
-                keys_sorted: map.keys_sorted,
+            D::Mapping(map) => Self::Map {
+                entries: map.entries(),
+                keys_sorted: map.keys_sorted(),
             },
             D::RunEndEncoded(encoded) => Self::RunEndEncoded {
                 run_ends: &encoded.run_ends,
@@ -1279,10 +1279,10 @@ impl DataType {
             D::Decimal256 { precision, scale } => {
                 decimal(&mut entries, "decimal256", *precision, *scale);
             }
-            D::Map(map) => {
+            D::Mapping(map) => {
                 tag("map");
-                entries.push((key("entries"), map.entries.clone().into_value()));
-                entries.push((key("keys_sorted"), Scalar::from(map.keys_sorted)));
+                entries.push((key("entries"), map.entries().clone().into_value()));
+                entries.push((key("keys_sorted"), Scalar::from(map.keys_sorted())));
             }
             D::RunEndEncoded(encoded) => {
                 tag("run_end_encoded");

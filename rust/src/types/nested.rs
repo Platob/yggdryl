@@ -22,14 +22,15 @@ use crate::types::{Scalar, invalid};
 
 use crate::types::dictionary::DictionaryType;
 use crate::types::structure::Fields;
-use crate::types::map::MapType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::union::UnionFields;
 use crate::{DataType, DataTypeId, Error, Field, Result, TypedField, UnionMode, Value};
+use crate::types::mapping::MappingType;
 
 #[cfg(feature = "arrow")]
 /// Nested Arrow planning, exposure, and logical-null traversal.
 pub(crate) mod casts {
+    
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
@@ -64,6 +65,7 @@ pub(crate) mod casts {
     use crate::{DataType, Field, Scalar, UnionMode};
 
     mod dictionary {
+        
         use super::*;
 
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
@@ -80,7 +82,7 @@ pub(crate) mod casts {
                 DataType::Union(fields, _) => fields
                     .iter()
                     .any(|(_, field)| contains_dictionary(field.dtype())),
-                DataType::Map(map) => contains_dictionary(map.entries().dtype()),
+                DataType::Mapping(map) => contains_dictionary(map.entries().dtype()),
                 DataType::RunEndEncoded(encoded) => contains_dictionary(encoded.values().dtype()),
                 _ => false,
             }
@@ -369,7 +371,7 @@ pub(crate) mod casts {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Map(map) => {
+                DataType::Mapping(map) => {
                     let left_map = downcast::<MapArray>(left.as_ref())?;
                     let right_map = downcast::<MapArray>(right.as_ref())?;
                     let left_entry_exposure = range_exposure(
@@ -904,6 +906,7 @@ pub(crate) mod casts {
         }
     }
     mod plans {
+        
         use super::*;
 
         impl ArrayCastPlan {
@@ -1111,7 +1114,7 @@ pub(crate) mod casts {
             pub(crate) fn cast_map_array(
                 &self,
                 array: ArrayRef,
-                source_map: &crate::MapType,
+                source_map: &crate::MappingType,
                 field: &ArrowFieldRef,
                 ordered: bool,
                 entries: &ArrayCastPlan,
@@ -1152,10 +1155,10 @@ pub(crate) mod casts {
                         ordered,
                     )?) as ArrayRef
                 };
-                let DataType::Map(target_map) = self.field.dtype() else {
+                let DataType::Mapping(target_map) = self.field.dtype() else {
                     return Err(internal_target_error("map"));
                 };
-                if !unchanged || source_map != target_map.as_ref() {
+                if !unchanged || source_map != target_map {
                     validate_map_invariants(target_map, output.as_ref(), exposure, budget)?;
                 }
                 Ok(output)
@@ -1898,7 +1901,7 @@ pub(crate) mod casts {
     const HASHED_NAME_INDEX_THRESHOLD: usize = 16;
 
     pub(crate) fn validate_map_invariants(
-        map: &crate::MapType,
+        map: &crate::MappingType,
         array: &dyn Array,
         exposure: Option<&BooleanBuffer>,
         budget: &mut MaterializationBudget,
@@ -2003,7 +2006,7 @@ pub(crate) mod casts {
             DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
-            DataType::Map(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
+            DataType::Mapping(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
             _ => false,
         }
     }
@@ -2303,7 +2306,7 @@ pub(crate) mod casts {
                         .unwrap_or(Ordering::Equal)
                 })
             }
-            DataType::Map(map) => {
+            DataType::Mapping(map) => {
                 let left_source = downcast::<MapArray>(left.as_ref())?;
                 let right_source = downcast::<MapArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -2644,7 +2647,7 @@ pub(crate) mod casts {
 
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
-            DataType::Struct(_) | DataType::Map(_) => true,
+            DataType::Struct(_) | DataType::Mapping(_) => true,
             DataType::List(field)
             | DataType::ListView(field)
             | DataType::FixedSizeList(field, _)
@@ -2670,7 +2673,7 @@ pub(crate) mod casts {
                 | DataType::Struct(_)
                 | DataType::Union(_, _)
                 | DataType::Dictionary(_)
-                | DataType::Map(_)
+                | DataType::Mapping(_)
                 | DataType::RunEndEncoded(_)
         )
     }
@@ -3034,8 +3037,8 @@ pub enum NestedType {
     Union(UnionFields, UnionMode),
     /// Dictionary key and value types.
     Dictionary(Arc<DictionaryType>),
-    /// Map entries and key-order flag.
-    Map(Arc<MapType>),
+    /// Keys to values, as the mapping family holds them.
+    Mapping(MappingType),
     /// Run-end encoded child fields.
     RunEndEncoded(Arc<RunEndEncodedType>),
     /// Self-describing semi-structured values.
@@ -3054,7 +3057,8 @@ impl NestedType {
             Self::Struct(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
-            Self::Map(_) => DataTypeId::Map,
+            Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
+            Self::Mapping(MappingType::SortedMap(_)) => DataTypeId::SortedMap,
             Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
             Self::Variant => DataTypeId::Variant,
         }
@@ -3080,7 +3084,7 @@ impl From<NestedType> for DataType {
             NestedType::Struct(fields) => Self::Struct(fields),
             NestedType::Union(fields, mode) => Self::Union(fields, mode),
             NestedType::Dictionary(dtype) => Self::Dictionary(dtype),
-            NestedType::Map(dtype) => Self::Map(dtype),
+            NestedType::Mapping(mapping) => Self::Mapping(mapping),
             NestedType::RunEndEncoded(dtype) => Self::RunEndEncoded(dtype),
             NestedType::Variant => Self::Variant,
         }
@@ -3102,7 +3106,7 @@ impl TryFrom<&DataType> for NestedType {
             DataType::Struct(fields) => Ok(Self::Struct(fields.clone())),
             DataType::Union(fields, mode) => Ok(Self::Union(fields.clone(), *mode)),
             DataType::Dictionary(dtype) => Ok(Self::Dictionary(Arc::clone(dtype))),
-            DataType::Map(dtype) => Ok(Self::Map(Arc::clone(dtype))),
+            DataType::Mapping(mapping) => Ok(Self::Mapping(mapping.clone())),
             DataType::RunEndEncoded(dtype) => Ok(Self::RunEndEncoded(Arc::clone(dtype))),
             DataType::Variant => Ok(Self::Variant),
             other => Err(Error::InvalidDataType {
@@ -3124,14 +3128,6 @@ impl DataType {
         Self::Variant
     }
 
-    /// Creates a map after validating Arrow's entries-field shape.
-    pub fn map(entries: Field, keys_sorted: bool) -> Result<Self> {
-        validate_map_entries(&entries)?;
-        Ok(Self::Map(Arc::new(MapType {
-            entries,
-            keys_sorted,
-        })))
-    }
 }
 
 /// One child with its collection, if it is one, replaced by what it holds.
@@ -3142,7 +3138,7 @@ pub(crate) fn exploded(child: &Field) -> Field {
         | DataType::FixedSizeList(item, _)
         | DataType::LargeList(item)
         | DataType::LargeListView(item) => Some((item.dtype().clone(), item.is_nullable())),
-        DataType::Map(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
+        DataType::Mapping(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
         DataType::RunEndEncoded(encoded) => Some((
             encoded.values().dtype().clone(),
             encoded.values().is_nullable(),
@@ -3438,7 +3434,7 @@ define_field_types!(
     crate::DataType::Dictionary(_)
 );
 
-define_field_types!(MapTypeMarker, Map, crate::DataType::Map(_));
+define_field_types!(MapTypeMarker, Map, crate::DataType::Mapping(_));
 
 define_field_types!(
     RunEndEncodedTypeMarker,
@@ -3718,35 +3714,6 @@ impl fmt::Display for Sequence {
     }
 }
 
-/// One insertion-ordered mapping with arbitrary scalar keys.
-#[repr(transparent)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
-pub struct Mapping(Arc<[(Scalar, Scalar)]>);
-
-impl Mapping {
-    /// Construct a mapping from already unique entries.
-    pub fn new(entries: impl Into<Arc<[(Scalar, Scalar)]>>) -> Self {
-        Self(entries.into())
-    }
-
-    /// Borrow the ordered entries.
-    pub fn as_slice(&self) -> &[(Scalar, Scalar)] {
-        self.0.as_ref()
-    }
-
-    /// Consume this value and return its shared entries.
-    pub fn into_inner(self) -> Arc<[(Scalar, Scalar)]> {
-        self.0
-    }
-}
-
-impl fmt::Display for Mapping {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:?}", self.as_slice())
-    }
-}
-
 /// One deterministic record sorted by field name.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -3849,8 +3816,6 @@ macro_rules! nested_value {
 
 nested_value!(Sequence, Sequence, List);
 
-nested_value!(Mapping, Mapping, Map);
-
 nested_value!(Record, Record, Struct);
 
 impl NestedValue for Sequence {
@@ -3860,16 +3825,6 @@ impl NestedValue for Sequence {
 
     fn children(&self) -> Children<'_> {
         Children::Sequence(self.as_slice().iter())
-    }
-}
-
-impl NestedValue for Mapping {
-    fn len(&self) -> usize {
-        self.as_slice().len()
-    }
-
-    fn children(&self) -> Children<'_> {
-        Children::Mapping(self.as_slice().iter())
     }
 }
 

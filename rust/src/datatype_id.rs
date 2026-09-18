@@ -179,11 +179,15 @@ pub enum DataTypeId {
     /// Appended because [`Self::as_u8`] is a wire contract.
     Sedol = 65,
     Bloomberg = 66,
+    /// Arrow map entries whose keys are ordered within each row.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SortedMap = 67,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 66] = [
+    pub const ALL: [Self; 67] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -250,6 +254,7 @@ impl DataTypeId {
         Self::Cusip,
         Self::Sedol,
         Self::Bloomberg,
+        Self::SortedMap,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -321,6 +326,7 @@ impl DataTypeId {
             Self::Decimal128 => "decimal128",
             Self::Decimal256 => "decimal256",
             Self::Map => "map",
+            Self::SortedMap => "sorted_map",
             Self::RunEndEncoded => "run_end_encoded",
             Self::Variant => "variant",
             Self::Geometry => "geometry",
@@ -421,6 +427,7 @@ impl DataTypeId {
             | Self::Struct
             | Self::Union
             | Self::Map
+            | Self::SortedMap
             | Self::Dictionary
             | Self::RunEndEncoded
             | Self::Variant => DataTypeKind::Nested,
@@ -463,6 +470,7 @@ impl DataTypeId {
                 | Self::Decimal128
                 | Self::Decimal256
                 | Self::Map
+                | Self::SortedMap
                 | Self::RunEndEncoded
                 | Self::Geometry
                 | Self::Geography
@@ -531,6 +539,7 @@ impl DataTypeId {
                 | Self::Struct
                 | Self::Union
                 | Self::Map
+                | Self::SortedMap
                 | Self::Variant
         )
     }

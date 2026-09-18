@@ -90,7 +90,7 @@ pub(super) fn descend<'field>(
         };
         return descend(item, rest);
     }
-    if let crate::DataType::Map(map) = field.dtype() {
+    if let crate::DataType::Mapping(map) = field.dtype() {
         let FieldSegment::Key(_) = head else {
             return None;
         };
@@ -502,7 +502,7 @@ impl FixRegistry {
     /// One message column: a canonical Map name precedes a scalar alias.
     pub(super) fn get_message_field_by_name(&self, name: &str) -> Option<&Field> {
         self.get_definition(crate::FixCategory::Groups, name)
-            .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
+            .filter(|group| matches!(group.dtype(), crate::DataType::Mapping(_)))
             .or_else(|| self.get_field_by_name(name))
             // Last, and only for a name nothing else answers: a List group is
             // reached by its own name - `Parties`, never `NoPartyIDs`, which
@@ -547,7 +547,7 @@ impl FixRegistry {
                 .get_message_field_by_name(head)
                 // A canonical Map suppresses scalar aliases, but still
                 // shares the named-root ambiguity check with components.
-                .filter(|field| !matches!(field.dtype(), crate::DataType::Map(_)))
+                .filter(|field| !matches!(field.dtype(), crate::DataType::Mapping(_)))
             {
                 return Some(field);
             }
@@ -1537,7 +1537,7 @@ impl FixRegistry {
         for alternate in alternate {
             if let Some(group) = self
                 .get_group_by_tag(*alternate)
-                .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
+                .filter(|group| matches!(group.dtype(), crate::DataType::Mapping(_)))
             {
                 return Err(Error::conflict(
                     "a scalar alternate tag free of Map group counters",
