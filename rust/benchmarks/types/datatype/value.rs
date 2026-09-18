@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit,
+    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Vocabulary,
     Timezone, i256,
 };
 
@@ -43,7 +43,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
-    let enum_member = Enum::IOMode(IOMode::Append);
+    let enum_member = Vocabulary::IOMode(IOMode::Append);
     let integer_scalar = Scalar::from(42);
     let decimal_scalar = Scalar::d256(integer256, 2);
     let float_scalar = Scalar::from_float(1.25, 32).unwrap();
@@ -114,7 +114,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         });
     });
     group.bench_function("enum_from_parts", |bencher| {
-        bencher.iter(|| Enum::from_parts(black_box("IOMode"), black_box("append")).unwrap());
+        bencher.iter(|| Vocabulary::from_parts(black_box("IOMode"), black_box("append")).unwrap());
     });
     group.bench_function("enum_kind", |bencher| {
         bencher.iter(|| black_box(enum_member).kind());

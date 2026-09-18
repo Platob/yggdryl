@@ -505,7 +505,7 @@ This is where the one string family changed stored digests: a value read from an
 | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
-| `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
+| `Vocabulary` | `dictionary` | length-prefixed vocabulary identity, then the member ordinal |
 | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
 | `Geospatial` | `geometry` | length `u64` little-endian, then the WKB |
 | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |

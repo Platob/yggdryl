@@ -12,7 +12,7 @@
 | `MimeType`, `MediaType` | Representation, ordered codings; suffix, coding, and `MAGIC_PROBE_LEN`-bounded content inference |
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
-| `Enum` | The vocabulary: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
+| `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
@@ -52,21 +52,23 @@ One spelling per member at every boundary.
     assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
     ```
 
-## Enum members
+## Vocabulary members
 
-An enum member's datatype is `string` - there is no `DataType::Enum` - so a
-member **is** its canonical name, and which vocabulary it belongs to is the
-column's business. `Enum` is the vocabulary: `from_parts` validates a name
-against it, `kind`, `as_str` and `ordinal` read the member, and building a
-`Scalar` from one answers the text a column holds.
+A vocabulary member's datatype is `string`, so a member **is** its canonical
+name, and which vocabulary it belongs to is the column's business.
+`Vocabulary` is that closed name set: `from_parts` validates a name against
+it, `kind`, `as_str` and `ordinal` read the member, and building a `Scalar`
+from one answers the text a column holds. `DataType::Enum` is a different
+fact - the dictionary encoding a column is stored under, not the set a name
+is drawn from.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{Enum, IOMode, Scalar};
+    use yggdryl::{IOMode, Scalar, Vocabulary};
 
-    let member = Enum::from_parts("IOMode", "append").expect("a known member");
-    assert_eq!(member, Enum::IOMode(IOMode::Append));
+    let member = Vocabulary::from_parts("IOMode", "append").expect("a known member");
+    assert_eq!(member, Vocabulary::IOMode(IOMode::Append));
     assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("IOMode", "append", 1));
 
     // The value is the name, so it is the same scalar the text is.
@@ -395,9 +397,9 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 
 ## Performance
 
-### Enum and inference boundary
+### Vocabulary and inference boundary
 
-Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
+Vocabulary boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
 
 | boundary | construct | kind | spelling | ordinal |
 | --- | ---: | ---: | ---: | ---: |

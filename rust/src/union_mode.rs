@@ -40,7 +40,7 @@ impl FromStr for UnionMode {
 
     /// Read a mode by its canonical name, ASCII case-insensitively.
     ///
-    /// The seven other vocabularies `Enum::from_parts` dispatches over all
+    /// The seven other vocabularies `Vocabulary::from_parts` dispatches over all
     /// have one of these; this one did not, which is why that function could
     /// not simply route through the parsers.
     fn from_str(value: &str) -> Result<Self> {

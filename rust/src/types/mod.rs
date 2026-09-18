@@ -75,7 +75,7 @@ pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
 pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
-pub use enumeration::Enum;
+pub use enumeration::Vocabulary;
 pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]

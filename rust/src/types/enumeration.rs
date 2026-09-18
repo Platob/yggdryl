@@ -12,13 +12,17 @@ use crate::{
     UnionMode,
 };
 
-/// One member of a shared static enum.
+/// One member of a shared static vocabulary.
 ///
 /// Every payload fits in one byte. The outer discriminant preserves which
-/// vocabulary the member belongs to even when two enums share a spelling.
+/// vocabulary the member belongs to even when two vocabularies share a
+/// spelling. This is the closed set of names a core enum draws from, not the
+/// dictionary encoding [`DataType::Enum`] describes.
+///
+/// [`DataType::Enum`]: crate::DataType::Enum
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "kind", content = "value")]
-pub enum Enum {
+pub enum Vocabulary {
     /// A content codec.
     Codec(Codec),
     /// An exact datatype identifier.
@@ -37,7 +41,7 @@ pub enum Enum {
     UnionMode(UnionMode),
 }
 
-impl Enum {
+impl Vocabulary {
     /// Parse a member while retaining its enum identity.
     ///
     /// Each vocabulary reads through its own `FromStr`, not through a second
@@ -124,26 +128,29 @@ impl Enum {
     }
 }
 
-impl fmt::Display for Enum {
+impl fmt::Display for Vocabulary {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-impl From<Enum> for Scalar {
+impl From<Vocabulary> for Scalar {
     /// A member is its canonical name, which is what a column holds.
     ///
-    /// There is no `DataType::Enum` and never was: an enum member's datatype
-    /// is `string`, so the value is the text and the vocabulary is the
-    /// column's business.
-    fn from(value: Enum) -> Self {
+    /// A member's datatype is `string`, so the value is the text and the
+    /// vocabulary is the column's business. [`DataType::Enum`] is a
+    /// different fact: it is the dictionary encoding a column is stored
+    /// under, not the closed set a name is drawn from.
+    ///
+    /// [`DataType::Enum`]: crate::DataType::Enum
+    fn from(value: Vocabulary) -> Self {
         Self::String(Str::new_static(value.as_str()))
     }
 }
 
 macro_rules! enumeration_from {
     ($($type:ty => $variant:ident),+ $(,)?) => {$(
-        impl From<$type> for Enum {
+        impl From<$type> for Vocabulary {
             fn from(value: $type) -> Self {
                 Self::$variant(value)
             }
@@ -151,7 +158,7 @@ macro_rules! enumeration_from {
 
         impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
-                Self::from(Enum::$variant(value))
+                Self::from(Vocabulary::$variant(value))
             }
         }
     )+};
