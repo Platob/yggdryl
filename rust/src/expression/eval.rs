@@ -33,6 +33,7 @@ use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
+use crate::types::DecimalType;
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -896,7 +897,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal256 { .. } => Scalar::d256(i256::from_i128(unscaled), scale),
+            DataType::Decimal(DecimalType::Decimal256 { .. }) => Scalar::d256(i256::from_i128(unscaled), scale),
             _ => Scalar::d128(unscaled, scale),
         };
         return canonical(candidate);

@@ -8,6 +8,7 @@ use crate::{Error, Field, Result, Scalar};
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 /// Structural JSON and Serde implementations for fields.
 mod field {
@@ -766,19 +767,19 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 key: &dictionary.key,
                 value: &dictionary.value,
             },
-            D::Decimal32 { precision, scale } => Self::Decimal32 {
+            D::Decimal(DecimalType::Decimal32 { precision, scale }) => Self::Decimal32 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal64 { precision, scale } => Self::Decimal64 {
+            D::Decimal(DecimalType::Decimal64 { precision, scale }) => Self::Decimal64 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal128 { precision, scale } => Self::Decimal128 {
+            D::Decimal(DecimalType::Decimal128 { precision, scale }) => Self::Decimal128 {
                 precision: *precision,
                 scale: *scale,
             },
-            D::Decimal256 { precision, scale } => Self::Decimal256 {
+            D::Decimal(DecimalType::Decimal256 { precision, scale }) => Self::Decimal256 {
                 precision: *precision,
                 scale: *scale,
             },
@@ -1271,16 +1272,16 @@ impl DataType {
                 entries.push((key("key"), dictionary.key.clone().into_value()));
                 entries.push((key("value"), dictionary.value.clone().into_value()));
             }
-            D::Decimal32 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal32 { precision, scale }) => {
                 decimal(&mut entries, "decimal32", *precision, *scale)
             }
-            D::Decimal64 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal64 { precision, scale }) => {
                 decimal(&mut entries, "decimal64", *precision, *scale)
             }
-            D::Decimal128 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
                 decimal(&mut entries, "decimal128", *precision, *scale);
             }
-            D::Decimal256 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
                 decimal(&mut entries, "decimal256", *precision, *scale);
             }
             D::Mapping(map) => {

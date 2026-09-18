@@ -33,6 +33,7 @@ use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -430,10 +431,10 @@ pub(crate) fn is_float(dtype: &DataType) -> bool {
 /// The precision and scale of an exact decimal, if it is one.
 pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale }
-        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => Some((*precision, *scale)),
         _ => None,
     }
 }

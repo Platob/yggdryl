@@ -2,6 +2,7 @@
 
 use yggdryl::holder::Buffer;
 use yggdryl::{ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
+use yggdryl::types::DecimalType;
 
 fn handle(name: &str) -> Buffer {
     Buffer::new().with_media_type(
@@ -92,10 +93,10 @@ fn a_declared_root_types_the_documents_natural_strings() {
 
     let widened = DataType::from_fields([
         DataType::utf8().required_field("symbol"),
-        DataType::Decimal128 {
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 12,
             scale: 2,
-        }
+        })
         .required_field("size"),
     ])
     .expect("the root datatype is valid")

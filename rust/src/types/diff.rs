@@ -14,6 +14,7 @@ use crate::types::mapping::MappingType;
 use crate::types::structure::StructureType;
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -405,38 +406,38 @@ impl DiffEngine {
                 self.push_dtype(left.key(), right.key(), property_path(&path, "key"));
             }
             (
-                D::Decimal32 {
+                D::Decimal(DecimalType::Decimal32 {
                     precision: left_precision,
                     scale: left_scale,
-                }
-                | D::Decimal64 {
+                })
+                | D::Decimal(DecimalType::Decimal64 {
                     precision: left_precision,
                     scale: left_scale,
-                }
-                | D::Decimal128 {
+                })
+                | D::Decimal(DecimalType::Decimal128 {
                     precision: left_precision,
                     scale: left_scale,
-                }
-                | D::Decimal256 {
+                })
+                | D::Decimal(DecimalType::Decimal256 {
                     precision: left_precision,
                     scale: left_scale,
-                },
-                D::Decimal32 {
+                }),
+                D::Decimal(DecimalType::Decimal32 {
                     precision: right_precision,
                     scale: right_scale,
-                }
-                | D::Decimal64 {
+                })
+                | D::Decimal(DecimalType::Decimal64 {
                     precision: right_precision,
                     scale: right_scale,
-                }
-                | D::Decimal128 {
+                })
+                | D::Decimal(DecimalType::Decimal128 {
                     precision: right_precision,
                     scale: right_scale,
-                }
-                | D::Decimal256 {
+                })
+                | D::Decimal(DecimalType::Decimal256 {
                     precision: right_precision,
                     scale: right_scale,
-                },
+                }),
             ) if left.id() == right.id() => {
                 if left_precision != right_precision {
                     self.pending.push_back(changed_display(

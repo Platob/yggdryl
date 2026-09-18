@@ -10,6 +10,7 @@ use crate::{Error, Field, Result, Scalar, TimeUnit};
 use super::DataType;
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 const MAX_DEFAULT_NODES: usize = 1_000_000;
 const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
@@ -244,10 +245,10 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Timezone
             | DataType::MimeType
             | DataType::MediaType
-            | DataType::Decimal32 { .. }
-            | DataType::Decimal64 { .. }
-            | DataType::Decimal128 { .. }
-            | DataType::Decimal256 { .. }
+            | DataType::Decimal(DecimalType::Decimal32 { .. })
+            | DataType::Decimal(DecimalType::Decimal64 { .. })
+            | DataType::Decimal(DecimalType::Decimal128 { .. })
+            | DataType::Decimal(DecimalType::Decimal256 { .. })
             // A variant declares its types per value and a geometry is one
             // WKB payload: neither holds child fields for the walk to visit.
             | DataType::Variant
@@ -410,10 +411,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             path.pop();
             value
         }
-        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => {
+        D::Decimal(DecimalType::Decimal32 { .. }) | D::Decimal(DecimalType::Decimal64 { .. }) | D::Decimal(DecimalType::Decimal128 { .. }) => {
             scalar(DefaultPlan::Decimal, false)
         }
-        D::Decimal256 { .. } => scalar(DefaultPlan::Decimal256, false),
+        D::Decimal(DecimalType::Decimal256 { .. }) => scalar(DefaultPlan::Decimal256, false),
         // The variant's present zero value is the variant null: a variant can
         // hold null as a first-class value, so `Scalar::Null` here is a value,
         // not an absence, and the plan is not logically null.

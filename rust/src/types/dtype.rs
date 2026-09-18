@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::decimal::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
@@ -151,26 +152,14 @@ pub enum DataType {
     /// The leaf - dictionary encoding today - is [`EnumType`]'s business,
     /// not this enum's.
     Enum(EnumType),
-    /// Exact decimal backed by 32 bits.
-    Decimal32 {
-        precision: u8,
-        scale: i8,
-    },
-    /// Exact decimal backed by 64 bits.
-    Decimal64 {
-        precision: u8,
-        scale: i8,
-    },
-    /// Exact decimal backed by 128 bits.
-    Decimal128 {
-        precision: u8,
-        scale: i8,
-    },
-    /// Exact decimal backed by 256 bits.
-    Decimal256 {
-        precision: u8,
-        scale: i8,
-    },
+    /// An exact number at a fixed scale: the whole decimal family.
+    ///
+    /// The leaf - which backing integer holds the coefficient - is
+    /// [`DecimalType`]'s business, not this enum's. Every leaf carries one
+    /// precision and one scale, so a reader asks
+    /// [`DecimalType::precision`] and [`DecimalType::scale`] and never
+    /// branches on the width.
+    Decimal(DecimalType),
     /// Keys to values: one variant for the whole mapping family.
     ///
     /// The leaf - Arrow's map today - is [`MappingType`]'s business, not this
@@ -317,10 +306,10 @@ impl DataType {
             Self::Structure(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Enum(EnumType::Dictionary(_)) => DataTypeId::Dictionary,
-            Self::Decimal32 { .. } => DataTypeId::Decimal32,
-            Self::Decimal64 { .. } => DataTypeId::Decimal64,
-            Self::Decimal128 { .. } => DataTypeId::Decimal128,
-            Self::Decimal256 { .. } => DataTypeId::Decimal256,
+            Self::Decimal(DecimalType::Decimal32 { .. }) => DataTypeId::Decimal32,
+            Self::Decimal(DecimalType::Decimal64 { .. }) => DataTypeId::Decimal64,
+            Self::Decimal(DecimalType::Decimal128 { .. }) => DataTypeId::Decimal128,
+            Self::Decimal(DecimalType::Decimal256 { .. }) => DataTypeId::Decimal256,
             Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
             Self::Mapping(MappingType::SortedMap(_)) => DataTypeId::SortedMap,
             Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
@@ -462,16 +451,16 @@ impl DataType {
                 dictionary.key.validate()?;
                 dictionary.value.validate()
             }
-            Self::Decimal32 { precision, scale } => {
+            Self::Decimal(DecimalType::Decimal32 { precision, scale }) => {
                 validate_decimal("Decimal32", *precision, *scale, 9)
             }
-            Self::Decimal64 { precision, scale } => {
+            Self::Decimal(DecimalType::Decimal64 { precision, scale }) => {
                 validate_decimal("Decimal64", *precision, *scale, 18)
             }
-            Self::Decimal128 { precision, scale } => {
+            Self::Decimal(DecimalType::Decimal128 { precision, scale }) => {
                 validate_decimal("Decimal128", *precision, *scale, 38)
             }
-            Self::Decimal256 { precision, scale } => {
+            Self::Decimal(DecimalType::Decimal256 { precision, scale }) => {
                 validate_decimal("Decimal256", *precision, *scale, 76)
             }
             Self::Mapping(mapping) => {
@@ -527,44 +516,44 @@ impl Ord for DataType {
                 .then_with(|| left_fields.cmp(right_fields)),
             (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => left.cmp(right),
             (
-                D::Decimal32 {
+                D::Decimal(DecimalType::Decimal32 {
                     precision: left_precision,
                     scale: left_scale,
-                },
-                D::Decimal32 {
+                }),
+                D::Decimal(DecimalType::Decimal32 {
                     precision: right_precision,
                     scale: right_scale,
-                },
+                }),
             )
             | (
-                D::Decimal64 {
+                D::Decimal(DecimalType::Decimal64 {
                     precision: left_precision,
                     scale: left_scale,
-                },
-                D::Decimal64 {
+                }),
+                D::Decimal(DecimalType::Decimal64 {
                     precision: right_precision,
                     scale: right_scale,
-                },
+                }),
             )
             | (
-                D::Decimal128 {
+                D::Decimal(DecimalType::Decimal128 {
                     precision: left_precision,
                     scale: left_scale,
-                },
-                D::Decimal128 {
+                }),
+                D::Decimal(DecimalType::Decimal128 {
                     precision: right_precision,
                     scale: right_scale,
-                },
+                }),
             )
             | (
-                D::Decimal256 {
+                D::Decimal(DecimalType::Decimal256 {
                     precision: left_precision,
                     scale: left_scale,
-                },
-                D::Decimal256 {
+                }),
+                D::Decimal(DecimalType::Decimal256 {
                     precision: right_precision,
                     scale: right_scale,
-                },
+                }),
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
             (D::String(left), D::String(right)) => left.cmp(right),
             (D::Mapping(left), D::Mapping(right)) => left.cmp(right),
@@ -626,10 +615,10 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Structure(_) => 41,
         DataType::Union(..) => 42,
         DataType::Enum(EnumType::Dictionary(_)) => 43,
-        DataType::Decimal32 { .. } => 44,
-        DataType::Decimal64 { .. } => 45,
-        DataType::Decimal128 { .. } => 46,
-        DataType::Decimal256 { .. } => 47,
+        DataType::Decimal(DecimalType::Decimal32 { .. }) => 44,
+        DataType::Decimal(DecimalType::Decimal64 { .. }) => 45,
+        DataType::Decimal(DecimalType::Decimal128 { .. }) => 46,
+        DataType::Decimal(DecimalType::Decimal256 { .. }) => 47,
         DataType::Mapping(_) => 48,
         DataType::RunEndEncoded(_) => 49,
         DataType::Variant => 50,
@@ -789,6 +778,7 @@ mod arrow {
     use crate::types::{bytes, code, decimal, floating, integer, string, temporal};
     use crate::types::mapping::MappingType;
     use crate::{Error, Field, Result};
+    use crate::types::DecimalType;
 
     impl DataType {
         /// Projects this datatype as the Arrow storage its family lays out.
@@ -842,10 +832,10 @@ mod arrow {
                 R::MimeType => MimeTypeType::arrow_storage(),
                 R::MediaType => MediaTypeType::arrow_storage(),
                 R::Uuid => UuidType::arrow_storage(),
-                R::Decimal32 { .. }
-                | R::Decimal64 { .. }
-                | R::Decimal128 { .. }
-                | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
+                R::Decimal(DecimalType::Decimal32 { .. })
+                | R::Decimal(DecimalType::Decimal64 { .. })
+                | R::Decimal(DecimalType::Decimal128 { .. })
+                | R::Decimal(DecimalType::Decimal256 { .. }) => decimal::arrow_storage(self)?,
                 R::Sequence(sequence) => sequence.arrow_storage()?,
                 R::Structure(structure) => structure.arrow_storage()?,
                 R::Union(fields, mode) => fields.arrow_storage(*mode)?,

@@ -139,10 +139,10 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
             .is_none()
     );
     assert!(
-        DataType::Decimal32 {
+        DataType::Decimal(DecimalType::Decimal32 {
             precision: 99,
             scale: 0
-        }
+        })
         .shared_field()
         .is_none()
     );

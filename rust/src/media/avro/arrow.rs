@@ -15,6 +15,7 @@ use crate::{DataType, Field, Result, Scalar, TimeUnit};
 use super::datum::invalid;
 use super::schema::{Node, Schema};
 use crate::types::sequence::SequenceType;
+use crate::types::DecimalType;
 
 /// Project an Avro schema as the crate's `Field` schema.
 ///
@@ -243,9 +244,9 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("size", Scalar::from(i64::from(width))),
             ])
         }
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale } => {
+        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
             if *scale < 0 {
                 return Err(unspellable(dtype));
             }

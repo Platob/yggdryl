@@ -1,6 +1,7 @@
 use yggdryl::types::{BytesLayout, BytesType};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
+use yggdryl::types::DecimalType;
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -224,22 +225,22 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
             -1,
         )),
-        DataType::Decimal32 {
+        DataType::Decimal(DecimalType::Decimal32 {
             precision: 0,
             scale: 0,
-        },
-        DataType::Decimal64 {
+        }),
+        DataType::Decimal(DecimalType::Decimal64 {
             precision: 19,
             scale: 0,
-        },
-        DataType::Decimal128 {
+        }),
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 39,
             scale: 0,
-        },
-        DataType::Decimal256 {
+        }),
+        DataType::Decimal(DecimalType::Decimal256 {
             precision: 77,
             scale: 0,
-        },
+        }),
     ] {
         assert!(invalid.default_value().is_err(), "{invalid:?}");
     }

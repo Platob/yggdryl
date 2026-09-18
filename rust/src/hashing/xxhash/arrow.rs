@@ -54,6 +54,7 @@ use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
 use crate::types::FieldValue as _;
+use crate::types::DecimalType;
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -1103,22 +1104,22 @@ fn feed_cell(
                 BytesLayout::Binary => downcast::<BinaryArray>(array)?.value(index),
             },
         ),
-        DataType::Decimal32 { scale, .. } => write_decimal(
+        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => write_decimal(
             digester,
             i256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
             *scale,
         ),
-        DataType::Decimal64 { scale, .. } => write_decimal(
+        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => write_decimal(
             digester,
             i256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
             *scale,
         ),
-        DataType::Decimal128 { scale, .. } => write_decimal(
+        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => write_decimal(
             digester,
             i256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
             *scale,
         ),
-        DataType::Decimal256 { scale, .. } => write_decimal(
+        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => write_decimal(
             digester,
             i256::from_le_bytes(
                 downcast::<Decimal256Array>(array)?

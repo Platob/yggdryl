@@ -1,48 +1,49 @@
 use yggdryl::{DataType, Error};
+use yggdryl::types::DecimalType;
 
 #[test]
 fn decimal_selects_the_smallest_arrow_representation() {
     assert_eq!(
         DataType::decimal(1, 0).unwrap(),
-        DataType::Decimal32 {
+        DataType::Decimal(DecimalType::Decimal32 {
             precision: 1,
             scale: 0,
-        }
+        })
     );
     assert_eq!(
         DataType::decimal(10, 2).unwrap(),
-        DataType::Decimal64 {
+        DataType::Decimal(DecimalType::Decimal64 {
             precision: 10,
             scale: 2,
-        }
+        })
     );
     assert_eq!(
         DataType::decimal(19, 2).unwrap(),
-        DataType::Decimal128 {
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 19,
             scale: 2,
-        }
+        })
     );
     assert_eq!(
         DataType::decimal(38, 38).unwrap(),
-        DataType::Decimal128 {
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 38,
             scale: 38,
-        }
+        })
     );
     assert_eq!(
         DataType::decimal(39, 39).unwrap(),
-        DataType::Decimal256 {
+        DataType::Decimal(DecimalType::Decimal256 {
             precision: 39,
             scale: 39,
-        }
+        })
     );
     assert_eq!(
         DataType::decimal(76, -20).unwrap(),
-        DataType::Decimal256 {
+        DataType::Decimal(DecimalType::Decimal256 {
             precision: 76,
             scale: -20,
-        }
+        })
     );
 }
 
@@ -90,38 +91,38 @@ fn generic_decimal_parser_selects_and_round_trips_physical_storage() {
     for (expression, expected) in [
         (
             "decimal(9,2)",
-            DataType::Decimal32 {
+            DataType::Decimal(DecimalType::Decimal32 {
                 precision: 9,
                 scale: 2,
-            },
+            }),
         ),
         (
             "decimal(10,2)",
-            DataType::Decimal64 {
+            DataType::Decimal(DecimalType::Decimal64 {
                 precision: 10,
                 scale: 2,
-            },
+            }),
         ),
         (
             "decimal(38,18)",
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 38,
                 scale: 18,
-            },
+            }),
         ),
         (
             "decimal(39,18)",
-            DataType::Decimal256 {
+            DataType::Decimal(DecimalType::Decimal256 {
                 precision: 39,
                 scale: 18,
-            },
+            }),
         ),
         (
             "numeric(76,20)",
-            DataType::Decimal256 {
+            DataType::Decimal(DecimalType::Decimal256 {
                 precision: 76,
                 scale: 20,
-            },
+            }),
         ),
     ] {
         let parsed = DataType::from_str(expression).unwrap();

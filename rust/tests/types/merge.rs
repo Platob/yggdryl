@@ -1,6 +1,7 @@
 //! What two datatypes meet as: the widening lattice `DataType::merge_with`
 //! walks, in both directions.
 use yggdryl::DataType;
+use yggdryl::types::DecimalType;
 
 #[test]
 fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
@@ -195,10 +196,10 @@ fn narrowing_keeps_a_registered_code_over_the_width_it_stores_in() {
 #[test]
 fn widening_a_decimal_keeps_the_widest_backing_either_side_declared() {
     let decimal128 = DataType::decimal128(10, 2).unwrap();
-    let decimal256 = DataType::Decimal256 {
+    let decimal256 = DataType::Decimal(DecimalType::Decimal256 {
         precision: 20,
         scale: 2,
-    };
+    });
 
     // The merged precision fits a narrower backing, but re-encoding the
     // storage is not something a widening merge may impose.

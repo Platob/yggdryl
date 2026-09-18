@@ -524,11 +524,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// sidecar moved onto the one leaf that has it: a field hashes the datatype
 /// its leaf holds rather than the `DataType` it widens to, and it hashes one
 /// sidecar - nothing at all for a field that is not dictionary-encoded -
-/// rather than an identifier and a flag every field carried.
+/// rather than an identifier and a flag every field carried. It last moved
+/// when the four decimal widths became one `Decimal` family variant: every
+/// datatype declared after them in the enum shifted by three discriminants,
+/// and a decimal hashes its leaf one level deeper.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 17_472_001_552_467_199_904);
+    assert_eq!(registry.stable_hash(), 2_010_498_558_569_525_510);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

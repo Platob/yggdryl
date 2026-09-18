@@ -54,6 +54,7 @@ use super::bytes::{BytesLayout, BytesType};
 use super::string::{StringLayout, StringType};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -784,10 +785,10 @@ fn merge_decimal(
 /// Which of the four backings a decimal declares, as a width rank.
 const fn decimal_backing(dtype: &DataType) -> Option<u8> {
     match dtype {
-        DataType::Decimal32 { .. } => Some(0),
-        DataType::Decimal64 { .. } => Some(1),
-        DataType::Decimal128 { .. } => Some(2),
-        DataType::Decimal256 { .. } => Some(3),
+        DataType::Decimal(DecimalType::Decimal32 { .. }) => Some(0),
+        DataType::Decimal(DecimalType::Decimal64 { .. }) => Some(1),
+        DataType::Decimal(DecimalType::Decimal128 { .. }) => Some(2),
+        DataType::Decimal(DecimalType::Decimal256 { .. }) => Some(3),
         _ => None,
     }
 }
@@ -830,10 +831,10 @@ const fn integer_as_decimal(dtype: &DataType) -> Option<(u8, i8)> {
 /// The precision and scale of an exact decimal, if it is one.
 const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale }
-        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => Some((*precision, *scale)),
         _ => None,
     }
 }

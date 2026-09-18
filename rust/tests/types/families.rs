@@ -23,7 +23,7 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
 
     let decimal = DataType::decimal128(20, 4).unwrap();
     let decimal_family = DecimalType::try_from(&decimal).unwrap();
-    assert_eq!(decimal_family.into_dtype().unwrap(), decimal);
+    assert_eq!(DataType::from(decimal_family), decimal);
 
     let temporal = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
     let temporal_family = TemporalType::try_from(&temporal).unwrap();
@@ -293,10 +293,10 @@ fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
         DataType::Time32(TimeUnit::Nanosecond),
         DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary)),
-        DataType::Decimal128 {
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 0,
             scale: 0,
-        },
+        }),
     ];
 
     for value in invalid {

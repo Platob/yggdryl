@@ -12,7 +12,8 @@ use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::invalid;
 use crate::types::parser::Parser;
 use crate::types::value::{ValidationFailure, expected};
-use crate::{DataType, DataTypeId, Error, Result, Scalar, Value, i256};
+use crate::types::family::DataTypeValue;
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, Value, i256};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -78,10 +79,7 @@ pub(crate) mod casts {
     pub(crate) fn holds_decimal(target: &DataType) -> bool {
         matches!(
             crate::types::cast::text::encoded_value_of(target),
-            DataType::Decimal32 { .. }
-                | DataType::Decimal64 { .. }
-                | DataType::Decimal128 { .. }
-                | DataType::Decimal256 { .. }
+            DataType::Decimal(_)
         )
     }
 }
@@ -115,25 +113,120 @@ impl DecimalType {
         }
     }
 
-    /// Validate and convert this family member into the root datatype.
-    pub fn into_dtype(self) -> Result<DataType> {
+    /// The digits this decimal states, whichever width holds them.
+    ///
+    /// The leaf is how wide the backing integer is; the precision and the
+    /// scale are what the column *means*, so a reader asks here and never
+    /// branches on the width.
+    #[must_use]
+    pub const fn precision(self) -> u8 {
         match self {
-            Self::Decimal32 { precision, scale } => DataType::decimal32(precision, scale),
-            Self::Decimal64 { precision, scale } => DataType::decimal64(precision, scale),
-            Self::Decimal128 { precision, scale } => DataType::decimal128(precision, scale),
-            Self::Decimal256 { precision, scale } => DataType::decimal256(precision, scale),
+            Self::Decimal32 { precision, .. }
+            | Self::Decimal64 { precision, .. }
+            | Self::Decimal128 { precision, .. }
+            | Self::Decimal256 { precision, .. } => precision,
         }
+    }
+
+    /// The scale this decimal states, whichever width holds it.
+    #[must_use]
+    pub const fn scale(self) -> i8 {
+        match self {
+            Self::Decimal32 { scale, .. }
+            | Self::Decimal64 { scale, .. }
+            | Self::Decimal128 { scale, .. }
+            | Self::Decimal256 { scale, .. } => scale,
+        }
+    }
+
+    /// The name this width states its own refusals under.
+    ///
+    /// A refusal names the width that could not hold the number, so a caller
+    /// reading `precision must be between 1 and 9` knows which one it was.
+    pub(crate) const fn refusal_kind(self) -> &'static str {
+        match self {
+            Self::Decimal32 { .. } => "Decimal32",
+            Self::Decimal64 { .. } => "Decimal64",
+            Self::Decimal128 { .. } => "Decimal128",
+            Self::Decimal256 { .. } => "Decimal256",
+        }
+    }
+
+    /// The most digits this width holds.
+    #[must_use]
+    pub const fn maximum(self) -> u8 {
+        match self {
+            Self::Decimal32 { .. } => 9,
+            Self::Decimal64 { .. } => 18,
+            Self::Decimal128 { .. } => 38,
+            Self::Decimal256 { .. } => 76,
+        }
+    }
+
+    /// The narrowest width that holds this many digits.
+    ///
+    /// The one rule behind [`DataType::decimal`]: a caller who states only
+    /// what the number means gets the width it fits in.
+    #[must_use]
+    pub const fn narrowest(precision: u8, scale: i8) -> Self {
+        match precision {
+            0..=9 => Self::Decimal32 { precision, scale },
+            10..=18 => Self::Decimal64 { precision, scale },
+            19..=38 => Self::Decimal128 { precision, scale },
+            _ => Self::Decimal256 { precision, scale },
+        }
+    }
+}
+
+impl DataTypeValue for DecimalType {
+    const FAMILY: &'static str = "decimal";
+
+    type Sidecar = ();
+
+    fn id(&self) -> DataTypeId {
+        Self::id(*self)
+    }
+
+    fn kind(&self) -> DataTypeKind {
+        DataTypeKind::Decimal
+    }
+
+    fn validate(&self) -> Result<()> {
+        validate_decimal(
+            self.refusal_kind(),
+            self.precision(),
+            self.scale(),
+            self.maximum(),
+        )
+    }
+
+    fn into_dtype(self) -> DataType {
+        DataType::Decimal(self)
+    }
+
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
+        match dtype {
+            DataType::Decimal(family) => Some(*family),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for DecimalType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}({},{})",
+            self.id().as_str(),
+            self.precision(),
+            self.scale()
+        )
     }
 }
 
 impl From<DecimalType> for DataType {
     fn from(value: DecimalType) -> Self {
-        match value {
-            DecimalType::Decimal32 { precision, scale } => Self::Decimal32 { precision, scale },
-            DecimalType::Decimal64 { precision, scale } => Self::Decimal64 { precision, scale },
-            DecimalType::Decimal128 { precision, scale } => Self::Decimal128 { precision, scale },
-            DecimalType::Decimal256 { precision, scale } => Self::Decimal256 { precision, scale },
-        }
+        Self::Decimal(value)
     }
 }
 
@@ -142,22 +235,7 @@ impl TryFrom<&DataType> for DecimalType {
 
     fn try_from(value: &DataType) -> Result<Self> {
         match value {
-            DataType::Decimal32 { precision, scale } => Ok(Self::Decimal32 {
-                precision: *precision,
-                scale: *scale,
-            }),
-            DataType::Decimal64 { precision, scale } => Ok(Self::Decimal64 {
-                precision: *precision,
-                scale: *scale,
-            }),
-            DataType::Decimal128 { precision, scale } => Ok(Self::Decimal128 {
-                precision: *precision,
-                scale: *scale,
-            }),
-            DataType::Decimal256 { precision, scale } => Ok(Self::Decimal256 {
-                precision: *precision,
-                scale: *scale,
-            }),
+            DataType::Decimal(family) => Ok(*family),
             other => Err(Error::InvalidDataType {
                 kind: "decimal",
                 reason: format_smolstr!("expected a decimal datatype, got {other}"),
@@ -168,43 +246,71 @@ impl TryFrom<&DataType> for DecimalType {
 
 impl DataType {
     /// Creates a Decimal32.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside 1..=9, or when a
+    /// positive scale exceeds it.
     pub fn decimal32(precision: u8, scale: i8) -> Result<Self> {
-        validate_decimal("Decimal32", precision, scale, 9)?;
-        Ok(Self::Decimal32 { precision, scale })
+        Self::decimal_of(DecimalType::Decimal32 { precision, scale })
     }
 
     /// Creates a Decimal64.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside 1..=18, or when a
+    /// positive scale exceeds it.
     pub fn decimal64(precision: u8, scale: i8) -> Result<Self> {
-        validate_decimal("Decimal64", precision, scale, 18)?;
-        Ok(Self::Decimal64 { precision, scale })
+        Self::decimal_of(DecimalType::Decimal64 { precision, scale })
+    }
+
+    /// Creates a Decimal128.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside 1..=38, or when a
+    /// positive scale exceeds it.
+    pub fn decimal128(precision: u8, scale: i8) -> Result<Self> {
+        Self::decimal_of(DecimalType::Decimal128 { precision, scale })
+    }
+
+    /// Creates a Decimal256.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside 1..=76, or when a
+    /// positive scale exceeds it.
+    pub fn decimal256(precision: u8, scale: i8) -> Result<Self> {
+        Self::decimal_of(DecimalType::Decimal256 { precision, scale })
     }
 
     /// Creates the most compact Arrow-compatible decimal for the requested
     /// precision and scale.
     ///
     /// Precisions through 9, 18, 38, and 76 use Decimal32, Decimal64,
-    /// Decimal128, and Decimal256 respectively. Validation is delegated to the
-    /// selected explicit constructor, including the requirement that a
-    /// positive scale cannot exceed the precision.
+    /// Decimal128, and Decimal256 respectively.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside 1..=76, or when a
+    /// positive scale exceeds it.
     pub fn decimal(precision: u8, scale: i8) -> Result<Self> {
-        match precision {
-            0..=9 => Self::decimal32(precision, scale),
-            10..=18 => Self::decimal64(precision, scale),
-            19..=38 => Self::decimal128(precision, scale),
-            _ => Self::decimal256(precision, scale),
-        }
+        Self::decimal_of(DecimalType::narrowest(precision, scale))
     }
 
-    /// Creates a Decimal128.
-    pub fn decimal128(precision: u8, scale: i8) -> Result<Self> {
-        validate_decimal("Decimal128", precision, scale, 38)?;
-        Ok(Self::Decimal128 { precision, scale })
-    }
-
-    /// Creates a Decimal256.
-    pub fn decimal256(precision: u8, scale: i8) -> Result<Self> {
-        validate_decimal("Decimal256", precision, scale, 76)?;
-        Ok(Self::Decimal256 { precision, scale })
+    /// One checked decimal leaf, whichever width names it.
+    ///
+    /// The four constructors above are one rule with a width chosen for the
+    /// caller, so the rule is written once here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the precision is outside what the width holds,
+    /// or when a positive scale exceeds it.
+    pub fn decimal_of(family: DecimalType) -> Result<Self> {
+        DataTypeValue::validate(&family)?;
+        Ok(Self::Decimal(family))
     }
 }
 
@@ -608,10 +714,10 @@ mod fixed {
     impl DataType {
         /// The decimal a market's numbers are held as: `decimal128(38, 18)`,
         /// what every [`Decimal`] is.
-        pub const DECIMAL: Self = Self::Decimal128 {
+        pub const DECIMAL: Self = Self::Decimal(super::DecimalType::Decimal128 {
             precision: 38,
             scale: 18,
-        };
+        });
     }
 
     impl fmt::Display for Decimal {
@@ -1181,10 +1287,10 @@ pub(crate) fn exact_value_parts(value: &Scalar) -> Option<(i256, i8)> {
 
 pub(crate) fn decimal_target(dtype: &DataType) -> Option<(bool, i8)> {
     match dtype {
-        DataType::Decimal32 { scale, .. }
-        | DataType::Decimal64 { scale, .. }
-        | DataType::Decimal128 { scale, .. } => Some((false, *scale)),
-        DataType::Decimal256 { scale, .. } => Some((true, *scale)),
+        DataType::Decimal(DecimalType::Decimal32 { scale, .. })
+        | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
+        | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => Some((false, *scale)),
+        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => Some((true, *scale)),
         _ => None,
     }
 }
@@ -1547,10 +1653,10 @@ impl Scalar {
     /// hold.
     pub(crate) fn from_decimal_text(dtype: &DataType, text: &str) -> Result<Self> {
         let scale = match dtype {
-            DataType::Decimal32 { scale, .. }
-            | DataType::Decimal64 { scale, .. }
-            | DataType::Decimal128 { scale, .. }
-            | DataType::Decimal256 { scale, .. } => *scale,
+            DataType::Decimal(DecimalType::Decimal32 { scale, .. })
+            | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
+            | DataType::Decimal(DecimalType::Decimal128 { scale, .. })
+            | DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => *scale,
             other => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1572,7 +1678,7 @@ impl Scalar {
                 }
             }
         })?;
-        if matches!(dtype, DataType::Decimal256 { .. }) {
+        if matches!(dtype, DataType::Decimal(DecimalType::Decimal256 { .. })) {
             return Ok(Self::d256(coefficient, scale));
         }
         coefficient
@@ -1628,7 +1734,7 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::validate_decimal;
+    use super::{DecimalType, validate_decimal};
     use crate::types::invalid;
     use crate::{DataType, Result};
 
@@ -1643,19 +1749,19 @@ mod arrow {
     /// carries, or when the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
         Ok(match dtype {
-            DataType::Decimal32 { precision, scale } => {
+            DataType::Decimal(DecimalType::Decimal32 { precision, scale }) => {
                 validate_decimal("Decimal32", *precision, *scale, 9)?;
                 ArrowDataType::Decimal32(*precision, *scale)
             }
-            DataType::Decimal64 { precision, scale } => {
+            DataType::Decimal(DecimalType::Decimal64 { precision, scale }) => {
                 validate_decimal("Decimal64", *precision, *scale, 18)?;
                 ArrowDataType::Decimal64(*precision, *scale)
             }
-            DataType::Decimal128 { precision, scale } => {
+            DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
                 validate_decimal("Decimal128", *precision, *scale, 38)?;
                 ArrowDataType::Decimal128(*precision, *scale)
             }
-            DataType::Decimal256 { precision, scale } => {
+            DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
                 validate_decimal("Decimal256", *precision, *scale, 76)?;
                 ArrowDataType::Decimal256(*precision, *scale)
             }

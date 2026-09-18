@@ -25,6 +25,7 @@ mod limits {
     
     use crate::arrow::{Error, Result};
     use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
+    use crate::types::DecimalType;
 
     // Composite Arrow layouts can turn one logical null or inactive union member
     // into a large number of mandatory physical child slots. Keep the same
@@ -303,7 +304,7 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -333,15 +334,15 @@ mod limits {
                 | DataType::Duration32(_)
                 | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
-                | DataType::Decimal64 { .. }
+                | DataType::Decimal(DecimalType::Decimal64 { .. })
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
-                | DataType::Decimal128 { .. }
+                | DataType::Decimal(DecimalType::Decimal128 { .. })
                 | DataType::Uuid
                 | DataType::Sequence(SequenceType::LargeListView(_)) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
-                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
+                DataType::Decimal(DecimalType::Decimal256 { .. }) => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
@@ -419,7 +420,7 @@ mod limits {
                 | DataType::Date32
                 | DataType::Time32(_)
                 | DataType::Interval(TimeUnit::YearMonth)
-                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+                | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -449,13 +450,13 @@ mod limits {
                 | DataType::Duration32(_)
                 | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
-                | DataType::Decimal64 { .. }
+                | DataType::Decimal(DecimalType::Decimal64 { .. })
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
-                | DataType::Decimal128 { .. }
+                | DataType::Decimal(DecimalType::Decimal128 { .. })
                 | DataType::Uuid
                 | DataType::Sequence(SequenceType::LargeListView(_)) => self.add_fixed_rows(rows, 16)?,
-                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
+                DataType::Decimal(DecimalType::Decimal256 { .. }) => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }

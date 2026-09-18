@@ -401,6 +401,7 @@ mod shared {
 
     use crate::types::{BytesLayout, BytesType, StringLayout, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
+    use crate::types::DecimalType;
 
     /// The name every shared field carries - the name an inferred scalar field
     /// carries too, so a value typed either way is the same column.
@@ -537,10 +538,10 @@ mod shared {
                 | Self::Duration32(_)
                 | Self::Duration64(_)
                 | Self::Interval(_)
-                | Self::Decimal32 { .. }
-                | Self::Decimal64 { .. }
-                | Self::Decimal128 { .. }
-                | Self::Decimal256 { .. } => interned(self),
+                | Self::Decimal(DecimalType::Decimal32 { .. })
+                | Self::Decimal(DecimalType::Decimal64 { .. })
+                | Self::Decimal(DecimalType::Decimal128 { .. })
+                | Self::Decimal(DecimalType::Decimal256 { .. }) => interned(self),
                 _ => None,
             }
         }

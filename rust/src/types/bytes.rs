@@ -174,6 +174,7 @@ pub(crate) mod casts {
     use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
     use crate::types::cast::columns::{is_exposed, null_buffers_ptr_eq};
     use crate::{DataType, Field};
+    use crate::types::DecimalType;
 
     /// Whether one byte layout reaches another only through Arrow's `Binary`.
     ///
@@ -499,15 +500,15 @@ pub(crate) mod casts {
             DataType::Int8 => 4,
             DataType::UInt8 => 3,
             DataType::Int16 => 6,
-            DataType::Int32 | DataType::Decimal32 { .. } => 12,
+            DataType::Int32 | DataType::Decimal(DecimalType::Decimal32 { .. }) => 12,
             DataType::UInt32 => 10,
-            DataType::Int64 | DataType::Decimal64 { .. } => 21,
+            DataType::Int64 | DataType::Decimal(DecimalType::Decimal64 { .. }) => 21,
             DataType::UInt64 => 20,
             DataType::Float16 => 16,
             DataType::Float32 => 24,
             DataType::Float64 => 32,
-            DataType::Decimal128 { .. } => 41,
-            DataType::Decimal256 { .. } => 78,
+            DataType::Decimal(DecimalType::Decimal128 { .. }) => 41,
+            DataType::Decimal(DecimalType::Decimal256 { .. }) => 78,
             DataType::DateTime64 { .. }
             | DataType::Date32
             | DataType::Date64

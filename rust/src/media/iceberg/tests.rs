@@ -15,6 +15,7 @@ use crate::holder::fs::{
 use crate::holder::local::Folder;
 use crate::{DataType, Field, Scalar};
 
+use crate::types::DecimalType;
 use super::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestEntry, ManifestFile, PartitionField, PartitionSpec, ScanPlan, ScanTask, Snapshot,
@@ -5875,10 +5876,10 @@ mod datatype_coverage {
             DataType::Int64.required_field("id"),
             DataType::Float32.nullable_field("ratio"),
             DataType::Float64.nullable_field("value"),
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 18,
                 scale: 4,
-            }
+            })
             .nullable_field("price"),
             DataType::Date32.nullable_field("day"),
             DataType::Time64(TimeUnit::Microsecond).nullable_field("tod"),
@@ -6006,10 +6007,10 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("venue"),
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 18,
                 scale: 4,
-            }
+            })
             .nullable_field("price"),
         ];
         let schema = DataType::from_fields(children.clone())

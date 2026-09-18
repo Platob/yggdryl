@@ -14,6 +14,7 @@ use crate::{Error, Field, Result, Scheme, TimeUnit};
 use super::{BytesType, DataType, StringType, preflight_schema, preflight_schema_shape};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -376,12 +377,12 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
-        D::Decimal32 { precision, scale }
-        | D::Decimal64 { precision, scale }
-        | D::Decimal128 { precision, scale } => {
+        D::Decimal(DecimalType::Decimal32 { precision, scale })
+        | D::Decimal(DecimalType::Decimal64 { precision, scale })
+        | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
             narrow_decimal(Target::Spark, dtype, *precision, *scale, path)
         }
-        D::Decimal256 { precision, scale } => incompatible(
+        D::Decimal(DecimalType::Decimal256 { precision, scale }) => incompatible(
             Target::Spark,
             path,
             format_smolstr!(
@@ -488,12 +489,12 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
-        D::Decimal32 { precision, scale }
-        | D::Decimal64 { precision, scale }
-        | D::Decimal128 { precision, scale } => {
+        D::Decimal(DecimalType::Decimal32 { precision, scale })
+        | D::Decimal(DecimalType::Decimal64 { precision, scale })
+        | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
             narrow_decimal(Target::Polars, dtype, *precision, *scale, path)
         }
-        D::Decimal256 { precision, scale } => incompatible(
+        D::Decimal(DecimalType::Decimal256 { precision, scale }) => incompatible(
             Target::Polars,
             path,
             format_smolstr!(
@@ -592,12 +593,12 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
-        D::Decimal32 { precision, scale }
-        | D::Decimal64 { precision, scale }
-        | D::Decimal128 { precision, scale } => {
+        D::Decimal(DecimalType::Decimal32 { precision, scale })
+        | D::Decimal(DecimalType::Decimal64 { precision, scale })
+        | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
             narrow_decimal(Target::Pandas, dtype, *precision, *scale, path)
         }
-        D::Decimal256 { precision, scale } => incompatible(
+        D::Decimal(DecimalType::Decimal256 { precision, scale }) => incompatible(
             Target::Pandas,
             path,
             format_smolstr!(
@@ -703,12 +704,12 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Side
         | D::State
         | D::TimeInForce => Ok((D::utf8(), true)),
-        D::Decimal32 { precision, scale }
-        | D::Decimal64 { precision, scale }
-        | D::Decimal128 { precision, scale } => {
+        D::Decimal(DecimalType::Decimal32 { precision, scale })
+        | D::Decimal(DecimalType::Decimal64 { precision, scale })
+        | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
             narrow_decimal(Target::Iceberg, dtype, *precision, *scale, path)
         }
-        D::Decimal256 { precision, scale } => incompatible(
+        D::Decimal(DecimalType::Decimal256 { precision, scale }) => incompatible(
             Target::Iceberg,
             path,
             format_smolstr!(
@@ -742,7 +743,7 @@ fn narrow_decimal(
         );
     }
     let transformed = DataType::decimal128(precision, scale)?;
-    let changed = !matches!(dtype, DataType::Decimal128 { .. });
+    let changed = !matches!(dtype, DataType::Decimal(DecimalType::Decimal128 { .. }));
     Ok((transformed, changed))
 }
 

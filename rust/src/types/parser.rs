@@ -13,6 +13,7 @@ use super::bytes::BytesLayout;
 use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::UnionMode;
+use crate::types::DecimalType;
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
@@ -903,16 +904,16 @@ impl fmt::Display for DataType {
                     dictionary.key, dictionary.value
                 )
             }
-            D::Decimal32 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal32 { precision, scale }) => {
                 write!(formatter, "decimal32({precision},{scale})")
             }
-            D::Decimal64 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal64 { precision, scale }) => {
                 write!(formatter, "decimal64({precision},{scale})")
             }
-            D::Decimal128 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
                 write!(formatter, "decimal128({precision},{scale})")
             }
-            D::Decimal256 { precision, scale } => {
+            D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
                 write!(formatter, "decimal256({precision},{scale})")
             }
             D::Mapping(map) => {

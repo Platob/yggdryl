@@ -23,6 +23,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::string::is_text_storage;
 use crate::{DataType, Error, Result, TimeUnit};
+use crate::types::DecimalType;
 
 /// A primitive type from the Iceberg specification.
 ///
@@ -157,9 +158,9 @@ impl PrimitiveType {
             DataType::Int64 => Self::Long,
             DataType::Float32 => Self::Float,
             DataType::Float64 => Self::Double,
-            DataType::Decimal32 { precision, scale }
-            | DataType::Decimal64 { precision, scale }
-            | DataType::Decimal128 { precision, scale } => {
+            DataType::Decimal(DecimalType::Decimal32 { precision, scale })
+            | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
+            | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
                 // Arrow admits a negative scale; Iceberg's decimal grammar
                 // does not, and Parquet rejects one at write time - so it is
                 // refused here, before a schema carrying it is committed.

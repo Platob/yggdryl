@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
+use yggdryl::types::DecimalType;
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
@@ -324,10 +325,10 @@ fn every_target_reports_a_path_for_a_nested_failure() {
 
 #[test]
 fn negative_decimal_scale_names_the_offending_scale() {
-    let negative = DataType::Decimal128 {
+    let negative = DataType::Decimal(DecimalType::Decimal128 {
         precision: 10,
         scale: -2,
-    };
+    });
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
         let message = negative
             .clone()
@@ -634,10 +635,10 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
             vec!["decimal256(39, 0)", "limited to 38"],
         ),
         (
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 10,
                 scale: -2,
-            },
+            }),
             vec!["expected a non-negative decimal scale, got -2", "Iceberg"],
         ),
     ];

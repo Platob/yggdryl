@@ -581,34 +581,6 @@ payload_datatype!(
 );
 
 payload_datatype!(
-    Decimal32Type, Decimal32, Decimal,
-    fields { precision: u8, scale: i8 },
-    read DataType::Decimal32 { precision, scale } => Self::new(*precision, *scale),
-    write DataType::Decimal32 { precision, scale },
-);
-
-payload_datatype!(
-    Decimal64Type, Decimal64, Decimal,
-    fields { precision: u8, scale: i8 },
-    read DataType::Decimal64 { precision, scale } => Self::new(*precision, *scale),
-    write DataType::Decimal64 { precision, scale },
-);
-
-payload_datatype!(
-    Decimal128Type, Decimal128, Decimal,
-    fields { precision: u8, scale: i8 },
-    read DataType::Decimal128 { precision, scale } => Self::new(*precision, *scale),
-    write DataType::Decimal128 { precision, scale },
-);
-
-payload_datatype!(
-    Decimal256Type, Decimal256, Decimal,
-    fields { precision: u8, scale: i8 },
-    read DataType::Decimal256 { precision, scale } => Self::new(*precision, *scale),
-    write DataType::Decimal256 { precision, scale },
-);
-
-payload_datatype!(
     RunEndType, RunEndEncoded, Nested,
     fields { encoding: std::sync::Arc<crate::RunEndEncodedType> },
     read DataType::RunEndEncoded(encoding) => Self::new(std::sync::Arc::clone(encoding)),

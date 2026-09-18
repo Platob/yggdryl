@@ -43,6 +43,7 @@ use half::f16;
 use super::{Error, Result};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::DecimalType;
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -239,24 +240,24 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Structure(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
         DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_array(dictionary, values)?,
-        DataType::Decimal32 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
             physical_primitive!(Decimal32Array, |value: &&Scalar| i32::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal32", value.kind())))
         }
-        DataType::Decimal64 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
             physical_primitive!(Decimal64Array, |value: &&Scalar| i64::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal64", value.kind())))
         }
-        DataType::Decimal128 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
             physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
                 value, *scale
             ))
         }
-        DataType::Decimal256 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
             physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
         }
         DataType::Mapping(map) => map_array(map, values)?,
@@ -588,18 +589,18 @@ pub(crate) fn value_from_array(
             Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload])
         }
         DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_value(dictionary, array, index)?,
-        DataType::Decimal32 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
             Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))
         }
-        DataType::Decimal64 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
             Scalar::Decimal64(crate::types::Decimal64::new(value, *scale))
         }
-        DataType::Decimal128 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
-        DataType::Decimal256 { scale, .. } => {
+        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
             let value = downcast::<Decimal256Array>(array)?.value(index);
             Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }

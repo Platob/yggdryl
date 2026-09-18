@@ -1006,22 +1006,10 @@ mod typed {
     );
     typed_array!(crate::types::temporal::Date32Type, arrow_array::Date32Array);
     typed_array!(crate::types::temporal::Date64Type, arrow_array::Date64Array);
-    typed_array!(
-        crate::types::Decimal32Type,
-        arrow_array::Decimal32Array
-    );
-    typed_array!(
-        crate::types::Decimal64Type,
-        arrow_array::Decimal64Array
-    );
-    typed_array!(
-        crate::types::Decimal128Type,
-        arrow_array::Decimal128Array
-    );
-    typed_array!(
-        crate::types::Decimal256Type,
-        arrow_array::Decimal256Array
-    );
+    // A decimal's backing integer is the leaf, so the family has no single
+    // array type: a `decimal32` column is a `Decimal32Array` and a
+    // `decimal256` one a `Decimal256Array`.
+    opaque_array!(crate::types::DecimalType);
     typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
     // A registered code stores as the text it is, exactly as a version does.
     typed_array!(crate::types::CountryType, arrow_array::StringArray);
@@ -2773,6 +2761,7 @@ pub(crate) mod columns {
     use crate::{DataType, Field, Scalar, UnionMode};
 
     use crate::types::sequence::SequenceType;
+    use crate::types::DecimalType;
         use crate::types::enums::EnumType;
     mod dictionary {
         
@@ -4704,7 +4693,7 @@ pub(crate) mod columns {
             DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::Decimal256 { .. }
+            | DataType::Decimal(DecimalType::Decimal256 { .. })
             | DataType::Union(..)
             | DataType::Enum(EnumType::Dictionary(_))
             | DataType::RunEndEncoded(_) => true,
@@ -4874,7 +4863,7 @@ pub(crate) mod columns {
                         .cmp(&crate::Float64::from_f64(right_values[right]))
                 })
             }
-            DataType::Decimal256 { .. } => {
+            DataType::Decimal(DecimalType::Decimal256 { .. }) => {
                 let left_values = downcast::<Decimal256Array>(left.as_ref())?.values().clone();
                 let right_values = downcast::<Decimal256Array>(right.as_ref())?
                     .values()
