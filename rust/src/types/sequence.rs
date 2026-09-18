@@ -124,6 +124,8 @@ impl SequenceType {
 impl DataTypeValue for SequenceType {
     const FAMILY: &'static str = "sequence";
 
+    type Sidecar = ();
+
     fn id(&self) -> DataTypeId {
         match self {
             Self::List(_) => DataTypeId::List,

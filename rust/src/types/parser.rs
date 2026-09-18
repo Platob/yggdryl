@@ -133,7 +133,9 @@ mod field {
         }
 
         let mut field = Field::new_with_metadata(name, dtype, nullable, metadata);
-        field.set_dictionary_options_unchecked(dictionary_id, dictionary_is_ordered);
+        if dictionary_id != 0 || dictionary_is_ordered {
+            field.set_dictionary_options(dictionary_id, dictionary_is_ordered)?;
+        }
         field.validate()?;
         Ok(field)
     }
@@ -228,10 +230,11 @@ mod field {
             nullable.unwrap_or(false),
             metadata,
         );
-        field.set_dictionary_options_unchecked(
-            dictionary_id.unwrap_or_default(),
-            dictionary_is_ordered.unwrap_or_default(),
-        );
+        let dictionary_id = dictionary_id.unwrap_or_default();
+        let dictionary_is_ordered = dictionary_is_ordered.unwrap_or_default();
+        if dictionary_id != 0 || dictionary_is_ordered {
+            field.set_dictionary_options(dictionary_id, dictionary_is_ordered)?;
+        }
         field.validate()?;
         Ok(field)
     }

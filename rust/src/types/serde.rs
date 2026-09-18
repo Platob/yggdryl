@@ -160,10 +160,13 @@ mod field {
                 value.nullable,
                 value.metadata,
             );
-            field.set_dictionary_options_unchecked(
-                value.dictionary_id,
-                value.dictionary_is_ordered,
-            );
+            // A stated sidecar is a claim about the datatype, so it is
+            // checked: only a dictionary field can carry one.
+            if value.dictionary_id != 0 || value.dictionary_is_ordered {
+                field
+                    .set_dictionary_options(value.dictionary_id, value.dictionary_is_ordered)
+                    .map_err(D::Error::custom)?;
+            }
             field.validate().map_err(D::Error::custom)?;
             Ok(field)
         }

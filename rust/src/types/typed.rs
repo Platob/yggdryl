@@ -1186,6 +1186,8 @@ macro_rules! define_field_types {
         impl $crate::types::DataTypeValue for $marker {
             const FAMILY: &'static str = $crate::DataTypeId::$variant.as_str();
 
+            type Sidecar = ();
+
             fn id(&self) -> $crate::DataTypeId {
                 $crate::DataTypeId::$variant
             }

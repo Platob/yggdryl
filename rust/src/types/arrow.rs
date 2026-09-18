@@ -31,6 +31,7 @@ use crate::types::enums::EnumType;
 
 /// Arrow field import, cached projection, and conversion traits.
 mod field {
+    use crate::types::FieldSidecar;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -77,7 +78,7 @@ mod field {
             if self.nullable {
                 flags |= Flags::NULLABLE;
             }
-            if self.dictionary_is_ordered {
+            if self.dictionary_is_ordered().unwrap_or_default() {
                 flags |= Flags::DICTIONARY_ORDERED;
             }
             schema = schema.with_name(self.name())?.with_flags(flags)?;
@@ -98,11 +99,10 @@ mod field {
                 name,
                 dtype,
                 nullable,
-                dictionary_id,
-                dictionary_is_ordered,
                 metadata,
                 arrow,
                 widened: _,
+                sidecar,
             } = self;
             // The leaf holds its own datatype; the Arrow projection speaks the
             // root's, so widen it once here.
@@ -115,8 +115,8 @@ mod field {
                 name.as_str(),
                 dtype.into_arrow()?,
                 nullable,
-                dictionary_id,
-                dictionary_is_ordered,
+                sidecar.dictionary_id().unwrap_or_default(),
+                sidecar.dictionary_is_ordered().unwrap_or_default(),
                 projected,
             ))
         }
@@ -142,8 +142,8 @@ mod field {
                 self.name.as_str(),
                 self.dtype().clone().into_arrow()?,
                 self.nullable,
-                self.dictionary_id,
-                self.dictionary_is_ordered,
+                self.dictionary_id().unwrap_or_default(),
+                self.dictionary_is_ordered().unwrap_or_default(),
                 projected,
             ));
             let _ = self.arrow.set(built);
@@ -159,11 +159,10 @@ mod field {
                 name,
                 dtype,
                 nullable,
-                dictionary_id,
-                dictionary_is_ordered,
                 metadata,
                 arrow,
                 widened: _,
+                sidecar,
             } = self;
             // The leaf holds its own datatype; the Arrow projection speaks the
             // root's, so widen it once here.
@@ -176,8 +175,8 @@ mod field {
                 name.as_str(),
                 dtype.into_arrow()?,
                 nullable,
-                dictionary_id,
-                dictionary_is_ordered,
+                sidecar.dictionary_id().unwrap_or_default(),
+                sidecar.dictionary_is_ordered().unwrap_or_default(),
                 projected,
             )))
         }

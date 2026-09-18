@@ -1809,6 +1809,8 @@ mod tests {
 impl crate::types::DataTypeValue for BytesType {
     const FAMILY: &'static str = "bytes";
 
+    type Sidecar = ();
+
     fn id(&self) -> crate::DataTypeId {
         DataType::Bytes(*self).id()
     }

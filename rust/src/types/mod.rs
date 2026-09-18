@@ -75,8 +75,9 @@ pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Vocabulary;
 pub use family::{
     Children, DataTypeValue, DateTime64Type, Decimal32Type, Decimal64Type, Decimal128Type,
-    Decimal256Type, Duration32Type, Duration64Type, FieldValue, GeographyType, GeometryType,
-    IntervalType, NestedValue, RunEndType, Time32Type, Time64Type, UnionType,
+    Decimal256Type, DictionaryOptions, Duration32Type, Duration64Type, FieldSidecar, FieldValue,
+    GeographyType, GeometryType, IntervalType, NestedValue, RunEndType, Time32Type, Time64Type,
+    UnionType,
 };
 pub use field::*;
 pub use floating::*;

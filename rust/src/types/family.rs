@@ -25,6 +25,73 @@ use smol_str::SmolStr;
 
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar};
 
+/// The per-column facts a field carries that only one datatype has.
+///
+/// Almost every datatype answers `()`: a field's name, nullability, metadata
+/// and Arrow projection are common to all of them and nothing else rides
+/// along. Dictionary encoding is the exception - Arrow's IPC dictionary
+/// identifier and its ordering flag describe that column and no other - so
+/// the fact lives with that leaf instead of costing every field sixteen bytes
+/// to say it has none.
+pub trait FieldSidecar:
+    Clone + fmt::Debug + Default + Eq + Ord + Hash + Send + Sync + Sized + 'static
+{
+    /// Return Arrow's IPC dictionary identifier, if this datatype has one.
+    fn dictionary_id(&self) -> Option<i64> {
+        None
+    }
+
+    /// Return Arrow's dictionary ordering flag, if this datatype has one.
+    fn dictionary_is_ordered(&self) -> Option<bool> {
+        None
+    }
+
+    /// Set both dictionary options, reporting whether anything changed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a datatype that carries no dictionary options,
+    /// which is every datatype but the dictionary-encoded one.
+    fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<bool> {
+        let _ = (id, is_ordered);
+        Err(crate::Error::InvalidDataType {
+            kind: "Field",
+            reason: "dictionary options require a dictionary datatype".into(),
+        })
+    }
+}
+
+/// A datatype whose fields carry nothing of their own.
+impl FieldSidecar for () {}
+
+/// Arrow's IPC dictionary identifier and ordering flag.
+///
+/// These describe one column's encoding, not its datatype: two dictionary
+/// fields with different identifiers have the same datatype, which is why
+/// this rides on the field rather than on [`crate::types::EnumType`].
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DictionaryOptions {
+    pub(crate) id: i64,
+    pub(crate) is_ordered: bool,
+}
+
+impl FieldSidecar for DictionaryOptions {
+    fn dictionary_id(&self) -> Option<i64> {
+        Some(self.id)
+    }
+
+    fn dictionary_is_ordered(&self) -> Option<bool> {
+        Some(self.is_ordered)
+    }
+
+    fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<bool> {
+        let changed = self.id != id || self.is_ordered != is_ordered;
+        self.id = id;
+        self.is_ordered = is_ordered;
+        Ok(changed)
+    }
+}
+
 /// One datatype: a family's payload, or the root that redirects to it.
 ///
 /// The implementor is what a [`DataType`] variant holds - an enum over the
@@ -37,6 +104,11 @@ pub trait DataTypeValue:
 {
     /// The family's parameter-free name, as a binding and a refusal spell it.
     const FAMILY: &'static str;
+
+    /// The per-column facts a field of this datatype carries of its own.
+    ///
+    /// `()` for every datatype but the dictionary-encoded one.
+    type Sidecar: FieldSidecar;
 
     /// Return the exact identifier of the leaf this payload holds.
     fn id(&self) -> DataTypeId;
@@ -106,6 +178,9 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
 /// The root is a datatype like any other family payload.
 impl DataTypeValue for DataType {
     const FAMILY: &'static str = "datatype";
+
+    // The root can be any datatype, so it carries the widest sidecar.
+    type Sidecar = DictionaryOptions;
 
     fn id(&self) -> DataTypeId {
         Self::id(self)
@@ -242,6 +317,8 @@ macro_rules! payload_datatype {
 
         impl DataTypeValue for $name {
             const FAMILY: &'static str = DataTypeId::$variant.as_str();
+
+            type Sidecar = ();
 
             fn id(&self) -> DataTypeId {
                 DataTypeId::$variant

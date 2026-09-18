@@ -162,6 +162,8 @@ impl MappingType {
 impl DataTypeValue for MappingType {
     const FAMILY: &'static str = "mapping";
 
+    type Sidecar = ();
+
     fn id(&self) -> DataTypeId {
         match self {
             Self::Map(_) => DataTypeId::Map,

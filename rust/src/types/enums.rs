@@ -102,6 +102,8 @@ impl EnumType {
 impl DataTypeValue for EnumType {
     const FAMILY: &'static str = "enum";
 
+    type Sidecar = crate::types::DictionaryOptions;
+
     fn id(&self) -> DataTypeId {
         match self {
             Self::Dictionary(_) => DataTypeId::Dictionary,

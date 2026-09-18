@@ -1580,6 +1580,8 @@ impl StructureType {
 impl DataTypeValue for StructureType {
     const FAMILY: &'static str = "structure";
 
+    type Sidecar = ();
+
     fn id(&self) -> DataTypeId {
         match self {
             Self::Struct(_) => DataTypeId::Struct,

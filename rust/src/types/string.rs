@@ -3356,6 +3356,8 @@ mod tests {
 impl crate::types::DataTypeValue for StringType {
     const FAMILY: &'static str = "string";
 
+    type Sidecar = ();
+
     fn id(&self) -> crate::DataTypeId {
         DataType::String(*self).id()
     }

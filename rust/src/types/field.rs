@@ -35,6 +35,7 @@ use crate::types::{
 use crate::{DataTypeId, Error, Metadata, Result, Scheme, Url};
 
 use super::protocol::{self, ProtocolField, ProtocolFieldMut};
+use crate::types::FieldSidecar;
 
 /// Emit the borrowed and mutable named views of one protocol on a field.
 macro_rules! field_protocol_accessors {
@@ -70,8 +71,11 @@ pub struct FieldOf<D: DataTypeValue> {
     pub(crate) name: SmolStr,
     pub(crate) dtype: D,
     pub(crate) nullable: bool,
-    pub(crate) dictionary_id: i64,
-    pub(crate) dictionary_is_ordered: bool,
+    /// The per-column facts only this datatype's fields carry.
+    ///
+    /// Zero-sized for every datatype but the dictionary-encoded one, so a
+    /// field that has no dictionary identifier does not carry room for one.
+    pub(crate) sidecar: D::Sidecar,
     pub(crate) metadata: Metadata,
     pub(crate) arrow: OnceLock<FieldRef>,
     /// The leaf's datatype widened to the root, derived on first ask.
@@ -101,8 +105,7 @@ impl<D: DataTypeValue> FieldOf<D> {
             name: name.into(),
             dtype,
             nullable,
-            dictionary_id: 0,
-            dictionary_is_ordered: false,
+            sidecar: D::Sidecar::default(),
             metadata: Metadata::new(),
             arrow: OnceLock::new(),
             widened: OnceLock::new(),
@@ -124,8 +127,7 @@ impl<D: DataTypeValue> FieldOf<D> {
             name: name.into(),
             dtype,
             nullable,
-            dictionary_id: 0,
-            dictionary_is_ordered: false,
+            sidecar: D::Sidecar::default(),
             metadata,
             arrow: OnceLock::new(),
             widened: OnceLock::new(),
@@ -148,8 +150,7 @@ impl<D: DataTypeValue> FieldOf<D> {
             name: name.into(),
             dtype,
             nullable,
-            dictionary_id: 0,
-            dictionary_is_ordered: false,
+            sidecar: D::Sidecar::default(),
             metadata: Metadata::from_entries(metadata)?,
             arrow: OnceLock::new(),
             widened: OnceLock::new(),
@@ -201,20 +202,12 @@ impl<D: DataTypeValue> FieldOf<D> {
 
     /// Returns the Arrow IPC dictionary identifier for dictionary fields.
     pub fn dictionary_id(&self) -> Option<i64> {
-        if matches!(self.dtype.id(), DataTypeId::Dictionary) {
-            Some(self.dictionary_id)
-        } else {
-            None
-        }
+        self.sidecar.dictionary_id()
     }
 
     /// Returns Arrow's dictionary ordering flag for dictionary fields.
     pub fn dictionary_is_ordered(&self) -> Option<bool> {
-        if matches!(self.dtype.id(), DataTypeId::Dictionary) {
-            Some(self.dictionary_is_ordered)
-        } else {
-            None
-        }
+        self.sidecar.dictionary_is_ordered()
     }
 
     /// Returns the number of metadata entries.
@@ -252,7 +245,10 @@ impl<D: DataTypeValue> FieldOf<D> {
             self.nullable,
             self.metadata.clone(),
         );
-        field.set_dictionary_options_unchecked(self.dictionary_id, self.dictionary_is_ordered);
+        field.set_dictionary_options_unchecked(
+            self.dictionary_id().unwrap_or_default(),
+            self.dictionary_is_ordered().unwrap_or_default(),
+        );
         field
     }
 
@@ -412,13 +408,9 @@ impl<D: DataTypeValue> FieldOf<D> {
     pub fn set_dtype(&mut self, dtype: D) -> Result<()> {
         dtype.validate()?;
         if self.dtype != dtype {
-            let keeps_dictionary_options =
-                matches!(dtype.id(), crate::DataTypeId::Dictionary);
+            // The leaf cannot change family, so whether it carries dictionary
+            // options cannot change either: the sidecar's type says so.
             self.dtype = dtype;
-            if !keeps_dictionary_options {
-                self.dictionary_id = 0;
-                self.dictionary_is_ordered = false;
-            }
             self.invalidate_arrow();
         }
         Ok(())
@@ -446,15 +438,7 @@ impl<D: DataTypeValue> FieldOf<D> {
 
     /// Replaces Arrow IPC dictionary options on a dictionary-typed field.
     pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()> {
-        if !matches!(self.dtype.id(), DataTypeId::Dictionary) {
-            return Err(Error::InvalidDataType {
-                kind: "Field",
-                reason: "dictionary options require a dictionary datatype".into(),
-            });
-        }
-        if self.dictionary_id != id || self.dictionary_is_ordered != is_ordered {
-            self.dictionary_id = id;
-            self.dictionary_is_ordered = is_ordered;
+        if self.sidecar.set_dictionary_options(id, is_ordered)? {
             self.invalidate_arrow();
         }
         Ok(())
@@ -784,7 +768,8 @@ impl<D: DataTypeValue> FieldOf<D> {
     pub fn validate(&self) -> Result<()> {
         self.dtype.validate()?;
         if !matches!(self.dtype.id(), DataTypeId::Dictionary)
-            && (self.dictionary_id != 0 || self.dictionary_is_ordered)
+            && (self.dictionary_id().is_some_and(|id| id != 0)
+                || self.dictionary_is_ordered().unwrap_or_default())
         {
             return Err(Error::InvalidDataType {
                 kind: "Field",
@@ -841,8 +826,7 @@ impl<D: DataTypeValue> Clone for FieldOf<D> {
             name: self.name.clone(),
             dtype: self.dtype.clone(),
             nullable: self.nullable,
-            dictionary_id: self.dictionary_id,
-            dictionary_is_ordered: self.dictionary_is_ordered,
+            sidecar: self.sidecar.clone(),
             metadata: self.metadata.clone(),
             arrow,
             widened,
@@ -857,8 +841,8 @@ impl<D: DataTypeValue> fmt::Debug for FieldOf<D> {
             .field("name", &self.name)
             .field("dtype", self.dtype())
             .field("nullable", &self.nullable)
-            .field("dictionary_id", &self.dictionary_id)
-            .field("dictionary_is_ordered", &self.dictionary_is_ordered)
+            .field("dictionary_id", &self.dictionary_id())
+            .field("dictionary_is_ordered", &self.dictionary_is_ordered())
             .field("metadata", &self.metadata)
             .finish()
     }
@@ -884,10 +868,10 @@ impl<D: DataTypeValue> fmt::Display for FieldOf<D> {
                 "nullable=false"
             }
         )?;
-        if self.dictionary_id != 0 {
-            write!(formatter, ",dictionary_id={}", self.dictionary_id)?;
+        if let Some(id) = self.dictionary_id().filter(|id| *id != 0) {
+            write!(formatter, ",dictionary_id={id}")?;
         }
-        if self.dictionary_is_ordered {
+        if self.dictionary_is_ordered().unwrap_or_default() {
             formatter.write_str(",dictionary_is_ordered=true")?;
         }
         formatter.write_str(",")?;
@@ -910,8 +894,7 @@ impl<D: DataTypeValue> PartialEq for FieldOf<D> {
             || self.name == other.name
                 && self.dtype == other.dtype
                 && self.nullable == other.nullable
-                && self.dictionary_id == other.dictionary_id
-                && self.dictionary_is_ordered == other.dictionary_is_ordered
+                && self.sidecar == other.sidecar
                 && self.metadata == other.metadata
     }
 }
@@ -933,16 +916,14 @@ impl<D: DataTypeValue> Ord for FieldOf<D> {
             &self.name,
             &self.dtype,
             self.nullable,
-            self.dictionary_id,
-            self.dictionary_is_ordered,
+            &self.sidecar,
             &self.metadata,
         )
             .cmp(&(
                 &other.name,
                 &other.dtype,
                 other.nullable,
-                other.dictionary_id,
-                other.dictionary_is_ordered,
+                &other.sidecar,
                 &other.metadata,
             ))
     }
@@ -953,8 +934,8 @@ impl<D: DataTypeValue> Hash for FieldOf<D> {
         self.name.hash(state);
         self.dtype.hash(state);
         self.nullable.hash(state);
-        self.dictionary_id.hash(state);
-        self.dictionary_is_ordered.hash(state);
+        self.dictionary_id().hash(state);
+        self.dictionary_is_ordered().hash(state);
         self.metadata.hash(state);
     }
 }
@@ -1173,10 +1154,12 @@ macro_rules! field_leaves {
                 id: i64,
                 is_ordered: bool,
             ) {
+                // A leaf that carries no dictionary options has nothing to
+                // store, and its sidecar says so by refusing: that refusal is
+                // the whole check, so there is nothing to report here.
                 match self {
                     $(Self::$variant(field) => {
-                        field.dictionary_id = id;
-                        field.dictionary_is_ordered = is_ordered;
+                        let _ = field.sidecar.set_dictionary_options(id, is_ordered);
                     })+
                 }
             }
