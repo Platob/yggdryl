@@ -1178,8 +1178,16 @@ run that has not been read.
 The core settles first (§1). Rules shared by both extensions:
 
 - Reach every stable core domain; a missing binding is documented as Rust-only.
-- Expose only the `Scalar.float`, `decimal`, `date`, `time`, `datetime`,
-  `duration` family factories; exact widths stay private Arrow/transport identity.
+- The type side owns width, unit, scale and zone. `DataType::scalar` and
+  `Field::scalar` already carry all four and reach strictly more than a family
+  factory can - every decimal width including `decimal32` and `decimal64`, every
+  float width, and a bare count read at the unit the column declares. So a
+  caller who needs a width names it on the type, and `Scalar` keeps only the
+  statics expressing something no other door does. This replaces the former
+  rule, which mandated the `Scalar.float`/`decimal`/`date`/`time`/`datetime`/
+  `duration` family factories and kept exact widths private: `DataType("float16")`
+  and `DataType("time32(s)")` were always public, so the width was never private
+  and the factories were a second door onto one verb.
 - Infer or cast once at the boundary, then redirect to the most specific native
   method; duplicate no parser, schema, suffix, codec, scalar, or record logic. A
   value entering a datatype or field crosses `DataType::scalar` or
@@ -1205,7 +1213,7 @@ Python-only:
   and scalar semantics stay native.
 - Public decorator `@scalar` (beside the Python `Scalar` boundary), pure field
   builder `field(value, name=None)`, typed field factories below
-  `yggdryl/fields/`. `@scalar` forwards every stdlib dataclass option, installs
+  `yggdryl/types/`. `@scalar` forwards every stdlib dataclass option, installs
   one cached argument-free `staticmethod into_field()`, rejects a pre-existing
   `into_field` member, leaves every other member name - `field` included - to the
   caller, and reserves no static metadata constant.
