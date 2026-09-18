@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::nested::Fields;
+use crate::types::Fields;
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;

@@ -759,7 +759,7 @@ impl<K: FieldType> TypedField<K> {
     }
 }
 
-impl TypedField<super::nested::StructType> {
+impl TypedField<super::StructType> {
     /// Consumes a checked Struct wrapper and returns its generic Struct field.
     ///
     /// This typed spelling is the Rust counterpart of the cached struct-root

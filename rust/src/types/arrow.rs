@@ -7,6 +7,8 @@ pub(crate) use field::arrow_field_to_ffi;
 pub(crate) use field::{RecognizedExtension, recognized_arrow_extension};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::structure::Fields;
+use crate::types::union::UnionFields;
 use crate::{Error, Field, Result};
 use super::bytes::BYTES_EXTENSION_NAME;
 use super::code::code_extension_name;
@@ -14,14 +16,16 @@ use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::media_type::MEDIATYPE_EXTENSION_NAME;
 use super::mime_type::MIMETYPE_EXTENSION_NAME;
-use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
+use super::nested::validate_dictionary_key;
+use super::nested::validate_map_entries;
+use super::nested::validate_run_ends;
 use super::string::{STRING_EXTENSION_NAME, needs_extension};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::timezone::TIMEZONE_EXTENSION_NAME;
 use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;
 use super::version::VERSION_EXTENSION_NAME;
-use super::{DataType, Fields, UnionFields, UnionMode, invalid, validate_non_negative};
+use super::{DataType, UnionMode, invalid, validate_non_negative};
 
 /// Arrow field import, cached projection, and conversion traits.
 mod field {

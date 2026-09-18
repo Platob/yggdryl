@@ -5,15 +5,21 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::dictionary::DictionaryType;
+use crate::types::structure::Fields;
+use crate::types::map::MapType;
+use crate::types::runend::RunEndEncodedType;
+use crate::types::union::UnionFields;
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
 
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
-use super::nested::{
-    DictionaryType, Fields, MapType, RunEndEncodedType, UnionFields, cmp_fields,
-    validate_dictionary_key, validate_fields, validate_map_entries, validate_run_ends,
-    validate_union_fields,
-};
+use super::nested::cmp_fields;
+use super::nested::validate_dictionary_key;
+use super::nested::validate_fields;
+use super::nested::validate_map_entries;
+use super::nested::validate_run_ends;
+use super::nested::validate_union_fields;
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///

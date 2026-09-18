@@ -3273,6 +3273,106 @@ pub const fn is_integer(&self) -> bool
 ### yggdryl::types  [rust/src/types/mod.rs]
 pub enum DataType
 
+### yggdryl::types::dictionary  [rust/src/types/dictionary.rs]  (a key column over a value column)
+  pub struct DictionaryType
+  pub const fn key(&self) -> &DataType
+  pub const fn value(&self) -> &DataType
+  pub fn dictionary(key: Self, value: Self) -> Result<Self>
+
+### yggdryl::types::list  [rust/src/types/list.rs]  (the five sequence layouts)
+  pub fn list(item: Field) -> Self
+  pub fn list_view(item: Field) -> Self
+  pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
+  pub fn large_list(item: Field) -> Self
+  pub fn large_list_view(item: Field) -> Self
+
+### yggdryl::types::map  [rust/src/types/map.rs]  (a list of key-value entries)
+  pub struct MapType
+  pub const fn entries(&self) -> &Field
+  pub const fn keys_sorted(&self) -> bool
+  pub fn map_of(key: Self, value: Self, keys_sorted: bool) -> Result<Self>
+
+### yggdryl::types::runend  [rust/src/types/runend.rs]  (a run-ends column over a values column)
+  pub struct RunEndEncodedType
+  pub const fn run_ends(&self) -> &Field
+  pub const fn values(&self) -> &Field
+  pub fn run_end_encoded(run_ends: Field, values: Field) -> Result<Self>
+
+### yggdryl::types::structure  [rust/src/types/structure.rs]  (the named children a row schema is made of)
+  pub fn from_fields<I>(fields: I) -> Result<Self>
+  pub fn field_len(&self) -> usize
+  pub fn get_field_at(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_path(&self, path: &str) -> Option<&Field>
+  pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field>
+  pub fn field_at(&self, index: usize) -> Result<&Field>
+  pub fn field_by_path(&self, path: &str) -> Result<&Field>
+  pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field>
+  pub fn set_field_at(&mut self, index: usize, child: Field) -> Result<()>
+  pub fn set_field_by_path(&mut self, path: &str, child: Field) -> Result<()>
+  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Field) -> Result<()>
+  pub fn remove_field_at(&mut self, index: usize) -> Result<Field>
+  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Field>
+  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Field>
+  pub fn unnest_fields(&self) -> Vec<Field>
+  pub fn explode_fields(&self) -> Vec<Field>
+  pub enum FieldKey<'a>
+  pub struct Fields(pub(crate) Option<Arc<[Field]>>);
+  pub const fn new() -> Self
+  pub fn from_fields<I>(fields: I) -> Result<Self>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn as_fields(&self) -> &[Field]
+  pub fn get(&self, index: usize) -> Option<&Field>
+  pub fn get_by_name(&self, name: &str) -> Option<&Field>
+  pub fn iter(&self) -> std::slice::Iter<'_, Field>
+  pub fn into_fields(self) -> Vec<Field>
+  pub fn as_fields(&self) -> Option<&[Field]>
+  pub fn with_fields<I>(&self, fields: I) -> Result<Self>
+  pub fn is_struct(&self) -> bool
+  pub fn fields(&self) -> &[Field]
+  pub fn field_len(&self) -> usize
+  pub fn get_field_at(&self, index: usize) -> Option<&Field>
+  pub fn get_field_by_path(&self, path: &str) -> Option<&Field>
+  pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field>
+  pub fn field_at(&self, index: usize) -> Result<&Field>
+  pub fn field_by_path(&self, path: &str) -> Result<&Field>
+  pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field>
+  pub fn index_of(&self, name: &str) -> Option<usize>
+  pub fn merge_with(&self, other: &Self, upscale: bool) -> Result<Self>
+  pub fn unnest_fields(&self) -> Vec<Self>
+  pub fn explode_fields(&self) -> Vec<Self>
+  pub fn without_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn is_partition(&self) -> bool
+  pub fn partition_fields(&self) -> PartitionFields<'_>
+  pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
+  pub fn partition_field_len(&self) -> usize
+  pub fn has_partition_fields(&self) -> bool
+  pub fn only_partition_fields(&self) -> Result<Self>
+  pub fn without_partition_fields(&self) -> Result<Self>
+  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn set_field_at(&mut self, index: usize, child: Self) -> Result<()>
+  pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()>
+  pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Self) -> Result<()>
+  pub fn remove_field_at(&mut self, index: usize) -> Result<Self>
+  pub fn remove_field_by_path(&mut self, path: &str) -> Result<Self>
+  pub fn remove_field<'key>(&mut self, key: impl Into<FieldKey<'key>>) -> Result<Self>
+  pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
+  pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
+  pub type StructField = TypedField<StructType>;
+
+### yggdryl::types::union  [rust/src/types/union.rs]  (one of several field variants per row)
+  pub struct UnionFields(pub(crate) Option<Arc<[(i8, Field)]>>);
+  pub fn from_fields<I>(values: I) -> Result<Self>
+  pub fn iter(&self) -> impl ExactSizeIterator<Item = (i8, &Field)>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, index: usize) -> Option<(i8, &Field)>
+  pub fn get_by_name(&self, name: &str) -> Option<(i8, &Field)>
+  pub fn as_fields(&self) -> &[(i8, Field)]
+  pub fn into_fields(self) -> Vec<(i8, Field)>
+  pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>
+  pub fn dense_union<I>(fields: I) -> Result<Self>
+
 ### yggdryl::types::nested  [rust/src/types/nested.rs]
 pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,

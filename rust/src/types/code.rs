@@ -320,7 +320,6 @@ pub(crate) fn code_refusal(dtype: &DataType) -> Error {
 pub(crate) use code_leaf;
 pub(crate) use code_value;
 
-
 /// One spelling folded the way every name in this crate folds.
 pub(crate) fn folded_spelling(spelling: &str) -> SmolStr {
     let mut held = smol_str::SmolStrBuilder::new();

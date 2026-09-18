@@ -20,11 +20,7 @@ use crate::types::integer::{
 };
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
-use crate::types::{
-    Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes,
-    ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
-    value_is_logically_null,
-};
+use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.

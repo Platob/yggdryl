@@ -681,14 +681,12 @@ define_field_types!(CfiType, Cfi, crate::DataType::Cfi);
 /// A field of this code.
 pub type CfiField = TypedField<CfiType>;
 
-
 /// One ISO 10962 category and the groups it contains.
 pub struct CfiCategory {
     letter: char,
     name: &'static str,
     groups: &'static [CfiGroup],
 }
-
 
 /// One group within a category, and what its four attribute positions accept.
 pub struct CfiGroup {
@@ -698,7 +696,6 @@ pub struct CfiGroup {
     /// besides [`Cfi::UNKNOWN`]. An empty string means only `X` reads there.
     attributes: [&'static str; 4],
 }
-
 
 impl CfiCategory {
     /// The letter this category is written as.
@@ -725,7 +722,6 @@ impl CfiCategory {
         self.groups.iter().find(|held| held.letter == letter)
     }
 }
-
 
 impl CfiGroup {
     /// The letter this group is written as.

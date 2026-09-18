@@ -11,9 +11,7 @@ use crate::path::{Path, Segment};
 use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
-use super::{
-    BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape,
-};
+use super::{BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape};
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";

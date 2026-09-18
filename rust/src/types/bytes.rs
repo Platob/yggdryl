@@ -1577,7 +1577,6 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     }
 }
 
-
 /// One of the four ways this crate lays bytes out - Arrow's four.
 ///
 /// The layout is the physical shape alone, how a value's bytes are addressed;

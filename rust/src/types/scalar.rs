@@ -48,7 +48,10 @@ use super::decimal::{Decimal128, Decimal256, Decimal32, Decimal64};
 use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
 use super::integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, compare_integer_parts, integer_parts};
-use super::nested::{Children, Mapping, Record, Sequence};
+use super::nested::Children;
+use super::nested::Mapping;
+use super::nested::Record;
+use super::nested::Sequence;
 use super::string::Str;
 use super::temporal::scalars::temporal_key;
 use super::temporal::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
@@ -1851,7 +1854,6 @@ fn duplicate_key_error(index: usize) -> Error {
         reason: "mapping contains a duplicate key".into(),
     }
 }
-
 
 #[cfg(feature = "arrow")]
 impl Scalar {

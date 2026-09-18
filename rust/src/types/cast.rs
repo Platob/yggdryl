@@ -1042,13 +1042,13 @@ mod typed {
         crate::types::uuid::UuidType,
         arrow_array::FixedSizeBinaryArray
     );
-    typed_array!(crate::types::nested::ListType, arrow_array::ListArray);
+    typed_array!(crate::types::ListType, arrow_array::ListArray);
     typed_array!(
-        crate::types::nested::ListViewType,
+        crate::types::ListViewType,
         arrow_array::ListViewArray
     );
     typed_array!(
-        crate::types::nested::LargeListType,
+        crate::types::LargeListType,
         arrow_array::LargeListArray
     );
     typed_array!(
@@ -1059,8 +1059,8 @@ mod typed {
         crate::types::nested::FixedSizeListType,
         arrow_array::FixedSizeListArray
     );
-    typed_array!(crate::types::nested::StructType, arrow_array::StructArray);
-    typed_array!(crate::types::nested::UnionType, arrow_array::UnionArray);
+    typed_array!(crate::types::StructType, arrow_array::StructArray);
+    typed_array!(crate::types::UnionType, arrow_array::UnionArray);
     typed_array!(crate::types::nested::MapTypeMarker, arrow_array::MapArray);
     // A variant's storage is the canonical struct of two required binaries, and a
     // geospatial value is its WKB payload, so their physical arrays are fixed.
