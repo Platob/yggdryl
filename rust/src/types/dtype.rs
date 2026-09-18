@@ -990,7 +990,7 @@ mod arrow {
                     UnionFields::from_arrow_storage_at_depth(&fields, mode, children)
                 }
                 A::Dictionary(key, values) => {
-                    EnumType::from_arrow_storage_owned_at_depth(key, values, children)
+                    EnumType::from_arrow_storage_owned_at_depth(*key, *values, children)
                 }
                 A::Map(entries, keys_sorted) => {
                     MappingType::from_arrow_storage_owned_at_depth(entries, keys_sorted, children)

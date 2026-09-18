@@ -1297,6 +1297,17 @@ mod value {
 /// Utf8 storage.
 pub(crate) const TIMEZONE_EXTENSION_NAME: &str = "yggdryl.timezone";
 
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl TimezoneType {
+    /// The Arrow storage a time zone column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}
+
 #[cfg(test)]
 /// Time zone canonicalization, offsets, and daylight-saving transitions.
 ///
@@ -1733,16 +1744,5 @@ mod tests {
             }
             assert!(super::Timezone::aliases().len() > 20);
         }
-    }
-}
-
-// ------------------------------------------------------------------------
-// Arrow projection: the canonical text, under this family's extension name.
-// ------------------------------------------------------------------------
-
-impl TimezoneType {
-    /// The Arrow storage a time zone column lays out: its canonical text.
-    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
-        arrow_schema::DataType::Utf8
     }
 }

@@ -528,7 +528,7 @@ macro_rules! payload_datatype {
 payload_datatype!(
     DateTime64Type, DateTime64, Temporal,
     fields { unit: crate::TimeUnit, timezone: crate::Timezone },
-    read DataType::DateTime64 { unit, timezone } => Self::new(*unit, timezone.clone()),
+    read DataType::DateTime64 { unit, timezone } => Self::new(*unit, *timezone),
     write DataType::DateTime64 { unit, timezone },
 );
 

@@ -144,8 +144,8 @@ fn field_snapshots_identical(left: &Field, right: &Field, with_metadata: bool) -
             && left.is_nullable() == right.is_nullable()
             && left.dictionary_id() == right.dictionary_id()
             && left.dictionary_is_ordered() == right.dictionary_is_ordered()
-            && dtype_snapshots_identical(&left.dtype(), &right.dtype())
-            && (!with_metadata || left.as_metadata().shares_storage_with(&right.as_metadata()))
+            && dtype_snapshots_identical(left.dtype(), right.dtype())
+            && (!with_metadata || left.as_metadata().shares_storage_with(right.as_metadata()))
 }
 
 impl DiffEngine {
@@ -212,10 +212,10 @@ impl DiffEngine {
         }
         // Push metadata first so the LIFO engine can yield an early physical
         // datatype difference without scanning a distinct, equal wide map.
-        if self.with_metadata && !left.as_metadata().shares_storage_with(&right.as_metadata()) {
+        if self.with_metadata && !left.as_metadata().shares_storage_with(right.as_metadata()) {
             self.push_metadata(&left, &right, path.clone());
         }
-        if !dtype_snapshots_identical(&left.dtype(), &right.dtype()) {
+        if !dtype_snapshots_identical(left.dtype(), right.dtype()) {
             self.work.push(Work::DataType {
                 left: left.dtype().clone(),
                 right: right.dtype().clone(),
@@ -930,7 +930,7 @@ pub(crate) fn fields_equal(left: &Field, right: &Field, with_metadata: bool) -> 
         return left == right;
     }
     left.name() == right.name()
-        && dtypes_equal(&left.dtype(), &right.dtype(), false)
+        && dtypes_equal(left.dtype(), right.dtype(), false)
         && left.is_nullable() == right.is_nullable()
         && left.dictionary_id() == right.dictionary_id()
         && left.dictionary_is_ordered() == right.dictionary_is_ordered()
@@ -1098,7 +1098,7 @@ impl Field {
         std::ptr::eq(self, other)
             || self.name() == other.name()
                 && self.is_nullable() == other.is_nullable()
-                && dtype_layout_eq(&self.dtype(), &other.dtype())
+                && dtype_layout_eq(self.dtype(), other.dtype())
     }
 
     /// Returns a deterministic cross-language hash of canonical display output.
@@ -1253,7 +1253,7 @@ mod tests {
 
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype().fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
         );
         assert!(differences.engine.work.len() <= 2);
         assert!(differences.engine.pending.is_empty());
@@ -1267,7 +1267,7 @@ mod tests {
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype().field_count: 0 → 1024")
+            Some("≠ $.dtype.field_count: 0 → 1024")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1280,13 +1280,13 @@ mod tests {
             .collect::<Vec<_>>();
         let left = Field::from_parts("root", DataType::Int32, false, entries.clone()).unwrap();
         let right = Field::from_parts("root", DataType::Int64, false, entries).unwrap();
-        assert!(!left.as_metadata().shares_storage_with(&right.as_metadata()));
+        assert!(!left.as_metadata().shares_storage_with(right.as_metadata()));
 
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert_eq!(differences.engine.work.len(), 1);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype().kind: int32 → int64")
+            Some("≠ $.dtype.kind: int32 → int64")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1318,7 +1318,7 @@ mod tests {
         );
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype().fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
         );
     }
 }

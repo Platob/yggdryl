@@ -3281,6 +3281,35 @@ impl<'de> Deserialize<'de> for StringLayout {
     }
 }
 
+impl crate::types::DataTypeValue for StringType {
+    const FAMILY: &'static str = "string";
+
+    type Sidecar = ();
+
+    fn id(&self) -> crate::DataTypeId {
+        DataType::String(*self).id()
+    }
+
+    fn kind(&self) -> crate::DataTypeKind {
+        crate::DataTypeKind::Text
+    }
+
+    fn validate(&self) -> Result<()> {
+        DataType::String(*self).validate()
+    }
+
+    fn into_dtype(self) -> DataType {
+        DataType::String(self)
+    }
+
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
+        match dtype {
+            DataType::String(parameters) => Some(*parameters),
+            _ => None,
+        }
+    }
+}
+
 /// The code readers an integration test cannot reach.
 ///
 /// `code_text`, `code_cell_text` and `code_for_extension` are crate-private:
@@ -3365,34 +3394,5 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(wrong.contains("registered codes"), "{wrong}");
-    }
-}
-
-impl crate::types::DataTypeValue for StringType {
-    const FAMILY: &'static str = "string";
-
-    type Sidecar = ();
-
-    fn id(&self) -> crate::DataTypeId {
-        DataType::String(*self).id()
-    }
-
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Text
-    }
-
-    fn validate(&self) -> Result<()> {
-        DataType::String(*self).validate()
-    }
-
-    fn into_dtype(self) -> DataType {
-        DataType::String(self)
-    }
-
-    fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::String(parameters) => Some(*parameters),
-            _ => None,
-        }
     }
 }

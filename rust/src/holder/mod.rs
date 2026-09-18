@@ -389,7 +389,7 @@ impl Holder {
             codec => self.into_coded_with(codec, crate::Level::DEFAULT),
         };
 
-        { coded.into_media_base(media_type.base()) }
+        coded.into_media_base(media_type.base())
     }
 
     /// Retain the record implementation one base representation names.

@@ -926,72 +926,6 @@ impl<D: DataTypeValue> Hash for FieldOf<D> {
     }
 }
 
-/// Subscripting a schema node reaches a nested **child**, never metadata.
-///
-/// Item access on a [`Field`] or a [`DataType`] means one thing and only one
-/// thing: descend the schema. Metadata is reached through its own view -
-/// [`Field::metadata_iter`] and [`Field::get_metadata`] - because a view whose keys
-/// *are* keys is where item syntax legitimately means "a key". Before this,
-/// `field["level"]` was a metadata lookup while `dtype["level"]` was a
-/// child, so a caller walking one object graph got two unrelated things from
-/// identical syntax.
-///
-/// Chained subscripts are the nesting story: `field["order"]["price"]` descends
-/// two levels, because each subscript returns a node that subscripts again.
-/// There is no dotted-string or tuple path form.
-///
-/// Panics when the name is not a child, as [`Index`] idiomatically does;
-/// [`Field::get_field_by_path`] is the non-panicking form.
-///
-/// ```
-/// use yggdryl::{DataType, Field};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from_fields([
-///     DataType::Int64.required_field("id"),
-///     DataType::from_fields([DataType::Float64.required_field("price")])?
-///         .required_field("line"),
-/// ])?
-/// .required_field("order");
-///
-/// assert_eq!(order["id"].dtype(), &DataType::Int64);
-/// // Each subscript answers a node that subscripts again.
-/// assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Panics
-///
-/// Panics when this node has no child with that name.
-
-/// Subscripting a schema node by position reaches that nested child.
-///
-/// The positional companion of [`Index<&str>`], matching how
-/// [`Fields`](crate::types::Fields) already indexes.
-///
-/// ```
-/// use yggdryl::DataType;
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from_fields([
-///     DataType::Int64.required_field("id"),
-///     DataType::utf8().required_field("venue"),
-/// ])?
-/// .required_field("order");
-///
-/// assert_eq!(order[0].name(), "id");
-/// assert_eq!(order[1].name(), "venue");
-/// # Ok(())
-/// # }
-/// ```
-///
-/// # Panics
-///
-/// Panics when this node has no child at that position.
-
-impl<D: DataTypeValue> FieldOf<D> {}
-
 // ------------------------------------------------------------------------
 // The field leaves, and the enum that redirects to them.
 // ------------------------------------------------------------------------
@@ -1886,6 +1820,44 @@ impl Field {
     }
 }
 
+/// Subscripting a schema node reaches a nested **child**, never metadata.
+///
+/// Item access on a [`Field`] or a [`DataType`] means one thing and only one
+/// thing: descend the schema. Metadata is reached through its own view -
+/// [`Field::metadata_iter`] and [`Field::get_metadata`] - because a view whose keys
+/// *are* keys is where item syntax legitimately means "a key". Before this,
+/// `field["level"]` was a metadata lookup while `dtype["level"]` was a
+/// child, so a caller walking one object graph got two unrelated things from
+/// identical syntax.
+///
+/// Chained subscripts are the nesting story: `field["order"]["price"]` descends
+/// two levels, because each subscript returns a node that subscripts again.
+/// There is no dotted-string or tuple path form.
+///
+/// Panics when the name is not a child, as [`Index`] idiomatically does;
+/// [`Field::get_field_by_path`] is the non-panicking form.
+///
+/// ```
+/// use yggdryl::{DataType, Field};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let order = DataType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::from_fields([DataType::Float64.required_field("price")])?
+///         .required_field("line"),
+/// ])?
+/// .required_field("order");
+///
+/// assert_eq!(order["id"].dtype(), &DataType::Int64);
+/// // Each subscript answers a node that subscripts again.
+/// assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this node has no child with that name.
 impl Index<&str> for Field {
     type Output = Self;
 
@@ -1894,6 +1866,30 @@ impl Index<&str> for Field {
             .unwrap_or_else(|| panic!("{:?} is not a child of the field {:?}", name, self.name()))
     }
 }
+/// Subscripting a schema node by position reaches that nested child.
+///
+/// The positional companion of [`Index<&str>`], matching how
+/// [`Fields`](crate::types::Fields) already indexes.
+///
+/// ```
+/// use yggdryl::DataType;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let order = DataType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::utf8().required_field("venue"),
+/// ])?
+/// .required_field("order");
+///
+/// assert_eq!(order[0].name(), "id");
+/// assert_eq!(order[1].name(), "venue");
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Panics
+///
+/// Panics when this node has no child at that position.
 impl Index<usize> for Field {
     type Output = Self;
 
@@ -1958,7 +1954,7 @@ mod arrow {
             // one buffer, so the replacement map must carry them again.
             schema
                 .with_metadata(&projected_arrow_metadata(
-                    &self.dtype(),
+                    self.dtype(),
                     self.metadata.clone().into_arrow_metadata(),
                 )?)
                 .map_err(Error::from)

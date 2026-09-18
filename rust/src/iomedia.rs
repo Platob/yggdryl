@@ -873,8 +873,6 @@ macro_rules! impl_default_iomedia {
     };
 }
 
-/// Schema-only form of [`impl_default_iomedia!`].
-
 /// Feature-selected media forwarding bodies used by [`delegate_iomedia!`].
 #[doc(hidden)]
 #[macro_export]
@@ -1008,8 +1006,6 @@ macro_rules! __delegate_iomedia_arrow {
         }
     };
 }
-
-/// Schema-only media forwarding bodies.
 
 /// Parquet-selected media forwarding bodies used by [`delegate_iomedia!`].
 #[cfg(feature = "parquet")]

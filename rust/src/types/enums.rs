@@ -274,13 +274,13 @@ mod arrow {
         ///
         /// [`Self::from_arrow_storage_at_depth`] carries the rule.
         pub(crate) fn from_arrow_storage_owned_at_depth(
-            key: Box<ArrowDataType>,
-            values: Box<ArrowDataType>,
+            key: ArrowDataType,
+            values: ArrowDataType,
             depth: usize,
         ) -> Result<DataType> {
             DataType::dictionary(
-                DataType::from_arrow_datatype_owned_at_depth(*key, depth)?,
-                DataType::from_arrow_datatype_owned_at_depth(*values, depth)?,
+                DataType::from_arrow_datatype_owned_at_depth(key, depth)?,
+                DataType::from_arrow_datatype_owned_at_depth(values, depth)?,
             )
         }
     }

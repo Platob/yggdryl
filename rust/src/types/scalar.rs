@@ -1896,6 +1896,42 @@ impl Scalar {
 pub(crate) use code_scalars;
 pub(crate) use text_scalar_value;
 
+impl From<Vec<Scalar>> for Scalar {
+    fn from(value: Vec<Scalar>) -> Self {
+        Self::from_sequence(value)
+    }
+}
+
+impl FromIterator<Scalar> for Scalar {
+    fn from_iter<T: IntoIterator<Item = Scalar>>(iter: T) -> Self {
+        Self::from_sequence(iter)
+    }
+}
+
+impl Index<usize> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.as_sequence().expect("value is not a sequence")[index]
+    }
+}
+
+impl Index<&Scalar> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, key: &Scalar) -> &Self::Output {
+        self.get_key(key).expect("mapping key is not present")
+    }
+}
+
+impl Index<&str> for Scalar {
+    type Output = Scalar;
+
+    fn index(&self, key: &str) -> &Self::Output {
+        self.get_key_str(key).expect("mapping key is not present")
+    }
+}
+
 #[cfg(test)]
 /// The scalar invariants an integration test cannot reach.
 ///
@@ -2106,41 +2142,5 @@ mod tests {
         assert!(Scalar::from("12.50").leaf_display().is_none());
         assert!(Scalar::from(true).leaf_display().is_none());
         assert!(Scalar::Null.leaf_display().is_none());
-    }
-}
-
-impl From<Vec<Scalar>> for Scalar {
-    fn from(value: Vec<Scalar>) -> Self {
-        Self::from_sequence(value)
-    }
-}
-
-impl FromIterator<Scalar> for Scalar {
-    fn from_iter<T: IntoIterator<Item = Scalar>>(iter: T) -> Self {
-        Self::from_sequence(iter)
-    }
-}
-
-impl Index<usize> for Scalar {
-    type Output = Scalar;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.as_sequence().expect("value is not a sequence")[index]
-    }
-}
-
-impl Index<&Scalar> for Scalar {
-    type Output = Scalar;
-
-    fn index(&self, key: &Scalar) -> &Self::Output {
-        self.get_key(key).expect("mapping key is not present")
-    }
-}
-
-impl Index<&str> for Scalar {
-    type Output = Scalar;
-
-    fn index(&self, key: &str) -> &Self::Output {
-        self.get_key_str(key).expect("mapping key is not present")
     }
 }

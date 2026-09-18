@@ -419,6 +419,17 @@ mod value {
 /// its Utf8 storage.
 pub(crate) const VERSION_EXTENSION_NAME: &str = "yggdryl.version";
 
+// ------------------------------------------------------------------------
+// Arrow projection: the canonical text, under this family's extension name.
+// ------------------------------------------------------------------------
+
+impl VersionType {
+    /// The Arrow storage a version column lays out: its canonical text.
+    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
+        arrow_schema::DataType::Utf8
+    }
+}
+
 #[cfg(test)]
 /// The version invariant an integration test cannot reach.
 ///
@@ -453,16 +464,5 @@ mod tests {
                 }
             }
         }
-    }
-}
-
-// ------------------------------------------------------------------------
-// Arrow projection: the canonical text, under this family's extension name.
-// ------------------------------------------------------------------------
-
-impl VersionType {
-    /// The Arrow storage a version column lays out: its canonical text.
-    pub(crate) const fn arrow_storage() -> arrow_schema::DataType {
-        arrow_schema::DataType::Utf8
     }
 }
