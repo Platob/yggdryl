@@ -3695,7 +3695,12 @@ export type JsRecords = Records
  * resolution or zone a `Date` cannot hold.
  */
 export declare class Scalar {
-  /** Build an identity-preserving member of a core enum. */
+  /**
+   * Build the canonical text of one core enum member, validating it.
+   *
+   * An enum member's datatype is `string`, so this answers a string
+   * scalar; `kind` is the vocabulary the value has to belong to.
+   */
   static fromEnum(kind: string, value: string): Scalar
   /** Build one floating scalar at 16, 32, or 64 bits. */
   static float(value: number, width?: number | undefined | null): Scalar
@@ -3717,7 +3722,12 @@ export declare class Scalar {
   get family(): string
   /** The number of direct sequence children, mapping entries, or record fields. */
   get length(): number
-  /** Whether this value reads as true where a condition is wanted. */
+  /**
+   * Whether this value reads as true where a condition is wanted.
+   *
+   * Falsy is absence, a zero of any width, empty text or bytes, and a
+   * container with nothing set in it; text that spells false reads false.
+   */
   isTruthy(): boolean
   /** Whether this is an empty sequence, mapping, or record. */
   isEmpty(): boolean
