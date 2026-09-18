@@ -1000,25 +1000,7 @@ define_field_types!(
     crate::DataType::RunEndEncoded(_)
 );
 
-/// A list-typed field.
-pub type ListField = TypedField<ListType>;
-/// A list-view-typed field.
-pub type ListViewField = TypedField<ListViewType>;
-/// A fixed-size-list-typed field.
-pub type FixedSizeListField = TypedField<FixedSizeListType>;
-/// A large-list-typed field.
-pub type LargeListField = TypedField<LargeListType>;
-/// A large-list-view-typed field.
-pub type LargeListViewField = TypedField<LargeListViewType>;
 /// A struct-typed field.
 pub type StructField = TypedField<StructType>;
-/// A union-typed field.
-pub type UnionField = TypedField<UnionType>;
-/// A dictionary-typed field.
-pub type DictionaryField = TypedField<DictionaryTypeMarker>;
-/// A map-typed field.
-pub type MapField = TypedField<MapTypeMarker>;
-/// A run-end-encoded-typed field.
-pub type RunEndEncodedField = TypedField<RunEndEncodedTypeMarker>;
 /// A variant-typed field.
 pub type VariantField = TypedField<VariantType>;

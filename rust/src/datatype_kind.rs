@@ -99,14 +99,6 @@ impl DataTypeKind {
         }
     }
 
-    /// Return whether the category holds child fields or a nested value.
-    ///
-    /// Exact nested shape and wrapper behavior belong to
-    /// [`crate::types::NestedType`].
-    pub const fn is_nested(self) -> bool {
-        matches!(self, Self::Nested)
-    }
-
     /// Return whether the category is a fixed-width or exact number.
     pub const fn is_numeric(self) -> bool {
         matches!(self, Self::Integer | Self::Floating | Self::Decimal)

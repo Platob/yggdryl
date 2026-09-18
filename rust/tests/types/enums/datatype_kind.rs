@@ -22,12 +22,6 @@ fn unknown_name_reports_the_input_and_vocabulary() {
 }
 
 #[test]
-fn nested_is_the_one_coarse_family_for_every_nested_shape() {
-    assert!(DataTypeKind::Nested.is_nested());
-    assert!(!DataTypeKind::Bytes.is_nested());
-}
-
-#[test]
 fn categories_are_unique() {
     let mut names: Vec<_> = DataTypeKind::ALL.iter().map(|kind| kind.as_str()).collect();
     names.sort_unstable();

@@ -247,8 +247,6 @@ pub enum DataTypeId
   pub const fn is_temporal(self) -> bool
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool
-  pub const fn is_nested(self) -> bool
-  pub const fn is_wrapper(self) -> bool
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
   pub const fn code_width(self) -> Option<usize>  (the ten registered codes; the most bytes one value may be: cusip 9, sedol 7)
 
@@ -3034,43 +3032,16 @@ pub enum DataType
   pub fn validate(&self) -> Result<()>
 
 ### yggdryl::types::field  [rust/src/types/field.rs]
-pub type NullField = TypedField<scalar::Null>;
-  pub type BooleanField = TypedField<scalar::Boolean>;
   pub type Int8Field = TypedField<integer::Int8>;
-  pub type Int16Field = TypedField<integer::Int16>;
   pub type Int32Field = TypedField<integer::Int32>;
   pub type Int64Field = TypedField<integer::Int64>;
-  pub type UInt8Field = TypedField<integer::UInt8>;
-  pub type UInt16Field = TypedField<integer::UInt16>;
   pub type UInt32Field = TypedField<integer::UInt32>;
   pub type UInt64Field = TypedField<integer::UInt64>;
-  pub type Float16Field = TypedField<floating::Float16>;
-  pub type Float32Field = TypedField<floating::Float32>;
-  pub type Float64Field = TypedField<floating::Float64>;
   pub type DateTime64Field = TypedField<temporal::DateTime64Type>;
-  pub type Date32Field = TypedField<temporal::Date32>;
-  pub type Date64Field = TypedField<temporal::Date64>;
-  pub type Time32Field = TypedField<temporal::Time32>;
-  pub type Time64Field = TypedField<temporal::Time64>;
-  pub type Duration32Field = TypedField<temporal::Duration32>;
-  pub type Duration64Field = TypedField<temporal::Duration64>;
-  pub type IntervalField = TypedField<temporal::Interval>;
   pub type BytesField = TypedField<bytes::BytesType>;  (one alias for every byte layout; see yggdryl::types::bytes::fields)
   pub type StringField = TypedField<string::StringType>;  (one alias for every string layout and charset; the nine code fields CountryField .. TimeInForceField are listed under yggdryl::types::string::fields)
-  pub type ListField = TypedField<nested::List>;
-  pub type ListViewField = TypedField<nested::ListView>;
-  pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
-  pub type LargeListField = TypedField<nested::LargeList>;
-  pub type LargeListViewField = TypedField<nested::LargeListView>;
   pub type StructField = TypedField<nested::Struct>;
-  pub type UnionField = TypedField<nested::Union>;
-  pub type DictionaryField = TypedField<nested::Dictionary>;
-  pub type Decimal32Field = TypedField<decimal::Decimal32>;
-  pub type Decimal64Field = TypedField<decimal::Decimal64>;
   pub type Decimal128Field = TypedField<decimal::Decimal128>;
-  pub type Decimal256Field = TypedField<decimal::Decimal256>;
-  pub type MapField = TypedField<nested::Map>;
-  pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type VariantField = TypedField<nested::Variant>;
   pub type UuidField = TypedField<nested::Uuid>;
   pub type VersionField = TypedField<version::VersionType>;

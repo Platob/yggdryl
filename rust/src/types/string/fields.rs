@@ -38,7 +38,6 @@ pub type IsinField = TypedField<IsinType>;
 pub type CusipField = TypedField<CusipType>;
 /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
 pub type SedolField = TypedField<SedolType>;
-pub type BloombergField = TypedField<BloombergType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
 /// A field declared as a thing's state.
