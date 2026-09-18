@@ -8,7 +8,7 @@ use crate::types::invalid;
 use crate::types::parser::{Parser, Token, TokenKind, is_closing_or_separator, precision_to_unit};
 use crate::types::timezone::{civil_from_days, days_from_civil};
 use crate::types::typed::define_field_types;
-use crate::{DataType, DataTypeId, Error, Result, TimeUnit, Timezone, TypedField};
+use crate::{DataType, DataTypeId, Error, Result, TimeUnit, Timezone};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -359,21 +359,17 @@ pub(crate) fn validate_duration_unit(kind: &'static str, unit: TimeUnit) -> Resu
 // Temporal and interval field markers.
 // ------------------------------------------------------------------------
 
-define_field_types!(
-    DateTime64Type,
-    DateTime64,
-    crate::DataType::DateTime64 { .. }
-);
-define_field_types!(Date32Type, Date32, crate::DataType::Date32);
-define_field_types!(Date64Type, Date64, crate::DataType::Date64);
-define_field_types!(Time32Type, Time32, crate::DataType::Time32(_));
-define_field_types!(Time64Type, Time64, crate::DataType::Time64(_));
-define_field_types!(Duration32Type, Duration32, crate::DataType::Duration32(_));
-define_field_types!(Duration64Type, Duration64, crate::DataType::Duration64(_));
-define_field_types!(IntervalType, Interval, crate::DataType::Interval(_));
+define_field_types!(Date32Type, Date32);
+define_field_types!(Date64Type, Date64);
 
-/// A DateTime64-typed field.
-pub type DateTime64Field = TypedField<DateTime64Type>;
+
+
+
+
+
+
+
+
 // The classic ISO 8601 spellings of the temporals, beside the temporals they
 // spell. Crate-private: the structured-text codecs and the scalar renderer are
 // its only callers.

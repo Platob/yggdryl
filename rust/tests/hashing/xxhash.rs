@@ -965,8 +965,8 @@ mod values {
 
     use yggdryl::hashing::xxhash::{Xxh3, xxh3};
     use yggdryl::types::{
-        Bytes, BytesLayout, BytesParameters, Currency, Decimal32, Decimal64, Geography,
-        Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
+        Bytes, BytesLayout, BytesType, Currency, Decimal32, Decimal64, Geography,
+        Interval, Side, Str, StringLayout, StringType, TimeInForce,
     };
     use yggdryl::{
         Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit, Timezone,
@@ -1000,13 +1000,13 @@ mod values {
     }
 
     /// The text, restated under the parameters a column stores it in.
-    fn stored(text: &str, parameters: StringParameters) -> Str {
+    fn stored(text: &str, parameters: StringType) -> Str {
         Str::new(text).try_with_parameters(parameters).unwrap()
     }
 
     /// A fixed US-ASCII slot of `width` bytes.
-    fn fixed_ascii(width: u32) -> StringParameters {
-        StringParameters::ascii(StringLayout::FixedString)
+    fn fixed_ascii(width: u32) -> StringType {
+        StringType::ascii(StringLayout::FixedString)
             .try_with_bound(width)
             .unwrap()
     }
@@ -1014,8 +1014,8 @@ mod values {
     /// `AAPL` as a byte value stored under one layout.
     fn stored_bytes(layout: BytesLayout) -> Scalar {
         let parameters = match layout.is_fixed() {
-            true => BytesParameters::new(layout).try_with_bound(4).unwrap(),
-            false => BytesParameters::new(layout),
+            true => BytesType::new(layout).try_with_bound(4).unwrap(),
+            false => BytesType::new(layout),
         };
         Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(parameters).unwrap())
     }
@@ -1061,13 +1061,13 @@ mod values {
             Scalar::from("AAPL"),
             Scalar::String(stored(
                 "AAPL",
-                StringParameters::utf8(StringLayout::LargeString),
+                StringType::utf8(StringLayout::LargeString),
             )),
             Scalar::String(stored(
                 "AAPL",
-                StringParameters::utf8(StringLayout::StringView),
+                StringType::utf8(StringLayout::StringView),
             )),
-            Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
+            Scalar::String(stored("USD", StringType::ascii(StringLayout::String))),
             Scalar::String(stored("USD", fixed_ascii(4))),
             Scalar::Currency(Currency::new("USD").unwrap()),
             Scalar::Side(Side::new("BUY").unwrap()),
@@ -1131,14 +1131,14 @@ mod values {
             (
                 Scalar::String(stored(
                     "AAPL",
-                    StringParameters::utf8(StringLayout::LargeString),
+                    StringType::utf8(StringLayout::LargeString),
                 )),
                 Scalar::from("AAPL"),
             ),
             (
                 Scalar::String(stored(
                     "AAPL",
-                    StringParameters::utf8(StringLayout::StringView),
+                    StringType::utf8(StringLayout::StringView),
                 )),
                 Scalar::from("AAPL"),
             ),
@@ -1156,7 +1156,7 @@ mod values {
             ),
             (
                 Scalar::String(stored("USD", fixed_ascii(4))),
-                Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
+                Scalar::String(stored("USD", StringType::ascii(StringLayout::String))),
             ),
             (geometry(), geography()),
             (

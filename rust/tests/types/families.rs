@@ -6,9 +6,9 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
-    BytesLayout, BytesParameters, DataType, DecimalType, DictionaryType, Fields, FloatingType,
+    BytesLayout, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialType, IntegerType, MapType, RunEndEncodedType, StringLayout,
-    StringParameters, TemporalType, TimeUnit, UnionFields, UnionMode,
+    StringType, TemporalType, TimeUnit, UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 
@@ -33,7 +33,7 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     assert_eq!(text.layout(), StringLayout::LargeString);
     assert_eq!(DataType::string(text).unwrap(), DataType::large_utf8());
 
-    let encoded = StringParameters::new(StringLayout::StringView, Charset::Cp1252);
+    let encoded = StringType::new(StringLayout::StringView, Charset::Cp1252);
     assert_eq!(
         DataType::string(encoded).unwrap().string_parameters(),
         Some(encoded)
@@ -292,7 +292,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
 fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
         DataType::Time32(TimeUnit::Nanosecond),
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary)),
+        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary)),
         DataType::Decimal128 {
             precision: 0,
             scale: 0,

@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use crate::types;
 use crate::types::code::{CodeValue, code_leaf, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 /// Every category, its groups, and each group's four attribute sets.
 ///
@@ -676,10 +676,8 @@ impl DataType {
 }
 
 // /// A CFI-typed field: ISO 10962's instrument classification.
-define_field_types!(CfiType, Cfi, crate::DataType::Cfi);
+define_field_types!(CfiType, Cfi);
 
-/// A field of this code.
-pub type CfiField = TypedField<CfiType>;
 
 /// One ISO 10962 category and the groups it contains.
 pub struct CfiCategory {

@@ -2,7 +2,7 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringParameters};
+use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar};
 
 /// Every layout, under its three spellings: general, UTF-8, US-ASCII.
@@ -49,12 +49,12 @@ fn a_plain_string_is_one_datatype_under_every_spelling() {
         DataType::utf8_view()
     );
     assert_eq!(
-        DataType::string(StringParameters::utf8(StringLayout::LargeString)).unwrap(),
+        DataType::string(StringType::utf8(StringLayout::LargeString)).unwrap(),
         DataType::large_utf8()
     );
     assert_eq!(
         DataType::utf8(),
-        DataType::String(StringParameters::default())
+        DataType::String(StringType::default())
     );
     assert_eq!(DataType::utf8().id(), DataTypeId::String);
     assert_eq!(DataType::large_utf8().id(), DataTypeId::LargeString);
@@ -126,7 +126,7 @@ fn every_layout_answers_to_three_spellings_and_renders_under_its_charset() {
 
         let width = layout.is_fixed().then_some(8);
         for charset in [Charset::Utf8, Charset::Ascii, Charset::Cp1252] {
-            let mut parameters = StringParameters::new(layout, charset);
+            let mut parameters = StringType::new(layout, charset);
             if let Some(width) = width {
                 parameters = parameters.try_with_bound(width).unwrap();
             }
@@ -399,9 +399,9 @@ fn utf8_reads_bytes_strictly_in_every_layout() {
             "{spelling}"
         );
     }
-    assert!(Str::from_bytes(&damaged, StringParameters::default()).is_err());
+    assert!(Str::from_bytes(&damaged, StringType::default()).is_err());
     assert_eq!(
-        Str::from_bytes(&damaged, StringParameters::from(Charset::Cp1252)).unwrap(),
+        Str::from_bytes(&damaged, StringType::from(Charset::Cp1252)).unwrap(),
         "ok\u{0081}"
     );
 }
@@ -478,7 +478,7 @@ fn str_is_the_compact_string_and_compares_by_its_characters() {
     // value whichever column holds it.
     let latin = short
         .clone()
-        .try_with_parameters(StringParameters::new(
+        .try_with_parameters(StringType::new(
             StringLayout::LargeString,
             Charset::Cp1252,
         ))
@@ -506,18 +506,18 @@ fn str_is_the_compact_string_and_compares_by_its_characters() {
 
     // A maximum is never carried: the value answers its layout alone.
     let bounded = Str::new("USD")
-        .try_with_parameters(StringParameters::default().try_with_bound(4).unwrap())
+        .try_with_parameters(StringType::default().try_with_bound(4).unwrap())
         .unwrap();
-    assert_eq!(bounded.parameters(), StringParameters::default());
+    assert_eq!(bounded.parameters(), StringType::default());
     assert!(
         Str::new("EURO!")
-            .try_with_parameters(StringParameters::default().try_with_bound(4).unwrap())
+            .try_with_parameters(StringType::default().try_with_bound(4).unwrap())
             .is_err()
     );
     // A fixed width is: the value pads to it on the way out.
     let fixed = Str::new("USD\0")
         .try_with_parameters(
-            StringParameters::default()
+            StringType::default()
                 .with_layout(StringLayout::FixedString)
                 .try_with_bound(4)
                 .unwrap(),
@@ -530,7 +530,7 @@ fn str_is_the_compact_string_and_compares_by_its_characters() {
     assert_eq!(fixed.dtype().unwrap(), DataType::fixed_utf8(4).unwrap());
     assert!(
         Str::new("x")
-            .try_with_parameters(StringParameters::utf8(StringLayout::FixedString))
+            .try_with_parameters(StringType::utf8(StringLayout::FixedString))
             .is_err()
     );
 }
@@ -654,7 +654,7 @@ fn a_string_value_survives_the_scalar_wire_format() {
 fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
     // The variant is public, so a caller can build what the constructor would
     // have refused; `validate` is where that stops.
-    let unwidened = DataType::String(StringParameters::new(
+    let unwidened = DataType::String(StringType::new(
         StringLayout::FixedString,
         Charset::Cp1252,
     ));

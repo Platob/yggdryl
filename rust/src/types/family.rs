@@ -33,7 +33,7 @@ use crate::{DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar}
 /// [`Self::id`] names the exact leaf, which is what a caller branching on the
 /// variant actually wants.
 pub trait DataTypeValue:
-    Clone + fmt::Debug + fmt::Display + Eq + Hash + Send + Sync + Sized + 'static
+    Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static
 {
     /// The family's parameter-free name, as a binding and a refusal spell it.
     const FAMILY: &'static str;
@@ -54,8 +54,14 @@ pub trait DataTypeValue:
     /// Widen this payload to the datatype root.
     fn into_dtype(self) -> DataType;
 
-    /// Narrow the datatype root to this family without cloning.
-    fn from_dtype(dtype: &DataType) -> Option<&Self>;
+    /// Narrow the datatype root to this payload.
+    ///
+    /// Owned rather than borrowed: a payload is not always literally what the
+    /// variant holds - a parameter-free one is nothing at all, and a wrapper
+    /// stands beside the variant's own parameters - so there is not always a
+    /// reference to lend. Every payload is either `Copy` or one shared
+    /// pointer, so producing one is cheap.
+    fn from_dtype(dtype: &DataType) -> Option<Self>;
 }
 
 /// One field: a family's field, or the root that redirects to it.
@@ -65,16 +71,21 @@ pub trait DataTypeValue:
 /// implementor holds, so a leaf field answers with its own leaf datatype and
 /// the root answers with [`DataType`]; nothing has to widen to ask.
 ///
-/// [`Self::dtype`] returns an owned datatype rather than a borrow, because a
-/// leaf stores the leaf's parameters, not a whole [`DataType`] to lend out.
-/// Every implementor's datatype is cheap to produce: the nested ones are one
-/// shared pointer, and the parameter-free ones are nothing at all.
+/// [`Self::dtype`] always answers [`DataType`], whichever leaf the
+/// implementor is, so a caller reading a datatype off a field never has to
+/// know which one it holds; [`Self::typed_dtype`] is the dedicated accessor
+/// that answers in the leaf's own type. Both return owned values, because a
+/// leaf stores the leaf's parameters and has no whole [`DataType`] to lend
+/// out; every payload is one shared pointer or nothing at all.
 pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Sized {
     /// Return the physical field name without allocating.
     fn name(&self) -> &str;
 
-    /// Return the datatype this field carries.
-    fn dtype(&self) -> D;
+    /// Return this field's datatype.
+    fn dtype(&self) -> DataType;
+
+    /// Return this field's datatype in its own type.
+    fn typed_dtype(&self) -> D;
 
     /// Return whether this field admits nulls.
     fn is_nullable(&self) -> bool;
@@ -112,8 +123,8 @@ impl DataTypeValue for DataType {
         self
     }
 
-    fn from_dtype(dtype: &DataType) -> Option<&Self> {
-        Some(dtype)
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
+        Some(dtype.clone())
     }
 }
 
@@ -182,3 +193,177 @@ impl std::iter::FusedIterator for Children<'_> {}
 
 
 
+
+/// Emit a datatype payload that stands beside one variant's parameters.
+///
+/// The variant already holds what describes the column; this is the type a
+/// field of that variant carries, so reading one out of a datatype and putting
+/// it back are the two halves written here once.
+macro_rules! payload_datatype {
+    (
+        $(#[$meta:meta])*
+        $name:ident, $variant:ident, $kind:ident,
+        fields { $($field:ident : $ty:ty),+ $(,)? },
+        read $read:pat => $build:expr,
+        write $write:expr $(,)?
+    ) => {
+        $(#[$meta])*
+        #[doc = concat!(
+            "The datatype of a [`DataType::",
+            stringify!($variant),
+            "`](crate::DataType::",
+            stringify!($variant),
+            ") field."
+        )]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $name {
+            $(pub(crate) $field: $ty,)+
+        }
+
+        impl $name {
+            /// Builds this payload from its parts.
+            pub const fn new($($field: $ty),+) -> Self {
+                Self { $($field),+ }
+            }
+
+            $(
+                #[doc = concat!("Returns this datatype's `", stringify!($field), "`.")]
+                pub const fn $field(&self) -> &$ty {
+                    &self.$field
+                }
+            )+
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Display::fmt(&self.clone().into_dtype(), formatter)
+            }
+        }
+
+        impl DataTypeValue for $name {
+            const FAMILY: &'static str = DataTypeId::$variant.as_str();
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$variant
+            }
+
+            fn kind(&self) -> DataTypeKind {
+                DataTypeKind::$kind
+            }
+
+            fn validate(&self) -> Result<()> {
+                self.clone().into_dtype().validate()
+            }
+
+            fn into_dtype(self) -> DataType {
+                let Self { $($field),+ } = self;
+                $write
+            }
+
+            fn from_dtype(dtype: &DataType) -> Option<Self> {
+                match dtype {
+                    $read => Some($build),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+payload_datatype!(
+    DateTime64Type, DateTime64, Temporal,
+    fields { unit: crate::TimeUnit, timezone: crate::Timezone },
+    read DataType::DateTime64 { unit, timezone } => Self::new(*unit, timezone.clone()),
+    write DataType::DateTime64 { unit, timezone },
+);
+
+payload_datatype!(
+    Time32Type, Time32, Temporal,
+    fields { unit: crate::TimeUnit },
+    read DataType::Time32(unit) => Self::new(*unit),
+    write DataType::Time32(unit),
+);
+
+payload_datatype!(
+    Time64Type, Time64, Temporal,
+    fields { unit: crate::TimeUnit },
+    read DataType::Time64(unit) => Self::new(*unit),
+    write DataType::Time64(unit),
+);
+
+payload_datatype!(
+    Duration32Type, Duration32, Temporal,
+    fields { unit: crate::TimeUnit },
+    read DataType::Duration32(unit) => Self::new(*unit),
+    write DataType::Duration32(unit),
+);
+
+payload_datatype!(
+    Duration64Type, Duration64, Temporal,
+    fields { unit: crate::TimeUnit },
+    read DataType::Duration64(unit) => Self::new(*unit),
+    write DataType::Duration64(unit),
+);
+
+payload_datatype!(
+    IntervalType, Interval, Temporal,
+    fields { unit: crate::TimeUnit },
+    read DataType::Interval(unit) => Self::new(*unit),
+    write DataType::Interval(unit),
+);
+
+payload_datatype!(
+    UnionType, Union, Nested,
+    fields { fields: crate::UnionFields, mode: crate::UnionMode },
+    read DataType::Union(fields, mode) => Self::new(fields.clone(), *mode),
+    write DataType::Union(fields, mode),
+);
+
+payload_datatype!(
+    Decimal32Type, Decimal32, Decimal,
+    fields { precision: u8, scale: i8 },
+    read DataType::Decimal32 { precision, scale } => Self::new(*precision, *scale),
+    write DataType::Decimal32 { precision, scale },
+);
+
+payload_datatype!(
+    Decimal64Type, Decimal64, Decimal,
+    fields { precision: u8, scale: i8 },
+    read DataType::Decimal64 { precision, scale } => Self::new(*precision, *scale),
+    write DataType::Decimal64 { precision, scale },
+);
+
+payload_datatype!(
+    Decimal128Type, Decimal128, Decimal,
+    fields { precision: u8, scale: i8 },
+    read DataType::Decimal128 { precision, scale } => Self::new(*precision, *scale),
+    write DataType::Decimal128 { precision, scale },
+);
+
+payload_datatype!(
+    Decimal256Type, Decimal256, Decimal,
+    fields { precision: u8, scale: i8 },
+    read DataType::Decimal256 { precision, scale } => Self::new(*precision, *scale),
+    write DataType::Decimal256 { precision, scale },
+);
+
+payload_datatype!(
+    RunEndType, RunEndEncoded, Nested,
+    fields { encoding: std::sync::Arc<crate::RunEndEncodedType> },
+    read DataType::RunEndEncoded(encoding) => Self::new(std::sync::Arc::clone(encoding)),
+    write DataType::RunEndEncoded(encoding),
+);
+
+payload_datatype!(
+    GeometryType, Geometry, Geospatial,
+    fields { parameters: std::sync::Arc<crate::GeospatialParameters> },
+    read DataType::Geometry(parameters) => Self::new(std::sync::Arc::clone(parameters)),
+    write DataType::Geometry(parameters),
+);
+
+payload_datatype!(
+    GeographyType, Geography, Geospatial,
+    fields { parameters: std::sync::Arc<crate::GeospatialParameters> },
+    read DataType::Geography(parameters) => Self::new(std::sync::Arc::clone(parameters)),
+    write DataType::Geography(parameters),
+);

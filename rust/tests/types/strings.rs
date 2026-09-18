@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use yggdryl::types::{DataType, Str, StringLayout, StringParameters};
+use yggdryl::types::{DataType, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataTypeId, DataTypeKind};
 use yggdryl::{Error, Field, Scalar, Scheme};
 
@@ -24,7 +24,7 @@ fn stored(array: &dyn Array) -> &FixedSizeBinaryArray {
 /// A US-ASCII string bounded to `max` bytes on the variable layout.
 fn bounded_ascii(max: u32) -> DataType {
     DataType::string(
-        StringParameters::ascii(StringLayout::String)
+        StringType::ascii(StringLayout::String)
             .try_with_bound(max)
             .unwrap(),
     )
@@ -97,7 +97,7 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
     assert_eq!(
         row.get_field_by_path("name")
             .and_then(|field| field.dtype().string_parameters())
-            .and_then(StringParameters::max),
+            .and_then(StringType::max),
         Some(32)
     );
 }
@@ -131,7 +131,7 @@ fn a_width_of_no_bytes_is_refused_by_name() {
         Err(Error::Parse { .. })
     ));
     assert!(
-        DataType::String(StringParameters::ascii(StringLayout::FixedString))
+        DataType::String(StringType::ascii(StringLayout::FixedString))
             .validate()
             .is_err()
     );

@@ -9,7 +9,7 @@ use crate::types;
 use crate::types::code::identifier_value;
 use crate::types::code::{CodeValue, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 /// One validated CUSIP securities identifier.
 ///
@@ -193,7 +193,5 @@ impl DataType {
 }
 
 // /// A CUSIP-typed field: the nine-character North American securities identifier.
-define_field_types!(CusipType, Cusip, crate::DataType::Cusip);
+define_field_types!(CusipType, Cusip);
 
-/// A field of this code.
-pub type CusipField = TypedField<CusipType>;

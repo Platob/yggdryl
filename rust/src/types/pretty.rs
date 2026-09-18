@@ -124,7 +124,7 @@ fn write_field(formatter: &mut fmt::Formatter<'_>, field: &Field, columns: usize
     formatter.write_str(field.name())?;
     formatter.write_str(": ")?;
     write_head(formatter, field.dtype())?;
-    formatter.write_str(if field.nullable {
+    formatter.write_str(if field.is_nullable() {
         ", nullable"
     } else {
         ", required"
@@ -252,7 +252,7 @@ fn write_field_inline(
     formatter.write_str(field.name())?;
     formatter.write_str(": ")?;
     write_head(formatter, field.dtype())?;
-    formatter.write_str(if field.nullable {
+    formatter.write_str(if field.is_nullable() {
         ", nullable"
     } else {
         ", required"

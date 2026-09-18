@@ -9,7 +9,7 @@ use crate::types;
 use crate::types::code::folded_spelling;
 use crate::types::code::{CodeValue, code_leaf, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 code_leaf!(State, STATE_WIDTH);
 
@@ -248,7 +248,5 @@ pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 pub(crate) const STATE_WIDTH: usize = 10;
 
 // /// A field declared as a thing's state.
-define_field_types!(StateType, State, crate::DataType::State);
+define_field_types!(StateType, State);
 
-/// A field of this code.
-pub type StateField = TypedField<StateType>;

@@ -30,7 +30,7 @@ use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType,
     UncheckedFieldScalar, Uuid,
 };
 use yggdryl::{
@@ -1098,7 +1098,7 @@ fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
         black_box(value);
     });
     let source = Str::new(&shared);
-    let large = StringParameters::utf8(StringLayout::LargeString);
+    let large = StringType::utf8(StringLayout::LargeString);
     free(
         "restating a shared string value under another layout",
         || {

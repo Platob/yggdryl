@@ -208,11 +208,12 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
     assert!(refused.contains("url"), "{refused}");
     assert!(refused.contains("utf8"), "{refused}");
 
-    let typed = UrlField::new("location", true);
+    let typed = UrlField::unit("location", true);
     assert_eq!(typed.dtype(), &DataType::Url);
-    let scalar = FieldScalar::new(typed.as_field(), url("https://example.com/a")).unwrap();
+    let typed_field = typed.to_field();
+    let scalar = FieldScalar::new(&typed_field, url("https://example.com/a")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::Url);
-    assert!(FieldScalar::new(typed.as_field(), 7_i64).is_err());
+    assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
 }
 
 #[test]

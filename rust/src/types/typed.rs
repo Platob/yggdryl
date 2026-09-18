@@ -1,32 +1,22 @@
-//! Views that narrow or pair the generic [`Field`] and [`Scalar`] values.
+//! One field paired with the value its own contract answered for it.
 //!
-//! Two families, and the difference is what each one holds. A [`TypedField`]
-//! narrows one field to a datatype marker, so a caller that already knows the
-//! variant says so in the type. A [`FieldScalar`] holds a field and the value
-//! that field's own contract answered, so a reader downstream takes the name,
-//! the datatype and the value from one place; [`FieldRecord`] is a row of
-//! them, and [`UncheckedFieldScalar`] is the same pairing before the proof.
+//! A [`FieldScalar`] holds a field and that value together, so a reader
+//! downstream takes the name, the datatype and the value from one place and
+//! re-derives none of them. [`FieldRecord`] is a row of them, and
+//! [`UncheckedFieldScalar`] is the same pairing before the proof, for a reader
+//! that wants the field's reading of a wire value without committing to it.
 //!
-//! Two kinds of proof live here. A compile-time marker ([`FieldType`]) narrows
-//! a [`Field`] to one datatype variant without copying it: [`TypedField`]
-//! owns the field, [`TypedFieldRef`] borrows it. A runtime pairing
-//! ([`FieldScalar`], [`FieldRecord`]) borrows a field and carries the value
-//! that field's own contract answered for it, so a reader downstream takes the
-//! datatype, the name and the value from one place and re-derives none of
-//! them. [`UncheckedFieldScalar`] is the pairing before that proof, for a
-//! reader that wants the field's reading of a wire value without committing
-//! to it.
+//! Narrowing a field to one datatype is not here: a [`Field`] is an enum over
+//! its families, so the variant is the proof and no marker is needed to carry
+//! it.
 
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-use std::ops::Deref;
 
 pub use record::FieldRecord;
 use serde::ser::SerializeStruct;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Result, Scalar};
@@ -409,7 +399,7 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
-    use crate::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
+    use crate::types::{BytesLayout, BytesType, StringLayout, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
 
     /// The name every shared field carries - the name an inferred scalar field
@@ -453,7 +443,7 @@ mod shared {
     /// Every string identifier is parameterized, so none has a slot in
     /// [`PREBUILT`]; these four are what a bare string value names, and a value
     /// typed by inference borrows one of them rather than interning anything.
-    static PLAIN_UTF8: LazyLock<[(StringParameters, Field); 4]> = LazyLock::new(|| {
+    static PLAIN_UTF8: LazyLock<[(StringType, Field); 4]> = LazyLock::new(|| {
         [
             StringLayout::String,
             StringLayout::LargeString,
@@ -461,7 +451,7 @@ mod shared {
             StringLayout::LargeStringView,
         ]
         .map(|layout| {
-            let parameters = StringParameters::utf8(layout);
+            let parameters = StringType::utf8(layout);
             (
                 parameters,
                 Field::new(SHARED_NAME, DataType::String(parameters), true),
@@ -470,14 +460,14 @@ mod shared {
     });
 
     /// One nullable field per plain unbounded byte layout, for the same reason.
-    static PLAIN_BYTES: LazyLock<[(BytesParameters, Field); 3]> = LazyLock::new(|| {
+    static PLAIN_BYTES: LazyLock<[(BytesType, Field); 3]> = LazyLock::new(|| {
         [
             BytesLayout::Binary,
             BytesLayout::LargeBinary,
             BytesLayout::BinaryView,
         ]
         .map(|layout| {
-            let parameters = BytesParameters::new(layout);
+            let parameters = BytesType::new(layout);
             (
                 parameters,
                 Field::new(SHARED_NAME, DataType::Bytes(parameters), true),
@@ -595,400 +585,6 @@ mod shared {
         pub fn shared_field(&self) -> Option<&'static Field> {
             self.dtype().ok()?.shared_field()
         }
-    }
-}
-
-pub(crate) mod sealed {
-    pub trait Sealed {}
-}
-
-/// A sealed compile-time marker for exactly one [`DataType`] variant.
-///
-/// Marker implementations validate the variant only. Parameters such as a
-/// decimal precision, datetime unit, or list child remain in the wrapped
-/// [`Field`], so the typed view never duplicates schema state.
-pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static {
-    /// The canonical, parameter-independent datatype name.
-    const NAME: &'static str;
-
-    /// Returns whether `dtype` has this marker's variant.
-    fn matches(dtype: &DataType) -> bool;
-}
-
-/// An owned field whose datatype variant is checked at construction.
-///
-/// `TypedField<K>` contains exactly one [`Field`]; `K` is a zero-sized marker.
-/// Immutable dereferencing exposes all generic field reads and projections.
-/// There is deliberately no `DerefMut` or `as_field_mut`, because replacing
-/// the datatype through an unchecked generic reference could violate `K`.
-#[repr(transparent)]
-pub struct TypedField<K: FieldType> {
-    field: Field,
-    marker: PhantomData<K>,
-}
-
-impl<K: FieldType> TypedField<K> {
-    /// Checks and wraps an existing generic field without changing its state.
-    pub fn try_from_field(field: Field) -> Result<Self> {
-        field.validate()?;
-        Self::from_validated_field(field)
-    }
-
-    fn from_validated_field(field: Field) -> Result<Self> {
-        ensure_marker::<K>(field.dtype())?;
-        Ok(Self {
-            field,
-            marker: PhantomData,
-        })
-    }
-
-    /// Builds a typed field from a validated datatype of the marker's variant.
-    ///
-    /// Static aliases also expose a shorter infallible `new(name, nullable)`.
-    pub fn try_new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Result<Self> {
-        Self::try_from_field(Field::new(name, dtype, nullable))
-    }
-
-    /// Builds a typed field from a datatype and complete metadata snapshot.
-    pub fn try_from_parts<I, M, V>(
-        name: impl Into<SmolStr>,
-        dtype: DataType,
-        nullable: bool,
-        metadata: I,
-    ) -> Result<Self>
-    where
-        I: IntoIterator<Item = (M, V)>,
-        M: Into<String>,
-        V: Into<String>,
-    {
-        Self::from_validated_field(Field::from_parts(name, dtype, nullable, metadata)?)
-    }
-
-    /// Borrows the generic field without allocating.
-    pub const fn as_field(&self) -> &Field {
-        &self.field
-    }
-
-    /// Borrows a checked typed reference without allocating.
-    pub const fn as_typed_ref(&self) -> TypedFieldRef<'_, K> {
-        TypedFieldRef {
-            field: &self.field,
-            marker: PhantomData,
-        }
-    }
-
-    /// Consumes the marker wrapper and returns the exact generic field.
-    pub fn into_field(self) -> Field {
-        self.field
-    }
-
-    /// Changes the name while retaining the datatype marker.
-    pub fn set_name(&mut self, name: impl Into<SmolStr>) {
-        self.field.set_name(name);
-    }
-
-    /// Returns this typed field with a different name.
-    pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self {
-        self.set_name(name);
-        self
-    }
-
-    /// Changes nullability while retaining the datatype marker.
-    pub fn set_nullable(&mut self, nullable: bool) {
-        self.field.set_nullable(nullable);
-    }
-
-    /// Returns this typed field with different nullability.
-    pub fn with_nullable(mut self, nullable: bool) -> Self {
-        self.set_nullable(nullable);
-        self
-    }
-
-    /// Replaces the datatype after validating both its parameters and marker.
-    ///
-    /// An error leaves this typed field unchanged.
-    pub fn set_dtype(&mut self, dtype: DataType) -> Result<()> {
-        ensure_marker::<K>(&dtype)?;
-        self.field.set_dtype(dtype)
-    }
-
-    /// Returns this typed field with another datatype of the same variant.
-    pub fn try_with_dtype(mut self, dtype: DataType) -> Result<Self> {
-        self.set_dtype(dtype)?;
-        Ok(self)
-    }
-
-    /// Inserts or replaces one metadata entry.
-    pub fn insert_metadata(
-        &mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> Result<Option<String>> {
-        self.field.insert_metadata(key, value)
-    }
-
-    /// Replaces the complete metadata snapshot atomically.
-    pub fn set_metadata<I, M, V>(&mut self, values: I) -> Result<()>
-    where
-        I: IntoIterator<Item = (M, V)>,
-        M: Into<String>,
-        V: Into<String>,
-    {
-        self.field.set_metadata(values)
-    }
-
-    /// Overlays validated metadata atomically.
-    pub fn update_metadata<I, M, V>(&mut self, values: I) -> Result<()>
-    where
-        I: IntoIterator<Item = (M, V)>,
-        M: Into<String>,
-        V: Into<String>,
-    {
-        self.field.update_metadata(values)
-    }
-
-    /// Removes one metadata entry and returns its prior value.
-    pub fn remove_metadata(&mut self, key: &str) -> Option<String> {
-        self.field.remove_metadata(key)
-    }
-
-    /// Removes all metadata while retaining the datatype marker.
-    pub fn clear_metadata(&mut self) {
-        self.field.clear_metadata();
-    }
-}
-
-impl TypedField<super::StructTypeMarker> {
-    /// Consumes a checked Struct wrapper and returns its generic Struct field.
-    ///
-    /// This typed spelling is the Rust counterpart of the cached struct-root
-    /// accessor the bindings install on a field class: `into_field()` on a
-    /// Python `@scalar` dataclass, the `intoStructField` getter in JavaScript.
-    /// The returned value is still the one canonical [`Field`]; the marker has
-    /// already proved that its datatype is Struct.
-    pub fn into_struct_field(self) -> Field {
-        self.field
-    }
-}
-
-/// A borrowed, allocation-free proof that a [`Field`] has datatype marker `K`.
-#[repr(transparent)]
-pub struct TypedFieldRef<'field, K: FieldType> {
-    field: &'field Field,
-    marker: PhantomData<K>,
-}
-
-impl Field {
-    /// Checks this field's datatype and returns an allocation-free typed view.
-    pub fn try_as_typed<K: FieldType>(&self) -> Result<TypedFieldRef<'_, K>> {
-        TypedFieldRef::try_from_field(self)
-    }
-
-    /// Checks this field's datatype and consumes it into a typed field.
-    pub fn try_into_typed<K: FieldType>(self) -> Result<TypedField<K>> {
-        TypedField::try_from_field(self)
-    }
-}
-
-impl<'field, K: FieldType> TypedFieldRef<'field, K> {
-    /// Checks and borrows a generic field without cloning it.
-    pub fn try_from_field(field: &'field Field) -> Result<Self> {
-        field.validate()?;
-        ensure_marker::<K>(field.dtype())?;
-        Ok(Self {
-            field,
-            marker: PhantomData,
-        })
-    }
-
-    /// Returns the checked generic field reference.
-    pub const fn as_field(self) -> &'field Field {
-        self.field
-    }
-}
-
-fn ensure_marker<K: FieldType>(dtype: &DataType) -> Result<()> {
-    if K::matches(dtype) {
-        Ok(())
-    } else {
-        Err(Error::InvalidDataType {
-            kind: "TypedField",
-            reason: format!(
-                "marker {} requires datatype {}, got {}",
-                std::any::type_name::<K>(),
-                K::NAME,
-                dtype.name()
-            )
-            .into(),
-        })
-    }
-}
-
-impl<K: FieldType> Clone for TypedField<K> {
-    fn clone(&self) -> Self {
-        Self {
-            field: self.field.clone(),
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<K: FieldType> fmt::Debug for TypedField<K> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("TypedField")
-            .field(&K::NAME)
-            .field(&self.field)
-            .finish()
-    }
-}
-
-impl<K: FieldType> fmt::Display for TypedField<K> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.field.fmt(formatter)
-    }
-}
-
-impl<K: FieldType> PartialEq for TypedField<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.field == other.field
-    }
-}
-
-impl<K: FieldType> Eq for TypedField<K> {}
-
-impl<K: FieldType> PartialOrd for TypedField<K> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<K: FieldType> Ord for TypedField<K> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.field.cmp(&other.field)
-    }
-}
-
-impl<K: FieldType> Hash for TypedField<K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.field.hash(state);
-    }
-}
-
-impl<K: FieldType> Serialize for TypedField<K> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.field.serialize(serializer)
-    }
-}
-
-impl<'de, K: FieldType> Deserialize<'de> for TypedField<K> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let field = Field::deserialize(deserializer)?;
-        Self::from_validated_field(field).map_err(serde::de::Error::custom)
-    }
-}
-
-impl<K: FieldType> Deref for TypedField<K> {
-    type Target = Field;
-
-    fn deref(&self) -> &Self::Target {
-        &self.field
-    }
-}
-
-impl<K: FieldType> AsRef<Field> for TypedField<K> {
-    fn as_ref(&self) -> &Field {
-        &self.field
-    }
-}
-
-impl<K: FieldType> Borrow<Field> for TypedField<K> {
-    fn borrow(&self) -> &Field {
-        &self.field
-    }
-}
-
-impl<K: FieldType> TryFrom<Field> for TypedField<K> {
-    type Error = Error;
-
-    fn try_from(field: Field) -> Result<Self> {
-        Self::try_from_field(field)
-    }
-}
-
-impl<K: FieldType> From<TypedField<K>> for Field {
-    fn from(field: TypedField<K>) -> Self {
-        field.into_field()
-    }
-}
-
-impl<'field, K: FieldType> Copy for TypedFieldRef<'field, K> {}
-
-impl<'field, K: FieldType> Clone for TypedFieldRef<'field, K> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<K: FieldType> fmt::Debug for TypedFieldRef<'_, K> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("TypedFieldRef")
-            .field(&K::NAME)
-            .field(&self.field)
-            .finish()
-    }
-}
-
-impl<K: FieldType> PartialEq for TypedFieldRef<'_, K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.field == other.field
-    }
-}
-
-impl<K: FieldType> Eq for TypedFieldRef<'_, K> {}
-
-impl<K: FieldType> PartialOrd for TypedFieldRef<'_, K> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<K: FieldType> Ord for TypedFieldRef<'_, K> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.field.cmp(other.field)
-    }
-}
-
-impl<K: FieldType> Hash for TypedFieldRef<'_, K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.field.hash(state);
-    }
-}
-
-impl<K: FieldType> Deref for TypedFieldRef<'_, K> {
-    type Target = Field;
-
-    fn deref(&self) -> &Self::Target {
-        self.field
-    }
-}
-
-impl<K: FieldType> AsRef<Field> for TypedFieldRef<'_, K> {
-    fn as_ref(&self) -> &Field {
-        self.field
-    }
-}
-
-impl<K: FieldType> Borrow<Field> for TypedFieldRef<'_, K> {
-    fn borrow(&self) -> &Field {
-        self.field
     }
 }
 
@@ -1134,7 +730,7 @@ impl<'a> FieldScalar<'a> {
     }
 
     /// The datatype this value belongs to.
-    pub const fn dtype(&self) -> &'a DataType {
+    pub fn dtype(&self) -> &'a DataType {
         self.field.dtype()
     }
 
@@ -1476,7 +1072,7 @@ impl<'a> UncheckedFieldScalar<'a> {
     }
 
     /// The datatype the value will be read as.
-    pub const fn dtype(&self) -> &'a DataType {
+    pub fn dtype(&self) -> &'a DataType {
         self.field.dtype()
     }
 
@@ -1566,113 +1162,51 @@ impl fmt::Debug for UncheckedFieldScalar<'_> {
 }
 
 macro_rules! define_field_types {
-    // The ordinary form: the marker stands for one identifier's variant, so it
-    // takes the identifier and reads the name off it. `DataTypeId::as_str` is
-    // where a datatype's name lives; writing it again here would be a second
-    // copy that nothing keeps in step.
-    ($(#[$meta:meta])* $marker:ident, $variant:ident, $pattern:pat $(,)?) => {
+    // A datatype that carries no parameters is its own payload: one zero-sized
+    // value that stands for the variant. It is what a field of that datatype
+    // holds, so it implements the datatype contract rather than a marker trait.
+    ($(#[$meta:meta])* $marker:ident, $variant:ident $(,)?) => {
         $(#[$meta])*
         #[doc = concat!(
-            "Compile-time marker for [`DataTypeId::",
+            "The parameter-free datatype of a [`DataType::",
             stringify!($variant),
-            "`](crate::DataTypeId::",
+            "`](crate::DataType::",
             stringify!($variant),
-            ") fields."
+            ") field."
         )]
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
 
-        impl $crate::types::typed::sealed::Sealed for $marker {}
-
-        impl $crate::types::typed::FieldType for $marker {
-            const NAME: &'static str = $crate::DataTypeId::$variant.as_str();
-
-            fn matches(dtype: &crate::DataType) -> bool {
-                matches!(dtype, $pattern)
+        impl ::std::fmt::Display for $marker {
+            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                formatter.write_str($crate::DataTypeId::$variant.as_str())
             }
         }
-    };
-    // A marker that stands for a whole family has no single identifier to read
-    // a name off - `BytesType` matches all four byte layouts, whose identifiers
-    // are spelled `binary`, not `bytes` - so the family's own name is written.
-    ($(#[$meta:meta])* $marker:ident, $name:literal, $pattern:pat $(,)?) => {
-        $(#[$meta])*
-        #[doc = concat!("Compile-time marker for every `", $name, "` field.")]
-        #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-        pub struct $marker;
 
-        impl $crate::types::typed::sealed::Sealed for $marker {}
+        impl $crate::types::DataTypeValue for $marker {
+            const FAMILY: &'static str = $crate::DataTypeId::$variant.as_str();
 
-        impl $crate::types::typed::FieldType for $marker {
-            const NAME: &'static str = $name;
-
-            fn matches(dtype: &crate::DataType) -> bool {
-                matches!(dtype, $pattern)
-            }
-        }
-    };
-}
-
-macro_rules! static_field_constructor {
-    ($marker:path, $dtype:expr) => {
-        impl TypedField<$marker> {
-            /// Constructs this statically known datatype without parsing or allocation.
-            pub fn new(name: impl Into<SmolStr>, nullable: bool) -> Self {
-                Self {
-                    field: Field::new(name, $dtype, nullable),
-                    marker: PhantomData,
-                }
+            fn id(&self) -> $crate::DataTypeId {
+                $crate::DataTypeId::$variant
             }
 
-            /// Constructs this statically known datatype with complete metadata.
-            pub fn from_parts<I, M, V>(
-                name: impl Into<SmolStr>,
-                nullable: bool,
-                metadata: I,
-            ) -> Result<Self>
-            where
-                I: IntoIterator<Item = (M, V)>,
-                M: Into<String>,
-                V: Into<String>,
-            {
-                Self::from_validated_field(Field::from_parts(name, $dtype, nullable, metadata)?)
+            fn kind(&self) -> $crate::DataTypeKind {
+                $crate::DataTypeId::$variant.kind()
+            }
+
+            fn validate(&self) -> $crate::Result<()> {
+                Ok(())
+            }
+
+            fn into_dtype(self) -> $crate::DataType {
+                $crate::DataType::$variant
+            }
+
+            fn from_dtype(dtype: &$crate::DataType) -> Option<Self> {
+                matches!(dtype, $crate::DataType::$variant).then_some(Self)
             }
         }
     };
 }
-
-static_field_constructor!(super::boolean::NullType, DataType::Null);
-static_field_constructor!(super::boolean::BooleanType, DataType::Boolean);
-static_field_constructor!(super::integer::Int8Type, DataType::Int8);
-static_field_constructor!(super::integer::Int16Type, DataType::Int16);
-static_field_constructor!(super::integer::Int32Type, DataType::Int32);
-static_field_constructor!(super::integer::Int64Type, DataType::Int64);
-static_field_constructor!(super::integer::UInt8Type, DataType::UInt8);
-static_field_constructor!(super::integer::UInt16Type, DataType::UInt16);
-static_field_constructor!(super::integer::UInt32Type, DataType::UInt32);
-static_field_constructor!(super::integer::UInt64Type, DataType::UInt64);
-static_field_constructor!(super::floating::Float16Type, DataType::Float16);
-static_field_constructor!(super::floating::Float32Type, DataType::Float32);
-static_field_constructor!(super::floating::Float64Type, DataType::Float64);
-static_field_constructor!(super::temporal::Date32Type, DataType::Date32);
-static_field_constructor!(super::temporal::Date64Type, DataType::Date64);
-static_field_constructor!(super::CountryType, DataType::Country);
-static_field_constructor!(super::CurrencyType, DataType::Currency);
-static_field_constructor!(super::MicType, DataType::Mic);
-static_field_constructor!(super::CfiType, DataType::Cfi);
-static_field_constructor!(super::IsinType, DataType::Isin);
-static_field_constructor!(super::CusipType, DataType::Cusip);
-static_field_constructor!(super::SedolType, DataType::Sedol);
-static_field_constructor!(super::BloombergType, DataType::Bloomberg);
-static_field_constructor!(super::SideType, DataType::Side);
-static_field_constructor!(super::StateType, DataType::State);
-static_field_constructor!(super::TimeInForceType, DataType::TimeInForce);
-static_field_constructor!(super::VariantType, DataType::Variant);
-static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
-static_field_constructor!(super::version::VersionType, DataType::Version);
-static_field_constructor!(super::timezone::TimezoneType, DataType::Timezone);
-static_field_constructor!(super::mime_type::MimeTypeType, DataType::MimeType);
-static_field_constructor!(super::media_type::MediaTypeType, DataType::MediaType);
-static_field_constructor!(super::url::UrlType, DataType::Url);
 
 pub(crate) use define_field_types;

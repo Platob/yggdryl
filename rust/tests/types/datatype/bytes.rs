@@ -2,7 +2,7 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-use yggdryl::types::{BYTES_EXTENSION_NAME, Bytes, BytesLayout, BytesParameters, INLINE_BYTES};
+use yggdryl::types::{BYTES_EXTENSION_NAME, Bytes, BytesLayout, BytesType, INLINE_BYTES};
 use yggdryl::{DataType, DataTypeId, Field, Scalar};
 
 /// Every layout, with its identifier and its canonical spelling.
@@ -47,7 +47,7 @@ fn every_layout_is_one_datatype_under_every_spelling() {
         assert!(id.is_binary(), "{id}");
         assert_eq!(id.fixed_byte_width(), None, "{id}");
 
-        let mut parameters = BytesParameters::new(layout);
+        let mut parameters = BytesType::new(layout);
         if layout.is_fixed() {
             parameters = parameters.try_with_bound(16).unwrap();
         }
@@ -63,7 +63,7 @@ fn every_layout_is_one_datatype_under_every_spelling() {
     // The sugar constructors are the same datatypes.
     assert_eq!(
         DataType::binary(),
-        DataType::Bytes(BytesParameters::default())
+        DataType::Bytes(BytesType::default())
     );
     assert_eq!(
         DataType::large_binary(),
@@ -129,7 +129,7 @@ fn one_number_carries_the_maximum_or_the_width() {
 
     // The bound follows the layout it is restated into, and comes off with
     // the maximum but not the width.
-    let restated = BytesParameters::new(BytesLayout::Binary)
+    let restated = BytesType::new(BytesLayout::Binary)
         .try_with_bound(16)
         .unwrap()
         .with_layout(BytesLayout::FixedSizeBinary);
@@ -137,7 +137,7 @@ fn one_number_carries_the_maximum_or_the_width() {
     assert_eq!(restated.without_max().fixed(), Some(16));
     assert_eq!(restated.without_bound().bound(), None);
     assert_eq!(
-        BytesParameters::new(BytesLayout::LargeBinary)
+        BytesType::new(BytesLayout::LargeBinary)
             .try_with_bound(16)
             .unwrap()
             .without_max()
@@ -152,12 +152,12 @@ fn one_number_carries_the_maximum_or_the_width() {
     assert!(DataType::from_str("fixed_size_binary").is_err());
     assert!(DataType::fixed_size_binary(0).is_err());
     assert!(
-        BytesParameters::new(BytesLayout::FixedSizeBinary)
+        BytesType::new(BytesLayout::FixedSizeBinary)
             .validate()
             .is_err()
     );
     assert!(DataType::bytes(BytesLayout::FixedSizeBinary).is_err());
-    let unwidened = DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary));
+    let unwidened = DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary));
     assert!(unwidened.validate().is_err());
     assert!(unwidened.into_arrow().is_err());
     // Every other spelling with a bound is a maximum.
@@ -199,7 +199,7 @@ fn a_byte_value_is_the_compact_byte_string_and_carries_no_maximum() {
     // width ride beside the payload, and a maximum never does.
     let large = short
         .clone()
-        .try_with_parameters(BytesParameters::new(BytesLayout::LargeBinary))
+        .try_with_parameters(BytesType::new(BytesLayout::LargeBinary))
         .unwrap();
     assert_eq!(large, short);
     assert_eq!(large.layout(), BytesLayout::LargeBinary);
@@ -208,24 +208,24 @@ fn a_byte_value_is_the_compact_byte_string_and_carries_no_maximum() {
     let bounded = short
         .clone()
         .try_with_parameters(
-            BytesParameters::new(BytesLayout::Binary)
+            BytesType::new(BytesLayout::Binary)
                 .try_with_bound(4)
                 .unwrap(),
         )
         .unwrap();
-    assert_eq!(bounded.parameters(), BytesParameters::default());
+    assert_eq!(bounded.parameters(), BytesType::default());
     assert!(
         short
             .clone()
             .try_with_parameters(
-                BytesParameters::new(BytesLayout::Binary)
+                BytesType::new(BytesLayout::Binary)
                     .try_with_bound(2)
                     .unwrap()
             )
             .is_err()
     );
     // Bytes are never padded: a fixed value is exactly its width.
-    let fixed = BytesParameters::new(BytesLayout::FixedSizeBinary)
+    let fixed = BytesType::new(BytesLayout::FixedSizeBinary)
         .try_with_bound(3)
         .unwrap();
     let held = short.clone().try_with_parameters(fixed).unwrap();
@@ -338,7 +338,7 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
         .bytes_parameters()
         .unwrap();
     assert_eq!(
-        BytesParameters::from_extension_json(&bounded.extension_json()).unwrap(),
+        BytesType::from_extension_json(&bounded.extension_json()).unwrap(),
         bounded
     );
     let foreign = arrow_schema::Field::new("payload", ArrowDataType::LargeBinary, true)

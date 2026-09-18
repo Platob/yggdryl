@@ -39,7 +39,7 @@ use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
-use crate::types::{BytesLayout, Str, StringLayout, StringParameters};
+use crate::types::{BytesLayout, Str, StringLayout, StringType};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
 
 use super::field::{
@@ -1283,7 +1283,7 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
 /// its padding, and a legacy charset is transcribed rather than refused.
 fn feed_string(
     digester: &mut impl Hasher,
-    parameters: StringParameters,
+    parameters: StringType,
     array: &dyn Array,
     index: usize,
 ) -> Result<()> {

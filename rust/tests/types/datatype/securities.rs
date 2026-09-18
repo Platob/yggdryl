@@ -428,11 +428,11 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
 
 #[test]
 fn the_typed_fields_name_their_identifier() {
-    let cusip: CusipField = CusipField::new("cusip", true);
-    assert_eq!(cusip.as_field().dtype(), &DataType::Cusip);
-    let sedol: SedolField = SedolField::new("sedol", false);
-    assert_eq!(sedol.as_field().dtype(), &DataType::Sedol);
-    assert!(!sedol.as_field().is_nullable());
+    let cusip: CusipField = CusipField::unit("cusip", true);
+    assert_eq!(cusip.to_field().dtype(), &DataType::Cusip);
+    let sedol: SedolField = SedolField::unit("sedol", false);
+    assert_eq!(sedol.to_field().dtype(), &DataType::Sedol);
+    assert!(!&sedol.to_field().is_nullable());
     // A shared field is kept for each, as for every parameter-free leaf.
     for dtype in [DataType::Cusip, DataType::Sedol] {
         let shared = dtype.shared_field().unwrap();

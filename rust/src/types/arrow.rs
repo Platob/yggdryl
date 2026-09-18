@@ -32,7 +32,7 @@ use crate::types::enums::EnumType;
 /// Arrow field import, cached projection, and conversion traits.
 mod field {
     use std::collections::HashMap;
-    use std::sync::{Arc, OnceLock};
+    use std::sync::Arc;
 
     use arrow_schema::Schema;
     use arrow_schema::{
@@ -43,62 +43,147 @@ mod field {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::types::{
-        BYTES_EXTENSION_NAME, BytesParameters, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
-        MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringParameters, TIMEZONE_EXTENSION_NAME,
+        BYTES_EXTENSION_NAME, BytesType, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
+        MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME,
         URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
         arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
     };
     use crate::types::{Field, FieldRef};
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
 
-    impl Field {
-        /// Imports one complete Arrow schema as a non-null Struct root Field.
+    impl<D: crate::types::DataTypeValue> crate::types::FieldOf<D> {
+
+
+
+
+
+
+
+
+
+
+
+
+        /// Projects this field to an owned Arrow C Data Interface schema.
         ///
-        /// Ordinary schema metadata becomes root metadata. The transport-only
-        /// dictionary-ID sidecar is consumed without entering Field metadata.
+        /// Name, metadata, nullability, dictionary ordering, and nested datatype
+        /// flags are preserved in one canonical core conversion.
+        pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
+            if let Some(field) = self.arrow.get() {
+                return arrow_field_to_ffi(field).map_err(Error::from);
+            }
+            let mut schema = self.dtype().clone().into_arrow_ffi()?;
+            let mut flags = schema.flags().unwrap_or_else(Flags::empty);
+            if self.nullable {
+                flags |= Flags::NULLABLE;
+            }
+            if self.dictionary_is_ordered {
+                flags |= Flags::DICTIONARY_ORDERED;
+            }
+            schema = schema.with_name(self.name())?.with_flags(flags)?;
+            // The datatype projection already carries the extension entries for an
+            // extension-typed field, but the C interface stores metadata as
+            // one buffer, so the replacement map must carry them again.
+            schema
+                .with_metadata(&projected_arrow_metadata(
+                    &self.dtype(),
+                    self.metadata.clone().into_arrow(),
+                )?)
+                .map_err(Error::from)
+        }
+
+        /// Consumes this field and returns an owned Arrow field.
+        pub fn into_arrow(self) -> Result<ArrowField> {
+            let Self {
+                name,
+                dtype,
+                nullable,
+                dictionary_id,
+                dictionary_is_ordered,
+                metadata,
+                arrow,
+                widened: _,
+            } = self;
+            // The leaf holds its own datatype; the Arrow projection speaks the
+            // root's, so widen it once here.
+            let dtype = <D as crate::types::DataTypeValue>::into_dtype(dtype);
+            if let Some(field) = arrow.into_inner() {
+                return Ok(Arc::try_unwrap(field).unwrap_or_else(|field| field.as_ref().clone()));
+            }
+            let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
+            Ok(arrow_field_from_parts(
+                name.as_str(),
+                dtype.into_arrow()?,
+                nullable,
+                dictionary_id,
+                dictionary_is_ordered,
+                projected,
+            ))
+        }
+
+        /// Borrows this field's Arrow projection, building it once.
+        ///
+        /// [`Self::into_arrow_ref`] consumes the field, so a caller that still
+        /// needs it has to clone first and pays for the projection every time.
+        /// This borrows, and fills the same cache an Arrow import seeds and a
+        /// clone shares - so a field exported more than once is projected once.
+        /// Any effective change clears the cache, exactly as it does today.
         ///
         /// # Errors
         ///
-        /// Returns an error when the Arrow fields cannot form a non-null Struct
-        /// root or the dictionary-ID sidecar is invalid.
-        pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self> {
-            crate::arrow::field_from_arrow_schema(name, schema)
+        /// Returns an error when the datatype or its metadata has no valid Arrow
+        /// projection.
+        pub fn as_arrow_ref(&self) -> Result<&FieldRef> {
+            if let Some(field) = self.arrow.get() {
+                return Ok(field);
+            }
+            let projected = projected_arrow_metadata(&self.dtype(), self.metadata.clone().into_arrow())?;
+            let built = Arc::new(arrow_field_from_parts(
+                self.name.as_str(),
+                self.dtype().clone().into_arrow()?,
+                self.nullable,
+                self.dictionary_id,
+                self.dictionary_is_ordered,
+                projected,
+            ));
+            let _ = self.arrow.set(built);
+            Ok(self
+                .arrow
+                .get()
+                .expect("the projection was just placed in the cache"))
         }
 
-        /// Imports an Arrow field and seeds the projection cache.
-        pub fn from_arrow(value: &ArrowField) -> Result<Self> {
-            Self::from_arrow_at_depth(value, 0)
+        /// Consumes this field and returns a shared Arrow projection.
+        pub fn into_arrow_ref(self) -> Result<FieldRef> {
+            let Self {
+                name,
+                dtype,
+                nullable,
+                dictionary_id,
+                dictionary_is_ordered,
+                metadata,
+                arrow,
+                widened: _,
+            } = self;
+            // The leaf holds its own datatype; the Arrow projection speaks the
+            // root's, so widen it once here.
+            let dtype = <D as crate::types::DataTypeValue>::into_dtype(dtype);
+            if let Some(field) = arrow.into_inner() {
+                return Ok(field);
+            }
+            let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
+            Ok(Arc::new(arrow_field_from_parts(
+                name.as_str(),
+                dtype.into_arrow()?,
+                nullable,
+                dictionary_id,
+                dictionary_is_ordered,
+                projected,
+            )))
         }
+    }
 
-        pub(crate) fn from_arrow_at_depth(value: &ArrowField, depth: usize) -> Result<Self> {
-            let (dtype, metadata) = imported_parts(value, depth)?;
-            let mut field = imported_field(value, dtype, metadata);
-            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
-            seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value.clone()));
-            Ok(field)
-        }
-
-        /// Imports a shared Arrow field without cloning its projection allocation.
-        pub fn from_arrow_ref(value: FieldRef) -> Result<Self> {
-            Self::from_arrow_ref_at_depth(value, 0)
-        }
-
-        pub(crate) fn from_arrow_ref_at_depth(value: FieldRef, depth: usize) -> Result<Self> {
-            let (dtype, metadata) = imported_parts(&value, depth)?;
-            let mut field = imported_field(&value, dtype, metadata);
-            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
-            seed_imported_arrow_cache(&mut field, cacheable, || value);
-            Ok(field)
-        }
-
-        pub(crate) fn from_arrow_owned_at_depth(value: ArrowField, depth: usize) -> Result<Self> {
-            let (dtype, metadata) = imported_parts(&value, depth)?;
-            let mut field = imported_field(&value, dtype, metadata);
-            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
-            seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value));
-            Ok(field)
-        }
-
+    impl Field {
         /// Projects this non-null Struct root Field as an Arrow schema.
         ///
         /// This is the schema an Arrow batch, an IPC stream, or a Parquet file
@@ -121,7 +206,6 @@ mod field {
         pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema> {
             crate::arrow::arrow_exchange_schema_from_field(&self)
         }
-
         /// Consumes this Field and projects it as an Arrow schema.
         ///
         /// # Errors
@@ -130,7 +214,6 @@ mod field {
         pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
             crate::arrow::arrow_schema_from_field(&self)
         }
-
         /// Apply this schema's metadata-declared columns to one Arrow batch.
         ///
         /// A [`Field`] states more about a batch than its shape: a
@@ -219,7 +302,6 @@ mod field {
         ) -> Result<arrow_array::RecordBatch> {
             AppliedPlan::compile(self, batch.schema(), digest, transform, cast, options)?.apply(batch)
         }
-
         /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
         ///
         /// A reader has to report its schema before it yields anything, and a
@@ -271,7 +353,6 @@ mod field {
         ) -> Result<arrow_schema::SchemaRef> {
             Ok(AppliedPlan::compile(self, schema, digest, transform, cast, options)?.schema)
         }
-
         /// Wrap a reader so every batch it yields has this schema applied.
         ///
         /// The stream form of [`Self::apply_arrow_batch`], and a reader for the
@@ -301,7 +382,6 @@ mod field {
             let plan = AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
             Ok(Box::new(AppliedReader { inner, plan }))
         }
-
         /// Materializes [`Field::default_value`] as an exact one-row array.
         ///
         /// The bounded core default planner selects the value under this Field's
@@ -315,117 +395,49 @@ mod field {
         pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
             crate::arrow::default_scalar_array(self)
         }
-
-        /// Projects this field to an owned Arrow C Data Interface schema.
+        /// Imports one complete Arrow schema as a non-null Struct root Field.
         ///
-        /// Name, metadata, nullability, dictionary ordering, and nested datatype
-        /// flags are preserved in one canonical core conversion.
-        pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
-            if let Some(field) = self.arrow.get() {
-                return arrow_field_to_ffi(field).map_err(Error::from);
-            }
-            let mut schema = self.dtype.clone().into_arrow_ffi()?;
-            let mut flags = schema.flags().unwrap_or_else(Flags::empty);
-            if self.nullable {
-                flags |= Flags::NULLABLE;
-            }
-            if self.dictionary_is_ordered {
-                flags |= Flags::DICTIONARY_ORDERED;
-            }
-            schema = schema.with_name(self.name())?.with_flags(flags)?;
-            // The datatype projection already carries the extension entries for an
-            // extension-typed field, but the C interface stores metadata as
-            // one buffer, so the replacement map must carry them again.
-            schema
-                .with_metadata(&projected_arrow_metadata(
-                    &self.dtype,
-                    self.metadata.clone().into_arrow(),
-                )?)
-                .map_err(Error::from)
-        }
-
-        /// Consumes this field and returns an owned Arrow field.
-        pub fn into_arrow(self) -> Result<ArrowField> {
-            let Self {
-                name,
-                dtype,
-                nullable,
-                dictionary_id,
-                dictionary_is_ordered,
-                metadata,
-                arrow,
-            } = self;
-            if let Some(field) = arrow.into_inner() {
-                return Ok(Arc::try_unwrap(field).unwrap_or_else(|field| field.as_ref().clone()));
-            }
-            let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
-            Ok(arrow_field_from_parts(
-                name.as_str(),
-                dtype.into_arrow()?,
-                nullable,
-                dictionary_id,
-                dictionary_is_ordered,
-                projected,
-            ))
-        }
-
-        /// Borrows this field's Arrow projection, building it once.
-        ///
-        /// [`Self::into_arrow_ref`] consumes the field, so a caller that still
-        /// needs it has to clone first and pays for the projection every time.
-        /// This borrows, and fills the same cache an Arrow import seeds and a
-        /// clone shares - so a field exported more than once is projected once.
-        /// Any effective change clears the cache, exactly as it does today.
+        /// Ordinary schema metadata becomes root metadata. The transport-only
+        /// dictionary-ID sidecar is consumed without entering Field metadata.
         ///
         /// # Errors
         ///
-        /// Returns an error when the datatype or its metadata has no valid Arrow
-        /// projection.
-        pub fn as_arrow_ref(&self) -> Result<&FieldRef> {
-            if let Some(field) = self.arrow.get() {
-                return Ok(field);
-            }
-            let projected = projected_arrow_metadata(&self.dtype, self.metadata.clone().into_arrow())?;
-            let built = Arc::new(arrow_field_from_parts(
-                self.name.as_str(),
-                self.dtype.clone().into_arrow()?,
-                self.nullable,
-                self.dictionary_id,
-                self.dictionary_is_ordered,
-                projected,
-            ));
-            let _ = self.arrow.set(built);
-            Ok(self
-                .arrow
-                .get()
-                .expect("the projection was just placed in the cache"))
+        /// Returns an error when the Arrow fields cannot form a non-null Struct
+        /// root or the dictionary-ID sidecar is invalid.
+        pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self> {
+            crate::arrow::field_from_arrow_schema(name, schema)
         }
-
-        /// Consumes this field and returns a shared Arrow projection.
-        pub fn into_arrow_ref(self) -> Result<FieldRef> {
-            let Self {
-                name,
-                dtype,
-                nullable,
-                dictionary_id,
-                dictionary_is_ordered,
-                metadata,
-                arrow,
-            } = self;
-            if let Some(field) = arrow.into_inner() {
-                return Ok(field);
-            }
-            let projected = projected_arrow_metadata(&dtype, metadata.into_arrow())?;
-            Ok(Arc::new(arrow_field_from_parts(
-                name.as_str(),
-                dtype.into_arrow()?,
-                nullable,
-                dictionary_id,
-                dictionary_is_ordered,
-                projected,
-            )))
+        /// Imports an Arrow field and seeds the projection cache.
+        pub fn from_arrow(value: &ArrowField) -> Result<Self> {
+            Self::from_arrow_at_depth(value, 0)
+        }
+        pub(crate) fn from_arrow_at_depth(value: &ArrowField, depth: usize) -> Result<Self> {
+            let (dtype, metadata) = imported_parts(value, depth)?;
+            let mut field = imported_field(value, dtype, metadata);
+            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
+            seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value.clone()));
+            Ok(field)
+        }
+        /// Imports a shared Arrow field without cloning its projection allocation.
+        pub fn from_arrow_ref(value: FieldRef) -> Result<Self> {
+            Self::from_arrow_ref_at_depth(value, 0)
+        }
+        pub(crate) fn from_arrow_ref_at_depth(value: FieldRef, depth: usize) -> Result<Self> {
+            let (dtype, metadata) = imported_parts(&value, depth)?;
+            let mut field = imported_field(&value, dtype, metadata);
+            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
+            seed_imported_arrow_cache(&mut field, cacheable, || value);
+            Ok(field)
+        }
+        pub(crate) fn from_arrow_owned_at_depth(value: ArrowField, depth: usize) -> Result<Self> {
+            let (dtype, metadata) = imported_parts(&value, depth)?;
+            let mut field = imported_field(&value, dtype, metadata);
+            let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
+            seed_imported_arrow_cache(&mut field, cacheable, || Arc::new(value));
+            Ok(field)
         }
     }
+
 
     fn seed_imported_arrow_cache(
         field: &mut Field,
@@ -433,13 +445,13 @@ mod field {
         projection: impl FnOnce() -> FieldRef,
     ) {
         if cacheable {
-            field.arrow = OnceLock::from(projection());
+            field.seed_arrow_cache(projection());
         }
     }
 
     fn imported_arrow_is_cacheable(field: &Field, arrow_metadata: &HashMap<String, String>) -> bool {
-        field.metadata.matches_arrow(arrow_metadata)
-            && field.dtype.arrow_import_is_projection_equivalent()
+        field.as_metadata().matches_arrow(arrow_metadata)
+            && field.dtype().arrow_import_is_projection_equivalent()
     }
 
     /// The core identity an Arrow field's extension metadata declares, when it
@@ -560,7 +572,7 @@ mod field {
                 let Some(document) = document else {
                     return Ok(None);
                 };
-                let parameters = StringParameters::from_extension_json(document).map_err(|error| {
+                let parameters = StringType::from_extension_json(document).map_err(|error| {
                     Error::InvalidMetadataValue {
                         key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
                         reason: format_smolstr!("{error}"),
@@ -579,7 +591,7 @@ mod field {
                 let Some(document) = document else {
                     return Ok(None);
                 };
-                let parameters = BytesParameters::from_extension_json(document).map_err(|error| {
+                let parameters = BytesType::from_extension_json(document).map_err(|error| {
                     Error::InvalidMetadataValue {
                         key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
                         reason: format_smolstr!("{error}"),
@@ -716,15 +728,17 @@ mod field {
     fn imported_field(value: &ArrowField, dtype: DataType, metadata: Metadata) -> Field {
         #[allow(deprecated)]
         let dictionary_id = value.dict_id().unwrap_or_default();
-        Field {
-            name: value.name().into(),
+        let mut field = Field::new_with_metadata(
+            value.name(),
             dtype,
-            nullable: value.is_nullable(),
-            dictionary_id,
-            dictionary_is_ordered: value.dict_is_ordered().unwrap_or_default(),
+            value.is_nullable(),
             metadata,
-            arrow: OnceLock::new(),
-        }
+        );
+        field.set_dictionary_options_unchecked(
+            dictionary_id,
+            value.dict_is_ordered().unwrap_or_default(),
+        );
+        field
     }
 
     /// Builds a field C schema while retaining flags already owned by its datatype.

@@ -1,4 +1,3 @@
-use yggdryl::types::{enums, mapping, runend, sequence};
 use yggdryl::{DataType, Field, UnionMode};
 
 use super::typed::assert_typed_marker;
@@ -6,22 +5,22 @@ use super::typed::assert_typed_marker;
 #[test]
 fn nested_markers_cover_every_child_layout() {
     let item = || Field::new("item", DataType::utf8(), true);
-    assert_typed_marker::<yggdryl::types::ListTypeMarker>(DataType::list(item()));
-    assert_typed_marker::<yggdryl::types::ListViewTypeMarker>(DataType::list_view(item()));
-    assert_typed_marker::<sequence::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
-    assert_typed_marker::<yggdryl::types::LargeListTypeMarker>(DataType::large_list(item()));
-    assert_typed_marker::<sequence::LargeListViewType>(DataType::large_list_view(item()));
-    assert_typed_marker::<yggdryl::types::StructTypeMarker>(DataType::from_fields([item()]).unwrap());
+    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::list(item()));
+    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::list_view(item()));
+    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::fixed_size_list(item(), 3).unwrap());
+    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::large_list(item()));
+    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::large_list_view(item()));
+    assert_typed_marker::<yggdryl::types::StructureType>(DataType::from_fields([item()]).unwrap());
     assert_typed_marker::<yggdryl::types::UnionType>(
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
     );
-    assert_typed_marker::<enums::DictionaryTypeMarker>(
+    assert_typed_marker::<yggdryl::types::EnumType>(
         DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
     );
-    assert_typed_marker::<mapping::MapTypeMarker>(
+    assert_typed_marker::<yggdryl::types::MappingType>(
         DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
     );
-    assert_typed_marker::<runend::RunEndEncodedTypeMarker>(
+    assert_typed_marker::<yggdryl::types::RunEndType>(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
             Field::new("values", DataType::utf8(), true),

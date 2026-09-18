@@ -7,7 +7,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::BytesParameters;
+use crate::types::BytesType;
 use crate::types::protocol::{DigestField, DigestFieldMut};
 use crate::{DigestAlgorithm, Error, Field, Result, TimeUnit};
 
@@ -70,7 +70,7 @@ fn coupled_holder_width(field: &Field) -> Option<u32> {
     field
         .dtype()
         .bytes_parameters()
-        .and_then(BytesParameters::fixed)
+        .and_then(BytesType::fixed)
 }
 
 impl DigestField<'_> {

@@ -128,12 +128,12 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
 
 fn field_snapshots_identical(left: &Field, right: &Field, with_metadata: bool) -> bool {
     std::ptr::eq(left, right)
-        || left.name == right.name
-            && left.nullable == right.nullable
-            && left.dictionary_id == right.dictionary_id
-            && left.dictionary_is_ordered == right.dictionary_is_ordered
-            && dtype_snapshots_identical(&left.dtype, &right.dtype)
-            && (!with_metadata || left.metadata.shares_storage_with(&right.metadata))
+        || left.name() == right.name()
+            && left.is_nullable() == right.is_nullable()
+            && left.dictionary_id() == right.dictionary_id()
+            && left.dictionary_is_ordered() == right.dictionary_is_ordered()
+            && dtype_snapshots_identical(&left.dtype(), &right.dtype())
+            && (!with_metadata || left.as_metadata().shares_storage_with(&right.as_metadata()))
 }
 
 impl DiffEngine {
@@ -170,43 +170,43 @@ impl DiffEngine {
     }
 
     fn compare_field(&mut self, left: Field, right: Field, path: String) {
-        if left.name != right.name {
+        if left.name() != right.name() {
             self.pending.push_back(changed_debug(
                 &property_path(&path, "name"),
                 left.name(),
                 right.name(),
             ));
         }
-        if left.nullable != right.nullable {
+        if left.is_nullable() != right.is_nullable() {
             self.pending.push_back(changed_display(
                 &property_path(&path, "nullable"),
-                left.nullable,
-                right.nullable,
+                left.is_nullable(),
+                right.is_nullable(),
             ));
         }
-        if left.dictionary_id != right.dictionary_id {
+        if left.dictionary_id() != right.dictionary_id() {
             self.pending.push_back(changed_display(
                 &property_path(&path, "dictionary_id"),
-                left.dictionary_id,
-                right.dictionary_id,
+                left.dictionary_id().unwrap_or_default(),
+                right.dictionary_id().unwrap_or_default(),
             ));
         }
-        if left.dictionary_is_ordered != right.dictionary_is_ordered {
+        if left.dictionary_is_ordered() != right.dictionary_is_ordered() {
             self.pending.push_back(changed_display(
                 &property_path(&path, "dictionary_is_ordered"),
-                left.dictionary_is_ordered,
-                right.dictionary_is_ordered,
+                left.dictionary_is_ordered().unwrap_or_default(),
+                right.dictionary_is_ordered().unwrap_or_default(),
             ));
         }
         // Push metadata first so the LIFO engine can yield an early physical
         // datatype difference without scanning a distinct, equal wide map.
-        if self.with_metadata && !left.metadata.shares_storage_with(&right.metadata) {
+        if self.with_metadata && !left.as_metadata().shares_storage_with(&right.as_metadata()) {
             self.push_metadata(&left, &right, path.clone());
         }
-        if !dtype_snapshots_identical(&left.dtype, &right.dtype) {
+        if !dtype_snapshots_identical(&left.dtype(), &right.dtype()) {
             self.work.push(Work::DataType {
-                left: left.dtype.clone(),
-                right: right.dtype.clone(),
+                left: left.dtype().clone(),
+                right: right.dtype().clone(),
                 path: property_path(&path, "dtype"),
             });
         }
@@ -214,8 +214,8 @@ impl DiffEngine {
 
     fn push_metadata(&mut self, left: &Field, right: &Field, path: String) {
         self.work.push(Work::Metadata {
-            left: left.metadata.clone(),
-            right: right.metadata.clone(),
+            left: left.as_metadata().clone(),
+            right: right.as_metadata().clone(),
             left_after: None,
             right_after: None,
             path,
@@ -905,11 +905,11 @@ pub(crate) fn fields_equal(left: &Field, right: &Field, with_metadata: bool) -> 
     if with_metadata {
         return left == right;
     }
-    left.name == right.name
-        && dtypes_equal(&left.dtype, &right.dtype, false)
-        && left.nullable == right.nullable
-        && left.dictionary_id == right.dictionary_id
-        && left.dictionary_is_ordered == right.dictionary_is_ordered
+    left.name() == right.name()
+        && dtypes_equal(&left.dtype(), &right.dtype(), false)
+        && left.is_nullable() == right.is_nullable()
+        && left.dictionary_id() == right.dictionary_id()
+        && left.dictionary_is_ordered() == right.dictionary_is_ordered()
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1065,9 +1065,9 @@ impl Field {
     /// Compares nested layout while deliberately ignoring all metadata.
     pub fn layout_eq(&self, other: &Self) -> bool {
         std::ptr::eq(self, other)
-            || self.name == other.name
-                && self.nullable == other.nullable
-                && dtype_layout_eq(&self.dtype, &other.dtype)
+            || self.name() == other.name()
+                && self.is_nullable() == other.is_nullable()
+                && dtype_layout_eq(&self.dtype(), &other.dtype())
     }
 
     /// Returns a deterministic cross-language hash of canonical display output.
@@ -1214,7 +1214,7 @@ mod tests {
 
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype().fields[0].name: \"left_0000\" → \"right_0000\"")
         );
         assert!(differences.engine.work.len() <= 2);
         assert!(differences.engine.pending.is_empty());
@@ -1228,7 +1228,7 @@ mod tests {
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype.field_count: 0 → 1024")
+            Some("≠ $.dtype().field_count: 0 → 1024")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1241,13 +1241,13 @@ mod tests {
             .collect::<Vec<_>>();
         let left = Field::from_parts("root", DataType::Int32, false, entries.clone()).unwrap();
         let right = Field::from_parts("root", DataType::Int64, false, entries).unwrap();
-        assert!(!left.metadata.shares_storage_with(&right.metadata));
+        assert!(!left.as_metadata().shares_storage_with(&right.as_metadata()));
 
         let mut differences = Differences::from_fields(&left, &right, true, false);
         assert_eq!(differences.engine.work.len(), 1);
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype.kind: int32 → int64")
+            Some("≠ $.dtype().kind: int32 → int64")
         );
         assert_eq!(differences.engine.work.len(), 1);
         assert!(differences.engine.pending.is_empty());
@@ -1279,7 +1279,7 @@ mod tests {
         );
         assert_eq!(
             differences.next().as_deref(),
-            Some("≠ $.dtype.fields[0].name: \"left_0000\" → \"right_0000\"")
+            Some("≠ $.dtype().fields[0].name: \"left_0000\" → \"right_0000\"")
         );
     }
 }

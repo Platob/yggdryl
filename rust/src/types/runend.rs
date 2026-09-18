@@ -8,7 +8,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::types::structure::cmp_fields;
 use smol_str::format_smolstr;
 use crate::types::invalid;
-use crate::types::typed::define_field_types;
 use crate::{
     DataType, Field, Result,
 };
@@ -100,8 +99,3 @@ pub(crate) fn validate_run_ends(run_ends: &Field) -> Result<()> {
     Ok(())
 }
 
-define_field_types!(
-    RunEndEncodedTypeMarker,
-    RunEndEncoded,
-    crate::DataType::RunEndEncoded(_)
-);

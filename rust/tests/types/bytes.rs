@@ -1,10 +1,10 @@
-use yggdryl::types::{Bytes, BytesLayout, BytesParameters, DataType};
+use yggdryl::types::{Bytes, BytesLayout, BytesType, DataType};
 use yggdryl::{Field, Scalar, Scheme};
 
 /// Bytes bounded to `max` on the `binary` layout.
 fn bounded_binary(max: u32) -> DataType {
     DataType::bytes(
-        BytesParameters::new(BytesLayout::Binary)
+        BytesType::new(BytesLayout::Binary)
             .try_with_bound(max)
             .unwrap(),
     )

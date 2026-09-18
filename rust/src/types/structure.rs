@@ -11,7 +11,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::metadata::FIELD_PARTITION_KEY;
 
 use crate::types::family::DataTypeValue;
-use crate::types::typed::define_field_types;
 use crate::types::sequence::SequenceType;
 use std::collections::{BTreeMap, HashSet};
 use crate::types::family::{Children, NestedValue};
@@ -20,8 +19,7 @@ use crate::types::invalid;
 use crate::Scalar;
 use crate::types::enums::EnumType;
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Field, Result, TypedField,
-};
+    DataType, DataTypeId, DataTypeKind, Error, Field, Result, };
 
 impl DataType {
 
@@ -791,7 +789,7 @@ impl Field {
     /// Returns whether this field is a struct, and therefore usable as a
     /// record schema root.
     pub fn is_struct(&self) -> bool {
-        self.dtype.as_fields().is_some()
+        self.dtype().as_fields().is_some()
     }
 
     /// Returns the struct children of this field, or an empty slice.
@@ -799,17 +797,17 @@ impl Field {
     /// A struct `Field` is the schema of the rows it describes, so this is the
     /// column list every interop layer projects from.
     pub fn fields(&self) -> &[Field] {
-        self.dtype.as_fields().unwrap_or_default()
+        self.dtype().as_fields().unwrap_or_default()
     }
 
     /// Returns the number of struct children.
     pub fn field_len(&self) -> usize {
-        self.dtype.field_len()
+        self.dtype().field_len()
     }
 
     /// Returns one nested child by position.
     pub fn get_field_at(&self, index: usize) -> Option<&Field> {
-        self.dtype.get_field_at(index)
+        self.dtype().get_field_at(index)
     }
 
     /// Returns one nested child by path, an exact name first.
@@ -818,7 +816,7 @@ impl Field {
     /// that makes a list transparent - `orders.price` reaches the price of an
     /// `array<struct>` item; this node's datatype is where it starts.
     pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
-        self.dtype.get_field_by_path(path)
+        self.dtype().get_field_by_path(path)
     }
 
     /// Returns one nested child by position or by path.
@@ -839,7 +837,7 @@ impl Field {
     /// # }
     /// ```
     pub fn get_field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&Field> {
-        self.dtype.get_field(key)
+        self.dtype().get_field(key)
     }
 
     /// Returns one nested child by position, naming what is there when absent.
@@ -848,7 +846,7 @@ impl Field {
     ///
     /// Returns an error when this node has no child at that position.
     pub fn field_at(&self, index: usize) -> Result<&Field> {
-        self.dtype.field_at(index)
+        self.dtype().field_at(index)
     }
 
     /// Returns one nested child by path, naming what is there when absent.
@@ -858,7 +856,7 @@ impl Field {
     /// Returns an error when no child carries that name and no decomposition
     /// of it resolves.
     pub fn field_by_path(&self, path: &str) -> Result<&Field> {
-        self.dtype.field_by_path(path)
+        self.dtype().field_by_path(path)
     }
 
     /// Returns one nested child by position or by path, raising when absent.
@@ -868,7 +866,7 @@ impl Field {
     /// Returns the error [`Self::field_at`] or [`Self::field_by_path`] raises,
     /// whichever the key selects.
     pub fn field<'key>(&self, key: impl Into<FieldKey<'key>>) -> Result<&Field> {
-        self.dtype.field(key)
+        self.dtype().field(key)
     }
 
     /// Returns the position of the first struct child with an exact name.
@@ -947,7 +945,7 @@ impl Field {
     /// # }
     /// ```
     pub fn unnest_fields(&self) -> Vec<Self> {
-        self.dtype.unnest_fields()
+        self.dtype().unnest_fields()
     }
 
     /// Returns this field's children with every collection replaced by what it
@@ -955,7 +953,7 @@ impl Field {
     ///
     /// [`DataType::explode_fields`] carries the rule.
     pub fn explode_fields(&self) -> Vec<Self> {
-        self.dtype.explode_fields()
+        self.dtype().explode_fields()
     }
 
     /// Returns this struct root without the named children.
@@ -1194,7 +1192,7 @@ impl Field {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
-                path: format_smolstr!("$.{}[{index}]", self.name),
+                path: format_smolstr!("$.{}[{index}]", self.name()),
                 reason: crate::text::expected_got(
                     format_smolstr!("a child position below {}", fields.len()),
                     format_smolstr!("{index}"),
@@ -1241,7 +1239,7 @@ impl Field {
     /// Returns an error when this field is not a struct or the resulting child
     /// set does not validate. Failure leaves `self` unchanged.
     pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()> {
-        let mut dtype = self.dtype.clone();
+        let mut dtype = self.dtype().clone();
         dtype.set_field_by_path(path, child)?;
         self.set_dtype(dtype)
     }
@@ -1270,7 +1268,7 @@ impl Field {
         let mut fields = self.struct_children()?;
         if index >= fields.len() {
             return Err(Error::InvalidRecord {
-                path: format_smolstr!("$.{}[{index}]", self.name),
+                path: format_smolstr!("$.{}[{index}]", self.name()),
                 reason: crate::text::expected_got(
                     format_smolstr!("a child position below {}", fields.len()),
                     format_smolstr!("{index}"),
@@ -1308,7 +1306,7 @@ impl Field {
     /// `name`, or when the resulting child set does not validate. Failure
     /// leaves `self` unchanged.
     pub fn remove_field_by_path(&mut self, path: &str) -> Result<Self> {
-        let mut dtype = self.dtype.clone();
+        let mut dtype = self.dtype().clone();
         let removed = dtype.remove_field_by_path(path)?;
         self.set_dtype(dtype)?;
         Ok(removed)
@@ -1334,13 +1332,13 @@ impl Field {
     /// result is rebuilt through [`Self::set_dtype`], so read, clone, and
     /// projection paths never pay for a caller's edit.
     fn struct_children(&self) -> Result<Vec<Self>> {
-        match self.dtype.as_fields() {
+        match self.dtype().as_fields() {
             Some(fields) => Ok(fields.to_vec()),
             None => Err(Error::InvalidRecord {
-                path: format_smolstr!("$.{}", self.name),
+                path: format_smolstr!("$.{}", self.name()),
                 reason: crate::text::expected_got(
                     "a struct field whose children can be replaced",
-                    format_smolstr!("{}", self.dtype),
+                    format_smolstr!("{}", self.dtype()),
                 ),
             }),
         }
@@ -1397,14 +1395,7 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
-define_field_types!(
-    StructTypeMarker,
-    Struct,
-    crate::DataType::Structure(crate::types::StructureType::Struct(_))
-);
 
-/// A struct-typed field.
-pub type StructField = TypedField<StructTypeMarker>;
 
 // ------------------------------------------------------------------------
 // The structure family: named children, and the two-child leaf beside them.
@@ -1611,9 +1602,9 @@ impl DataTypeValue for StructureType {
         DataType::Structure(self)
     }
 
-    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Structure(family) => Some(family),
+            DataType::Structure(family) => Some(family.clone()),
             _ => None,
         }
     }

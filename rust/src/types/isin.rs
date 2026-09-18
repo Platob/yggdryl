@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use crate::types;
 use crate::types::code::{CodeValue, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 /// One validated ISO 6166 international securities identification number.
 ///
@@ -216,7 +216,5 @@ impl DataType {
 }
 
 // /// An ISIN-typed field: ISO 6166's securities identification number.
-define_field_types!(IsinType, Isin, crate::DataType::Isin);
+define_field_types!(IsinType, Isin);
 
-/// A field of this code.
-pub type IsinField = TypedField<IsinType>;

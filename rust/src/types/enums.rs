@@ -18,7 +18,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::format_smolstr;
 use crate::types::family::DataTypeValue;
 use crate::types::invalid;
-use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, DataTypeKind, Result};
 
 /// Shared dictionary key and value types.
@@ -121,9 +120,9 @@ impl DataTypeValue for EnumType {
         DataType::Enum(self)
     }
 
-    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Enum(family) => Some(family),
+            DataType::Enum(family) => Some(family.clone()),
             _ => None,
         }
     }
@@ -166,11 +165,6 @@ pub(crate) fn validate_dictionary_key(key: &DataType) -> Result<()> {
     }
 }
 
-define_field_types!(
-    DictionaryTypeMarker,
-    Dictionary,
-    crate::DataType::Enum(crate::types::EnumType::Dictionary(_))
-);
 
 fn is_valid_dictionary_key(key: &DataType) -> bool {
     key.is_integer()

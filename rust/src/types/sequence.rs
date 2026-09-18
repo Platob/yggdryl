@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use crate::types::dtype::validate_non_negative;
 use crate::types::family::DataTypeValue;
-use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
 use serde::{Deserialize, Serialize};
 use crate::types::family::{Children, NestedValue};
@@ -150,9 +149,9 @@ impl DataTypeValue for SequenceType {
         DataType::Sequence(self)
     }
 
-    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Sequence(family) => Some(family),
+            DataType::Sequence(family) => Some(family.clone()),
             _ => None,
         }
     }
@@ -201,33 +200,21 @@ impl DataType {
     }
 
     /// Returns the sequence family payload of a sequence datatype.
-    pub fn as_sequence_type(&self) -> Option<&SequenceType> {
+    pub fn as_sequence_type(&self) -> Option<SequenceType> {
         SequenceType::from_dtype(self)
     }
 
     /// Returns the item field of a list-shaped datatype.
     pub(crate) fn list_item(&self) -> Option<&Field> {
-        self.as_sequence_type().map(SequenceType::item)
+        match self {
+            Self::Sequence(sequence) => Some(sequence.item()),
+            _ => None,
+        }
     }
 }
 
-define_field_types!(
-    ListTypeMarker,
-    List,
-    crate::DataType::Sequence(crate::types::SequenceType::List(_))
-);
 
-define_field_types!(
-    ListViewTypeMarker,
-    ListView,
-    crate::DataType::Sequence(crate::types::SequenceType::ListView(_))
-);
 
-define_field_types!(
-    LargeListTypeMarker,
-    LargeList,
-    crate::DataType::Sequence(crate::types::SequenceType::LargeList(_))
-);
 
 /// One ordered sequence of scalar children.
 #[repr(transparent)]
@@ -268,17 +255,7 @@ impl NestedValue for Sequence {
     }
 }
 
-define_field_types!(
-    FixedSizeListType,
-    FixedSizeList,
-    crate::DataType::Sequence(crate::types::SequenceType::FixedSizeList(..))
-);
 
-define_field_types!(
-    LargeListViewType,
-    LargeListView,
-    crate::DataType::Sequence(crate::types::SequenceType::LargeListView(_))
-);
 
 impl Value for Sequence {
     fn dtype(&self) -> Result<DataType> {

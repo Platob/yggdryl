@@ -120,9 +120,9 @@ pub use types::protocol::{
 pub use types::timezone::Timezone;
 pub use types::{
     Bytes, Children, CodeValue, Decimal, DecimalValue, Differences, Field, FieldRecord, FieldRef,
-    FieldScalar, FieldType, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
+    FieldScalar, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
     OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, Str, TemporalFamily,
-    TemporalValue, TypedField, TypedFieldRef, Value, Vocabulary,
+    TemporalValue, Value, Vocabulary,
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,

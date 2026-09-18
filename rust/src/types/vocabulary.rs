@@ -99,7 +99,7 @@ use super::parser::normalized;
 const fn fixed_ascii(width: u32) -> DataType {
     match std::num::NonZeroU32::new(width) {
         Some(width) => DataType::String(
-            super::StringParameters::ascii(super::StringLayout::FixedString).with_bound(width),
+            super::StringType::ascii(super::StringLayout::FixedString).with_bound(width),
         ),
         // Every width in the listing is a literal above zero.
         None => DataType::ascii(),

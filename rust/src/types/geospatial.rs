@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::parser::Parser;
-use crate::types::typed::define_field_types;
-use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, TypedField, Value};
+use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, Value};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -387,13 +386,8 @@ impl DataType {
 // Geometry and geography field markers.
 // ------------------------------------------------------------------------
 
-define_field_types!(GeometryType, Geometry, crate::DataType::Geometry(_));
-define_field_types!(GeographyType, Geography, crate::DataType::Geography(_));
 
-/// A geometry-typed field.
-pub type GeometryField = TypedField<GeometryType>;
-/// A geography-typed field.
-pub type GeographyField = TypedField<GeographyType>;
+
 
 // ------------------------------------------------------------------------
 // Geospatial datatype grammar.

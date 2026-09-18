@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use crate::types::scalar::Value;
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Url};
+use crate::{DataType, Result, Scalar, Url};
 
 /// Arrow casts owned by the URL datatype.
 pub(crate) mod casts {
@@ -84,10 +84,8 @@ pub(crate) mod casts {
 // URL field marker and typed aliases.
 // ------------------------------------------------------------------------
 
-define_field_types!(UrlType, Url, crate::DataType::Url);
+define_field_types!(UrlType, Url);
 
-/// A URL-typed field.
-pub type UrlField = TypedField<UrlType>;
 
 // ------------------------------------------------------------------------
 // [`Url`] as a scalar value.

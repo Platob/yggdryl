@@ -513,32 +513,30 @@ fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
 
 #[test]
 fn the_typed_field_and_scalar_aliases_name_their_code() {
-    let ccy = CurrencyField::new("ccy", false);
-    let venue = MicField::new("venue", true);
-    let iso = CountryField::new("iso", true);
-    let cfi = CfiField::new("classification", true);
+    let ccy = CurrencyField::unit("ccy", false);
+    let venue = MicField::unit("venue", true);
+    let iso = CountryField::unit("iso", true);
+    let cfi = CfiField::unit("classification", true);
 
-    assert_eq!(ccy.as_field().dtype(), &DataType::Currency);
-    assert_eq!(venue.as_field().dtype(), &DataType::Mic);
-    assert_eq!(iso.as_field().dtype(), &DataType::Country);
-    assert_eq!(cfi.as_field().dtype(), &DataType::Cfi);
+    let ccy_field = ccy.to_field();
+    let venue_field = venue.to_field();
+    assert_eq!(ccy_field.dtype(), &DataType::Currency);
+    assert_eq!(venue_field.dtype(), &DataType::Mic);
+    assert_eq!(iso.to_field().dtype(), &DataType::Country);
+    assert_eq!(cfi.to_field().dtype(), &DataType::Cfi);
 
     // The pairing is the field's value contract, so the text becomes the code
     // leaf on the way in.
-    let value = FieldScalar::new(ccy.as_field(), "USD").unwrap();
+    let value = FieldScalar::new(&ccy_field, "USD").unwrap();
     assert_eq!(value.dtype(), &DataType::Currency);
     assert_eq!(value.name(), "ccy");
     assert_eq!(value.as_str(), Some("USD"));
     assert_eq!(value.value().id(), DataTypeId::Currency);
 
-    // The marker checks the datatype, so a width is not a code.
+    // The leaf is the datatype's, so a width of the same size is not a code.
     let plain = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
-    assert!(
-        plain
-            .try_into_typed::<yggdryl::types::CurrencyType>()
-            .is_err()
-    );
-    assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
+    assert!(CurrencyField::try_from_field(plain).is_err());
+    assert!(FieldScalar::new(&venue_field, "XPARIS").is_err());
 
     // A typed field hands back the exact array its code stores as, which is
     // text: the marker names the array type at compile time, so a storage

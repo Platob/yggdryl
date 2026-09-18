@@ -239,7 +239,7 @@ pub(super) fn stage_writes(
         root.name(),
         dtype,
         root.is_nullable(),
-        root.metadata.clone(),
+        root.as_metadata().clone(),
     );
     Ok((field, values, indexed))
 }
@@ -436,7 +436,7 @@ impl FixMsg {
             field.name(),
             DataType::from_fields(members)?,
             field.is_nullable(),
-            field.metadata.clone(),
+            field.as_metadata().clone(),
         );
         let plan = super::schema::column_plan_of(&field, &registry)?;
         let tags = tag_positions(&plan);
@@ -489,7 +489,7 @@ impl FixMsg {
             field.name(),
             DataType::from_fields(members)?,
             field.is_nullable(),
-            field.metadata.clone(),
+            field.as_metadata().clone(),
         );
         self.value = Scalar::from_sequence(kept);
         let plan = super::schema::column_plan_of(&self.field, &self.registry)?;
@@ -1160,7 +1160,7 @@ impl FixMsg {
             self.field.name(),
             dtype,
             self.field.is_nullable(),
-            self.field.metadata.clone(),
+            self.field.as_metadata().clone(),
         )
     }
 

@@ -9,7 +9,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::types::structure::cmp_fields;
 use crate::types::dtype::invalid;
-use crate::types::typed::define_field_types;
 use smol_str::format_smolstr;
 use crate::{
     DataType, Field, Result, UnionMode,
@@ -209,8 +208,6 @@ impl DataType {
         Self::union(fields, UnionMode::Dense)
     }
 }
-
-define_field_types!(UnionType, Union, crate::DataType::Union(..));
 
 impl<'a> IntoIterator for &'a UnionFields {
     type Item = (i8, &'a Field);

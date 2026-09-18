@@ -29,7 +29,6 @@ use crate::types::family::NestedValue;
 use crate::types::structure::cmp_fields;
 use crate::types::scalar::Value;
 use crate::types::invalid;
-use crate::types::typed::define_field_types;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar,
 };
@@ -182,9 +181,9 @@ impl DataTypeValue for MappingType {
         DataType::Mapping(self)
     }
 
-    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Mapping(family) => Some(family),
+            DataType::Mapping(family) => Some(family.clone()),
             _ => None,
         }
     }
@@ -233,7 +232,7 @@ impl DataType {
     }
 
     /// Returns the mapping family payload of a mapping datatype.
-    pub fn as_mapping(&self) -> Option<&MappingType> {
+    pub fn as_mapping(&self) -> Option<MappingType> {
         MappingType::from_dtype(self)
     }
 }
@@ -444,4 +443,3 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     Ok(())
 }
 
-define_field_types!(MapTypeMarker, Map, crate::DataType::Mapping(_));

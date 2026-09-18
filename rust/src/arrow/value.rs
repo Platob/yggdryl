@@ -9,9 +9,9 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    BLOOMBERG_WIDTH, Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
+    BLOOMBERG_WIDTH, Bytes, BytesLayout, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
     CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
-    StringLayout, StringParameters, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
+    StringLayout, StringType, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
     uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
@@ -1371,7 +1371,7 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
 /// maximum is the column's rule and was checked at the value door, and a
 /// fixed width is exactly what each value must hold, which Arrow checks as
 /// it builds the slots.
-fn bytes_array(parameters: BytesParameters, values: &[&Scalar]) -> Result<ArrayRef> {
+fn bytes_array(parameters: BytesType, values: &[&Scalar]) -> Result<ArrayRef> {
     parameters.validate()?;
     let cells = values
         .iter()
@@ -1397,7 +1397,7 @@ fn bytes_array(parameters: BytesParameters, values: &[&Scalar]) -> Result<ArrayR
 /// The cell is the column's own storage, so it is adopted as it stands: a
 /// short payload is copied inline and a long one is shared once, with no
 /// `Vec` on the way.
-fn bytes_value(parameters: BytesParameters, array: &dyn Array, index: usize) -> Result<Scalar> {
+fn bytes_value(parameters: BytesType, array: &dyn Array, index: usize) -> Result<Scalar> {
     let cell = match parameters.layout() {
         BytesLayout::FixedSizeBinary => downcast::<FixedSizeBinaryArray>(array)?.value(index),
         BytesLayout::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
@@ -1459,7 +1459,7 @@ fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Resul
 /// that is what they hold. Every other charset is stored as the matching
 /// *binary* layout: the bytes are not UTF-8, and an Arrow reader told
 /// otherwise would read mojibake and call it text.
-fn string_array(parameters: StringParameters, values: &[&Scalar]) -> Result<ArrayRef> {
+fn string_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> {
     let charset = parameters.charset();
     // A fixed width pads into its slot; nothing else in this family does.
     if let Some(width) = parameters.fixed() {
@@ -1623,7 +1623,7 @@ fn binary_view_from_parts(
 /// as it stands. Binary storage goes through [`Str::from_bytes`], the one
 /// door bytes take into a string value: a fixed slot is trimmed of its
 /// padding, and a legacy charset is transcribed rather than refused.
-fn string_value(parameters: StringParameters, array: &dyn Array, index: usize) -> Result<Scalar> {
+fn string_value(parameters: StringType, array: &dyn Array, index: usize) -> Result<Scalar> {
     let text = if parameters.is_fixed() {
         Str::from_bytes(
             downcast::<FixedSizeBinaryArray>(array)?.value(index),

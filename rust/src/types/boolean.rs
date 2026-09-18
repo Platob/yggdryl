@@ -13,20 +13,12 @@ use crate::{DataType, Result, Value};
 // ------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------
-// Null and Boolean field markers.
+// Null and Boolean datatypes: neither carries a parameter.
 // ------------------------------------------------------------------------
 
-define_field_types!(
-    /// A field whose datatype is [`crate::DataType::Null`].
-    NullType, Null,
-    crate::DataType::Null
-);
+define_field_types!(NullType, Null);
 
-define_field_types!(
-    /// A field whose datatype is [`crate::DataType::Boolean`].
-    BooleanType, Boolean,
-    crate::DataType::Boolean
-);
+define_field_types!(BooleanType, Boolean);
 
 // ------------------------------------------------------------------------
 // Null and Boolean values and typed scalar aliases.

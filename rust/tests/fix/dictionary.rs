@@ -519,11 +519,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// every sequence, struct and mapping in the dictionary hashes one level
 /// deeper than it did. `identifiers` and `metadata` also declare sorted keys, so they are
 /// `sorted_map` rather than `map` beside a flag, and their entries are the
-/// `struct2` pair rather than a struct that happens to hold two children.
+/// `struct2` pair rather than a struct that happens to hold two children. It
+/// last moved when a field became an enum over its leaves: a field hashes the
+/// datatype its leaf holds rather than the `DataType` it widens to, so every
+/// field in the dictionary hashes one discriminant less than it did.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 14_324_221_365_283_314_705);
+    assert_eq!(registry.stable_hash(), 3_520_173_249_555_740_832);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

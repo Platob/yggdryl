@@ -9,7 +9,7 @@ use crate::types;
 use crate::types::code::identifier_value;
 use crate::types::code::{CodeValue, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 /// One validated SEDOL securities identifier.
 ///
@@ -175,7 +175,5 @@ impl DataType {
 }
 
 // /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
-define_field_types!(SedolType, Sedol, crate::DataType::Sedol);
+define_field_types!(SedolType, Sedol);
 
-/// A field of this code.
-pub type SedolField = TypedField<SedolType>;

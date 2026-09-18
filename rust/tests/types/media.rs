@@ -272,12 +272,13 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
         DataType::MimeType
     );
 
-    let typed = MimeTypeField::new("held", true);
+    let typed = MimeTypeField::unit("held", true);
     assert_eq!(typed.dtype(), &DataType::MimeType);
-    assert!(FieldScalar::new(typed.as_field(), 7_i64).is_err());
-    let typed = MediaTypeField::new("held", true);
+    assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
+    let typed = MediaTypeField::unit("held", true);
     assert_eq!(typed.dtype(), &DataType::MediaType);
-    let scalar = FieldScalar::new(typed.as_field(), media("text/csv")).unwrap();
+    let typed_field = typed.to_field();
+    let scalar = FieldScalar::new(&typed_field, media("text/csv")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::MediaType);
 }
 

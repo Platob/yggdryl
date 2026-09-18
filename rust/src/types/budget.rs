@@ -541,7 +541,7 @@ mod limits {
         fn add_bytes_rows(
             &mut self,
             rows: usize,
-            parameters: crate::types::BytesParameters,
+            parameters: crate::types::BytesType,
         ) -> Result<()> {
             use arrow_schema::DataType as ArrowDataType;
 
@@ -561,7 +561,7 @@ mod limits {
         fn add_string_rows(
             &mut self,
             rows: usize,
-            parameters: crate::types::StringParameters,
+            parameters: crate::types::StringType,
         ) -> Result<()> {
             use crate::types::StringLayout;
 

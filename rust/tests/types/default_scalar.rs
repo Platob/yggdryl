@@ -275,6 +275,21 @@ fn nullable_dictionary_null_keys_decode_as_native_null() {
 
 #[test]
 fn foreign_arrays_preflight_deep_caller_built_schemas_before_arrow_projection() {
+    // Sixty-three levels of nesting is a deep recursive walk, and a debug
+    // frame is wide: a `Field` is an enum over its leaves, so reading one is a
+    // match rather than a field read and the walk costs more stack than the
+    // default two megabytes a test thread gets. The guard under test is the
+    // parser's hard limit, not the stack, so the depth is given room rather
+    // than lowered.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(deep_preflight)
+        .expect("the test thread starts")
+        .join()
+        .expect("the deep walk completes");
+}
+
+fn deep_preflight() {
     let mut maximum = DataType::Int32;
     for _ in 0..DataType::PARSE_RECURSION_LIMIT - 1 {
         maximum = DataType::list(Field::new("item", maximum, false));

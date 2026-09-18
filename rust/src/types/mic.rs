@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use crate::types;
 use crate::types::code::{CodeValue, code_leaf, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 code_leaf!(Mic, MIC_WIDTH);
 
@@ -59,7 +59,5 @@ impl DataType {
 }
 
 // /// A MIC-typed field: ISO 10383's market identifier.
-define_field_types!(MicType, Mic, crate::DataType::Mic);
+define_field_types!(MicType, Mic);
 
-/// A field of this code.
-pub type MicField = TypedField<MicType>;

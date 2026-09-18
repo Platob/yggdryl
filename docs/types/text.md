@@ -6,13 +6,13 @@ One string family in five layouts, one byte family in four, the canonical text v
 
 | | |
 | --- | --- |
-| Owns | `DataType::String(StringParameters)`, `DataType::Bytes(BytesParameters)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
+| Owns | `DataType::String(StringType)`, `DataType::Bytes(BytesType)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
 | Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `fixed_size_binary(n)` pick a layout once |
 | Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
 | Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused; a fixed layout with no width refused |
 | Value | holds UTF-8 (or the payload) beside its layout, charset and fixed width; never a maximum |
 | Arrow | text storage for UTF-8 and US-ASCII, binary storage for every other charset; `yggdryl.string` / `yggdryl.bytes` only where Arrow cannot say what is declared |
-| Rust only | the value types `Str` and `Bytes`; `StringLayout`, `BytesLayout`; the bindings read the parameters as frozen `StringParameters` / `BytesParameters` values |
+| Rust only | the value types `Str` and `Bytes`; `StringLayout`, `BytesLayout`; the bindings read the parameters as frozen `StringType` / `BytesType` values |
 
 ### Strings
 
@@ -106,7 +106,7 @@ Declare a string and a byte column, and read the declaration back.
 === "Python"
 
     ```python
-    from yggdryl import BytesParameters, DataType, StringParameters, types
+    from yggdryl import BytesType, DataType, StringType, types
 
     # Every spelling of a layout is one datatype, rendered under the name
     # its charset earns.
@@ -119,7 +119,7 @@ Declare a string and a byte column, and read the declaration back.
     # a frozen value.
     latin = DataType.string(charset="windows-1252", bound=32)
     assert str(latin) == "string(windows-1252,32)"
-    assert latin.string_parameters == StringParameters("string", "windows-1252", 32)
+    assert latin.string_parameters == StringType("string", "windows-1252", 32)
     assert latin.string_parameters.max == 32
     assert latin.charset == "windows-1252"
     assert types.string("name", charset="windows-1252", max=32).dtype == latin
@@ -132,7 +132,7 @@ Declare a string and a byte column, and read the declaration back.
     # Bytes: the layout and a bound, nothing else.
     bounded = DataType("varbinary(16)")
     assert str(bounded) == "binary(16)"
-    assert bounded.bytes_parameters == BytesParameters("binary", 16)
+    assert bounded.bytes_parameters == BytesType("binary", 16)
     assert bounded == DataType.bytes(bound=16)
     assert DataType.fixed_size_binary(16).fixed_byte_width == 16
     assert types.bytes("blob", layout="fixed_size_binary", fixed=16).dtype.id == "fixed_size_binary"
@@ -285,7 +285,7 @@ read out of `utf8(32)` is a `utf8`.
 Rust only; the bindings read a value as a `Scalar` and its `dtype`.
 
 ```rust
-use yggdryl::types::{Bytes, BytesLayout, BytesParameters, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters};
+use yggdryl::types::{Bytes, BytesLayout, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, Scalar};
 
 // Short text lives inside the value; longer text is one shared handle.
@@ -297,15 +297,15 @@ assert_eq!(Scalar::from("AAPL"), Scalar::String(short.clone()));
 
 // Restating a value under other parameters keeps the characters and changes
 // what `encode` writes and `dtype` declares; a maximum is checked, not kept.
-let latin = short.clone().try_with_parameters(StringParameters::new(StringLayout::LargeString, Charset::Cp1252))?;
+let latin = short.clone().try_with_parameters(StringType::new(StringLayout::LargeString, Charset::Cp1252))?;
 assert_eq!(latin, short);
 assert_eq!(latin.dtype()?, DataType::from_str("large_string(windows-1252)")?);
-let bounded = short.clone().try_with_parameters(StringParameters::utf8(StringLayout::String).try_with_bound(8)?)?;
-assert_eq!(bounded.parameters(), StringParameters::default());
-assert!(short.clone().try_with_parameters(StringParameters::utf8(StringLayout::String).try_with_bound(2)?).is_err());
+let bounded = short.clone().try_with_parameters(StringType::utf8(StringLayout::String).try_with_bound(8)?)?;
+assert_eq!(bounded.parameters(), StringType::default());
+assert!(short.clone().try_with_parameters(StringType::utf8(StringLayout::String).try_with_bound(2)?).is_err());
 
 // The fixed layout pads on the way out and trims on the way in.
-let ccy = Str::from_bytes(b"USD\0", StringParameters::ascii(StringLayout::FixedString).try_with_bound(4)?)?;
+let ccy = Str::from_bytes(b"USD\0", StringType::ascii(StringLayout::FixedString).try_with_bound(4)?)?;
 assert_eq!(ccy, "USD");
 assert_eq!(ccy.encode()?.as_ref(), b"USD\0");
 assert_eq!(ccy.fixed(), Some(4));
@@ -316,7 +316,7 @@ assert!(payload.is_inline());
 assert!(!Bytes::new(vec![0_u8; INLINE_BYTES + 1]).is_inline());
 assert_eq!(std::mem::size_of::<Bytes>(), 40);
 assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(payload.clone()));
-let fixed = BytesParameters::new(BytesLayout::FixedSizeBinary).try_with_bound(3)?;
+let fixed = BytesType::new(BytesLayout::FixedSizeBinary).try_with_bound(3)?;
 assert_eq!(payload.clone().try_with_parameters(fixed)?.dtype()?, DataType::fixed_size_binary(3)?);
 assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
 ```

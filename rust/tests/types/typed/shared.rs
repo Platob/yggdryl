@@ -1,6 +1,6 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use yggdryl::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
+use yggdryl::types::{BytesLayout, BytesType, StringLayout, StringType};
 use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]
@@ -44,7 +44,7 @@ fn every_plain_utf8_layout_keeps_one_prebuilt_value_field() {
         DataType::utf8(),
         DataType::large_utf8(),
         DataType::utf8_view(),
-        DataType::String(StringParameters::utf8(StringLayout::LargeStringView)),
+        DataType::String(StringType::utf8(StringLayout::LargeStringView)),
     ] {
         let shared = dtype
             .shared_field()
@@ -134,7 +134,7 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     }
     // A parameter the datatype refuses never earns a permanent field.
     assert!(
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary))
+        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary))
             .shared_field()
             .is_none()
     );
@@ -152,7 +152,7 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
             .is_none()
     );
     assert!(
-        DataType::String(StringParameters::utf8(StringLayout::FixedString))
+        DataType::String(StringType::utf8(StringLayout::FixedString))
             .shared_field()
             .is_none()
     );

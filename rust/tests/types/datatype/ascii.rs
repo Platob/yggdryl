@@ -11,7 +11,7 @@ use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::types::{Str, StringLayout, StringParameters};
+use yggdryl::types::{Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, Term, Url};
 use yggdryl::{IOBase, IOMedia};
 
@@ -313,7 +313,7 @@ fn ascii_is_one_charset_of_the_string_family() {
     assert_eq!(DataType::from_str("string(us-ascii)").unwrap(), plain);
     assert_eq!(
         plain.string_parameters(),
-        Some(StringParameters::ascii(StringLayout::String))
+        Some(StringType::ascii(StringLayout::String))
     );
     assert_eq!(plain.charset(), Some(Charset::Ascii));
     assert_eq!(plain.id(), DataTypeId::String);
@@ -442,7 +442,7 @@ fn ascii_is_a_repertoire_and_refuses_what_it_never_holds() {
         Some("USD")
     );
     // The same rule under the value's own door.
-    let ascii = StringParameters::ascii(StringLayout::String);
+    let ascii = StringType::ascii(StringLayout::String);
     assert!(Str::new("caf\u{e9}").try_with_parameters(ascii).is_err());
     assert!(Str::from_bytes(&[0x80], ascii).is_err());
 }

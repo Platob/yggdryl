@@ -9,7 +9,7 @@ use crate::types;
 use crate::types::code::folded_spelling;
 use crate::types::code::{CodeValue, code_leaf, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 code_leaf!(Side, SIDE_WIDTH);
 
@@ -201,7 +201,5 @@ pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 pub(crate) const SIDE_WIDTH: usize = 8;
 
 // /// A side-typed field: FIX's side of a trade.
-define_field_types!(SideType, Side, crate::DataType::Side);
+define_field_types!(SideType, Side);
 
-/// A field of this code.
-pub type SideField = TypedField<SideType>;

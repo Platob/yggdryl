@@ -922,14 +922,13 @@ mod typed {
     use super::ArrowCast as _;
     use crate::arrow::{Error, Result};
     use crate::types::cast::ArrowCastOptions;
-    use crate::types::typed::{FieldType, TypedField, TypedFieldRef};
 
     /// The Arrow array a field's values materialize into.
     ///
-    /// Implemented for every [`FieldType`] marker. A variant whose physical array
+    /// Implemented for every datatype payload. A variant whose physical array
     /// depends on a datatype parameter reports [`ArrayRef`], because there is no
     /// single concrete type to name.
-    pub trait ArrowFieldType: FieldType {
+    pub trait ArrowFieldType: crate::types::DataTypeValue {
         /// The array produced by casting to this field's datatype.
         type Array: Array + Clone + 'static;
 
@@ -978,9 +977,9 @@ mod typed {
         };
     }
 
-    typed_array!(crate::types::boolean::NullType, arrow_array::NullArray);
+    typed_array!(crate::types::NullType, arrow_array::NullArray);
     typed_array!(
-        crate::types::boolean::BooleanType,
+        crate::types::BooleanType,
         arrow_array::BooleanArray
     );
     typed_array!(crate::types::integer::Int8Type, arrow_array::Int8Array);
@@ -1006,19 +1005,19 @@ mod typed {
     typed_array!(crate::types::temporal::Date32Type, arrow_array::Date32Array);
     typed_array!(crate::types::temporal::Date64Type, arrow_array::Date64Array);
     typed_array!(
-        crate::types::decimal::Decimal32Type,
+        crate::types::Decimal32Type,
         arrow_array::Decimal32Array
     );
     typed_array!(
-        crate::types::decimal::Decimal64Type,
+        crate::types::Decimal64Type,
         arrow_array::Decimal64Array
     );
     typed_array!(
-        crate::types::decimal::Decimal128Type,
+        crate::types::Decimal128Type,
         arrow_array::Decimal128Array
     );
     typed_array!(
-        crate::types::decimal::Decimal256Type,
+        crate::types::Decimal256Type,
         arrow_array::Decimal256Array
     );
     typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
@@ -1045,35 +1044,22 @@ mod typed {
         crate::types::uuid::UuidType,
         arrow_array::FixedSizeBinaryArray
     );
-    typed_array!(crate::types::ListTypeMarker, arrow_array::ListArray);
-    typed_array!(
-        crate::types::ListViewTypeMarker,
-        arrow_array::ListViewArray
-    );
-    typed_array!(
-        crate::types::LargeListTypeMarker,
-        arrow_array::LargeListArray
-    );
-    typed_array!(
-        crate::types::LargeListViewType,
-        arrow_array::LargeListViewArray
-    );
-    typed_array!(
-        crate::types::FixedSizeListType,
-        arrow_array::FixedSizeListArray
-    );
-    typed_array!(crate::types::StructTypeMarker, arrow_array::StructArray);
+    // The sequence family covers five layouts whose arrays genuinely differ,
+    // so it names none of them. The structure family's two leaves are both
+    // struct arrays - a pair is a struct of two children - so it names that.
+    typed_array!(crate::types::SequenceType, ArrayRef);
+    typed_array!(crate::types::StructureType, arrow_array::StructArray);
     typed_array!(crate::types::UnionType, arrow_array::UnionArray);
-    typed_array!(crate::types::MapTypeMarker, arrow_array::MapArray);
+    typed_array!(crate::types::MappingType, arrow_array::MapArray);
     // A variant's storage is the canonical struct of two required binaries, and a
     // geospatial value is its WKB payload, so their physical arrays are fixed.
     typed_array!(crate::types::VariantType, arrow_array::StructArray);
     typed_array!(
-        crate::types::geospatial::GeometryType,
+        crate::types::GeometryType,
         arrow_array::BinaryArray
     );
     typed_array!(
-        crate::types::geospatial::GeographyType,
+        crate::types::GeographyType,
         arrow_array::BinaryArray
     );
 
@@ -1083,16 +1069,16 @@ mod typed {
     // array, so these have no single array type.
     opaque_array!(crate::types::string::StringType);
     opaque_array!(crate::types::bytes::BytesType);
-    opaque_array!(crate::types::temporal::DateTime64Type);
-    opaque_array!(crate::types::temporal::Time32Type);
-    opaque_array!(crate::types::temporal::Time64Type);
-    opaque_array!(crate::types::temporal::Duration32Type);
-    opaque_array!(crate::types::temporal::Duration64Type);
-    opaque_array!(crate::types::temporal::IntervalType);
-    opaque_array!(crate::types::DictionaryTypeMarker);
-    opaque_array!(crate::types::RunEndEncodedTypeMarker);
+    opaque_array!(crate::types::DateTime64Type);
+    opaque_array!(crate::types::Time32Type);
+    opaque_array!(crate::types::Time64Type);
+    opaque_array!(crate::types::Duration32Type);
+    opaque_array!(crate::types::Duration64Type);
+    opaque_array!(crate::types::IntervalType);
+    opaque_array!(crate::types::EnumType);
+    opaque_array!(crate::types::RunEndType);
 
-    impl<K: ArrowFieldType> TypedField<K> {
+    impl<D: ArrowFieldType> crate::types::FieldOf<D> {
         /// Cast an incoming Arrow array to this field, returning its exact array.
         ///
         /// The field is the target: `array` is reconciled to the field's datatype
@@ -1104,8 +1090,8 @@ mod typed {
         ///
         /// Returns an error for an unsupported cast, a value that cannot satisfy
         /// the field, or a default that cannot be materialized.
-        pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array> {
-            K::downcast_array(self.as_field().cast_arrow_array(array, options)?)
+        pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<D::Array> {
+            D::downcast_array(self.to_field().cast_arrow_array(array, options)?)
         }
 
         /// Cast a one-element Arrow array to this field as a typed scalar.
@@ -1118,7 +1104,7 @@ mod typed {
             &self,
             array: ArrayRef,
             options: ArrowCastOptions,
-        ) -> Result<Scalar<K::Array>> {
+        ) -> Result<Scalar<D::Array>> {
             if array.len() != 1 {
                 return Err(Error::IncompatibleSchema(format!(
                     "expected exactly 1 value to cast as a scalar, got {}",
@@ -1129,16 +1115,6 @@ mod typed {
         }
     }
 
-    impl<K: ArrowFieldType> TypedFieldRef<'_, K> {
-        /// Cast an incoming Arrow array to the borrowed field's exact array.
-        ///
-        /// # Errors
-        ///
-        /// Returns any error [`TypedField::cast_arrow_array`] returns.
-        pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array> {
-            K::downcast_array(self.as_field().cast_arrow_array(array, options)?)
-        }
-    }
 }
 
 /// Arrow array and record-batch casting owned by a canonical Yggdryl schema.

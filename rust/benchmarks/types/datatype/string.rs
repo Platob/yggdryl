@@ -12,7 +12,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::{StringLayout, StringParameters};
+use yggdryl::types::{StringLayout, StringType};
 use yggdryl::{Charset, DataType, Scalar, Str};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
@@ -105,13 +105,13 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         });
     });
     // The document a charset string crosses Arrow inside.
-    let parameters = StringParameters::new(StringLayout::String, Charset::Cp1252)
+    let parameters = StringType::new(StringLayout::String, Charset::Cp1252)
         .try_with_bound(32)
         .expect("thirty-two bytes is a bound");
     group.bench_function("extension_round_trip", |bencher| {
         bencher.iter(|| {
             let rendered = black_box(parameters).extension_json();
-            StringParameters::from_extension_json(black_box(&rendered))
+            StringType::from_extension_json(black_box(&rendered))
                 .expect("the document this crate renders is one it reads")
         });
     });
@@ -134,15 +134,15 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     // UTF-8 and US-ASCII are validated, the legacy charset is transcribed, and
     // the fixed slot is filled to its width, so nothing is trimmed.
     for width in CELL_WIDTHS {
-        let fixed = StringParameters::ascii(StringLayout::FixedString)
+        let fixed = StringType::ascii(StringLayout::FixedString)
             .try_with_bound(u32::try_from(width).expect("the widths fit"))
             .expect("every cell width is a width");
         for (parameters, name) in [
-            (StringParameters::utf8(StringLayout::String), "utf8"),
-            (StringParameters::ascii(StringLayout::String), "ascii"),
+            (StringType::utf8(StringLayout::String), "utf8"),
+            (StringType::ascii(StringLayout::String), "ascii"),
             (fixed, "fixed_ascii"),
             (
-                StringParameters::new(StringLayout::String, Charset::Cp1252),
+                StringType::new(StringLayout::String, Charset::Cp1252),
                 "cp1252",
             ),
         ] {

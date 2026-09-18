@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::typed::define_field_types;
-use crate::{DataType, Error, Result, Scalar, TypedField, Value, types};
+use crate::{DataType, Error, Result, Scalar, Value, types};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -375,10 +375,8 @@ fn uuid_refusal(value: &[u8], actual: SmolStr) -> Error {
 // UUID field markers.
 // ------------------------------------------------------------------------
 
-define_field_types!(UuidType, Uuid, crate::DataType::Uuid);
+define_field_types!(UuidType, Uuid);
 
-/// A UUID-typed field.
-pub type UuidField = TypedField<UuidType>;
 
 // ------------------------------------------------------------------------
 // UUID values and the typed scalar alias.

@@ -54,7 +54,7 @@ pub use value::Timezone;
 pub(crate) use value::{civil_from_days, days_from_civil};
 
 use crate::types::typed::define_field_types;
-use crate::{Error, Result, TypedField};
+use crate::{Error, Result};
 
 /// Arrow casts owned by the time zone datatype.
 pub(crate) mod casts {
@@ -118,10 +118,8 @@ pub(crate) mod casts {
 // Time zone field marker and typed aliases.
 // ------------------------------------------------------------------------
 
-define_field_types!(TimezoneType, Timezone, crate::DataType::Timezone);
+define_field_types!(TimezoneType, Timezone);
 
-/// A time-zone-typed field.
-pub type TimezoneField = TypedField<TimezoneType>;
 
 // ------------------------------------------------------------------------
 // The registry of time zones this build knows the rules for.

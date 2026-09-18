@@ -20,7 +20,7 @@ mod field {
     
     use std::borrow::Cow;
     use std::str::FromStr;
-    use std::sync::OnceLock;
+    
 
     use smol_str::SmolStr;
 
@@ -132,15 +132,8 @@ mod field {
             }
         }
 
-        let field = Field {
-            name: name.into(),
-            dtype,
-            nullable,
-            dictionary_id,
-            dictionary_is_ordered,
-            metadata,
-            arrow: OnceLock::new(),
-        };
+        let mut field = Field::new_with_metadata(name, dtype, nullable, metadata);
+        field.set_dictionary_options_unchecked(dictionary_id, dictionary_is_ordered);
         field.validate()?;
         Ok(field)
     }
@@ -228,18 +221,17 @@ mod field {
             }
         }
 
-        let field = Field {
-            name: name
-                .ok_or_else(|| field_parse_error(0, "Arrow field is missing name"))?
-                .into(),
-            dtype: dtype.ok_or_else(|| field_parse_error(0, "Arrow field is missing dtype"))?,
+        let mut field = Field::new_with_metadata(
+            name.ok_or_else(|| field_parse_error(0, "Arrow field is missing name"))?,
+            dtype.ok_or_else(|| field_parse_error(0, "Arrow field is missing dtype"))?,
             // Arrow's Debug implementation omits `nullable` when it is false.
-            nullable: nullable.unwrap_or(false),
-            dictionary_id: dictionary_id.unwrap_or_default(),
-            dictionary_is_ordered: dictionary_is_ordered.unwrap_or_default(),
+            nullable.unwrap_or(false),
             metadata,
-            arrow: OnceLock::new(),
-        };
+        );
+        field.set_dictionary_options_unchecked(
+            dictionary_id.unwrap_or_default(),
+            dictionary_is_ordered.unwrap_or_default(),
+        );
         field.validate()?;
         Ok(field)
     }

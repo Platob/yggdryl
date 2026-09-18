@@ -196,11 +196,12 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
         .to_string();
     assert!(refused.contains("timezone"), "{refused}");
 
-    let typed = TimezoneField::new("zone", true);
+    let typed = TimezoneField::unit("zone", true);
     assert_eq!(typed.dtype(), &DataType::Timezone);
-    let scalar = FieldScalar::new(typed.as_field(), zone("UTC")).unwrap();
+    let typed_field = typed.to_field();
+    let scalar = FieldScalar::new(&typed_field, zone("UTC")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::Timezone);
-    assert!(FieldScalar::new(typed.as_field(), 7_i64).is_err());
+    assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
 }
 
 #[test]

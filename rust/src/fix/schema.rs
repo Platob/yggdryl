@@ -421,7 +421,7 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
         schema.name(),
         DataType::from_fields(members)?,
         schema.is_nullable(),
-        schema.metadata.clone(),
+        schema.as_metadata().clone(),
     );
     root.as_fix_mut().set_tag(tag)?;
     root.set_display("FixMsg")?;
@@ -1067,7 +1067,7 @@ fn group_from_entry(
     // name and states no counter of its own: the builder left the count to
     // the occurrences beside it, and a counter here would put a second child
     // of that name in the row.
-    let field = Field::new_with_metadata(known.name(), dtype, true, known.metadata.clone());
+    let field = Field::new_with_metadata(known.name(), dtype, true, known.as_metadata().clone());
     Ok((field, crate::Scalar::from_sequence(rows)))
 }
 
@@ -1152,7 +1152,7 @@ fn child_from_entry(
                 known.name(),
                 DataType::from_fields(fields)?,
                 false,
-                known.metadata.clone(),
+                known.as_metadata().clone(),
             );
             Ok((field, crate::Scalar::from_record(named)?))
         }
@@ -1299,7 +1299,7 @@ impl super::FixMsg {
             schema.name(),
             DataType::from_fields(members)?,
             schema.is_nullable(),
-            schema.metadata.clone(),
+            schema.as_metadata().clone(),
         );
         Self::with_registry(registry, root, crate::Scalar::from_sequence(values))
     }

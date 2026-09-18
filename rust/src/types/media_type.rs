@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use crate::types::scalar::Value;
 use crate::types::typed::define_field_types;
-use crate::{DataType, MediaType, Result, Scalar, TypedField};
+use crate::{DataType, MediaType, Result, Scalar};
 
 /// Arrow casts owned by the media type datatype.
 pub(crate) mod casts {
@@ -90,10 +90,8 @@ pub(crate) mod casts {
 // Media type field marker and typed aliases.
 // ------------------------------------------------------------------------
 
-define_field_types!(MediaTypeType, MediaType, crate::DataType::MediaType);
+define_field_types!(MediaTypeType, MediaType);
 
-/// A media-type-typed field.
-pub type MediaTypeField = TypedField<MediaTypeType>;
 
 // ------------------------------------------------------------------------
 // [`MediaType`] as a scalar value.

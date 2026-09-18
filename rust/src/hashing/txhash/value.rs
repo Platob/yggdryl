@@ -8,7 +8,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::types::{Bytes, BytesLayout, BytesParameters, Uuid};
+use crate::types::{Bytes, BytesLayout, BytesType, Uuid};
 use crate::{DataType, Digest, DigestAlgorithm, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::time::{DEFAULT_UNIT, restate_unix, validate_unit};
@@ -42,7 +42,7 @@ pub const fn width(algorithm: DigestAlgorithm) -> usize {
 pub const fn dtype(algorithm: DigestAlgorithm) -> DataType {
     match NonZeroU32::new(fixed_width(algorithm)) {
         Some(width) => {
-            DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary).with_bound(width))
+            DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary).with_bound(width))
         }
         // Every width below is a literal above zero.
         None => DataType::binary(),

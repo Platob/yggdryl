@@ -308,9 +308,10 @@ fn scalar_and_field_contracts_rewrite_text_once() {
         Scalar::Null
     );
 
-    let begin_string = VersionField::new("begin_string", false);
+    let begin_string = VersionField::unit("begin_string", false);
     assert_eq!(begin_string.dtype(), &DataType::Version);
-    let typed = FieldScalar::new(begin_string.as_field(), expected.clone()).unwrap();
+    let begin_string_field = begin_string.to_field();
+    let typed = FieldScalar::new(&begin_string_field, expected.clone()).unwrap();
     assert_eq!(typed.value(), &expected);
 }
 

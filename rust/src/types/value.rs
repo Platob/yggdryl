@@ -20,7 +20,7 @@ use crate::types::integer::{
 };
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
-use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
+use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
 use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 use crate::types::structure::StructureType;
 use crate::types::sequence::SequenceType;
@@ -1231,7 +1231,7 @@ fn canonicalize_slice(
 ///
 /// A value never carries a maximum, so the layout, the charset and the fixed
 /// width are the whole comparison; the maximum is checked beside it.
-fn string_matches(parameters: StringParameters, value: &Str) -> bool {
+fn string_matches(parameters: StringType, value: &Str) -> bool {
     value.parameters() == parameters.without_max()
 }
 
@@ -1246,7 +1246,7 @@ fn string_matches(parameters: StringParameters, value: &Str) -> bool {
 ///
 /// A fixed width is checked where the value is built, because the padding is
 /// built there too, and so is the US-ASCII repertoire.
-fn check_string_bound(parameters: StringParameters, text: &str) -> Result<()> {
+fn check_string_bound(parameters: StringType, text: &str) -> Result<()> {
     let Some(max) = parameters.max() else {
         return Ok(());
     };

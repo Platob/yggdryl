@@ -7,7 +7,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::types::{BytesLayout, BytesParameters};
+use yggdryl::types::{BytesLayout, BytesType};
 use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -118,7 +118,7 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
 
     // A fixed layout built by hand with no width is what `validate` catches.
     assert!(
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary))
+        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary))
             .into_arrow_ffi()
             .is_err()
     );
@@ -1042,7 +1042,7 @@ fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import()
 fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
     // The four layouts are Arrow's own and a fixed width is the storage,
     // so only a maximum rides the document.
-    let bounded = BytesParameters::new(BytesLayout::Binary)
+    let bounded = BytesType::new(BytesLayout::Binary)
         .try_with_bound(16)
         .unwrap();
     let field = Field::new("key", DataType::bytes(bounded).unwrap(), true);

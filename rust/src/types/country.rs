@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use crate::types;
 use crate::types::code::{CodeValue, code_leaf, code_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, Result, Scalar, TypedField, Value};
+use crate::{DataType, Result, Scalar, Value};
 
 code_leaf!(Country, COUNTRY_WIDTH);
 
@@ -74,7 +74,5 @@ impl DataType {
 }
 
 // /// A country-typed field: ISO 3166-1 alpha-2.
-define_field_types!(CountryType, Country, crate::DataType::Country);
+define_field_types!(CountryType, Country);
 
-/// A field of this code.
-pub type CountryField = TypedField<CountryType>;

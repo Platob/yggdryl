@@ -12,7 +12,7 @@ use crate::types::enums::EnumType;
 /// Structural JSON and Serde implementations for fields.
 mod field {
     use std::fmt;
-    use std::sync::OnceLock;
+    
 
     use serde::de::{Error as DeError, Visitor};
     use serde::ser::SerializeStruct;
@@ -68,19 +68,20 @@ mod field {
         where
             S: Serializer,
         {
-            let field_count =
-                4 + usize::from(self.dictionary_id != 0) + usize::from(self.dictionary_is_ordered);
+            let field_count = 4
+                + usize::from(self.dictionary_id().is_some_and(|id| id != 0))
+                + usize::from(self.dictionary_is_ordered().unwrap_or_default());
             let mut field = serializer.serialize_struct("Field", field_count)?;
-            field.serialize_field("name", &self.name)?;
-            field.serialize_field("dtype", &self.dtype)?;
-            field.serialize_field("nullable", &self.nullable)?;
-            if self.dictionary_id != 0 {
-                field.serialize_field("dictionary_id", &DictionaryIdJson(self.dictionary_id))?;
+            field.serialize_field("name", &self.name())?;
+            field.serialize_field("dtype", &self.dtype())?;
+            field.serialize_field("nullable", &self.is_nullable())?;
+            if let Some(id) = self.dictionary_id().filter(|id| *id != 0) {
+                field.serialize_field("dictionary_id", &DictionaryIdJson(id))?;
             }
-            if self.dictionary_is_ordered {
+            if self.dictionary_is_ordered().unwrap_or_default() {
                 field.serialize_field("dictionary_is_ordered", &true)?;
             }
-            field.serialize_field("metadata", &self.metadata)?;
+            field.serialize_field("metadata", &self.as_metadata())?;
             field.end()
         }
     }
@@ -153,15 +154,16 @@ mod field {
             }
 
             let value = FieldWire::deserialize(deserializer)?;
-            let field = Self {
-                name: value.name,
-                dtype: value.dtype,
-                nullable: value.nullable,
-                dictionary_id: value.dictionary_id,
-                dictionary_is_ordered: value.dictionary_is_ordered,
-                metadata: value.metadata,
-                arrow: OnceLock::new(),
-            };
+            let mut field = Self::new_with_metadata(
+                value.name,
+                value.dtype,
+                value.nullable,
+                value.metadata,
+            );
+            field.set_dictionary_options_unchecked(
+                value.dictionary_id,
+                value.dictionary_is_ordered,
+            );
             field.validate().map_err(D::Error::custom)?;
             Ok(field)
         }
@@ -207,18 +209,15 @@ mod field {
         #[must_use]
         pub fn into_value(self) -> Scalar {
             let mut entries: Vec<(Scalar, Scalar)> = Vec::with_capacity(6);
-            entries.push((key("name"), Scalar::from(self.name.clone())));
-            entries.push((key("dtype"), self.dtype.clone().into_value()));
-            entries.push((key("nullable"), Scalar::from(self.nullable)));
-            if self.dictionary_id != 0 {
+            entries.push((key("name"), Scalar::from(self.name())));
+            entries.push((key("dtype"), self.dtype().clone().into_value()));
+            entries.push((key("nullable"), Scalar::from(self.is_nullable())));
+            if let Some(id) = self.dictionary_id().filter(|id| *id != 0) {
                 // Decimal text, as the JSON path emits it: a 64-bit identifier
                 // does not survive every reader as a number.
-                entries.push((
-                    key("dictionary_id"),
-                    Scalar::from(format_smolstr!("{}", self.dictionary_id)),
-                ));
+                entries.push((key("dictionary_id"), Scalar::from(format_smolstr!("{id}"))));
             }
-            if self.dictionary_is_ordered {
+            if self.dictionary_is_ordered().unwrap_or_default() {
                 entries.push((key("dictionary_is_ordered"), Scalar::from(true)));
             }
             entries.push((
@@ -269,14 +268,14 @@ mod field {
                 .ok_or_else(|| invalid("$.name", "a field name", "nothing"))?;
             let dtype = DataType::from_value(
                 at("dtype")
-                    .ok_or_else(|| invalid("$.dtype", "a datatype mapping", "nothing"))?
+                    .ok_or_else(|| invalid("$.dtype()", "a datatype mapping", "nothing"))?
                     .clone(),
             )?;
             let nullable = match at("nullable") {
                 Some(held) if held.as_bool().is_some() => held.as_bool().unwrap_or(false),
                 other => {
                     return Err(invalid(
-                        "$.nullable",
+                        "$.is_nullable()",
                         "a boolean",
                         other.map_or("nothing", Scalar::kind),
                     ));
@@ -1632,8 +1631,8 @@ fn string_parameters(
     charset: crate::Charset,
     max: Option<u32>,
     fixed: Option<u32>,
-) -> Result<crate::types::StringParameters> {
-    let parameters = crate::types::StringParameters::new(layout, charset);
+) -> Result<crate::types::StringType> {
+    let parameters = crate::types::StringType::new(layout, charset);
     match (layout.is_fixed(), fixed, max) {
         (true, Some(width), None) => parameters.try_with_bound(width),
         (false, None, Some(max)) => parameters.try_with_bound(max),
@@ -1648,8 +1647,8 @@ fn bytes_parameters(
     layout: crate::types::BytesLayout,
     max: Option<u32>,
     fixed: Option<u32>,
-) -> Result<crate::types::BytesParameters> {
-    let parameters = crate::types::BytesParameters::new(layout);
+) -> Result<crate::types::BytesType> {
+    let parameters = crate::types::BytesType::new(layout);
     match (layout.is_fixed(), fixed, max) {
         (true, Some(width), None) => parameters.try_with_bound(width),
         (false, None, Some(max)) => parameters.try_with_bound(max),

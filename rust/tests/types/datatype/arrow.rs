@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::types::{BytesLayout, BytesParameters};
+use yggdryl::types::{BytesLayout, BytesType};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
 
@@ -389,7 +389,7 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
         "bytes",
         "expected a width of at least one byte, got 0",
     );
-    let invalid_binary = DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary));
+    let invalid_binary = DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary));
     for error in [
         invalid_binary.validate().unwrap_err(),
         invalid_binary.clone().into_arrow().unwrap_err(),

@@ -11,7 +11,7 @@ use crate::path::{Path, Segment};
 use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
-use super::{BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape};
+use super::{BytesType, DataType, StringType, preflight_schema, preflight_schema_shape};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
 
@@ -304,10 +304,10 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+        D::Bytes(parameters) if *parameters == BytesType::default() => {
             Ok((dtype.clone(), false))
         }
-        D::String(parameters) if *parameters == StringParameters::default() => {
+        D::String(parameters) if *parameters == StringType::default() => {
             Ok((dtype.clone(), false))
         }
         D::UInt8 => Ok((D::Int16, true)),
@@ -431,10 +431,10 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+        D::Bytes(parameters) if *parameters == BytesType::default() => {
             Ok((dtype.clone(), false))
         }
-        D::String(parameters) if *parameters == StringParameters::default() => {
+        D::String(parameters) if *parameters == StringType::default() => {
             Ok((dtype.clone(), false))
         }
         D::Float16 => Ok((D::Float32, true)),
@@ -532,10 +532,10 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+        D::Bytes(parameters) if *parameters == BytesType::default() => {
             Ok((dtype.clone(), false))
         }
-        D::String(parameters) if *parameters == StringParameters::default() => {
+        D::String(parameters) if *parameters == StringType::default() => {
             Ok((dtype.clone(), false))
         }
         D::Float16 => Ok((D::Float32, true)),
@@ -642,11 +642,11 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         // Plain `binary`, and `fixed[n]`, which is also how `uuid` is
         // stored; plain `utf8` is the one string a foreign engine names.
         D::Bytes(parameters)
-            if *parameters == BytesParameters::default() || parameters.is_fixed() =>
+            if *parameters == BytesType::default() || parameters.is_fixed() =>
         {
             Ok((dtype.clone(), false))
         }
-        D::String(parameters) if *parameters == StringParameters::default() => {
+        D::String(parameters) if *parameters == StringType::default() => {
             Ok((dtype.clone(), false))
         }
         D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {

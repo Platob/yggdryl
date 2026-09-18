@@ -543,7 +543,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
     let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringParameters::utf8(
+        .try_with_parameters(string::StringType::utf8(
             string::StringLayout::LargeString,
         ))
         .unwrap();
@@ -551,7 +551,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
 
     let bytes = bytes::Bytes::new([1, 2, 3])
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
         .unwrap();
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
     assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
@@ -606,7 +606,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let utf8 = string::Str::new("東京");
     let view = utf8
         .clone()
-        .try_with_parameters(string::StringParameters::utf8(
+        .try_with_parameters(string::StringType::utf8(
             string::StringLayout::StringView,
         ))
         .unwrap();
@@ -619,7 +619,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     );
 
     let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringParameters::ascii(
+        .try_with_parameters(string::StringType::ascii(
             string::StringLayout::String,
         ))
         .unwrap();
@@ -629,14 +629,14 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(currency.as_str(), "USD");
     assert!(
         string::Str::new("café")
-            .try_with_parameters(string::StringParameters::ascii(
+            .try_with_parameters(string::StringType::ascii(
                 string::StringLayout::String
             ))
             .is_err()
     );
     assert!(
         string::Str::new("")
-            .try_with_parameters(string::StringParameters::ascii(
+            .try_with_parameters(string::StringType::ascii(
                 string::StringLayout::FixedString
             ))
             .is_err()
@@ -646,7 +646,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary
         .clone()
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
         .unwrap();
     assert_eq!(binary.as_bytes(), binary_view.as_bytes());
     assert_eq!(binary.to_string(), "0001ff");
@@ -700,7 +700,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let utf8 = string::Str::new("same");
     let large = utf8
         .clone()
-        .try_with_parameters(string::StringParameters::utf8(
+        .try_with_parameters(string::StringType::utf8(
             string::StringLayout::LargeString,
         ))
         .unwrap();
@@ -709,7 +709,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let binary = bytes::Bytes::from(vec![1, 2]);
     let view = binary
         .clone()
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
         .unwrap();
     assert_eq!(binary, view);
 

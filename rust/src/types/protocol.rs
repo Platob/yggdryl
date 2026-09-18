@@ -330,7 +330,7 @@ impl HttpFieldMut<'_> {
         let (_, changed) = self
             .0
             .field
-            .metadata
+            .metadata_mut()
             .insert_validated(HTTP_CONTENT_LENGTH_KEY.to_owned(), value.to_string());
         if changed {
             self.0.field.invalidate_arrow();
@@ -405,7 +405,7 @@ impl HttpFieldMut<'_> {
         let (_, changed) = self
             .0
             .field
-            .metadata
+            .metadata_mut()
             .insert_validated(HTTP_CONTENT_TYPE_KEY.to_owned(), value.to_string());
         if changed {
             self.0.field.invalidate_arrow();
@@ -459,15 +459,15 @@ impl HttpFieldMut<'_> {
             content_encoding.push_str(coding);
         }
 
-        let mut metadata = self.0.field.metadata.clone();
+        let mut metadata = self.0.field.as_metadata().clone();
         metadata.insert_validated(HTTP_CONTENT_TYPE_KEY.to_owned(), content_type);
         if content_encoding.is_empty() {
             metadata.remove(HTTP_CONTENT_ENCODING_KEY);
         } else {
             metadata.insert_validated(HTTP_CONTENT_ENCODING_KEY.to_owned(), content_encoding);
         }
-        if metadata != self.0.field.metadata {
-            self.0.field.metadata = metadata;
+        if metadata != *self.0.field.as_metadata() {
+            *self.0.field.metadata_mut() = metadata;
             self.0.field.invalidate_arrow();
         }
         Ok(())
@@ -484,10 +484,10 @@ impl HttpFieldMut<'_> {
             return Ok(None);
         }
         let previous = view.media_type()?;
-        let mut metadata = self.0.field.metadata.clone();
+        let mut metadata = self.0.field.as_metadata().clone();
         metadata.remove(HTTP_CONTENT_TYPE_KEY);
         metadata.remove(HTTP_CONTENT_ENCODING_KEY);
-        self.0.field.metadata = metadata;
+        *self.0.field.metadata_mut() = metadata;
         self.0.field.invalidate_arrow();
         Ok(Some(previous))
     }
@@ -544,7 +544,7 @@ impl HttpFieldMut<'_> {
         let (_, changed) = self
             .0
             .field
-            .metadata
+            .metadata_mut()
             .insert_validated(HTTP_LOCATION_KEY.to_owned(), value.to_string());
         if changed {
             self.0.field.invalidate_arrow();

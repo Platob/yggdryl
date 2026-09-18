@@ -24,7 +24,6 @@ use crate::types::union::validate_union_fields;
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use std::ops::Index;
 use crate::types::typed::define_field_types;
-use crate::TypedField;
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///
 /// Scalar variants are inline. Nested children use `Arc`, so cloning a
@@ -93,7 +92,7 @@ pub enum DataType {
     /// sugar beside it - [`Self::binary`], [`Self::large_binary`],
     /// [`Self::binary_view`], [`Self::fixed_size_binary`] - names the common
     /// ones.
-    Bytes(super::bytes::BytesParameters),
+    Bytes(super::bytes::BytesType),
     /// A string: one layout, one charset, one optional byte bound.
     ///
     /// Every string the crate has, `utf8` and `ascii(n)` and
@@ -103,7 +102,7 @@ pub enum DataType {
     /// [`Self::fixed_ascii`] - names the common ones. The parameters ride
     /// inline: a layout, a charset and one bound are two bytes and a number,
     /// which is cheaper to carry than to point at.
-    String(super::string::StringParameters),
+    String(super::string::StringType),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -756,7 +755,7 @@ impl Index<usize> for DataType {
 // The variant lives with the nested family: it is the self-describing
 // sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
 // as dense-union sugar), and its Arrow storage is a struct of two binaries.
-define_field_types!(VariantType, Variant, crate::DataType::Variant);
+define_field_types!(VariantType, Variant);
 
 
 
@@ -764,5 +763,3 @@ define_field_types!(VariantType, Variant, crate::DataType::Variant);
 
 
 
-/// A variant-typed field.
-pub type VariantField = TypedField<VariantType>;

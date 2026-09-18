@@ -15,7 +15,6 @@
 
 pub use value::Version;
 
-use crate::TypedField;
 use crate::types::typed::define_field_types;
 
 /// Arrow casts owned by the version datatype.
@@ -88,10 +87,8 @@ pub(crate) mod casts {
 // Version field marker and typed aliases.
 // ------------------------------------------------------------------------
 
-define_field_types!(VersionType, Version, crate::DataType::Version);
+define_field_types!(VersionType, Version);
 
-/// A version-typed field.
-pub type VersionField = TypedField<VersionType>;
 /// Canonical parsing, rendering, and ordering for [`Version`].
 mod value {
     use std::cmp::Ordering;

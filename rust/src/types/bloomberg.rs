@@ -45,4 +45,4 @@ pub(crate) const BLOOMBERG_EXTENSION_NAME: &str = "yggdryl.bloomberg";
 /// terminal writes and still fits one `SmolStr` allocation.
 pub(crate) const BLOOMBERG_WIDTH: usize = 32;
 
-define_field_types!(BloombergType, Bloomberg, crate::DataType::Bloomberg);
+define_field_types!(BloombergType, Bloomberg);

@@ -1,4 +1,4 @@
-use yggdryl::types::{BytesLayout, BytesParameters};
+use yggdryl::types::{BytesLayout, BytesType};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
 
@@ -219,7 +219,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
         DataType::Duration32(TimeUnit::DayTime),
         DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary)),
+        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary)),
         DataType::Sequence(SequenceType::FixedSizeList(
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
             -1,

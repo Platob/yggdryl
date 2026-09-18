@@ -6,7 +6,7 @@
 //! one place this crate answers all three questions - which layout, which
 //! charset, how long - and every string the crate has is one member of it.
 //!
-//! [`StringLayout`] names the five layouts. [`StringParameters`] is a layout
+//! [`StringLayout`] names the five layouts. [`StringType`] is a layout
 //! beside the charset its bytes are written in and the bound its values are
 //! held to. [`crate::DataType::string`] builds the one string datatype,
 //! [`crate::DataType::String`], from them; `utf8`, `ascii`, `varchar(32)`
@@ -17,7 +17,7 @@
 //! extension name and held to its own standard's width.
 //!
 //! ```
-//! use yggdryl::types::{StringLayout, StringParameters};
+//! use yggdryl::types::{StringLayout, StringType};
 //! use yggdryl::{Charset, DataType};
 //!
 //! # fn main() -> yggdryl::Result<()> {
@@ -60,9 +60,8 @@ use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CU
 
 use crate::types::parser;
 
-use crate::types::typed::define_field_types;
 
-use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar, TypedField};
+use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar};
 
 /// What a string datatype lays out in Arrow, and what it reads back from.
 ///
@@ -77,7 +76,7 @@ use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar, TypedFi
 mod arrow {
     use arrow_schema::DataType as ArrowDataType;
 
-    use super::{StringLayout, StringParameters};
+    use super::{StringLayout, StringType};
     use crate::{Charset, Error, Result};
 
     /// Whether a string's bytes ride Arrow's text layouts rather than its binary
@@ -86,7 +85,7 @@ mod arrow {
     /// The one owner of that fact: the projection below, the column writer, the
     /// cell reader, the digest feed and the cast planner all ask here. UTF-8 is
     /// Arrow's own text, and US-ASCII is a subset of it.
-    pub(crate) const fn is_text_storage(parameters: StringParameters) -> bool {
+    pub(crate) const fn is_text_storage(parameters: StringType) -> bool {
         matches!(parameters.charset(), Charset::Utf8 | Charset::Ascii)
     }
 
@@ -97,7 +96,7 @@ mod arrow {
     /// than UTF-8, a bound, or the large view layout, which Arrow projects onto
     /// its one view. Plain `utf8`, `large_utf8` and `utf8_view` are Arrow's own
     /// datatypes and cross bare.
-    pub(crate) const fn needs_extension(parameters: StringParameters) -> bool {
+    pub(crate) const fn needs_extension(parameters: StringType) -> bool {
         !parameters.charset().is_utf8()
             || parameters.is_bounded()
             || matches!(parameters.layout(), StringLayout::LargeStringView)
@@ -109,7 +108,7 @@ mod arrow {
     ///
     /// Returns [`Error::InvalidDataType`] when a fixed width is outside `i32`,
     /// which is as wide as Arrow's own fixed binary counts.
-    pub(crate) fn arrow_storage(parameters: StringParameters) -> Result<ArrowDataType> {
+    pub(crate) fn arrow_storage(parameters: StringType) -> Result<ArrowDataType> {
         // The variant is public, so a fixed string can arrive here without the
         // width that makes it fixed. A boundary is where that stops.
         parameters.validate()?;
@@ -149,7 +148,7 @@ mod arrow {
     /// document over a storage it does not describe is a foreign field wearing
     /// our name, and it imports as its storage instead.
     pub(crate) fn describes_storage(
-        parameters: StringParameters,
+        parameters: StringType,
         storage: &ArrowDataType,
     ) -> Result<bool> {
         Ok(arrow_storage(parameters)? == *storage)
@@ -177,7 +176,7 @@ pub(crate) mod casts {
     use crate::types::cast::columns::is_exposed;
     use crate::types::string::arrow_storage;
     use crate::types::{
-        Str, StringParameters, code_cell_text, code_text, trim_padding, uuid_parse, uuid_text,
+        Str, StringType, code_cell_text, code_text, trim_padding, uuid_parse, uuid_text,
     };
     use crate::{Charset, DataType, Field};
 
@@ -190,7 +189,7 @@ pub(crate) mod casts {
     pub(crate) enum StringSource {
         /// A `yggdryl.string` column: every cell is read under its own
         /// parameters before it is restated under the target's.
-        String(StringParameters),
+        String(StringType),
         /// A registered code: validated ASCII, at most the code's own width.
         Code(DataType),
         /// A UUID: sixteen stored bytes, read as the canonical spelling they are.
@@ -242,7 +241,7 @@ pub(crate) mod casts {
                 }
                 // So does a code, at the width its standard fixes.
                 (StringSource::Code(code), Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
-                    Str::from_storage(code_cell_text(code, bytes)?, StringParameters::default())
+                    Str::from_storage(code_cell_text(code, bytes)?, StringType::default())
                         .try_with_parameters(target)
                 }
                 // A UUID is sixteen bytes of identity, every one of which can be
@@ -254,7 +253,7 @@ pub(crate) mod casts {
                     Str::from(uuid_text(&uuid_parse(text.as_bytes())?)).try_with_parameters(target)
                 }
                 (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
-                    Str::from_storage(text, StringParameters::default()).try_with_parameters(target)
+                    Str::from_storage(text, StringType::default()).try_with_parameters(target)
                 }
                 (StringSource::Bare, Cell::Slot(bytes)) => Str::from_bytes(trim_padding(bytes), target),
                 (StringSource::Bare, Cell::Bytes(bytes)) => Str::from_bytes(bytes, target),
@@ -332,7 +331,7 @@ pub(crate) mod casts {
     /// characters as they are; every other charset writes its bytes here, and a
     /// scalar it cannot spell fails at the write, as in every other writer.
     fn string_storage(
-        target: StringParameters,
+        target: StringType,
         field: &Field,
         rows: usize,
         safe: bool,
@@ -735,7 +734,7 @@ impl DataType {
         Str::new(text).try_with_parameters(match self {
             Self::String(parameters) => *parameters,
             // A code is US-ASCII bounded at the width its standard fixes.
-            _ => super::StringParameters::ascii(super::StringLayout::String)
+            _ => super::StringType::ascii(super::StringLayout::String)
                 .try_with_bound(width as u32)?,
         })
     }
@@ -1154,17 +1153,17 @@ impl DataType {
     /// parameters say all of it - a layout, a charset, and a bound.
     ///
     /// ```
-    /// use yggdryl::types::{StringLayout, StringParameters};
+    /// use yggdryl::types::{StringLayout, StringType};
     /// use yggdryl::{Charset, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // Plain UTF-8 renders under Arrow's own name.
-    /// let plain = StringParameters::utf8(StringLayout::LargeString);
+    /// let plain = StringType::utf8(StringLayout::LargeString);
     /// assert_eq!(DataType::string(plain)?, DataType::large_utf8());
     /// assert_eq!(DataType::large_utf8().to_string(), "large_utf8");
     ///
     /// // A charset or a bound is what a string declares.
-    /// let bounded = StringParameters::utf8(StringLayout::String).try_with_bound(32)?;
+    /// let bounded = StringType::utf8(StringLayout::String).try_with_bound(32)?;
     /// assert_eq!(DataType::string(bounded)?.to_string(), "utf8(32)");
     /// assert_eq!(DataType::string(Charset::Cp1252)?.to_string(), "string(windows-1252)");
     /// assert_eq!(DataType::fixed_ascii(4)?.to_string(), "fixed_ascii(4)");
@@ -1176,7 +1175,7 @@ impl DataType {
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a fixed layout with no width:
     /// the width is what makes it fixed.
-    pub fn string(parameters: impl Into<StringParameters>) -> Result<Self> {
+    pub fn string(parameters: impl Into<StringType>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
         Ok(Self::String(parameters))
@@ -1185,25 +1184,25 @@ impl DataType {
     /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
     #[must_use]
     pub const fn utf8() -> Self {
-        Self::String(StringParameters::utf8(StringLayout::String))
+        Self::String(StringType::utf8(StringLayout::String))
     }
 
     /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
     #[must_use]
     pub const fn large_utf8() -> Self {
-        Self::String(StringParameters::utf8(StringLayout::LargeString))
+        Self::String(StringType::utf8(StringLayout::LargeString))
     }
 
     /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
     #[must_use]
     pub const fn utf8_view() -> Self {
-        Self::String(StringParameters::utf8(StringLayout::StringView))
+        Self::String(StringType::utf8(StringLayout::StringView))
     }
 
     /// Unbounded US-ASCII with 32-bit offsets.
     #[must_use]
     pub const fn ascii() -> Self {
-        Self::String(StringParameters::ascii(StringLayout::String))
+        Self::String(StringType::ascii(StringLayout::String))
     }
 
     /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.
@@ -1212,7 +1211,7 @@ impl DataType {
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
     pub fn fixed_utf8(width: u32) -> Result<Self> {
-        Self::string(StringParameters::utf8(StringLayout::FixedString).try_with_bound(width)?)
+        Self::string(StringType::utf8(StringLayout::FixedString).try_with_bound(width)?)
     }
 
     /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
@@ -1234,7 +1233,7 @@ impl DataType {
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
     pub fn fixed_ascii(width: u32) -> Result<Self> {
-        Self::string(StringParameters::ascii(StringLayout::FixedString).try_with_bound(width)?)
+        Self::string(StringType::ascii(StringLayout::FixedString).try_with_bound(width)?)
     }
 
     /// The parameters a string datatype declares, `None` for every other.
@@ -1264,7 +1263,7 @@ impl DataType {
     /// # }
     /// ```
     #[must_use]
-    pub const fn string_parameters(&self) -> Option<StringParameters> {
+    pub const fn string_parameters(&self) -> Option<StringType> {
         match self {
             Self::String(parameters) => Some(*parameters),
             _ => None,
@@ -1331,10 +1330,7 @@ impl DataType {
 // One file because a marker is one line per datatype and the family is one
 // family; splitting them would be two lists to keep in step rather than one.
 // ------------------------------------------------------------------------
-define_field_types!(StringType, String, crate::DataType::String(_));
 
-/// A string-typed field, whichever layout, charset and bound it declares.
-pub type StringField = TypedField<StringType>;
 
 impl Field {
     /// The enum this field's string values name, if one is declared.
@@ -1357,9 +1353,9 @@ impl Field {
     /// a registered code, because a member's code is its value's own bytes
     /// packed into one integer.
     pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()> {
-        value.into_members(&self.dtype)?;
+        value.into_members(self.dtype())?;
         let (_, changed) = self
-            .metadata
+            .metadata_mut()
             .insert_validated(FIELD_ENUM_KEY.to_owned(), value.into_json());
         if changed {
             self.invalidate_arrow();
@@ -1416,11 +1412,11 @@ pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
 /// exactly one of them ever answers.
 ///
 /// ```
-/// use yggdryl::types::{StringLayout, StringParameters};
+/// use yggdryl::types::{StringLayout, StringType};
 /// use yggdryl::{Charset, DataType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let parameters = StringParameters::new(StringLayout::String, Charset::Cp1252).try_with_bound(32)?;
+/// let parameters = StringType::new(StringLayout::String, Charset::Cp1252).try_with_bound(32)?;
 /// assert_eq!(parameters.charset(), Charset::Cp1252);
 /// assert_eq!(parameters.max(), Some(32));
 /// assert_eq!(parameters.fixed(), None);
@@ -1432,13 +1428,13 @@ pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
 /// # }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct StringParameters {
+pub struct StringType {
     layout: StringLayout,
     charset: Charset,
     bound: Option<NonZeroU32>,
 }
 
-impl StringParameters {
+impl StringType {
     /// An unbounded string in one layout and charset.
     #[must_use]
     pub const fn new(layout: StringLayout, charset: Charset) -> Self {
@@ -1701,25 +1697,25 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
     }
 }
 
-impl Default for StringParameters {
+impl Default for StringType {
     fn default() -> Self {
         Self::utf8(StringLayout::String)
     }
 }
 
-impl From<Charset> for StringParameters {
+impl From<Charset> for StringType {
     fn from(value: Charset) -> Self {
         Self::new(StringLayout::String, value)
     }
 }
 
-impl From<StringLayout> for StringParameters {
+impl From<StringLayout> for StringType {
     fn from(value: StringLayout) -> Self {
         Self::utf8(value)
     }
 }
 
-impl fmt::Display for StringParameters {
+impl fmt::Display for StringType {
     /// The canonical spelling, which [`crate::DataType`]'s grammar reads back.
     ///
     /// UTF-8 renders under the layout's `utf8` name and US-ASCII under its
@@ -1736,7 +1732,7 @@ impl fmt::Display for StringParameters {
     }
 }
 
-impl Serialize for StringParameters {
+impl Serialize for StringType {
     fn serialize<S: serde::Serializer>(
         &self,
         serializer: S,
@@ -1744,7 +1740,7 @@ impl Serialize for StringParameters {
         use serde::ser::SerializeStruct;
 
         let declared = usize::from(self.bound.is_some());
-        let mut state = serializer.serialize_struct("StringParameters", 2 + declared)?;
+        let mut state = serializer.serialize_struct("StringType", 2 + declared)?;
         state.serialize_field("layout", &self.layout)?;
         state.serialize_field("charset", &self.charset)?;
         if let Some(bound) = self.bound {
@@ -1754,7 +1750,7 @@ impl Serialize for StringParameters {
     }
 }
 
-impl<'de> Deserialize<'de> for StringParameters {
+impl<'de> Deserialize<'de> for StringType {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
@@ -1808,7 +1804,7 @@ impl Parser<'_> {
         } else {
             None
         };
-        let mut parameters = StringParameters::new(layout, named.unwrap_or(Charset::Utf8));
+        let mut parameters = StringType::new(layout, named.unwrap_or(Charset::Utf8));
         let mut bound = None;
 
         if let Some(close) = self.consume_opening() {
@@ -2191,7 +2187,7 @@ mod scalars {
     use serde::{Deserialize, Serialize};
     use smol_str::{SmolStr, format_smolstr};
 
-    use super::{StringLayout, StringParameters, trim_padding};
+    use super::{StringLayout, StringType, trim_padding};
     use crate::types::Scalar;
     use crate::{Charset, DataType, Error, Result, Value};
 
@@ -2205,7 +2201,7 @@ mod scalars {
     /// One string value: its characters and the parameters it is stored under.
     ///
     /// ```
-    /// use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringParameters};
+    /// use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringType};
     /// use yggdryl::{Charset, DataType, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -2216,7 +2212,7 @@ mod scalars {
     /// assert!(!long.is_inline());
     ///
     /// // A value is one value whichever layout or charset it is stored under.
-    /// let latin = StringParameters::new(StringLayout::LargeString, Charset::Cp1252);
+    /// let latin = StringType::new(StringLayout::LargeString, Charset::Cp1252);
     /// let restated = short.clone().try_with_parameters(latin)?;
     /// assert_eq!(restated, short);
     /// assert_eq!(restated.charset(), Charset::Cp1252);
@@ -2230,7 +2226,7 @@ mod scalars {
     #[derive(Clone)]
     pub struct Str {
         text: SmolStr,
-        parameters: StringParameters,
+        parameters: StringType,
     }
 
     const _: () = assert!(std::mem::size_of::<Str>() == 32);
@@ -2244,7 +2240,7 @@ mod scalars {
         pub const fn new_static(text: &'static str) -> Self {
             Self {
                 text: SmolStr::new_static(text),
-                parameters: StringParameters::utf8(StringLayout::String),
+                parameters: StringType::utf8(StringLayout::String),
             }
         }
 
@@ -2255,7 +2251,7 @@ mod scalars {
         pub fn new(text: impl AsRef<str>) -> Self {
             Self {
                 text: SmolStr::new(text),
-                parameters: StringParameters::default(),
+                parameters: StringType::default(),
             }
         }
 
@@ -2281,7 +2277,7 @@ mod scalars {
         /// Returns [`Error::Codec`] naming the charset and the first byte it
         /// refuses, [`Error::InvalidDataType`] for a fixed layout with no width,
         /// and [`Error::InvalidRecord`] when the text does not fit the bound.
-        pub fn from_bytes(bytes: &[u8], parameters: StringParameters) -> Result<Self> {
+        pub fn from_bytes(bytes: &[u8], parameters: StringType) -> Result<Self> {
             let payload = match parameters.is_fixed() {
                 true => trim_padding(bytes),
                 false => bytes,
@@ -2293,14 +2289,14 @@ mod scalars {
             };
             Self {
                 text,
-                parameters: StringParameters::default(),
+                parameters: StringType::default(),
             }
             .try_with_parameters(parameters)
         }
 
         /// The text a column's own storage holds, under the parameters it
         /// declares, checked when it was written and not again here.
-        pub(crate) fn from_storage(text: &str, parameters: StringParameters) -> Self {
+        pub(crate) fn from_storage(text: &str, parameters: StringType) -> Self {
             Self {
                 text: SmolStr::new(text),
                 parameters: parameters.without_max(),
@@ -2329,7 +2325,7 @@ mod scalars {
         /// Returns [`Error::InvalidDataType`] for a fixed layout with no width,
         /// and [`Error::InvalidRecord`] naming the bound and the stored length
         /// when the text does not fit it, or the byte that is not US-ASCII.
-        pub fn try_with_parameters(mut self, parameters: StringParameters) -> Result<Self> {
+        pub fn try_with_parameters(mut self, parameters: StringType) -> Result<Self> {
             parameters.validate()?;
             if parameters.is_fixed() {
                 let trimmed = self.text.trim_end_matches('\0');
@@ -2377,7 +2373,7 @@ mod scalars {
         /// Never a maximum: that is the column's declaration, and a value read
         /// out of a bounded column answers its layout and charset alone.
         #[must_use]
-        pub const fn parameters(&self) -> StringParameters {
+        pub const fn parameters(&self) -> StringType {
             self.parameters
         }
 
@@ -2528,7 +2524,7 @@ mod scalars {
         /// apart in a failing assertion.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             fmt::Debug::fmt(self.as_str(), formatter)?;
-            if self.parameters != StringParameters::default() {
+            if self.parameters != StringType::default() {
                 write!(formatter, " as {}", self.parameters)?;
             }
             Ok(())
@@ -2662,7 +2658,7 @@ mod scalars {
         fn from(value: SmolStr) -> Self {
             Self {
                 text: value,
-                parameters: StringParameters::default(),
+                parameters: StringType::default(),
             }
         }
     }
@@ -2742,7 +2738,7 @@ mod scalars {
             &self,
             serializer: S,
         ) -> std::result::Result<S::Ok, S::Error> {
-            if self.parameters == StringParameters::default() {
+            if self.parameters == StringType::default() {
                 return serializer.serialize_str(self.as_str());
             }
             Declared {
@@ -2769,7 +2765,7 @@ mod scalars {
             match Representation::deserialize(deserializer)? {
                 Representation::Plain(text) => Ok(Self::from(text)),
                 Representation::Declared(declared) => {
-                    let mut parameters = StringParameters::new(declared.layout, declared.charset);
+                    let mut parameters = StringType::new(declared.layout, declared.charset);
                     if let Some(width) = declared.fixed {
                         parameters = parameters
                             .try_with_bound(width)
@@ -2887,7 +2883,7 @@ mod scalars {
     #[cfg(test)]
     mod tests {
         use super::{INLINE_CAPACITY, Str};
-        use crate::types::{StringLayout, StringParameters};
+        use crate::types::{StringLayout, StringType};
         use crate::{Charset, DataType, Scalar};
 
         #[test]
@@ -2909,7 +2905,7 @@ mod scalars {
 
             let plain = Str::new("Grüße");
             let latin = Str::new("Grüße")
-                .try_with_parameters(StringParameters::new(
+                .try_with_parameters(StringType::new(
                     StringLayout::LargeString,
                     Charset::Cp1252,
                 ))
@@ -2930,15 +2926,15 @@ mod scalars {
         fn restating_shares_the_storage_and_checks_but_never_carries_a_maximum() {
             let text = "x".repeat(INLINE_CAPACITY + 22);
             let shared = Str::new(&text);
-            let bounded = StringParameters::utf8(StringLayout::String)
+            let bounded = StringType::utf8(StringLayout::String)
                 .try_with_bound(64)
                 .unwrap();
             let restated = shared.clone().try_with_parameters(bounded).unwrap();
             assert!(std::ptr::eq(shared.as_str(), restated.as_str()));
-            assert_eq!(restated.parameters(), StringParameters::default());
+            assert_eq!(restated.parameters(), StringType::default());
             assert_eq!(restated.dtype().unwrap(), DataType::utf8());
 
-            let tight = StringParameters::utf8(StringLayout::String)
+            let tight = StringType::utf8(StringLayout::String)
                 .try_with_bound(8)
                 .unwrap();
             let refused = shared.try_with_parameters(tight).unwrap_err().to_string();
@@ -2946,11 +2942,11 @@ mod scalars {
 
             // The bound counts stored bytes, so five scalars are five bytes in
             // windows-1252 and seven in UTF-8.
-            let five = StringParameters::new(StringLayout::String, Charset::Cp1252)
+            let five = StringType::new(StringLayout::String, Charset::Cp1252)
                 .try_with_bound(5)
                 .unwrap();
             assert!(Str::new("Grüße").try_with_parameters(five).is_ok());
-            let five = StringParameters::utf8(StringLayout::String)
+            let five = StringType::utf8(StringLayout::String)
                 .try_with_bound(5)
                 .unwrap();
             assert!(Str::new("Grüße").try_with_parameters(five).is_err());
@@ -2958,7 +2954,7 @@ mod scalars {
 
         #[test]
         fn us_ascii_is_a_repertoire_and_every_other_charset_is_counted() {
-            let ascii = StringParameters::ascii(StringLayout::String);
+            let ascii = StringType::ascii(StringLayout::String);
             assert!(Str::new("plain").try_with_parameters(ascii).is_ok());
             let refused = Str::new("café")
                 .try_with_parameters(ascii)
@@ -2967,7 +2963,7 @@ mod scalars {
             assert!(refused.contains("non-ASCII byte"), "{refused}");
             assert!(Str::new("a\0b").try_with_parameters(ascii).is_err());
             // `U+0081` has no windows-1252 byte, and the value door only counts.
-            let latin = StringParameters::new(StringLayout::String, Charset::Cp1252);
+            let latin = StringType::new(StringLayout::String, Charset::Cp1252);
             let recovered = Str::new("ok\u{0081}").try_with_parameters(latin).unwrap();
             assert!(recovered.encode().is_err());
             assert_eq!(recovered.encoded_len(), 3);
@@ -2975,7 +2971,7 @@ mod scalars {
 
         #[test]
         fn a_fixed_layout_trims_its_padding_and_pads_on_the_way_out() {
-            let fixed = StringParameters::ascii(StringLayout::FixedString)
+            let fixed = StringType::ascii(StringLayout::FixedString)
                 .try_with_bound(4)
                 .unwrap();
             let value = Str::new("USD\0").try_with_parameters(fixed).unwrap();
@@ -2987,14 +2983,14 @@ mod scalars {
             assert!(Str::new("EURO!").try_with_parameters(fixed).is_err());
             assert!(
                 Str::new("x")
-                    .try_with_parameters(StringParameters::utf8(StringLayout::FixedString))
+                    .try_with_parameters(StringType::utf8(StringLayout::FixedString))
                     .is_err()
             );
         }
 
         #[test]
         fn bytes_are_read_strictly_or_transcribed_by_their_charset() {
-            let latin = StringParameters::new(StringLayout::String, Charset::Cp1252);
+            let latin = StringType::new(StringLayout::String, Charset::Cp1252);
             let value = Str::from_bytes(b"Gr\xFC\xDFe", latin).unwrap();
             assert_eq!(value, "Grüße");
             assert_eq!(value.charset(), Charset::Cp1252);
@@ -3002,20 +2998,20 @@ mod scalars {
             // `0x81` is unassigned in windows-1252 and still reads.
             assert_eq!(Str::from_bytes(b"ok\x81", latin).unwrap(), "ok\u{0081}");
             // UTF-8 and US-ASCII are validated, not transcribed.
-            assert!(Str::from_bytes(b"caf\xe9", StringParameters::default()).is_err());
+            assert!(Str::from_bytes(b"caf\xe9", StringType::default()).is_err());
             assert!(
                 Str::from_bytes(
                     b"caf\xc3\xa9",
-                    StringParameters::ascii(StringLayout::String)
+                    StringType::ascii(StringLayout::String)
                 )
                 .is_err()
             );
             assert_eq!(
-                Str::from_bytes(b"caf\xc3\xa9", StringParameters::default()).unwrap(),
+                Str::from_bytes(b"caf\xc3\xa9", StringType::default()).unwrap(),
                 "café"
             );
             // A padded slot comes back trimmed and carries its width.
-            let slot = StringParameters::utf8(StringLayout::FixedString)
+            let slot = StringType::utf8(StringLayout::FixedString)
                 .try_with_bound(6)
                 .unwrap();
             let padded = Str::from_bytes(b"ab\0\0\0\0", slot).unwrap();
@@ -3030,7 +3026,7 @@ mod scalars {
             assert_eq!(serde_json::from_str::<Str>("\"plain\"").unwrap(), plain);
             let latin = Str::new("Grüße")
                 .try_with_parameters(
-                    StringParameters::new(StringLayout::FixedString, Charset::Cp1252)
+                    StringType::new(StringLayout::FixedString, Charset::Cp1252)
                         .try_with_bound(8)
                         .unwrap(),
                 )
@@ -3046,7 +3042,7 @@ mod scalars {
             // A maximum is never part of a value, so it never reaches the wire.
             let bounded = Str::new("x")
                 .try_with_parameters(
-                    StringParameters::utf8(StringLayout::LargeString)
+                    StringType::utf8(StringLayout::LargeString)
                         .try_with_bound(8)
                         .unwrap(),
                 )
@@ -3062,7 +3058,7 @@ mod scalars {
             assert_eq!(Scalar::from("x").as_str(), Some("x"));
             assert_eq!(Scalar::from("x").dtype().unwrap(), DataType::utf8());
             let latin = Str::new("x")
-                .try_with_parameters(StringParameters::new(
+                .try_with_parameters(StringType::new(
                     StringLayout::StringView,
                     Charset::Latin1,
                 ))
@@ -3079,7 +3075,7 @@ mod scalars {
 ///
 /// The layout is the physical shape alone, how a value's bytes are addressed.
 /// It says nothing about what the bytes mean; that is the charset beside it in
-/// [`StringParameters`].
+/// [`StringType`].
 ///
 /// Each layout has three spellings, and they are one datatype: the `string`
 /// name is the general one, the `utf8` name is what the same layout is called
@@ -3354,5 +3350,32 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(wrong.contains("registered codes"), "{wrong}");
+    }
+}
+
+impl crate::types::DataTypeValue for StringType {
+    const FAMILY: &'static str = "string";
+
+    fn id(&self) -> crate::DataTypeId {
+        DataType::String(*self).id()
+    }
+
+    fn kind(&self) -> crate::DataTypeKind {
+        crate::DataTypeKind::Text
+    }
+
+    fn validate(&self) -> Result<()> {
+        DataType::String(*self).validate()
+    }
+
+    fn into_dtype(self) -> DataType {
+        DataType::String(self)
+    }
+
+    fn from_dtype(dtype: &DataType) -> Option<Self> {
+        match dtype {
+            DataType::String(parameters) => Some(*parameters),
+            _ => None,
+        }
     }
 }

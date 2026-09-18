@@ -25,7 +25,7 @@
 
 use crate::types::scalar::{Value, text_scalar_value};
 use crate::types::typed::define_field_types;
-use crate::{DataType, MimeType, Result, Scalar, TypedField};
+use crate::{DataType, MimeType, Result, Scalar};
 
 /// Arrow casts owned by the MIME type datatype.
 pub(crate) mod casts {
@@ -89,10 +89,8 @@ pub(crate) mod casts {
 // MIME type field marker and typed aliases.
 // ------------------------------------------------------------------------
 
-define_field_types!(MimeTypeType, MimeType, crate::DataType::MimeType);
+define_field_types!(MimeTypeType, MimeType);
 
-/// A MIME-type-typed field.
-pub type MimeTypeField = TypedField<MimeTypeType>;
 
 // ------------------------------------------------------------------------
 // [`MimeType`] as a scalar value.

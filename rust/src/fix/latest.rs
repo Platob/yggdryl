@@ -1014,7 +1014,7 @@ pub(super) fn restate(mut msg: FixMsg) -> Result<FixMsg> {
         root.name(),
         DataType::from_fields(fields)?,
         root.is_nullable(),
-        root.metadata.clone(),
+        root.as_metadata().clone(),
     );
     msg.replace_content(root, values)?;
     Ok(msg)

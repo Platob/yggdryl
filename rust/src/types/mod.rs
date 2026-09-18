@@ -70,10 +70,14 @@ pub(crate) use default::{
 };
 pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
-pub use dtype::{DataType, VariantField, VariantType};
+pub use dtype::{DataType, VariantType};
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Vocabulary;
-pub use family::{Children, DataTypeValue, FieldValue, NestedValue};
+pub use family::{
+    Children, DataTypeValue, DateTime64Type, Decimal32Type, Decimal64Type, Decimal128Type,
+    Decimal256Type, Duration32Type, Duration64Type, FieldValue, GeographyType, GeometryType,
+    IntervalType, NestedValue, RunEndType, Time32Type, Time64Type, UnionType,
+};
 pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
@@ -82,11 +86,11 @@ pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 pub use integer::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
-pub use media_type::{MediaTypeField, MediaTypeType};
+pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
-pub use mime_type::{MimeTypeField, MimeTypeType};
+pub use mime_type::MimeTypeType;
 pub use enums::*;
 pub use sequence::*;
 pub use mapping::*;
@@ -115,9 +119,9 @@ pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding}
 pub use temporal::TemporalFamily;
 pub use temporal::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
-pub use timezone::{Timezone, TimezoneField, TimezoneType};
+pub use timezone::{Timezone, TimezoneType};
 pub use typed::{
-    FieldRecord, FieldScalar, FieldType, TypedField, TypedFieldRef, UncheckedFieldScalar,
+    FieldRecord, FieldScalar, UncheckedFieldScalar,
 };
 pub use url::*;
 pub use uuid::*;

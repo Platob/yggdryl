@@ -11,7 +11,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use yggdryl::types::{BytesLayout, BytesParameters};
+    use yggdryl::types::{BytesLayout, BytesType};
     use yggdryl::{DataTypeId, i256};
 
     #[test]
@@ -91,7 +91,7 @@ mod widths {
     #[test]
     fn a_maximum_is_the_columns_rule_and_never_the_cells() {
         let column = DataType::bytes(
-            BytesParameters::new(BytesLayout::Binary)
+            BytesType::new(BytesLayout::Binary)
                 .try_with_bound(8)
                 .unwrap(),
         )

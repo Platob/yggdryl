@@ -50,8 +50,8 @@ use smol_str::format_smolstr;
 use crate::{Charset, DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::bytes::{BytesLayout, BytesParameters};
-use super::string::{StringLayout, StringParameters};
+use super::bytes::{BytesLayout, BytesType};
+use super::string::{StringLayout, StringType};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
 
@@ -481,10 +481,10 @@ fn is_mergeable_into_text(dtype: &DataType) -> bool {
 /// one type and never reach here, and two that disagree are variable bytes
 /// when widening, because a byte value is never padded to a wider slot.
 fn merge_bytes(
-    left: BytesParameters,
-    right: BytesParameters,
+    left: BytesType,
+    right: BytesType,
     how: Widening,
-) -> Result<BytesParameters> {
+) -> Result<BytesType> {
     let layout = match how {
         Widening::Up => match (left.is_fixed(), right.is_fixed()) {
             (true, true) => BytesLayout::Binary,
@@ -507,7 +507,7 @@ fn merge_bytes(
         (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
         (Widening::Down, left, right) => left.or(right),
     };
-    let parameters = BytesParameters::new(layout);
+    let parameters = BytesType::new(layout);
     match bound {
         Some(bound) => parameters.try_with_bound(bound),
         None => Ok(parameters),
@@ -544,7 +544,7 @@ fn fixed_width(dtype: &DataType) -> Option<usize> {
 /// tightest type naming both and the storage is identical either way. Any other pairing is variable bytes in the byte side's layout:
 /// the other side's rendering fits no fixed width and no maximum.
 fn rebuild_binary(
-    parameters: BytesParameters,
+    parameters: BytesType,
     how: Widening,
     left: &DataType,
     right: &DataType,
@@ -567,7 +567,7 @@ fn rebuild_binary(
         true => BytesLayout::Binary,
         false => parameters.layout(),
     };
-    Ok(DataType::Bytes(BytesParameters::new(layout)))
+    Ok(DataType::Bytes(BytesType::new(layout)))
 }
 
 /// The parameters a text datatype merges as, if it is text at all.
@@ -577,12 +577,12 @@ fn rebuild_binary(
 /// here - the merge answers an equal pair before reading anything - so this
 /// decides only the pairs that disagree, and [`merge_text`] is what says when
 /// the code identity survives.
-fn text_parameters(dtype: &DataType) -> Option<StringParameters> {
+fn text_parameters(dtype: &DataType) -> Option<StringType> {
     match dtype {
         DataType::String(parameters) => Some(*parameters),
         _ => {
             let width = u32::try_from(dtype.code_width()?).ok()?;
-            Some(StringParameters::ascii(StringLayout::String).with_bound(NonZeroU32::new(width)?))
+            Some(StringType::ascii(StringLayout::String).with_bound(NonZeroU32::new(width)?))
         }
     }
 }
@@ -602,8 +602,8 @@ fn text_parameters(dtype: &DataType) -> Option<StringParameters> {
 /// with a country is `ascii(3)` widening and `ascii(2)` narrowing, never one
 /// standard's code carrying the other's values.
 fn merge_text(
-    left: (&DataType, StringParameters),
-    right: (&DataType, StringParameters),
+    left: (&DataType, StringType),
+    right: (&DataType, StringType),
     how: Widening,
 ) -> Result<DataType> {
     let ((left_type, left_parameters), (right_type, right_parameters)) = (left, right);
@@ -619,7 +619,7 @@ fn merge_text(
 }
 
 /// Whether one string's bound leaves room for every value of a fixed width.
-fn holds_width(parameters: StringParameters, fixed: StringParameters) -> bool {
+fn holds_width(parameters: StringType, fixed: StringType) -> bool {
     parameters
         .bound()
         .is_none_or(|bound| Some(bound) >= fixed.bound())
@@ -633,10 +633,10 @@ fn holds_width(parameters: StringParameters, fixed: StringParameters) -> bool {
 /// one, and then the larger. Narrowing is the mirror: the narrower layout,
 /// the narrower repertoire, the smaller bound.
 fn merge_parameters(
-    left: StringParameters,
-    right: StringParameters,
+    left: StringType,
+    right: StringType,
     how: Widening,
-) -> Result<StringParameters> {
+) -> Result<StringType> {
     let layout = match how {
         Widening::Up => match (left.is_fixed(), right.is_fixed()) {
             (true, true) => StringLayout::FixedString,
@@ -669,7 +669,7 @@ fn merge_parameters(
         (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
         (Widening::Down, left, right) => left.or(right),
     };
-    let parameters = StringParameters::new(layout, charset);
+    let parameters = StringType::new(layout, charset);
     match bound {
         Some(bound) => parameters.try_with_bound(bound),
         None => Ok(parameters),
@@ -698,10 +698,10 @@ const fn repertoire(charset: Charset) -> u8 {
 
 /// The text a non-text side re-encodes into beside `parameters`: at least
 /// `utf8`, because a number's rendering fits no fixed width and no bound.
-fn absorbing_text(parameters: StringParameters) -> Result<DataType> {
+fn absorbing_text(parameters: StringType) -> Result<DataType> {
     DataType::string(merge_parameters(
         parameters,
-        StringParameters::default(),
+        StringType::default(),
         Widening::Up,
     )?)
 }

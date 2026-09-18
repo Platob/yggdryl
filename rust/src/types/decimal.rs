@@ -11,9 +11,8 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::invalid;
 use crate::types::parser::Parser;
-use crate::types::typed::define_field_types;
 use crate::types::value::{ValidationFailure, expected};
-use crate::{DataType, DataTypeId, Error, Result, Scalar, TypedField, Value, i256};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, Value, i256};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -234,21 +233,12 @@ pub(crate) fn validate_decimal(
 // Fixed-width decimal field markers.
 // ------------------------------------------------------------------------
 
-define_field_types!(Decimal32Type, Decimal32, crate::DataType::Decimal32 { .. });
-define_field_types!(Decimal64Type, Decimal64, crate::DataType::Decimal64 { .. });
-define_field_types!(
-    Decimal128Type,
-    Decimal128,
-    crate::DataType::Decimal128 { .. }
-);
-define_field_types!(
-    Decimal256Type,
-    Decimal256,
-    crate::DataType::Decimal256 { .. }
-);
 
-/// A Decimal128-typed field.
-pub type Decimal128Field = TypedField<Decimal128Type>;
+
+
+
+
+
 /// One fixed-point decimal: `decimal128(38, 18)` already applied, so a price
 /// and a quantity add, multiply and compare as integers do.
 mod fixed {
