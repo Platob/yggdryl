@@ -66,6 +66,7 @@ from yggdryl._native import (
     BytesParameters,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
+from yggdryl.types import temporal
 from yggdryl.types import (
     BytesField,
     StringField,
@@ -1735,3 +1736,15 @@ assert role_cached is not None
 assert coding_roles and encoding_roles and storage_roles
 assert role_fs_path is not None and role_fs_file is not None
 assert role_fs_folder is not None and role_created is not None
+
+# The typed door for a value. A typed field alias already names the width,
+# unit, scale and zone, so `.scalar(value)` is how a caller reaches an exact
+# temporal without a second constructor vocabulary - and it has to narrow, not
+# just execute.
+typed_instant_field = temporal.datetime64("at", "ns", "UTC")
+typed_instant: Scalar = typed_instant_field.scalar(
+    datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+)
+typed_instant_dtype: Scalar = typed_instant_field.dtype.scalar(1)
+assert typed_instant.kind == "datetime64"
+assert typed_instant_dtype.kind == "datetime64"
