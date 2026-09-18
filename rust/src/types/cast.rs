@@ -2,8 +2,8 @@
 //!
 //! [`ArrowCast`] answers "make this array fit that field" for any
 //! field, and returns an [`ArrayRef`] because any field could be any datatype.
-//! A [`TypedField`](crate::TypedField) already knows its variant, so it can answer with the array
-//! type itself: [`Int64Field`](crate::types::Int64Field) casts to an
+//! A field leaf already holds its own datatype, so it can answer with the
+//! array type itself: [`Int64Field`](crate::types::Int64Field) casts to an
 //! [`Int64Array`](arrow_array::Int64Array), and the caller reads values without
 //! a downcast of its own.
 //!
