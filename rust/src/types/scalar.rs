@@ -48,11 +48,11 @@ use crate::{
 
 use super::boolean::Boolean;
 use super::bytes::Bytes;
-use super::decimal::scalars as decimal;
+use super::decimal as decimal;
 use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
-use super::floating::scalars::{Float16, Float32, Float64};
+use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
-use super::integer::scalars::{compare_integer_parts, integer_parts};
+use super::integer::{compare_integer_parts, integer_parts};
 use super::integer::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
 use super::nested::{Children, Mapping, Record, Sequence};
 use super::string::{

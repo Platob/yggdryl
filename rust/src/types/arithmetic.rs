@@ -4,12 +4,12 @@ use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
 use smol_str::SmolStr;
 
-use super::decimal::scalars::{
+use super::decimal::{
     decimal_arithmetic, decimal_target, decimal_value_parts, inferred_decimal_division_scale,
     is_exact_number, result_decimal_scale,
 };
-use super::floating::scalars::{float_arithmetic, float_value_width, float_width};
-use super::integer::scalars::{
+use super::floating::{float_arithmetic, float_value_width, float_width};
+use super::integer::{
     common_integer, integer_arithmetic, integer_kind, integer_value_kind,
 };
 use super::scalar::Scalar;

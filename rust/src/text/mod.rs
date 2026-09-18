@@ -25,7 +25,7 @@ pub(crate) use typed::with_field as prepare_text;
 pub(crate) mod wire;
 pub mod yaml;
 
-pub use crate::types::floating::scalars::{Float16, Float32, Float64};
+pub use crate::types::floating::{Float16, Float32, Float64};
 pub use crate::types::{Children, Scalar};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;

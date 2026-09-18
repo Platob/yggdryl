@@ -20,7 +20,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::iso;
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::types::decimal::scalars::exact_value_parts;
+use crate::types::decimal::exact_value_parts;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, Value, i256};
 

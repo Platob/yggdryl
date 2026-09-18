@@ -8,7 +8,7 @@ use crate::{Scalar, TimeUnit, Timezone, i256};
 
 #[test]
 fn the_integer_sign_and_magnitude_reader_answers_every_width() {
-    use super::super::integer::scalars::{compare_integer_parts, integer_parts};
+    use super::super::integer::{compare_integer_parts, integer_parts};
     use std::cmp::Ordering;
 
     let cases = [

@@ -109,7 +109,7 @@ pub use time_unit::TimeUnit;
 pub use types::cast::{
     ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
 };
-pub use types::floating::scalars::{Float16, Float32, Float64};
+pub use types::floating::{Float16, Float32, Float64};
 pub use types::i256::{i256, u256};
 pub use types::protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,

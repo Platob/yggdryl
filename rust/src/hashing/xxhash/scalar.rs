@@ -16,8 +16,8 @@
 use std::hash::Hasher;
 
 use super::Xxh3;
-use crate::types::decimal::scalars as decimal;
-use crate::types::integer::scalars::integer_parts;
+use crate::types::decimal as decimal;
+use crate::types::integer::integer_parts;
 use crate::types::temporal::scalars::temporal_key;
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Scalar, i256};
 use crate::types::code_scalars;
