@@ -77,3 +77,38 @@ fn every_static_vocabulary_round_trips_and_invalid_parts_fail() {
     assert!(Enum::from_parts("missing", "append").is_err());
     assert!(Enum::from_parts("IOMode", "missing").is_err());
 }
+
+#[test]
+fn a_member_reads_by_every_spelling_its_own_vocabulary_accepts() {
+    // `from_parts` used to scan `as_str` for each vocabulary, so it accepted
+    // only the canonical short spelling. `TimeUnit::as_str` answers `ns`,
+    // while the serialized vocabulary is the full `nanosecond` - the only
+    // unit spelling on disk, 1,017 times - so this crate wrote a name its own
+    // reader refused. Reading through `FromStr` accepts both.
+    for spelling in ["ns", "nanosecond", "NANOSECOND", "Nanoseconds"] {
+        assert_eq!(
+            Enum::from_parts("TimeUnit", spelling).unwrap(),
+            Enum::TimeUnit(TimeUnit::Nanosecond),
+            "{spelling}"
+        );
+    }
+    for spelling in ["us", "microsecond", "micro seconds"] {
+        assert_eq!(
+            Enum::from_parts("TimeUnit", spelling).unwrap(),
+            Enum::TimeUnit(TimeUnit::Microsecond),
+            "{spelling}"
+        );
+    }
+
+    // `UnionMode` had no `FromStr` at all, which is what stopped `from_parts`
+    // routing through the parsers; it has one now.
+    for spelling in ["dense", "DENSE", " dense "] {
+        assert_eq!(
+            Enum::from_parts("UnionMode", spelling).unwrap(),
+            Enum::UnionMode(UnionMode::Dense),
+            "{spelling}"
+        );
+    }
+    assert!(Enum::from_parts("UnionMode", "packed").is_err());
+    assert!(Enum::from_parts("TimeUnit", "fortnight").is_err());
+}

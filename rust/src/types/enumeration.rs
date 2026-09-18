@@ -39,12 +39,18 @@ pub enum Enum {
 
 impl Enum {
     /// Parse a member while retaining its enum identity.
+    ///
+    /// Each vocabulary reads through its own `FromStr`, not through a second
+    /// scan of `as_str`. That matters where the two differ: `TimeUnit::as_str`
+    /// answers the short `ns`, while the serialized vocabulary is the full
+    /// `nanosecond` - the only unit spelling written on disk, 1,017 times -
+    /// and only `TimeUnit::from_str` accepts both. Scanning `as_str` refused
+    /// a spelling this crate itself writes.
     pub fn from_parts(kind: &str, value: &str) -> Result<Self> {
         macro_rules! parse {
             ($type:ty, $variant:ident) => {
-                <$type>::ALL
-                    .into_iter()
-                    .find(|member| value.eq_ignore_ascii_case(member.as_str()))
+                <$type as std::str::FromStr>::from_str(value)
+                    .ok()
                     .map(Self::$variant)
             };
         }

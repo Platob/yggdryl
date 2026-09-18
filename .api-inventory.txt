@@ -3950,7 +3950,9 @@ pub const LOGICAL_NAMES: &'static [(&'static str, DataType)]
 
 ### yggdryl::root::union_mode  [rust/src/union_mode.rs]
 pub enum UnionMode
+  pub const ALL: [Self; 2] = [Self::Sparse, Self::Dense];
   pub const fn as_str(self) -> &'static str
+  impl FromStr: fn from_str(value: &str) -> Result<Self>  (ASCII case-insensitive, trims; the seven other vocabularies `Enum::from_parts` dispatches over all had one)
 
 ### yggdryl::uri  [rust/src/uri/mod.rs]
 pub struct Authority(SmolStr);
