@@ -1,6 +1,6 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use yggdryl::types::{BytesLayout, BytesType, StringLayout, StringType};
+use yggdryl::types::{BytesType, StringLayout, StringType};
 use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]
@@ -74,7 +74,7 @@ fn a_parameterized_leaf_is_interned_once_per_distinct_datatype() {
         DataType::ascii(),
         DataType::from_str("utf8(32)").unwrap(),
         DataType::from_str("string(windows-1252)").unwrap(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, 4).unwrap(),
         DataType::decimal128(38, 10).unwrap(),
@@ -134,7 +134,7 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     }
     // A parameter the datatype refuses never earns a permanent field.
     assert!(
-        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary))
+        DataType::Bytes(BytesType::FixedBinary(0))
             .shared_field()
             .is_none()
     );

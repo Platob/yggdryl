@@ -1495,7 +1495,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         Some("holder")
     );
 
-    let mut wide = DataType::fixed_size_binary(16)
+    let mut wide = DataType::fixed_binary(16)
         .unwrap()
         .required_field("wide_digest");
     wide.as_digest_mut().set_holder().unwrap();

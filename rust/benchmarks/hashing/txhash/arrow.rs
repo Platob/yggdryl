@@ -191,7 +191,7 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
         .expect("a valid holder role");
     let mut coupled = Field::new(
         "key",
-        DataType::fixed_size_binary(16).expect("sixteen bytes is a width"),
+        DataType::fixed_binary(16).expect("sixteen bytes is a width"),
         false,
     );
     coupled

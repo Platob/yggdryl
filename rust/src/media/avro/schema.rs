@@ -434,7 +434,7 @@ impl Node {
             )?,
             Self::Duration(_) => DataType::Interval(TimeUnit::MonthDayNano),
             Self::Fixed(fixed) => {
-                DataType::fixed_size_binary(u32::try_from(fixed.size).map_err(|_| {
+                DataType::fixed_binary(u32::try_from(fixed.size).map_err(|_| {
                     invalid(format_smolstr!(
                         "expected an Avro fixed size fitting u32, got {}",
                         fixed.size

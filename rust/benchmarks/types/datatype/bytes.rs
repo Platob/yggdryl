@@ -77,7 +77,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
     // The grammar: what a schema pays once per declared column.
     group.bench_function("parse_display_round_trip", |bencher| {
         bencher.iter(|| {
-            let dtype = DataType::from_str(black_box("fixed_size_binary(16)"))
+            let dtype = DataType::from_str(black_box("fixed_binary(16)"))
                 .expect("the static spelling must parse");
             DataType::from_str(black_box(&dtype.to_string()))
                 .expect("canonical display output must round-trip")
@@ -96,7 +96,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&value).clone());
         });
         // Restating the layout: the width is checked, the payload shared.
-        let fixed = DataType::fixed_size_binary(u32::try_from(size).expect("the sizes fit"))
+        let fixed = DataType::fixed_binary(u32::try_from(size).expect("the sizes fit"))
             .expect("every payload size is a width");
         group.bench_function(BenchmarkId::new("restate_fixed", size), |bencher| {
             bencher.iter(|| {
@@ -129,7 +129,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
             &column,
         );
         // The fixed slot, which every payload here fills exactly.
-        let fixed = DataType::fixed_size_binary(u32::try_from(size).expect("the sizes fit"))
+        let fixed = DataType::fixed_binary(u32::try_from(size).expect("the sizes fit"))
             .expect("every payload size is a width");
         column_round_trip(
             &mut group,

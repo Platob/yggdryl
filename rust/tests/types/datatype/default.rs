@@ -1,4 +1,4 @@
-use yggdryl::types::{BytesLayout, BytesType};
+use yggdryl::types::BytesType;
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
 use yggdryl::types::DecimalType;
@@ -34,7 +34,7 @@ fn all_variants() -> Vec<DataType> {
         DataType::Interval(TimeUnit::MonthDayNano),
         DataType::binary(),
         DataType::from_str("binary(16)").unwrap(),
-        DataType::fixed_size_binary(3).unwrap(),
+        DataType::fixed_binary(3).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),
@@ -111,7 +111,7 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
 
 #[test]
 fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
-    let wide = DataType::fixed_size_binary(64 * 1024 * 1024).unwrap();
+    let wide = DataType::fixed_binary(64 * 1024 * 1024).unwrap();
     assert!(!wide.is_default_value(&Scalar::Null).unwrap());
     assert!(!wide.is_default_value(&Scalar::from(vec![0_u8; 3])).unwrap());
 
@@ -137,7 +137,7 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
             .unwrap()
     );
 
-    let fatal = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let fatal = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     assert!(fatal.is_default_value(&Scalar::Null).is_err());
 }
 
@@ -220,7 +220,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
         DataType::Duration32(TimeUnit::DayTime),
         DataType::Duration64(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::Second),
-        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary)),
+        DataType::Bytes(BytesType::FixedBinary(0)),
         DataType::Sequence(SequenceType::FixedSizeList(
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
             -1,
@@ -244,7 +244,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
     ] {
         assert!(invalid.default_value().is_err(), "{invalid:?}");
     }
-    let too_wide = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let too_wide = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     let error = too_wide.default_value().unwrap_err().to_string();
     assert!(error.contains("byte safety limit"), "{error}");
 
@@ -259,7 +259,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
 
     let large_child = Field::new(
         "item",
-        DataType::fixed_size_binary(40 * 1024 * 1024).unwrap(),
+        DataType::fixed_binary(40 * 1024 * 1024).unwrap(),
         false,
     );
     let multiplicative = DataType::fixed_size_list(large_child, 2).unwrap();
@@ -269,7 +269,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
 
 #[test]
 fn fatal_default_limits_never_fall_back_to_nullable_nulls() {
-    let oversized = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let oversized = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     let union = DataType::union(
         [(1, Field::new("oversized", oversized.clone(), true))],
         UnionMode::Dense,

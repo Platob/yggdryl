@@ -1167,7 +1167,7 @@ impl Scalar {
             Self::MimeType(_) => DataTypeId::MimeType,
             Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
-            Self::Bytes(bytes) => bytes.layout().id(),
+            Self::Bytes(bytes) => bytes.parameters().id(),
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
             Self::Sequence(_) => DataTypeId::List,
@@ -1226,8 +1226,8 @@ impl Scalar {
             Self::MimeType(_) => "mimetype",
             Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
-            Self::Bytes(bytes) => match bytes.layout() {
-                super::bytes::BytesLayout::Binary => "bytes",
+            Self::Bytes(bytes) => match bytes.parameters() {
+                super::bytes::BytesType::Binary => "bytes",
                 other => other.as_str(),
             },
             Self::Geometry(_) => "geometry",

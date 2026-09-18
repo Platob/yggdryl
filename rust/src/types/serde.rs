@@ -560,7 +560,7 @@ enum DataTypeRef<'a> {
     // tag and only what a byte datatype declares is written.
     Binary {
         #[serde(skip_serializing_if = "Option::is_none")]
-        layout: Option<crate::types::BytesLayout>,
+        layout: Option<crate::types::BytesType>,
         #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -719,8 +719,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Bytes(parameters) => {
                 let parameters = *parameters;
                 Self::Binary {
-                    layout: Some(parameters.layout())
-                        .filter(|layout| *layout != crate::types::BytesLayout::Binary),
+                    layout: Some(parameters)
+                        .filter(|layout| *layout != crate::types::BytesType::Binary),
                     max: parameters.max(),
                     fixed: parameters.fixed(),
                 }
@@ -862,7 +862,7 @@ enum DataTypeWire {
     },
     Binary {
         #[serde(default)]
-        layout: crate::types::BytesLayout,
+        layout: crate::types::BytesType,
         #[serde(default)]
         max: Option<u32>,
         #[serde(default)]
@@ -1194,10 +1194,10 @@ impl DataType {
             D::Bytes(parameters) => {
                 let parameters = *parameters;
                 tag("binary");
-                if parameters.layout() != crate::types::BytesLayout::Binary {
+                if parameters != crate::types::BytesType::Binary {
                     entries.push((
                         key("layout"),
-                        Scalar::from(SmolStr::new_static(parameters.layout().as_str())),
+                        Scalar::from(SmolStr::new_static(parameters.as_str())),
                     ));
                 }
                 if let Some(max) = parameters.max() {
@@ -1461,12 +1461,12 @@ impl DataType {
             "interval" => Self::Interval(unit("unit")?),
             "binary" => {
                 let layout = match at("layout") {
-                    None => crate::types::BytesLayout::Binary,
+                    None => crate::types::BytesType::Binary,
                     Some(held) => {
                         let name = held.as_str().ok_or_else(|| {
                             invalid("$.layout", "a name", format_smolstr!("{}", held.kind()))
                         })?;
-                        crate::types::BytesLayout::from_str(name)?
+                        crate::types::BytesType::from_str(name)?
                     }
                 };
                 let max = at("max").map(|_| bound("max")).transpose()?;
@@ -1664,18 +1664,32 @@ fn string_parameters(
 
 /// The parameters a `binary` document declares, under the same rule.
 fn bytes_parameters(
-    layout: crate::types::BytesLayout,
+    layout: crate::types::BytesType,
     max: Option<u32>,
     fixed: Option<u32>,
 ) -> Result<crate::types::BytesType> {
-    let parameters = crate::types::BytesType::new(layout);
-    match (layout.is_fixed(), fixed, max) {
-        (true, Some(width), None) => parameters.try_with_bound(width),
-        (false, None, Some(max)) => parameters.try_with_bound(max),
-        (_, None, None) => Ok(parameters),
-        (true, _, Some(max)) => Err(invalid("$.max", "a fixed width on a fixed layout", max)),
-        (false, Some(fixed), _) => Err(invalid("$.fixed", "a maximum on a variable layout", fixed)),
-    }
+    use crate::types::BytesType;
+
+    let leaf = match (layout, fixed, max) {
+        (BytesType::FixedBinary(_), Some(width), None) => BytesType::FixedBinary(width),
+        (BytesType::FixedBinary(_), None, None) => {
+            return Err(invalid("$.fixed", "a width on the fixed layout", 0));
+        }
+        (BytesType::FixedBinary(_), _, Some(max)) => {
+            return Err(invalid("$.max", "a fixed width on the fixed layout", max));
+        }
+        (other, Some(fixed), _) => {
+            let _ = other;
+            return Err(invalid("$.fixed", "a maximum on a variable layout", fixed));
+        }
+        (_, None, Some(max)) => BytesType::SizedBinary(max),
+        (BytesType::SizedBinary(_), None, None) => {
+            return Err(invalid("$.max", "a maximum on the sized layout", 0));
+        }
+        (other, None, None) => other,
+    };
+    leaf.validate()?;
+    Ok(leaf)
 }
 
 /// A mapping key, which is always a plain string in a schema document.

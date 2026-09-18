@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
-    BytesLayout, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
+    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialType, IntegerType, MapType, RunEndEncodedType, StringLayout,
     StringType, TemporalType, TimeUnit, UnionFields, UnionMode,
 };
@@ -52,11 +52,11 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     assert_eq!(DataType::string(parameters).unwrap(), ascii);
 
     // The byte family reads back the same way: the layout and the bound.
-    let bytes = DataType::fixed_size_binary(16).unwrap();
-    assert_eq!(bytes.id(), yggdryl::DataTypeId::FixedSizeBinary);
+    let bytes = DataType::fixed_binary(16).unwrap();
+    assert_eq!(bytes.id(), yggdryl::DataTypeId::FixedBinary);
     assert_eq!(bytes.fixed_byte_width(), Some(16));
     let parameters = bytes.bytes_parameters().unwrap();
-    assert_eq!(parameters.layout(), BytesLayout::FixedSizeBinary);
+    assert_eq!(parameters, BytesType::FixedBinary(16));
     assert_eq!(parameters.fixed(), Some(16));
     assert_eq!(DataType::bytes(parameters).unwrap(), bytes);
     assert_eq!(DataType::utf8().bytes_parameters(), None);
@@ -292,7 +292,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
 fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
         DataType::Time32(TimeUnit::Nanosecond),
-        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary)),
+        DataType::Bytes(BytesType::FixedBinary(0)),
         DataType::Decimal(DecimalType::Decimal128 {
             precision: 0,
             scale: 0,
@@ -432,7 +432,7 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
         DataType::binary(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),

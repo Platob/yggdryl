@@ -9,12 +9,12 @@ fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
     assert_eq!(
         DataType::fixed_ascii(4)
             .unwrap()
-            .merge_with(&DataType::fixed_size_binary(4).unwrap(), true)
+            .merge_with(&DataType::fixed_binary(4).unwrap(), true)
             .unwrap(),
-        DataType::fixed_size_binary(4).unwrap()
+        DataType::fixed_binary(4).unwrap()
     );
     assert_eq!(
-        DataType::fixed_size_binary(8)
+        DataType::fixed_binary(8)
             .unwrap()
             .merge_with(&DataType::fixed_ascii(4).unwrap(), true)
             .unwrap(),
@@ -27,14 +27,14 @@ fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
             .unwrap(),
         DataType::binary()
     );
-    // The byte side keeps its layout and drops a maximum the other side
-    // never declared.
+    // Text merges into bytes, and the byte side keeps the maximum it
+    // declares: the text side states no width to widen it past.
     assert_eq!(
-        DataType::from_str("large_binary(16)")
+        DataType::from_str("sized_binary(16)")
             .unwrap()
             .merge_with(&DataType::utf8(), true)
             .unwrap(),
-        DataType::large_binary()
+        DataType::sized_binary(16).unwrap()
     );
 }
 
@@ -42,7 +42,7 @@ fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
 fn a_number_never_shares_a_fixed_byte_width() {
     // Four bytes of `int32` are an encoding, not a slot the bytes side
     // stores, so the pair is variable bytes in either direction.
-    let fixed = DataType::fixed_size_binary(4).unwrap();
+    let fixed = DataType::fixed_binary(4).unwrap();
     assert_eq!(
         DataType::Int32.merge_with(&fixed, true).unwrap(),
         DataType::binary()
@@ -74,27 +74,27 @@ fn two_byte_types_meet_parameter_by_parameter() {
     assert_eq!(up("binary", "large_binary"), "large_binary");
     assert_eq!(up("binary_view", "binary"), "binary");
     assert_eq!(up("binary_view", "large_binary"), "large_binary");
-    assert_eq!(up("fixed_size_binary(4)", "binary_view"), "binary_view");
-    assert_eq!(up("fixed_size_binary(4)", "binary(2)"), "binary(4)");
+    assert_eq!(up("fixed_binary(4)", "binary_view"), "binary_view");
+    assert_eq!(up("fixed_binary(4)", "sized_binary(2)"), "sized_binary(2)");
     assert_eq!(
-        up("fixed_size_binary(4)", "fixed_size_binary(8)"),
-        "binary(8)"
+        up("fixed_binary(4)", "fixed_binary(8)"),
+        "sized_binary(8)"
     );
-    assert_eq!(up("binary(16)", "binary"), "binary");
-    assert_eq!(up("binary(16)", "binary(32)"), "binary(32)");
+    assert_eq!(up("sized_binary(16)", "binary"), "binary");
+    assert_eq!(up("sized_binary(16)", "sized_binary(32)"), "sized_binary(32)");
     // Narrowing: the mirror.
     assert_eq!(down("binary", "large_binary"), "binary");
     assert_eq!(down("binary_view", "large_binary"), "binary");
     assert_eq!(
-        down("fixed_size_binary(4)", "binary_view"),
-        "fixed_size_binary(4)"
+        down("fixed_binary(4)", "binary_view"),
+        "fixed_binary(4)"
     );
     assert_eq!(
-        down("fixed_size_binary(4)", "fixed_size_binary(8)"),
-        "fixed_size_binary(4)"
+        down("fixed_binary(4)", "fixed_binary(8)"),
+        "fixed_binary(4)"
     );
-    assert_eq!(down("binary(16)", "binary"), "binary(16)");
-    assert_eq!(down("binary(16)", "binary(32)"), "binary(16)");
+    assert_eq!(down("sized_binary(16)", "binary"), "sized_binary(16)");
+    assert_eq!(down("sized_binary(16)", "sized_binary(32)"), "sized_binary(16)");
 }
 
 #[test]
@@ -104,9 +104,9 @@ fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
     for (left, right) in [
         (
             DataType::fixed_ascii(4).unwrap(),
-            DataType::fixed_size_binary(4).unwrap(),
+            DataType::fixed_binary(4).unwrap(),
         ),
-        (DataType::Uuid(UuidType::Uuid), DataType::fixed_size_binary(16).unwrap()),
+        (DataType::Uuid(UuidType::Uuid), DataType::fixed_binary(16).unwrap()),
     ] {
         assert_eq!(
             left.merge_with(&right, false).unwrap(),
@@ -128,7 +128,7 @@ fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
     // A width neither side shares is variable bytes, as before.
     assert_eq!(
         DataType::uuid()
-            .merge_with(&DataType::fixed_size_binary(8).unwrap(), true)
+            .merge_with(&DataType::fixed_binary(8).unwrap(), true)
             .unwrap(),
         DataType::binary()
     );
@@ -138,7 +138,7 @@ fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
     for how in [true, false] {
         assert_eq!(
             DataType::Currency
-                .merge_with(&DataType::fixed_size_binary(3).unwrap(), how)
+                .merge_with(&DataType::fixed_binary(3).unwrap(), how)
                 .unwrap(),
             DataType::binary()
         );

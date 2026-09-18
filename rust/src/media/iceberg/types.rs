@@ -140,7 +140,7 @@ impl PrimitiveType {
             // datatype that is exactly that, so the spelling survives without
             // a marker beside the column.
             Self::Uuid => DataType::Uuid(UuidType::Uuid),
-            Self::Fixed(width) => DataType::fixed_size_binary(width)?,
+            Self::Fixed(width) => DataType::fixed_binary(width)?,
             Self::Binary => DataType::binary(),
         })
     }

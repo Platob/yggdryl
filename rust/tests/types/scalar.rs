@@ -552,7 +552,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
 
     let bytes = bytes::Bytes::new([1, 2, 3])
-        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
     assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
@@ -647,7 +647,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary
         .clone()
-        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(binary.as_bytes(), binary_view.as_bytes());
     assert_eq!(binary.to_string(), "0001ff");
@@ -710,7 +710,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let binary = bytes::Bytes::from(vec![1, 2]);
     let view = binary
         .clone()
-        .try_with_parameters(bytes::BytesType::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(binary, view);
 

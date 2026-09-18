@@ -332,7 +332,7 @@ impl DiffEngine {
             // The layout is the identifier, so two layouts are two kinds
             // below; one layout leaves the bound, and for a string the
             // charset, to compare.
-            (D::Bytes(left), D::Bytes(right)) if left.layout() == right.layout() => {
+            (D::Bytes(left), D::Bytes(right)) if left.same_shape_as(*right) => {
                 if left.bound() != right.bound() {
                     self.pending.push_back(changed_debug(
                         &property_path(&path, "bound"),

@@ -50,7 +50,7 @@ use smol_str::format_smolstr;
 use crate::{Charset, DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::bytes::{BytesLayout, BytesType};
+use super::bytes::BytesType;
 use super::string::{StringLayout, StringType};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
@@ -481,53 +481,80 @@ fn is_mergeable_into_text(dtype: &DataType) -> bool {
 /// then the larger; narrowing is the mirror. Two fixed widths that agree are
 /// one type and never reach here, and two that disagree are variable bytes
 /// when widening, because a byte value is never padded to a wider slot.
-fn merge_bytes(
-    left: BytesType,
-    right: BytesType,
-    how: Widening,
-) -> Result<BytesType> {
-    let layout = match how {
-        Widening::Up => match (left.is_fixed(), right.is_fixed()) {
-            (true, true) => BytesLayout::Binary,
-            (true, false) => right.layout(),
-            (false, true) => left.layout(),
-            (false, false) => variable_bytes_layout(
-                left.layout().is_view() && right.layout().is_view(),
-                left.layout().is_large() || right.layout().is_large(),
-            ),
-        },
-        Widening::Down if left.is_fixed() || right.is_fixed() => BytesLayout::FixedSizeBinary,
-        Widening::Down => variable_bytes_layout(
-            left.layout().is_view() && right.layout().is_view(),
-            left.layout().is_large() && right.layout().is_large(),
+fn merge_bytes(left: BytesType, right: BytesType, how: Widening) -> Result<BytesType> {
+    if left == right {
+        return Ok(left);
+    }
+    Ok(match how {
+        Widening::Up => widened_bytes(left, right),
+        Widening::Down => narrowed_bytes(left, right),
+    })
+}
+
+/// The byte leaf that holds whatever either of two leaves holds.
+///
+/// A width only survives when both sides fill it, because a byte value is
+/// never padded to a wider slot; a maximum only survives when both declare
+/// one, and then it is the larger. What is left is the variable shape: a view
+/// only beside another view, and 64-bit offsets as soon as one side has them.
+fn widened_bytes(left: BytesType, right: BytesType) -> BytesType {
+    use BytesType as B;
+    match (left, right) {
+        (B::FixedBinary(left), B::FixedBinary(right)) if left == right => B::FixedBinary(left),
+        // Two widths that disagree are variable bytes, because a byte value is
+        // never padded to a wider slot - but the wider width still bounds
+        // them both, so the column keeps it as a maximum.
+        (B::FixedBinary(left), B::FixedBinary(right)) => B::SizedBinary(left.max(right)),
+        (B::SizedBinary(left), B::SizedBinary(right)) => B::SizedBinary(left.max(right)),
+        (held, B::FixedBinary(_)) | (B::FixedBinary(_), held) => variable_bytes(held),
+        (left, right) => variable_bytes_shape(
+            left.is_view() && right.is_view(),
+            left.is_large() || right.is_large(),
         ),
-    };
-    let bound = match (how, left.bound(), right.bound()) {
-        (Widening::Up, Some(left), Some(right)) => Some(left.max(right)),
-        (Widening::Up, _, _) => None,
-        (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
-        (Widening::Down, left, right) => left.or(right),
-    };
-    let parameters = BytesType::new(layout);
-    match bound {
-        Some(bound) => parameters.try_with_bound(bound),
-        None => Ok(parameters),
     }
 }
 
-/// The variable byte layout with the given view and offsets declarations.
-const fn variable_bytes_layout(view: bool, large: bool) -> BytesLayout {
+/// The byte leaf that holds only what both of two leaves hold.
+///
+/// The mirror of [`widened_bytes`]: a width stands as soon as one side
+/// declares it, a maximum is the smaller of the two, and the variable shape
+/// keeps a view or 64-bit offsets only while both sides do.
+fn narrowed_bytes(left: BytesType, right: BytesType) -> BytesType {
+    use BytesType as B;
+    match (left, right) {
+        (B::FixedBinary(left), B::FixedBinary(right)) => B::FixedBinary(left.min(right)),
+        (B::FixedBinary(width), _) | (_, B::FixedBinary(width)) => B::FixedBinary(width),
+        (B::SizedBinary(left), B::SizedBinary(right)) => B::SizedBinary(left.min(right)),
+        (B::SizedBinary(bound), _) | (_, B::SizedBinary(bound)) => B::SizedBinary(bound),
+        (left, right) => variable_bytes_shape(
+            left.is_view() && right.is_view(),
+            left.is_large() && right.is_large(),
+        ),
+    }
+}
+
+/// One leaf's variable shape: what it is once no width is left.
+const fn variable_bytes(leaf: BytesType) -> BytesType {
+    match leaf {
+        BytesType::FixedBinary(_) => BytesType::Binary,
+        other => other,
+    }
+}
+
+/// The variable byte leaf with the given view and offset declarations.
+const fn variable_bytes_shape(view: bool, large: bool) -> BytesType {
     match (view, large) {
-        (true, _) => BytesLayout::BinaryView,
-        (false, true) => BytesLayout::LargeBinary,
-        (false, false) => BytesLayout::Binary,
+        (true, true) => BytesType::LargeBinaryView,
+        (true, false) => BytesType::BinaryView,
+        (false, true) => BytesType::LargeBinary,
+        (false, false) => BytesType::Binary,
     }
 }
 
 /// The byte width of a fixed-width byte layout: fixed bytes, a fixed string,
 /// or a UUID, each of whose storage is the fixed binary of that width. A
 /// number's width is its own encoding and never bytes it shares, so `int32`
-/// beside `fixed_size_binary(4)` is variable bytes, and a registered code's
+/// beside `fixed_binary(4)` is variable bytes, and a registered code's
 /// width is a maximum over variable text rather than a layout.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
@@ -560,15 +587,14 @@ fn rebuild_binary(
                 });
             }
             if let Ok(width) = u32::try_from(left_width) {
-                return DataType::fixed_size_binary(width);
+                return DataType::fixed_binary(width);
             }
         }
     }
-    let layout = match parameters.is_fixed() {
-        true => BytesLayout::Binary,
-        false => parameters.layout(),
-    };
-    Ok(DataType::Bytes(BytesType::new(layout)))
+    Ok(DataType::Bytes(match parameters.is_fixed() {
+        true => BytesType::Binary,
+        false => parameters,
+    }))
 }
 
 /// The parameters a text datatype merges as, if it is text at all.

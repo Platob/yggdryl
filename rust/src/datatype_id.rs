@@ -76,7 +76,7 @@ pub enum DataTypeId {
     /// Bytes with 32-bit offsets, under any bound.
     Binary = 23,
     /// Bytes of one fixed width.
-    FixedSizeBinary = 24,
+    FixedBinary = 24,
     /// Bytes with 64-bit offsets.
     LargeBinary = 25,
     /// Bytes in the view layout.
@@ -199,11 +199,19 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Uuidv8 = 71,
+    /// The viewed byte layout over 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeBinaryView = 72,
+    /// Bytes under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedBinary = 73,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 71] = [
+    pub const ALL: [Self; 73] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -228,7 +236,7 @@ impl DataTypeId {
         Self::Duration64,
         Self::Interval,
         Self::Binary,
-        Self::FixedSizeBinary,
+        Self::FixedBinary,
         Self::LargeBinary,
         Self::BinaryView,
         Self::String,
@@ -275,6 +283,8 @@ impl DataTypeId {
         Self::Uuidv4,
         Self::Uuidv7,
         Self::Uuidv8,
+        Self::LargeBinaryView,
+        Self::SizedBinary,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -318,7 +328,7 @@ impl DataTypeId {
             Self::Duration64 => "duration64",
             Self::Interval => "interval",
             Self::Binary => "binary",
-            Self::FixedSizeBinary => "fixed_size_binary",
+            Self::FixedBinary => "fixed_binary",
             Self::LargeBinary => "large_binary",
             Self::BinaryView => "binary_view",
             Self::Country => "country",
@@ -336,6 +346,8 @@ impl DataTypeId {
             Self::Uuidv4 => "uuidv4",
             Self::Uuidv7 => "uuidv7",
             Self::Uuidv8 => "uuidv8",
+            Self::LargeBinaryView => "large_binary_view",
+            Self::SizedBinary => "sized_binary",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -415,7 +427,12 @@ impl DataTypeId {
             | Self::Duration32
             | Self::Duration64
             | Self::Interval => DataTypeKind::Temporal,
-            Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
+            Self::Binary
+            | Self::FixedBinary
+            | Self::LargeBinary
+            | Self::BinaryView
+            | Self::LargeBinaryView
+            | Self::SizedBinary => {
                 DataTypeKind::Bytes
             }
             Self::String
@@ -474,7 +491,9 @@ impl DataTypeId {
                 | Self::Duration64
                 | Self::Interval
                 | Self::Binary
-                | Self::FixedSizeBinary
+                | Self::FixedBinary
+                | Self::LargeBinaryView
+                | Self::SizedBinary
                 | Self::LargeBinary
                 | Self::BinaryView
                 | Self::String

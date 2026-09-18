@@ -90,7 +90,7 @@ pub enum DataType {
     /// Bytes: one layout, one optional byte bound.
     ///
     /// Every byte column the crate has, `binary`, `varbinary(16)` and
-    /// `fixed_size_binary(16)` alike; [`Self::bytes`] builds one and the
+    /// `fixed_binary(16)` alike; [`Self::bytes`] builds one and the
     /// sugar beside it - [`Self::binary`], [`Self::large_binary`],
     /// [`Self::binary_view`], [`Self::fixed_size_binary`] - names the common
     /// ones.
@@ -285,7 +285,7 @@ impl DataType {
             Self::Duration32(_) => DataTypeId::Duration32,
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
-            Self::Bytes(parameters) => parameters.layout().id(),
+            Self::Bytes(parameters) => parameters.id(),
             Self::String(parameters) => parameters.layout().id(),
             Self::Country => DataTypeId::Country,
             Self::Currency => DataTypeId::Currency,
@@ -879,7 +879,7 @@ mod arrow {
         /// Imports an Arrow datatype and validates every nested invariant.
         ///
         /// An Arrow datatype carries no metadata, so an extension type arrives
-        /// as the storage it is written over: `fixed_size_binary(3)` and not
+        /// as the storage it is written over: `fixed_binary(3)` and not
         /// `currency`, `binary` and not `geometry`. The identity lives on the
         /// field - [`Field::from_arrow_field`](crate::Field::from_arrow_field)
         /// reads it, and [`Self::into_arrow_datatype_ffi`] projects a node that

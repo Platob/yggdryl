@@ -9,7 +9,7 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    BLOOMBERG_WIDTH, Bytes, BytesLayout, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
+    BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
     CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
     StringLayout, StringType, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
     uuid_parse,
@@ -1385,11 +1385,15 @@ fn bytes_array(parameters: BytesType, values: &[&Scalar]) -> Result<ArrayRef> {
             FixedSizeBinaryArray::try_from_sparse_iter_with_size(cells.into_iter(), width)?,
         ));
     }
-    Ok(match parameters.layout() {
-        BytesLayout::LargeBinary => Arc::new(LargeBinaryArray::from(cells)),
-        BytesLayout::BinaryView => Arc::new(cells.into_iter().collect::<BinaryViewArray>()),
+    Ok(match parameters {
+        BytesType::LargeBinary => Arc::new(LargeBinaryArray::from(cells)),
+        BytesType::BinaryView | BytesType::LargeBinaryView => {
+            Arc::new(cells.into_iter().collect::<BinaryViewArray>())
+        }
         // The fixed layout answered above: `validate` gave it its width.
-        BytesLayout::Binary | BytesLayout::FixedSizeBinary => Arc::new(BinaryArray::from(cells)),
+        BytesType::Binary | BytesType::SizedBinary(_) | BytesType::FixedBinary(_) => {
+            Arc::new(BinaryArray::from(cells))
+        }
     })
 }
 
@@ -1399,11 +1403,16 @@ fn bytes_array(parameters: BytesType, values: &[&Scalar]) -> Result<ArrayRef> {
 /// short payload is copied inline and a long one is shared once, with no
 /// `Vec` on the way.
 fn bytes_value(parameters: BytesType, array: &dyn Array, index: usize) -> Result<Scalar> {
-    let cell = match parameters.layout() {
-        BytesLayout::FixedSizeBinary => downcast::<FixedSizeBinaryArray>(array)?.value(index),
-        BytesLayout::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
-        BytesLayout::BinaryView => downcast::<BinaryViewArray>(array)?.value(index),
-        BytesLayout::Binary => downcast::<BinaryArray>(array)?.value(index),
+    let cell = match parameters {
+        BytesType::FixedBinary(_) => downcast::<FixedSizeBinaryArray>(array)?.value(index),
+        BytesType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
+        BytesType::BinaryView | BytesType::LargeBinaryView => {
+            downcast::<BinaryViewArray>(array)?.value(index)
+        }
+        // A maximum is the column's rule; the storage it fills is plain.
+        BytesType::Binary | BytesType::SizedBinary(_) => {
+            downcast::<BinaryArray>(array)?.value(index)
+        }
     };
     Ok(Scalar::Bytes(Bytes::from_storage(cell, parameters)))
 }

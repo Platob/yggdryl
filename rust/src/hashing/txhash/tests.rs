@@ -16,11 +16,11 @@ fn widths_and_datatypes_follow_the_algorithm() {
     assert_eq!(width(DigestAlgorithm::Xxh128), 24);
     assert_eq!(
         dtype(DigestAlgorithm::Xxh32),
-        DataType::fixed_size_binary(12).unwrap()
+        DataType::fixed_binary(12).unwrap()
     );
     assert_eq!(
         dtype(DigestAlgorithm::Xxh128),
-        DataType::fixed_size_binary(24).unwrap()
+        DataType::fixed_binary(24).unwrap()
     );
     assert_eq!(algorithm_of_width(12), Some(DigestAlgorithm::Xxh32));
     // Sixteen bytes answer the project default, not XXH64.

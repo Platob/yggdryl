@@ -7,7 +7,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::types::{BytesLayout, BytesType};
+use yggdryl::types::BytesType;
 use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -118,7 +118,7 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
 
     // A fixed layout built by hand with no width is what `validate` catches.
     assert!(
-        DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary))
+        DataType::Bytes(BytesType::FixedBinary(0))
             .into_arrow_datatype_ffi()
             .is_err()
     );
@@ -1034,7 +1034,7 @@ fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import()
         )]),
     );
     let imported = Field::from_arrow_field(&retired).unwrap();
-    assert_eq!(imported.dtype(), &DataType::fixed_size_binary(4).unwrap());
+    assert_eq!(imported.dtype(), &DataType::fixed_binary(4).unwrap());
     assert_eq!(imported.into_arrow_field().unwrap(), retired);
 }
 
@@ -1042,16 +1042,14 @@ fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import()
 fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
     // The four layouts are Arrow's own and a fixed width is the storage,
     // so only a maximum rides the document.
-    let bounded = BytesType::new(BytesLayout::Binary)
-        .try_with_bound(16)
-        .unwrap();
+    let bounded = BytesType::SizedBinary(16);
     let field = Field::new("key", DataType::bytes(bounded).unwrap(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
     assert_eq!(arrow.extension_type_name(), Some("yggdryl.bytes"));
     assert_eq!(
         arrow.extension_type_metadata(),
-        Some(r#"{"layout":"binary","max":16}"#)
+        Some(r#"{"layout":"sized_binary","max":16}"#)
     );
     let imported = Field::from_arrow_field(&arrow).unwrap();
     assert_eq!(imported, field);
@@ -1061,7 +1059,7 @@ fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
         DataType::binary(),
         DataType::large_binary(),
         DataType::binary_view(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
     ] {
         let arrow = Field::new("key", dtype, true).into_arrow_field().unwrap();
         assert_eq!(arrow.extension_type_name(), None, "{arrow:?}");
@@ -1070,7 +1068,7 @@ fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
 
 #[test]
 fn a_bytes_extension_over_other_storage_keeps_todays_import() {
-    let document = r#"{"layout":"binary","max":16}"#;
+    let document = r#"{"layout":"sized_binary","max":16}"#;
     let large =
         ArrowField::new("key", ArrowDataType::LargeBinary, true).with_metadata(HashMap::from([
             (

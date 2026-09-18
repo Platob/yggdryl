@@ -223,7 +223,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         "binary",
         "large_binary",
         "binary_view",
-        "fixed_size_binary(16)",
+        "fixed_binary(16)",
         "binary(16)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
@@ -237,7 +237,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     // refusal names both sides rather than leaving Arrow's builder to
     // complain about a slice length.
     for (spelling, expected) in [
-        ("fixed_size_binary(8)", "a fixed binary of 16 bytes"),
+        ("fixed_binary(8)", "a fixed binary of 16 bytes"),
         ("binary(8)", "at most 8 bytes"),
     ] {
         let refused = row(Field::new(
@@ -382,7 +382,7 @@ mod value {
         assert!(DataType::utf8().uuid_packed(TEXT.as_bytes()).is_err());
         assert!(DataType::utf8().uuid_value(PACKED).is_err());
         assert!(
-            DataType::fixed_size_binary(16)
+            DataType::fixed_binary(16)
                 .unwrap()
                 .uuid_packed(TEXT.as_bytes())
                 .is_err()

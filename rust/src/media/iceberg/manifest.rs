@@ -1388,7 +1388,7 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
                     "expected an Iceberg fixed width fitting u32, got {width}"
                 ))
             })?;
-            DataType::fixed_size_binary(width)?.scalar(Scalar::from(value.clone()))
+            DataType::fixed_binary(width)?.scalar(Scalar::from(value.clone()))
         }
         (OfficialPrimitiveType::Binary, OfficialPrimitiveLiteral::Binary(value)) => {
             Ok(Scalar::from(value.clone()))

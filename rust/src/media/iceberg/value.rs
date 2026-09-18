@@ -320,8 +320,8 @@ mod tests {
         assert!(single_to_value(&[], &DataType::Boolean).is_none());
         assert!(single_to_value(&[0, 1], &DataType::Boolean).is_none());
         assert!(single_to_value(&[2], &DataType::Boolean).is_none());
-        assert!(single_to_value(&[0; 3], &DataType::fixed_size_binary(4).unwrap()).is_none());
-        assert!(single_to_value(&[0; 5], &DataType::fixed_size_binary(4).unwrap()).is_none());
+        assert!(single_to_value(&[0; 3], &DataType::fixed_binary(4).unwrap()).is_none());
+        assert!(single_to_value(&[0; 5], &DataType::fixed_binary(4).unwrap()).is_none());
         assert!(single_to_value(&[0xff], &DataType::utf8()).is_none());
     }
 
@@ -380,7 +380,7 @@ mod tests {
             ),
             (
                 Scalar::from([1_u8, 2, 3].as_slice()),
-                DataType::fixed_size_binary(3).unwrap(),
+                DataType::fixed_binary(3).unwrap(),
             ),
         ];
         for (natural, dtype) in cases {

@@ -474,7 +474,7 @@ fn require_length(times: &dyn Array, rows: usize) -> Result<()> {
 /// Couple an instant column with a digest column already computed.
 ///
 /// The digest column is the width [`row_digests`](crate::hashing::xxhash::arrow::row_digests)
-/// answers for the algorithm (`uint32`, `uint64`, or `fixed_size_binary(16)`),
+/// answers for the algorithm (`uint32`, `uint64`, or `fixed_binary(16)`),
 /// or the signed same-width storage a holder may keep, read as the same bits.
 /// A null on either side is a null cell.
 ///
@@ -562,7 +562,7 @@ fn digests_of(array: &dyn Array, algorithm: DigestAlgorithm) -> Result<Vec<Diges
                 match algorithm {
                     DigestAlgorithm::Xxh32 => "uint32 or int32",
                     DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "uint64 or int64",
-                    DigestAlgorithm::Xxh128 => "fixed_size_binary(16)",
+                    DigestAlgorithm::Xxh128 => "fixed_binary(16)",
                 }
             )));
         }
@@ -593,7 +593,7 @@ pub fn decompose(
     let width = width(algorithm);
     if array.value_length() != fixed(width) {
         return Err(Error::IncompatibleSchema(format!(
-            "expected a fixed_size_binary({width}) column of {unit} instants with {algorithm} digests, got {}",
+            "expected a fixed_binary({width}) column of {unit} instants with {algorithm} digests, got {}",
             array.data_type()
         )));
     }

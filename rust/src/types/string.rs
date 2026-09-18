@@ -1324,7 +1324,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
-    /// assert_eq!(DataType::fixed_size_binary(16)?.fixed_byte_width(), Some(16));
+    /// assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
     /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
     /// assert_eq!(DataType::Currency.code_width(), Some(3));

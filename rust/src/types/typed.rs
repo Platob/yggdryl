@@ -399,7 +399,7 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
-    use crate::types::{BytesLayout, BytesType, StringLayout, StringType};
+    use crate::types::{BytesType, StringLayout, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
     use crate::types::DecimalType;
 
@@ -463,12 +463,11 @@ mod shared {
     /// One nullable field per plain unbounded byte layout, for the same reason.
     static PLAIN_BYTES: LazyLock<[(BytesType, Field); 3]> = LazyLock::new(|| {
         [
-            BytesLayout::Binary,
-            BytesLayout::LargeBinary,
-            BytesLayout::BinaryView,
+            BytesType::Binary,
+            BytesType::LargeBinary,
+            BytesType::BinaryView,
         ]
-        .map(|layout| {
-            let parameters = BytesType::new(layout);
+        .map(|parameters| {
             (
                 parameters,
                 Field::new(SHARED_NAME, DataType::Bytes(parameters), true),

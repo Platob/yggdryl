@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::types::{BytesLayout, BytesType};
+use yggdryl::types::BytesType;
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
 use yggdryl::types::UuidType;
@@ -153,7 +153,7 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
         DataType::binary(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),
@@ -331,7 +331,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         assert!(invalid.clone().into_arrow_datatype().is_err());
         assert!(invalid.into_json().is_err());
     }
-    assert!(DataType::fixed_size_binary(0).is_err());
+    assert!(DataType::fixed_binary(0).is_err());
     assert!(DataType::fixed_size_list(Field::new("item", DataType::utf8(), true), -1).is_err());
     assert!(DataType::decimal128(0, 0).is_err());
     assert!(DataType::decimal128(5, 6).is_err());
@@ -386,11 +386,13 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     // fixed layout can also be built with no width at all, and every door
     // past construction refuses that one alike.
     assert_invalid(
-        DataType::fixed_size_binary(0).unwrap_err(),
+        DataType::fixed_binary(0).unwrap_err(),
         "bytes",
         "expected a width of at least one byte, got 0",
     );
-    let invalid_binary = DataType::Bytes(BytesType::new(BytesLayout::FixedSizeBinary));
+    // A leaf carries its own count, so the state a caller can still build by
+    // hand is a count of nothing.
+    let invalid_binary = DataType::Bytes(BytesType::FixedBinary(0));
     for error in [
         invalid_binary.validate().unwrap_err(),
         invalid_binary.clone().into_arrow_datatype().unwrap_err(),
@@ -399,7 +401,7 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
         assert_invalid(
             error,
             "bytes",
-            "expected fixed_size_binary(width), got no width",
+            "expected a width of at least one byte, got 0",
         );
     }
 

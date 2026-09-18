@@ -965,7 +965,7 @@ mod values {
 
     use yggdryl::hashing::xxhash::{Xxh3, xxh3};
     use yggdryl::types::{
-        Bytes, BytesLayout, BytesType, Currency, Decimal32, Decimal64, Geography,
+        Bytes, BytesType, Currency, Decimal32, Decimal64, Geography,
         Interval, Side, Str, StringLayout, StringType, TimeInForce,
     };
     use yggdryl::{
@@ -1011,13 +1011,9 @@ mod values {
             .unwrap()
     }
 
-    /// `AAPL` as a byte value stored under one layout.
-    fn stored_bytes(layout: BytesLayout) -> Scalar {
-        let parameters = match layout.is_fixed() {
-            true => BytesType::new(layout).try_with_bound(4).unwrap(),
-            false => BytesType::new(layout),
-        };
-        Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(parameters).unwrap())
+    /// `AAPL` as a byte value stored under one leaf.
+    fn stored_bytes(leaf: BytesType) -> Scalar {
+        Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(leaf).unwrap())
     }
 
     /// Return one value's canonical feed.
@@ -1078,9 +1074,9 @@ mod values {
             Scalar::from(Arc::from(b"".as_slice())),
             Scalar::from(Arc::from(b"1".as_slice())),
             Scalar::from(Arc::from(b"AAPL".as_slice())),
-            stored_bytes(BytesLayout::FixedSizeBinary),
-            stored_bytes(BytesLayout::LargeBinary),
-            stored_bytes(BytesLayout::BinaryView),
+            stored_bytes(BytesType::FixedBinary(4)),
+            stored_bytes(BytesType::LargeBinary),
+            stored_bytes(BytesType::BinaryView),
             geometry(),
             geography(),
             Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
@@ -1143,15 +1139,15 @@ mod values {
                 Scalar::from("AAPL"),
             ),
             (
-                stored_bytes(BytesLayout::FixedSizeBinary),
+                stored_bytes(BytesType::FixedBinary(4)),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                stored_bytes(BytesLayout::LargeBinary),
+                stored_bytes(BytesType::LargeBinary),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                stored_bytes(BytesLayout::BinaryView),
+                stored_bytes(BytesType::BinaryView),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (

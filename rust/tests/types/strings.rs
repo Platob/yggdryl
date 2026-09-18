@@ -360,7 +360,7 @@ fn identity_kind_and_widths_answer_for_every_width() {
     assert_eq!(DataType::utf8().charset(), Some(Charset::Utf8));
     assert_eq!(bounded_ascii(3).fixed_byte_width(), None);
     assert_eq!(
-        DataType::fixed_size_binary(4).unwrap().fixed_byte_width(),
+        DataType::fixed_binary(4).unwrap().fixed_byte_width(),
         Some(4)
     );
     assert_eq!(DataType::binary().charset(), None);

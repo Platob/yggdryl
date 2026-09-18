@@ -146,7 +146,7 @@ fn a_string_enum_is_accepted_on_fixed_us_ascii_up_to_sixteen_bytes_or_a_code() {
         DataType::fixed_ascii(17).unwrap(),
         DataType::fixed_utf8(4).unwrap(),
         DataType::utf8(),
-        DataType::fixed_size_binary(4).unwrap(),
+        DataType::fixed_binary(4).unwrap(),
     ] {
         let error = refused
             .clone()
@@ -343,7 +343,7 @@ fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
     // The fixed binary of the same width is the storage itself.
     let same = cast_column(
         batch_of(&source, Arc::clone(&stored)),
-        DataType::fixed_size_binary(4)
+        DataType::fixed_binary(4)
             .unwrap()
             .nullable_field("ccy"),
     )

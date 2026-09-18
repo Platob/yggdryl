@@ -85,7 +85,7 @@ fn shapes() -> Vec<Field> {
         )
         .unwrap()
         .nullable_field("runs"),
-        DataType::fixed_size_binary(16)
+        DataType::fixed_binary(16)
             .unwrap()
             .nullable_field("uuid"),
         DataType::from_str("binary(64)")
@@ -267,11 +267,11 @@ fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
         (DataType::binary(), r#"{"type":"binary"}"#),
         (
             DataType::from_str("binary(16)").unwrap(),
-            r#"{"type":"binary","max":16}"#,
+            r#"{"type":"binary","layout":"sized_binary","max":16}"#,
         ),
         (
-            DataType::fixed_size_binary(16).unwrap(),
-            r#"{"type":"binary","layout":"fixed_size_binary","fixed":16}"#,
+            DataType::fixed_binary(16).unwrap(),
+            r#"{"type":"binary","layout":"fixed_binary","fixed":16}"#,
         ),
         (
             DataType::binary_view(),

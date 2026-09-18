@@ -235,7 +235,7 @@ fn eight_bytes_read_as_an_integer_a_float_or_bytes_alike() {
 
     // The whole point of naming a width: an integer, its opposite sign, a
     // float and raw bytes are one buffer under four readings.
-    let bytes = Field::new("digest", DataType::fixed_size_binary(8).unwrap(), true)
+    let bytes = Field::new("digest", DataType::fixed_binary(8).unwrap(), true)
         .cast_arrow_array(Arc::clone(&source), bits())
         .unwrap();
     let stored: &FixedSizeBinaryArray = bytes.as_any().downcast_ref().unwrap();
@@ -751,7 +751,7 @@ mod layouts {
     #[test]
     fn a_byte_framing_reaches_every_other_one_through_binary() {
         let text: ArrayRef = Arc::new(StringArray::from(vec!["abc"]));
-        let fixed = dtype("fixed_size_binary(3)")
+        let fixed = dtype("fixed_binary(3)")
             .cast_arrow_array(Arc::clone(&text), strict())
             .unwrap();
         assert_eq!(
@@ -1060,7 +1060,7 @@ mod bytes {
     #[test]
     fn a_bounded_target_writes_its_own_layout_from_any_byte_source() {
         let text: ArrayRef = Arc::new(StringArray::from(vec!["ab"]));
-        let large = dtype("large_binary(4)")
+        let large = dtype("large_binary")
             .cast_arrow_array(text, strict())
             .unwrap();
         assert_eq!(
@@ -1070,13 +1070,13 @@ mod bytes {
             b"ab"
         );
 
-        let fixed = dtype("fixed_size_binary(3)")
+        let fixed = dtype("fixed_binary(3)")
             .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
             .unwrap();
-        let view = dtype("binary_view(3)")
+        let view = dtype("sized_binary(3)")
             .cast_arrow_array(fixed, strict())
             .unwrap();
-        assert_eq!(view.data_type(), &arrow_schema::DataType::BinaryView);
+        assert_eq!(view.data_type(), &arrow_schema::DataType::Binary);
     }
 
     #[test]
@@ -1101,10 +1101,10 @@ mod bytes {
 
     #[test]
     fn two_fixed_widths_are_a_value_change_and_say_so() {
-        let fixed = dtype("fixed_size_binary(3)")
+        let fixed = dtype("fixed_binary(3)")
             .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
             .unwrap();
-        let refused = dtype("fixed_size_binary(4)")
+        let refused = dtype("fixed_binary(4)")
             .cast_arrow_array(fixed, strict())
             .unwrap_err()
             .to_string();

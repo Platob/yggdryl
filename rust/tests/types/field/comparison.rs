@@ -150,8 +150,8 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
             DataType::Interval(TimeUnit::DayTime),
         ),
         (
-            DataType::fixed_size_binary(8).unwrap(),
-            DataType::fixed_size_binary(16).unwrap(),
+            DataType::fixed_binary(8).unwrap(),
+            DataType::fixed_binary(16).unwrap(),
         ),
         (
             DataType::fixed_size_list(item(), 2).unwrap(),

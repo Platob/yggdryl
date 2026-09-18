@@ -256,7 +256,7 @@ mod readings {
             .scalar("00000000-0000-0000-0000-000000000001")
             .unwrap();
         assert_eq!(
-            DataType::fixed_size_binary(16)
+            DataType::fixed_binary(16)
                 .unwrap()
                 .scalar(uuid)
                 .unwrap()
@@ -272,7 +272,7 @@ mod readings {
         );
 
         // The declared width is part of the layout on every path.
-        let refused = DataType::fixed_size_binary(4)
+        let refused = DataType::fixed_binary(4)
             .unwrap()
             .scalar(Scalar::from(vec![1_u8, 2]))
             .unwrap_err()

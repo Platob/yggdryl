@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray};
-use yggdryl::types::{Bytes, BytesField, BytesLayout, BytesType, bytes};
+use yggdryl::types::{Bytes, BytesField, BytesType, bytes};
 use yggdryl::{ArrowCastOptions, DataType, DataTypeId, FieldScalar, Scalar};
 
 use super::typed::assert_typed_marker;
@@ -14,41 +14,37 @@ fn the_bytes_marker_covers_every_layout_and_bound() {
     assert_typed_marker::<bytes::BytesType>(DataType::binary());
     assert_typed_marker::<bytes::BytesType>(DataType::large_binary());
     assert_typed_marker::<bytes::BytesType>(DataType::binary_view());
-    assert_typed_marker::<bytes::BytesType>(DataType::fixed_size_binary(16).unwrap());
+    assert_typed_marker::<bytes::BytesType>(DataType::fixed_binary(16).unwrap());
     assert_typed_marker::<bytes::BytesType>(DataType::from_str("binary(16)").unwrap());
-    assert_typed_marker::<bytes::BytesType>(DataType::from_str("large_binary(64)").unwrap());
+    assert_typed_marker::<bytes::BytesType>(DataType::from_str("sized_binary(64)").unwrap());
 
     // The family is parameterized, so the field takes its datatype through
     // `try_new`, and a datatype from another family is refused by name.
     let digest =
-        BytesField::try_new("digest", DataType::fixed_size_binary(32).unwrap(), false).unwrap();
-    assert_eq!(digest.dtype(), &DataType::fixed_size_binary(32).unwrap());
+        BytesField::try_new("digest", DataType::fixed_binary(32).unwrap(), false).unwrap();
+    assert_eq!(digest.dtype(), &DataType::fixed_binary(32).unwrap());
     assert!(BytesField::try_new("digest", DataType::utf8(), false).is_err());
     assert!(BytesField::try_new("digest", DataType::Uuid(UuidType::Uuid), false).is_err());
     assert!(BytesField::try_new("digest", DataType::geometry(None).unwrap(), false).is_err());
 
     // A bound of zero is refused wherever it is stated.
-    assert!(DataType::fixed_size_binary(0).is_err());
-    assert!(
-        BytesType::new(BytesLayout::Binary)
-            .try_with_bound(0)
-            .is_err()
-    );
+    assert!(DataType::fixed_binary(0).is_err());
+    assert!(DataType::sized_binary(0).is_err());
     // A fixed layout built by hand with no width is what `validate` catches.
-    assert!(DataType::bytes(BytesType::new(BytesLayout::FixedSizeBinary)).is_err());
+    assert!(DataType::bytes(BytesType::FixedBinary(0)).is_err());
 }
 
 #[test]
 fn a_fixed_value_is_exactly_its_width() {
     let field =
-        BytesField::try_new("digest", DataType::fixed_size_binary(4).unwrap(), false).unwrap();
+        BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), false).unwrap();
     let field_field = field.to_field();
     let held = FieldScalar::new(&field_field, vec![1_u8, 2, 3, 4]).unwrap();
     assert_eq!(held.as_bytes(), Some(&[1_u8, 2, 3, 4][..]));
-    assert_eq!(held.value().id(), DataTypeId::FixedSizeBinary);
+    assert_eq!(held.value().id(), DataTypeId::FixedBinary);
     assert_eq!(
         held.value().dtype().unwrap(),
-        DataType::fixed_size_binary(4).unwrap()
+        DataType::fixed_binary(4).unwrap()
     );
 
     // Bytes are never padded: shorter and longer are both refused, naming
@@ -82,7 +78,7 @@ fn a_bounded_value_is_at_most_the_maximum_and_never_carries_it() {
     // The same door on the wider layouts.
     let view = BytesField::try_new(
         "payload",
-        DataType::from_str("binary_view(2)").unwrap(),
+        DataType::from_str("sized_binary(2)").unwrap(),
         true,
     )
     .unwrap();
@@ -98,7 +94,7 @@ fn a_value_adopts_the_layout_of_the_column_that_holds_it() {
     let Scalar::Bytes(bytes) = held.value() else {
         panic!("a byte column holds a byte value");
     };
-    assert_eq!(bytes.layout(), BytesLayout::LargeBinary);
+    assert_eq!(bytes.parameters(), BytesType::LargeBinary);
     assert_eq!(bytes.fixed(), None);
     // The layout is a retag over the same payload, so equality reads the
     // payload alone.
@@ -157,7 +153,7 @@ fn a_bounded_column_checks_each_cell_on_the_way_in() {
 #[test]
 fn a_fixed_column_is_its_own_storage() {
     let field =
-        BytesField::try_new("digest", DataType::fixed_size_binary(4).unwrap(), true).unwrap();
+        BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), true).unwrap();
     let source: ArrayRef = Arc::new(
         FixedSizeBinaryArray::try_from_sparse_iter_with_size(
             [Some(&b"abcd"[..]), None].into_iter(),

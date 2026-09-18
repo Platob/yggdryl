@@ -119,7 +119,7 @@ impl DigestFieldMut<'_> {
     /// use yggdryl::{DataType, DigestAlgorithm, TimeUnit};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut key = DataType::fixed_size_binary(16)?.required_field("key");
+    /// let mut key = DataType::fixed_binary(16)?.required_field("key");
     /// key.as_digest_mut().set_holder()?;
     /// key.as_digest_mut().set_time("event")?;
     /// key.as_digest_mut().set_unit(TimeUnit::Second)?;

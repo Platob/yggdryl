@@ -1376,7 +1376,7 @@ mod types {
         assert_eq!(fixed.to_string(), "fixed[16]");
         assert_eq!(
             fixed.into_dtype().unwrap(),
-            DataType::fixed_size_binary(16).unwrap()
+            DataType::fixed_binary(16).unwrap()
         );
     }
 
@@ -5890,7 +5890,7 @@ mod datatype_coverage {
             .nullable_field("at"),
             DataType::utf8().nullable_field("name"),
             DataType::binary().nullable_field("raw"),
-            DataType::fixed_size_binary(4)
+            DataType::fixed_binary(4)
                 .unwrap()
                 .nullable_field("tag"),
         ];

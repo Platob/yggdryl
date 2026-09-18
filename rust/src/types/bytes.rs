@@ -6,25 +6,25 @@
 //! both questions - which layout, how long - and every byte column the crate
 //! has is one member of it.
 //!
-//! [`BytesLayout`] names the four layouts. [`BytesType`] is a layout
+//! [`BytesType`] names the four layouts. [`BytesType`] is a layout
 //! beside the bound its values are held to. [`crate::DataType::bytes`] builds
 //! the one byte datatype, [`crate::DataType::Bytes`], from them; `binary`,
-//! `varbinary(16)` and `fixed_size_binary(16)` are spellings of it, never
+//! `varbinary(16)` and `fixed_binary(16)` are spellings of it, never
 //! datatypes of their own. [`Bytes`] is the one byte value.
 //!
 //! ```
-//! use yggdryl::types::{BytesLayout, BytesType};
+//! use yggdryl::types::BytesType;
 //! use yggdryl::DataType;
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! // Every spelling is one datatype, and it reads back as itself.
 //! assert_eq!(DataType::from_str("bytes")?, DataType::binary());
-//! assert_eq!(DataType::from_str("fixed_binary(16)")?.to_string(), "fixed_size_binary(16)");
+//! assert_eq!(DataType::from_str("fixed_binary(16)")?.to_string(), "fixed_binary(16)");
 //!
 //! // The layout and the bound are what a byte column declares.
 //! let bounded = DataType::from_str("varbinary(32)")?;
 //! let parameters = bounded.bytes_parameters().expect("a byte datatype");
-//! assert_eq!(parameters.layout(), BytesLayout::Binary);
+//! assert_eq!(parameters, BytesType::Binary);
 //! assert_eq!(parameters.max(), Some(32));
 //! assert_eq!(bounded.to_string(), "binary(32)");
 //! # Ok(())
@@ -34,12 +34,11 @@
 use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::sync::Arc;
 
 pub(crate) use arrow::{arrow_storage, describes_storage, from_arrow_storage, needs_extension};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::Scalar;
@@ -55,13 +54,19 @@ use crate::{DataType, DataTypeId, Error, Result, Value};
 mod arrow {
     use arrow_schema::DataType as ArrowDataType;
 
-    use super::{BytesLayout, BytesType};
+    use super::BytesType;
     use crate::{Error, Result};
 
     /// Whether a byte field needs the `yggdryl.bytes` document beside its
-    /// storage: only a maximum, which no Arrow layout can state.
+    /// storage.
+    ///
+    /// Two leaves state something Arrow cannot: a maximum, which no Arrow
+    /// layout carries, and the second view width, which Arrow has one of.
     pub(crate) const fn needs_extension(parameters: BytesType) -> bool {
-        parameters.is_bounded() && !parameters.is_fixed()
+        matches!(
+            parameters,
+            BytesType::SizedBinary(_) | BytesType::LargeBinaryView
+        )
     }
 
     /// The Arrow storage one byte datatype lays out.
@@ -83,13 +88,16 @@ mod arrow {
             })?;
             return Ok(ArrowDataType::FixedSizeBinary(width));
         }
-        Ok(match parameters.layout() {
-            BytesLayout::Binary => ArrowDataType::Binary,
-            BytesLayout::LargeBinary => ArrowDataType::LargeBinary,
-            BytesLayout::BinaryView => ArrowDataType::BinaryView,
-            // The fixed layout answered above: `validate` gave it a width and
-            // the width gave it its storage.
-            BytesLayout::FixedSizeBinary => ArrowDataType::Binary,
+        Ok(match parameters {
+            // A maximum is the column's rule, so the storage is the plain
+            // binary its values fill.
+            BytesType::Binary | BytesType::SizedBinary(_) => ArrowDataType::Binary,
+            BytesType::LargeBinary => ArrowDataType::LargeBinary,
+            // Arrow has one view width where this crate declares two; which
+            // one it is rides the `yggdryl.bytes` document beside it.
+            BytesType::BinaryView | BytesType::LargeBinaryView => ArrowDataType::BinaryView,
+            // The fixed leaf answered above: its width gave it its storage.
+            BytesType::FixedBinary(_) => ArrowDataType::Binary,
         })
     }
 
@@ -136,7 +144,7 @@ mod arrow {
             ArrowDataType::LargeBinary => Ok(crate::DataType::large_binary()),
             ArrowDataType::BinaryView => Ok(crate::DataType::binary_view()),
             ArrowDataType::FixedSizeBinary(width) => {
-                crate::DataType::fixed_size_binary(arrow_fixed_width(*width)?)
+                crate::DataType::fixed_binary(arrow_fixed_width(*width)?)
             }
             other => Err(crate::types::invalid(
                 "bytes",
@@ -170,7 +178,7 @@ pub(crate) mod casts {
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::MaterializationBudget;
-    use crate::types::bytes::{BytesLayout, BytesType};
+    use crate::types::bytes::BytesType;
     use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
     use crate::types::cast::columns::{is_exposed, null_buffers_ptr_eq};
     use crate::{DataType, Field};
@@ -361,17 +369,23 @@ pub(crate) mod casts {
                 Arc::new(builder.finish()) as ArrayRef
             }};
         }
-        Ok(match target.layout() {
-            BytesLayout::Binary => filled!(BinaryBuilder::with_capacity(rows, payload)),
-            BytesLayout::LargeBinary => filled!(LargeBinaryBuilder::with_capacity(rows, payload)),
+        Ok(match target {
+            // A maximum is the column's rule; the storage it fills is the
+            // plain binary, so the two share one builder.
+            BytesType::Binary | BytesType::SizedBinary(_) => {
+                filled!(BinaryBuilder::with_capacity(rows, payload))
+            }
+            BytesType::LargeBinary => filled!(LargeBinaryBuilder::with_capacity(rows, payload)),
             // Arrow's view layout carries a prefix per cell rather than offsets,
             // so it takes the row count and grows its own payload blocks.
-            BytesLayout::BinaryView => filled!(BinaryViewBuilder::with_capacity(rows)),
+            BytesType::BinaryView | BytesType::LargeBinaryView => {
+                filled!(BinaryViewBuilder::with_capacity(rows))
+            }
             // Every accepted cell is exactly the width, which is what the builder
             // needs; a cell that is not was refused or nulled above. Its
             // `append_value` answers a `Result` the other three do not, so this
             // arm is written out rather than bent through the macro.
-            BytesLayout::FixedSizeBinary => {
+            BytesType::FixedBinary(_) => {
                 let width = i32::try_from(bound).map_err(|_| internal_target_error("bytes"))?;
                 let mut builder = FixedSizeBinaryBuilder::with_capacity(rows, width);
                 for index in 0..rows {
@@ -611,14 +625,14 @@ impl DataType {
     /// parameters say all of it - a layout and a bound.
     ///
     /// ```
-    /// use yggdryl::types::{BytesLayout, BytesType};
+    /// use yggdryl::types::BytesType;
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::bytes(BytesLayout::LargeBinary)?, DataType::large_binary());
-    /// let bounded = BytesType::new(BytesLayout::Binary).try_with_bound(32)?;
+    /// assert_eq!(DataType::bytes(BytesType::LargeBinary)?, DataType::large_binary());
+    /// let bounded = Ok::<_, yggdryl::Error>(BytesType::SizedBinary(32))?;
     /// assert_eq!(DataType::bytes(bounded)?.to_string(), "binary(32)");
-    /// assert_eq!(DataType::fixed_size_binary(16)?.to_string(), "fixed_size_binary(16)");
+    /// assert_eq!(DataType::fixed_binary(16)?.to_string(), "fixed_binary(16)");
     /// # Ok(())
     /// # }
     /// ```
@@ -636,19 +650,34 @@ impl DataType {
     /// Unbounded bytes with 32-bit offsets - Arrow's `Binary`.
     #[must_use]
     pub const fn binary() -> Self {
-        Self::Bytes(BytesType::new(BytesLayout::Binary))
+        Self::Bytes(BytesType::Binary)
     }
 
     /// Unbounded bytes with 64-bit offsets - Arrow's `LargeBinary`.
     #[must_use]
     pub const fn large_binary() -> Self {
-        Self::Bytes(BytesType::new(BytesLayout::LargeBinary))
+        Self::Bytes(BytesType::LargeBinary)
     }
 
     /// Unbounded bytes in the view layout - Arrow's `BinaryView`.
     #[must_use]
     pub const fn binary_view() -> Self {
-        Self::Bytes(BytesType::new(BytesLayout::BinaryView))
+        Self::Bytes(BytesType::BinaryView)
+    }
+
+    /// Any length in the viewed layout over 64-bit offsets.
+    #[must_use]
+    pub const fn large_binary_view() -> Self {
+        Self::Bytes(BytesType::LargeBinaryView)
+    }
+
+    /// At most `max` bytes per value, over 32-bit offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a maximum of zero.
+    pub fn sized_binary(max: u32) -> Result<Self> {
+        Self::bytes(BytesType::SizedBinary(max))
     }
 
     /// Exactly `width` bytes per value - Arrow's `FixedSizeBinary`.
@@ -657,8 +686,8 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::fixed_size_binary(16)?.fixed_byte_width(), Some(16));
-    /// assert!(DataType::fixed_size_binary(0).is_err());
+    /// assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
+    /// assert!(DataType::fixed_binary(0).is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -666,8 +695,8 @@ impl DataType {
     /// # Errors
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
-    pub fn fixed_size_binary(width: u32) -> Result<Self> {
-        Self::bytes(BytesType::new(BytesLayout::FixedSizeBinary).try_with_bound(width)?)
+    pub fn fixed_binary(width: u32) -> Result<Self> {
+        Self::bytes(BytesType::FixedBinary(width))
     }
 
     /// The parameters a byte datatype declares, `None` for every other.
@@ -696,192 +725,227 @@ impl DataType {
 /// The name this crate's bounded byte datatypes ride Arrow under.
 pub const BYTES_EXTENSION_NAME: &str = "yggdryl.bytes";
 
-/// A byte layout and its bound.
+/// The byte family's datatype payload: one leaf per storage a column has.
 ///
-/// Arrow carries the layout and, for the fixed one, the width; it has no
-/// `varbinary(n)`. So the maximum rides here, and crosses an Arrow boundary
-/// as this crate's own extension metadata under `yggdryl.bytes`.
-///
-/// One number carries both bounds because a column is one shape or the
-/// other: on [`BytesLayout::FixedSizeBinary`] it is the exact width every
-/// value fills, and on every other layout it is the most bytes a value may
-/// hold. So [`Self::fixed`] and [`Self::max`] are two readings of one fact,
-/// and exactly one of them ever answers.
+/// Arrow lays bytes out three ways and this crate declares two more: a second
+/// view width, which a reader that only knows Arrow sees as one, and a
+/// *sized* column, whose maximum Arrow has nowhere to state. Each is a leaf
+/// here rather than a flag beside a layout, so a column is one thing and a
+/// reader never has to ask whether the number it carries is a width or a
+/// bound - the leaf already said.
 ///
 /// ```
-/// use yggdryl::types::{BytesLayout, BytesType};
+/// use yggdryl::types::BytesType;
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let parameters = BytesType::new(BytesLayout::Binary).try_with_bound(32)?;
-/// assert_eq!(parameters.max(), Some(32));
-/// assert_eq!(parameters.fixed(), None);
+/// // A maximum is the column's rule, and its own leaf.
+/// let bounded = BytesType::SizedBinary(32);
+/// assert_eq!(bounded.max(), Some(32));
+/// assert_eq!(bounded.fixed(), None);
 ///
-/// let dtype = DataType::bytes(parameters)?;
-/// assert_eq!(dtype.to_string(), "binary(32)");
+/// // A width is the storage, and its own leaf.
+/// assert_eq!(BytesType::FixedBinary(16).fixed(), Some(16));
+/// assert_eq!(BytesType::FixedBinary(16).max(), None);
+///
+/// let dtype = DataType::bytes(bounded)?;
+/// assert_eq!(dtype.to_string(), "sized_binary(32)");
 /// assert_eq!(DataType::from_str(&dtype.to_string())?, dtype);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BytesType {
-    layout: BytesLayout,
-    bound: Option<NonZeroU32>,
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum BytesType {
+    /// Any length, 32-bit offsets - Arrow's `Binary`.
+    #[default]
+    Binary,
+    /// Any length, 64-bit offsets - Arrow's `LargeBinary`.
+    LargeBinary,
+    /// Any length, viewed: a short prefix inline, the rest out of line -
+    /// Arrow's `BinaryView`.
+    BinaryView,
+    /// The viewed layout over 64-bit offsets.
+    ///
+    /// Arrow has one view width, so this crosses an Arrow boundary as
+    /// `BinaryView` with the leaf written in the `yggdryl.bytes` document.
+    LargeBinaryView,
+    /// Exactly this many bytes in every value - Arrow's `FixedSizeBinary`.
+    ///
+    /// Bytes are never padded: a value *is* its width.
+    FixedBinary(u32),
+    /// At most this many bytes in a value, over 32-bit offsets.
+    ///
+    /// Arrow has no `varbinary(n)`, so the maximum rides the `yggdryl.bytes`
+    /// document; the storage is the plain `Binary` the values fill.
+    SizedBinary(u32),
 }
 
 impl BytesType {
-    /// Unbounded bytes in one layout.
+    /// Every leaf in canonical declaration order, with a stated number where
+    /// the leaf carries one.
+    pub const ALL: [Self; 6] = [
+        Self::Binary,
+        Self::LargeBinary,
+        Self::BinaryView,
+        Self::LargeBinaryView,
+        Self::FixedBinary(1),
+        Self::SizedBinary(1),
+    ];
+
+    /// Return the exact datatype identifier.
     #[must_use]
-    pub const fn new(layout: BytesLayout) -> Self {
-        Self {
-            layout,
-            bound: None,
+    pub const fn id(self) -> DataTypeId {
+        match self {
+            Self::Binary => DataTypeId::Binary,
+            Self::LargeBinary => DataTypeId::LargeBinary,
+            Self::BinaryView => DataTypeId::BinaryView,
+            Self::LargeBinaryView => DataTypeId::LargeBinaryView,
+            Self::FixedBinary(_) => DataTypeId::FixedBinary,
+            Self::SizedBinary(_) => DataTypeId::SizedBinary,
         }
     }
 
-    /// The layout the values are stored in.
+    /// The leaf one identifier names, with `width` where the leaf takes one.
     #[must_use]
-    pub const fn layout(self) -> BytesLayout {
-        self.layout
+    pub const fn from_id(id: DataTypeId, width: u32) -> Option<Self> {
+        match id {
+            DataTypeId::Binary => Some(Self::Binary),
+            DataTypeId::LargeBinary => Some(Self::LargeBinary),
+            DataTypeId::BinaryView => Some(Self::BinaryView),
+            DataTypeId::LargeBinaryView => Some(Self::LargeBinaryView),
+            DataTypeId::FixedBinary => Some(Self::FixedBinary(width)),
+            DataTypeId::SizedBinary => Some(Self::SizedBinary(width)),
+            _ => None,
+        }
     }
 
-    /// The declared byte bound, whichever shape the layout gives it.
+    /// The canonical name of this leaf.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        self.id().as_str()
+    }
+
+    /// The declared byte bound, whichever shape the leaf gives it.
     #[must_use]
     pub const fn bound(self) -> Option<u32> {
-        match self.bound {
-            Some(bound) => Some(bound.get()),
-            None => None,
+        match self {
+            Self::FixedBinary(width) | Self::SizedBinary(width) => Some(width),
+            _ => None,
         }
     }
 
-    /// The exact bytes every value fills, on the fixed layout.
+    /// The exact bytes every value fills, on the fixed leaf.
     #[must_use]
     pub const fn fixed(self) -> Option<u32> {
-        match self.layout.is_fixed() {
-            true => self.bound(),
-            false => None,
+        match self {
+            Self::FixedBinary(width) => Some(width),
+            _ => None,
         }
     }
 
-    /// The most bytes a value may hold, on a variable layout.
+    /// The most bytes a value may hold, on the sized leaf.
     #[must_use]
     pub const fn max(self) -> Option<u32> {
-        match self.layout.is_fixed() {
-            true => None,
-            false => self.bound(),
+        match self {
+            Self::SizedBinary(max) => Some(max),
+            _ => None,
         }
     }
 
-    /// Return whether every value is the same width.
+    /// Whether every value fills one width exactly.
     #[must_use]
     pub const fn is_fixed(self) -> bool {
-        self.layout.is_fixed()
+        matches!(self, Self::FixedBinary(_))
     }
 
-    /// Return whether the values are bounded at all.
+    /// Whether the leaf states a number at all.
     #[must_use]
     pub const fn is_bounded(self) -> bool {
-        self.bound.is_some()
+        self.bound().is_some()
     }
 
-    /// Return these parameters in another layout.
+    /// Whether values are addressed through the view layout.
     #[must_use]
-    pub const fn with_layout(mut self, layout: BytesLayout) -> Self {
-        self.layout = layout;
-        self
+    pub const fn is_view(self) -> bool {
+        matches!(self, Self::BinaryView | Self::LargeBinaryView)
     }
 
-    /// Return these parameters bounded to `bound` bytes, the bound already
-    /// proven non-zero.
+    /// Whether offsets are 64-bit.
     #[must_use]
-    pub const fn with_bound(mut self, bound: NonZeroU32) -> Self {
-        self.bound = Some(bound);
-        self
+    pub const fn is_large(self) -> bool {
+        matches!(self, Self::LargeBinary | Self::LargeBinaryView)
     }
 
-    /// Return these parameters bounded to `bound` bytes.
+    /// The leaf a *value* of this column carries.
+    ///
+    /// A maximum is the column's rule and not the value's, so a value in a
+    /// sized column is the plain binary it fills; every other leaf is already
+    /// what a value is.
+    #[must_use]
+    pub const fn storage(self) -> Self {
+        match self {
+            Self::SizedBinary(_) => Self::Binary,
+            other => other,
+        }
+    }
+
+    /// Whether two leaves differ only in the count they state.
+    ///
+    /// A maximum is a rule laid over the plain binary its values fill, so a
+    /// sized column and an unbounded one are one shape with one number
+    /// between them; two fixed widths are likewise one shape. This is what a
+    /// diff asks before it reports a changed bound rather than a changed
+    /// datatype.
+    #[must_use]
+    pub const fn same_shape_as(self, other: Self) -> bool {
+        matches!(
+            (self.storage(), other.storage()),
+            (Self::Binary, Self::Binary)
+                | (Self::LargeBinary, Self::LargeBinary)
+                | (Self::BinaryView, Self::BinaryView)
+                | (Self::LargeBinaryView, Self::LargeBinaryView)
+                | (Self::FixedBinary(_), Self::FixedBinary(_))
+        )
+    }
+
+    /// Reject a leaf whose stated number cannot describe a column.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDataType`] for a bound of zero: a column of
-    /// no bytes is a column of one value, which is a declaration nobody
-    /// means.
-    pub fn try_with_bound(mut self, bound: u32) -> Result<Self> {
-        self.bound = Some(NonZeroU32::new(bound).ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a {} of at least one byte, got 0",
-                self.bound_word()
-            ))
-        })?);
-        Ok(self)
-    }
-
-    /// Return these parameters with no bound.
-    #[must_use]
-    pub const fn without_bound(mut self) -> Self {
-        self.bound = None;
-        self
-    }
-
-    /// Return these parameters with no maximum, keeping a fixed width.
-    ///
-    /// A maximum is a column's rule and a fixed width is a value's shape, so
-    /// this is what a value carries out of a bounded column.
-    #[must_use]
-    pub const fn without_max(self) -> Self {
-        match self.layout.is_fixed() {
-            true => self,
-            false => self.without_bound(),
+    /// Returns [`Error::InvalidDataType`] for a width or maximum of zero:
+    /// a column that holds nothing is not a column.
+    pub const fn validate(self) -> Result<()> {
+        match self.bound() {
+            Some(0) => Err(Error::InvalidDataType {
+                kind: "bytes",
+                reason: SmolStr::new_static("expected a width of at least one byte, got 0"),
+            }),
+            _ => Ok(()),
         }
     }
 
-    /// Check that the layout and the bound agree.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidDataType`] for the fixed layout with no width:
-    /// the width is what makes it fixed, so there is no width-free spelling
-    /// of it.
-    pub fn validate(self) -> Result<()> {
-        if self.layout.is_fixed() && self.bound.is_none() {
-            return Err(invalid(format_smolstr!(
-                "expected {}(width), got no width",
-                self.layout.as_str()
-            )));
-        }
-        Ok(())
-    }
-
-    /// The word this layout calls its bound by.
-    const fn bound_word(self) -> &'static str {
-        match self.layout.is_fixed() {
-            true => "width",
-            false => "maximum",
-        }
-    }
-
-    /// The metadata key the bound is written under.
+    /// The metadata key the number is written under.
     const fn bound_word_key(self) -> &'static str {
-        match self.layout.is_fixed() {
+        match self.is_fixed() {
             true => "fixed",
             false => "max",
         }
     }
 
-    /// The extension metadata an Arrow field carries these in.
+    /// The extension metadata an Arrow field carries this leaf in.
     ///
-    /// Arrow has nowhere to put a maximum: the four binary layouts declare
-    /// their offsets and, for the fixed one, the width, and nothing else. So
-    /// a maximum rides the `ARROW:extension:metadata` document beside the
-    /// `yggdryl.bytes` name, with the layout written whole so a reader can
-    /// check it against the storage.
+    /// Arrow has nowhere to put a maximum, and one view width where this
+    /// crate declares two, so those two leaves ride the
+    /// `ARROW:extension:metadata` document beside the `yggdryl.bytes` name
+    /// with the leaf written whole; every other leaf is Arrow's own.
     #[must_use]
     pub fn extension_json(self) -> String {
         let mut rendered = String::with_capacity(48);
         rendered.push_str("{\"layout\":\"");
-        rendered.push_str(self.layout.as_str());
+        rendered.push_str(self.as_str());
         rendered.push('"');
-        if let Some(bound) = self.bound {
+        if let Some(bound) = self.bound() {
             rendered.push(',');
             rendered.push('"');
             rendered.push_str(self.bound_word_key());
@@ -892,12 +956,12 @@ impl BytesType {
         rendered
     }
 
-    /// Read parameters back out of Arrow extension metadata.
+    /// Read a leaf back out of Arrow extension metadata.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidDataType`] when the document is not an object
-    /// naming a layout this crate knows, or bounds a layout the wrong way.
+    /// naming a leaf this crate knows, or numbers a leaf the wrong way.
     pub fn from_extension_json(value: &str) -> Result<Self> {
         #[derive(Deserialize)]
         struct Document {
@@ -910,26 +974,49 @@ impl BytesType {
 
         let document: Document = serde_json::from_str(value)
             .map_err(|error| invalid(format_smolstr!("expected bytes parameters, got {error}")))?;
-        let layout = BytesLayout::from_str(&document.layout)
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        let mut parameters = Self::new(layout);
-        match (layout.is_fixed(), document.fixed, document.max) {
-            (true, Some(fixed), None) => parameters = parameters.try_with_bound(fixed)?,
-            (false, None, Some(max)) => parameters = parameters.try_with_bound(max)?,
-            (_, None, None) => {}
-            (true, _, Some(max)) => {
+        let named = Self::from_str(&document.layout).map_err(|error| invalid(format_smolstr!("{error}")))?;
+        // A maximum makes a column sized whichever plain layout names it, so
+        // `{"layout":"binary","max":16}` and `{"layout":"sized_binary","max":16}`
+        // are one document written two ways; a width only belongs to the
+        // fixed leaf.
+        let leaf = match (named, document.fixed, document.max) {
+            (Self::FixedBinary(_), Some(fixed), None) => Self::FixedBinary(fixed),
+            (Self::FixedBinary(_), fixed, max) => {
                 return Err(invalid(format_smolstr!(
-                    "expected a fixed width on {layout}, got max={max}"
+                    "expected one width on {named}, got fixed={fixed:?} max={max:?}"
                 )));
             }
-            (false, Some(fixed), _) => {
+            (_, Some(fixed), _) => {
                 return Err(invalid(format_smolstr!(
-                    "expected a maximum on {layout}, got fixed={fixed}"
+                    "expected a maximum on {named}, got fixed={fixed}"
                 )));
             }
-        }
-        parameters.validate()?;
-        Ok(parameters)
+            (_, None, Some(max)) => Self::SizedBinary(max),
+            (Self::SizedBinary(_), None, None) => {
+                return Err(invalid(format_smolstr!(
+                    "expected a maximum on {named}, got none"
+                )));
+            }
+            (other, None, None) => other,
+        };
+        leaf.validate()?;
+        Ok(leaf)
+    }
+
+    /// Resolve a leaf from its name, with `1` where the leaf takes a number.
+    ///
+    /// Case, underscores, hyphens and spaces are all ignored, so
+    /// `LARGE_BINARY`, `large-binary` and `largebinary` are one leaf.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] naming the input when no leaf
+    /// spells it.
+    pub fn from_str(value: &str) -> Result<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|leaf| super::folds_equal(value, leaf.as_str()))
+            .ok_or_else(|| invalid(format_smolstr!("expected a byte layout, got {value:?}")))
     }
 }
 
@@ -941,23 +1028,11 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
     }
 }
 
-impl Default for BytesType {
-    fn default() -> Self {
-        Self::new(BytesLayout::Binary)
-    }
-}
-
-impl From<BytesLayout> for BytesType {
-    fn from(value: BytesLayout) -> Self {
-        Self::new(value)
-    }
-}
-
 impl fmt::Display for BytesType {
     /// The canonical spelling, which [`crate::DataType`]'s grammar reads back.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.layout.as_str())?;
-        match self.bound {
+        formatter.write_str(self.as_str())?;
+        match self.bound() {
             None => Ok(()),
             Some(bound) => write!(formatter, "({bound})"),
         }
@@ -965,44 +1040,26 @@ impl fmt::Display for BytesType {
 }
 
 impl Serialize for BytesType {
+    /// The leaf's name alone.
+    ///
+    /// A stored document writes the number beside this rather than inside it:
+    /// a schema document carries `"layout"` with `"max"` or `"fixed"`, and the
+    /// `yggdryl.bytes` document does the same. One name, one place.
     fn serialize<S: serde::Serializer>(
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-
-        let declared = usize::from(self.bound.is_some());
-        let mut state = serializer.serialize_struct("BytesType", 1 + declared)?;
-        state.serialize_field("layout", &self.layout)?;
-        if let Some(bound) = self.bound {
-            state.serialize_field(self.bound_word_key(), &bound.get())?;
-        }
-        state.end()
+        serializer.serialize_str(self.as_str())
     }
 }
 
 impl<'de> Deserialize<'de> for BytesType {
+    /// The leaf one name spells, with no number: the caller puts it back.
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Representation {
-            layout: BytesLayout,
-            #[serde(default)]
-            max: Option<u32>,
-            #[serde(default)]
-            fixed: Option<u32>,
-        }
-
-        let value = Representation::deserialize(deserializer)?;
-        let mut parameters = Self::new(value.layout);
-        if let Some(bound) = value.fixed.or(value.max) {
-            parameters = parameters
-                .try_with_bound(bound)
-                .map_err(serde::de::Error::custom)?;
-        }
-        parameters.validate().map_err(serde::de::Error::custom)?;
-        Ok(parameters)
+        let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
     }
 }
 
@@ -1022,13 +1079,13 @@ impl Parser<'_> {
     ///
     /// Returns [`crate::Error::Parse`] for a bound outside a positive `u32`,
     /// and for the fixed layout with no width.
-    pub(crate) fn parse_bytes(&mut self, layout: BytesLayout) -> Result<DataType> {
-        let mut parameters = BytesType::new(layout);
+    pub(crate) fn parse_bytes(&mut self, leaf: BytesType) -> Result<DataType> {
+        let mut parameters = leaf;
         if let Some(close) = self.consume_opening() {
             // Empty parentheses are the bare spelling with punctuation.
             if !self.consume_symbol(close) {
                 let position = self.current_position();
-                let label = match layout.is_fixed() {
+                let label = match leaf.is_fixed() {
                     true => "a byte width",
                     false => "a maximum byte length",
                 };
@@ -1039,13 +1096,44 @@ impl Parser<'_> {
                         format_smolstr!("expected {label} inside u32, got {value}"),
                     )
                 })?;
-                parameters = parameters
-                    .try_with_bound(bound)
-                    .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
+                // A number is the width on the fixed leaf and the maximum on
+                // the sized one. `binary(n)` is the sized leaf written short,
+                // because plain binary is exactly the storage it fills; every
+                // other layout would lose itself under a maximum, so it says
+                // so rather than silently becoming something narrower.
+                parameters = match leaf {
+                    BytesType::FixedBinary(_) => BytesType::FixedBinary(bound),
+                    BytesType::Binary | BytesType::SizedBinary(_) => {
+                        BytesType::SizedBinary(bound)
+                    }
+                    other => {
+                        return Err(self.error_at(
+                            position,
+                            format_smolstr!(
+                                "expected no maximum on {other}, got {bound}; \
+                                 a bounded column is sized_binary({bound})"
+                            ),
+                        ));
+                    }
+                };
                 self.expect_symbol(close)?;
             }
         }
         let position = self.current_position();
+        // The fixed leaf is its width: a bare `fixed_binary` states nothing.
+        if matches!(leaf, BytesType::FixedBinary(_)) && parameters == leaf {
+            return Err(self.error_at(
+                position,
+                format_smolstr!("expected fixed_binary(width), got no width"),
+            ));
+        }
+        // So is a bare `sized_binary`: a maximum is what makes it sized.
+        if matches!(leaf, BytesType::SizedBinary(_)) && parameters == leaf {
+            return Err(self.error_at(
+                position,
+                format_smolstr!("expected sized_binary(maximum), got no maximum"),
+            ));
+        }
         DataType::bytes(parameters)
             .map_err(|error| self.error_at(position, format_smolstr!("{error}")))
     }
@@ -1076,7 +1164,7 @@ pub const INLINE_BYTES: usize = 30;
 /// One byte value: its payload and the parameters it is stored under.
 ///
 /// ```
-/// use yggdryl::types::{Bytes, BytesLayout, BytesType, INLINE_BYTES};
+/// use yggdryl::types::{Bytes, BytesType, INLINE_BYTES};
 /// use yggdryl::{DataType, Scalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -1087,7 +1175,7 @@ pub const INLINE_BYTES: usize = 30;
 /// assert!(!long.is_inline());
 ///
 /// // A value is one value whichever layout it is stored under.
-/// let large = BytesType::new(BytesLayout::LargeBinary);
+/// let large = BytesType::LargeBinary;
 /// let restated = short.clone().try_with_parameters(large)?;
 /// assert_eq!(restated, short);
 /// assert_eq!(restated.dtype()?, DataType::large_binary());
@@ -1158,7 +1246,7 @@ impl Bytes {
     pub const fn new_static(payload: &'static [u8]) -> Self {
         Self {
             repr: Repr::Static(payload),
-            parameters: BytesType::new(BytesLayout::Binary),
+            parameters: BytesType::Binary,
         }
     }
 
@@ -1194,7 +1282,7 @@ impl Bytes {
     pub(crate) fn from_storage(payload: &[u8], parameters: BytesType) -> Self {
         Self {
             repr: Repr::owned(payload),
-            parameters: parameters.without_max(),
+            parameters: parameters.storage(),
         }
     }
 
@@ -1227,7 +1315,7 @@ impl Bytes {
                 return Err(refusal(format_args!("at most {max} bytes")));
             }
         }
-        self.parameters = parameters.without_max();
+        self.parameters = parameters.storage();
         Ok(self)
     }
 
@@ -1248,8 +1336,8 @@ impl Bytes {
 
     /// The layout this value is stored in.
     #[must_use]
-    pub const fn layout(&self) -> BytesLayout {
-        self.parameters.layout()
+    pub const fn layout(&self) -> BytesType {
+        self.parameters
     }
 
     /// The exact storage width, on the fixed layout alone.
@@ -1498,7 +1586,7 @@ impl FromIterator<u8> for Bytes {
 /// makes a value carry more than that.
 #[derive(Deserialize, Serialize)]
 struct Declared<'a> {
-    layout: BytesLayout,
+    layout: SmolStr,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fixed: Option<u32>,
     bytes: Cow<'a, [u8]>,
@@ -1513,7 +1601,7 @@ impl Serialize for Bytes {
             return serializer.collect_seq(self.as_bytes());
         }
         Declared {
-            layout: self.layout(),
+            layout: SmolStr::new(self.parameters().as_str()),
             fixed: self.fixed(),
             bytes: Cow::Borrowed(self.as_bytes()),
         }
@@ -1535,12 +1623,11 @@ impl<'de> Deserialize<'de> for Bytes {
         match Representation::deserialize(deserializer)? {
             Representation::Plain(bytes) => Ok(Self::from(bytes)),
             Representation::Declared(declared) => {
-                let mut parameters = BytesType::new(declared.layout);
-                if let Some(width) = declared.fixed {
-                    parameters = parameters
-                        .try_with_bound(width)
-                        .map_err(serde::de::Error::custom)?;
-                }
+                let named = BytesType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
+                let parameters = match (named, declared.fixed) {
+                    (BytesType::FixedBinary(_), Some(width)) => BytesType::FixedBinary(width),
+                    (other, _) => other,
+                };
                 Self::from(declared.bytes)
                     .try_with_parameters(parameters)
                     .map_err(serde::de::Error::custom)
@@ -1613,239 +1700,6 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     }
 }
 
-/// One of the four ways this crate lays bytes out - Arrow's four.
-///
-/// The layout is the physical shape alone, how a value's bytes are addressed;
-/// the bound beside it in [`BytesType`] is how many there may be.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum BytesLayout {
-    /// Variable width, 32-bit offsets - Arrow's `Binary`.
-    #[default]
-    Binary,
-    /// One fixed byte width every value fills exactly - Arrow's
-    /// `FixedSizeBinary`. Bytes are never padded: a value is its width.
-    FixedSizeBinary,
-    /// Variable width, 64-bit offsets - Arrow's `LargeBinary`.
-    LargeBinary,
-    /// The view layout: a short prefix inline, the rest out of line.
-    BinaryView,
-}
-
-impl BytesLayout {
-    /// Every layout in canonical declaration order.
-    pub const ALL: [Self; 4] = [
-        Self::Binary,
-        Self::FixedSizeBinary,
-        Self::LargeBinary,
-        Self::BinaryView,
-    ];
-
-    /// The canonical name of this layout.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Binary => "binary",
-            Self::FixedSizeBinary => "fixed_size_binary",
-            Self::LargeBinary => "large_binary",
-            Self::BinaryView => "binary_view",
-        }
-    }
-
-    /// Resolve a layout from its name.
-    ///
-    /// Case, underscores, hyphens and spaces are all ignored, so
-    /// `LARGE_BINARY`, `large-binary` and `largebinary` are one layout, and
-    /// `fixed_binary` is the fixed one's second spelling.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::UnknownDataType`] for a name no layout answers to.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Result<Self> {
-        if super::folds_equal(value, "fixed_binary") {
-            return Ok(Self::FixedSizeBinary);
-        }
-        Self::ALL
-            .into_iter()
-            .find(|layout| super::folds_equal(value, layout.as_str()))
-            .ok_or_else(|| Error::UnknownDataType(format_smolstr!("{value}")))
-    }
-
-    /// The identifier naming this layout.
-    #[must_use]
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::Binary => DataTypeId::Binary,
-            Self::FixedSizeBinary => DataTypeId::FixedSizeBinary,
-            Self::LargeBinary => DataTypeId::LargeBinary,
-            Self::BinaryView => DataTypeId::BinaryView,
-        }
-    }
-
-    /// The layout one identifier names, `None` for an identifier that is not
-    /// a byte layout's.
-    #[must_use]
-    pub const fn from_id(id: DataTypeId) -> Option<Self> {
-        match id {
-            DataTypeId::Binary => Some(Self::Binary),
-            DataTypeId::FixedSizeBinary => Some(Self::FixedSizeBinary),
-            DataTypeId::LargeBinary => Some(Self::LargeBinary),
-            DataTypeId::BinaryView => Some(Self::BinaryView),
-            _ => None,
-        }
-    }
-
-    /// Return whether every value in this layout is the same width.
-    #[must_use]
-    pub const fn is_fixed(self) -> bool {
-        matches!(self, Self::FixedSizeBinary)
-    }
-
-    /// Return whether this layout addresses its bytes through a view.
-    #[must_use]
-    pub const fn is_view(self) -> bool {
-        matches!(self, Self::BinaryView)
-    }
-
-    /// Return whether this layout declares 64-bit offsets.
-    #[must_use]
-    pub const fn is_large(self) -> bool {
-        matches!(self, Self::LargeBinary)
-    }
-}
-
-impl fmt::Display for BytesLayout {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl Serialize for BytesLayout {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for BytesLayout {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
-        Self::from_str(&value).map_err(serde::de::Error::custom)
-    }
-}
-
-/// The inline threshold an integration test cannot reach.
-///
-/// `INLINE_BYTES` is crate-private: it is the byte count below which a
-/// `Bytes` stores its payload in the value rather than behind an `Arc`, so
-/// the boundary has to be crossed from inside. Everything a caller can
-/// observe lives in `tests/types/bytes.rs`.
-#[cfg(test)]
-mod tests {
-    use super::{Bytes, INLINE_BYTES};
-    use crate::types::{BytesLayout, BytesType};
-    use crate::{DataType, Scalar};
-
-    #[test]
-    fn a_short_payload_is_inline_and_a_long_one_is_shared() {
-        let short = Bytes::new(vec![7_u8; INLINE_BYTES]);
-        assert!(short.is_inline());
-        let long = Bytes::new(vec![7_u8; INLINE_BYTES + 1]);
-        assert!(!long.is_inline());
-        assert_eq!(long.len(), INLINE_BYTES + 1);
-        assert!(!Bytes::new_static(b"held").is_inline());
-        assert_eq!(Bytes::default(), b"");
-        assert_eq!(std::mem::size_of::<Bytes>(), 40);
-    }
-
-    #[test]
-    fn equality_order_and_hash_read_the_payload_only() {
-        use std::collections::HashSet;
-
-        let plain = Bytes::new(b"abc");
-        let large = Bytes::new(b"abc")
-            .try_with_parameters(BytesType::new(BytesLayout::LargeBinary))
-            .unwrap();
-        assert_eq!(plain, large);
-        assert_eq!(HashSet::from([plain.clone(), large.clone()]).len(), 1);
-        assert_ne!(plain.parameters(), large.parameters());
-        assert!(Bytes::new(b"b") > Bytes::new(b"a"));
-        assert_eq!(format!("{large:?}"), "0x616263 as large_binary");
-        assert_eq!(format!("{plain:?}"), "0x616263");
-    }
-
-    #[test]
-    fn restating_checks_but_never_carries_a_maximum() {
-        let bounded = BytesType::new(BytesLayout::Binary)
-            .try_with_bound(4)
-            .unwrap();
-        let value = Bytes::new(b"abcd").try_with_parameters(bounded).unwrap();
-        assert_eq!(value.parameters(), BytesType::default());
-        assert_eq!(value.dtype().unwrap(), DataType::binary());
-        let refused = Bytes::new(b"abcde")
-            .try_with_parameters(bounded)
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("at most 4 bytes"), "{refused}");
-    }
-
-    #[test]
-    fn a_fixed_layout_takes_exactly_its_width() {
-        let fixed = BytesType::new(BytesLayout::FixedSizeBinary)
-            .try_with_bound(4)
-            .unwrap();
-        let value = Bytes::new(b"abcd").try_with_parameters(fixed).unwrap();
-        assert_eq!(value.fixed(), Some(4));
-        assert_eq!(
-            value.dtype().unwrap(),
-            DataType::fixed_size_binary(4).unwrap()
-        );
-        assert!(Bytes::new(b"abc").try_with_parameters(fixed).is_err());
-        assert!(Bytes::new(b"abcde").try_with_parameters(fixed).is_err());
-        assert!(
-            Bytes::new(b"x")
-                .try_with_parameters(BytesType::new(BytesLayout::FixedSizeBinary))
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn serde_writes_the_payload_alone_unless_the_value_declares_more() {
-        let plain = Bytes::new(b"ab");
-        assert_eq!(serde_json::to_string(&plain).unwrap(), "[97,98]");
-        assert_eq!(serde_json::from_str::<Bytes>("[97,98]").unwrap(), plain);
-        let fixed = Bytes::new(b"ab")
-            .try_with_parameters(
-                BytesType::new(BytesLayout::FixedSizeBinary)
-                    .try_with_bound(2)
-                    .unwrap(),
-            )
-            .unwrap();
-        let document = serde_json::to_string(&fixed).unwrap();
-        assert_eq!(
-            document,
-            r#"{"layout":"fixed_size_binary","fixed":2,"bytes":[97,98]}"#
-        );
-        let back = serde_json::from_str::<Bytes>(&document).unwrap();
-        assert_eq!(back.parameters(), fixed.parameters());
-        assert_eq!(back, fixed);
-    }
-
-    #[test]
-    fn a_byte_scalar_names_its_own_datatype() {
-        assert_eq!(
-            Scalar::from(vec![1_u8]).dtype().unwrap(),
-            DataType::binary()
-        );
-        let view = Bytes::new(b"x")
-            .try_with_parameters(BytesType::new(BytesLayout::BinaryView))
-            .unwrap();
-        assert_eq!(
-            Scalar::Bytes(view).dtype().unwrap(),
-            DataType::binary_view()
-        );
-    }
-}
 
 impl crate::types::DataTypeValue for BytesType {
     const FAMILY: &'static str = "bytes";

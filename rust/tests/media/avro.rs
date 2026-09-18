@@ -724,10 +724,10 @@ mod logical {
             r#"{"type":"fixed","name":"raw","size":3}"#,
             Scalar::from([1_u8, 2, 3].as_slice()),
         );
-        assert_eq!(fixed.id(), DataTypeId::FixedSizeBinary);
+        assert_eq!(fixed.id(), DataTypeId::FixedBinary);
         assert_eq!(
             fixed.dtype().unwrap(),
-            DataType::fixed_size_binary(3).unwrap()
+            DataType::fixed_binary(3).unwrap()
         );
 
         for (precision, expected) in [
@@ -1679,7 +1679,7 @@ mod records {
             DataType::uuid().required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
-            DataType::fixed_size_binary(3)
+            DataType::fixed_binary(3)
                 .unwrap()
                 .required_field("raw"),
             DataType::Interval(TimeUnit::MonthDayNano).required_field("span"),
@@ -1718,7 +1718,7 @@ mod records {
                 DataTypeId::Uuid,
                 DataTypeId::Decimal32,
                 DataTypeId::Decimal64,
-                DataTypeId::FixedSizeBinary,
+                DataTypeId::FixedBinary,
                 DataTypeId::Interval,
             ]
         );

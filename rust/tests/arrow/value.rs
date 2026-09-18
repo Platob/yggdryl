@@ -11,7 +11,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use yggdryl::types::{BytesLayout, BytesType};
+    use yggdryl::types::BytesType;
     use yggdryl::{DataTypeId, i256};
 
     #[test]
@@ -74,7 +74,7 @@ mod widths {
             DataType::binary(),
             DataType::large_binary(),
             DataType::binary_view(),
-            DataType::fixed_size_binary(6).unwrap(),
+            DataType::fixed_binary(6).unwrap(),
         ] {
             let decoded = round_trip(column.clone(), payload.clone());
             assert_eq!(decoded, payload);
@@ -91,9 +91,7 @@ mod widths {
     #[test]
     fn a_maximum_is_the_columns_rule_and_never_the_cells() {
         let column = DataType::bytes(
-            BytesType::new(BytesLayout::Binary)
-                .try_with_bound(8)
-                .unwrap(),
+            BytesType::SizedBinary(8),
         )
         .unwrap();
         let decoded = round_trip(column, Scalar::from(b"AAPL".as_slice()));
@@ -102,7 +100,7 @@ mod widths {
 
     #[test]
     fn a_fixed_width_takes_exactly_its_width() {
-        let field = Field::new("key", DataType::fixed_size_binary(6).unwrap(), true);
+        let field = Field::new("key", DataType::fixed_binary(6).unwrap(), true);
         assert!(scalar_array(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
     }
 
@@ -141,9 +139,9 @@ mod widths {
                 DataTypeId::Binary,
             ),
             (
-                DataType::fixed_size_binary(5).unwrap(),
+                DataType::fixed_binary(5).unwrap(),
                 Scalar::from(b"value".as_slice()),
-                DataTypeId::FixedSizeBinary,
+                DataTypeId::FixedBinary,
             ),
             (
                 DataType::large_binary(),

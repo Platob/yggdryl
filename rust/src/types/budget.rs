@@ -1302,7 +1302,7 @@ pub(crate) fn reserve_concat_copy(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::Bytes(parameters) if parameters.layout().is_view() => {
+        DataType::Bytes(parameters) if parameters.is_view() => {
             let array = downcast::<BinaryViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;

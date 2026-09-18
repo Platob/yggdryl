@@ -9,12 +9,12 @@ use std::str::FromStr;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{EdgeAlgorithm, Error, Field, Result};
-use super::bytes::BytesLayout;
 use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::UnionMode;
 use crate::types::DecimalType;
 use crate::types::UuidType;
+use crate::types::BytesType;
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
@@ -1125,11 +1125,15 @@ impl<'a> Parser<'a> {
             // the width on the fixed layout and as the maximum on every
             // other.
             "binary" | "bytes" | "varbinary" | "blob" | "bytea" => {
-                self.parse_bytes(BytesLayout::Binary)?
+                self.parse_bytes(BytesType::Binary)?
             }
-            "fixedsizebinary" | "fixedbinary" => self.parse_bytes(BytesLayout::FixedSizeBinary)?,
-            "largebinary" => self.parse_bytes(BytesLayout::LargeBinary)?,
-            "binaryview" => self.parse_bytes(BytesLayout::BinaryView)?,
+            "fixedsizebinary" | "fixedbinary" => self.parse_bytes(BytesType::FixedBinary(1))?,
+            "largebinary" => self.parse_bytes(BytesType::LargeBinary)?,
+            "binaryview" => self.parse_bytes(BytesType::BinaryView)?,
+            "largebinaryview" => self.parse_bytes(BytesType::LargeBinaryView)?,
+            // A maximum is its own leaf, and the number after it is that
+            // maximum; `binary(32)` is the same column spelled shorter.
+            "sizedbinary" | "varbinarybounded" => self.parse_bytes(BytesType::SizedBinary(1))?,
             // One family, three spellings each, and one grammar over all of
             // them: an optional charset, then an optional bound that reads
             // as the width on a fixed layout and as the maximum on every

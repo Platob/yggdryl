@@ -55,7 +55,7 @@ fn sparse_union_joins_selected_and_inactive_children_into_one_budget() {
 
 #[test]
 fn dense_union_does_not_visit_an_inactive_oversized_default() {
-    let oversized = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let oversized = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     let dense = DataType::union(
         [
             (0, Field::new("selected", DataType::Int32, false)),
@@ -78,7 +78,7 @@ fn dense_union_remains_lazy_below_a_generated_struct_slot() {
                 1,
                 Field::new(
                     "inactive",
-                    DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap(),
+                    DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap(),
                     false,
                 ),
             ),
@@ -95,8 +95,8 @@ fn dense_union_remains_lazy_below_a_generated_struct_slot() {
 fn nullable_struct_rejects_aggregate_fixed_physical_bytes() {
     let width = 40 * 1024 * 1024;
     let structure = DataType::from_fields([
-        Field::new("left", DataType::fixed_size_binary(width).unwrap(), false),
-        Field::new("right", DataType::fixed_size_binary(width).unwrap(), false),
+        Field::new("left", DataType::fixed_binary(width).unwrap(), false),
+        Field::new("right", DataType::fixed_binary(width).unwrap(), false),
     ])
     .unwrap();
     let error = scalar_array(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
@@ -113,7 +113,7 @@ fn nullable_struct_aggregates_selected_dense_union_payloads() {
                 4,
                 Field::new(
                     "payload",
-                    DataType::fixed_size_binary(40 * 1024 * 1024).unwrap(),
+                    DataType::fixed_binary(40 * 1024 * 1024).unwrap(),
                     false,
                 ),
             )],
@@ -136,10 +136,10 @@ fn nullable_struct_aggregates_selected_dense_union_payloads() {
 fn dictionary_and_run_end_wrappers_join_the_hidden_byte_budget() {
     let width = 40 * 1024 * 1024;
     let dictionary =
-        DataType::dictionary(DataType::Int8, DataType::fixed_size_binary(width).unwrap()).unwrap();
+        DataType::dictionary(DataType::Int8, DataType::fixed_binary(width).unwrap()).unwrap();
     let encoded = DataType::run_end_encoded(
         Field::new("run_ends", DataType::Int16, false),
-        Field::new("values", DataType::fixed_size_binary(width).unwrap(), false),
+        Field::new("values", DataType::fixed_binary(width).unwrap(), false),
     )
     .unwrap();
     let structure = DataType::from_fields([

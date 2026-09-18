@@ -488,7 +488,7 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
         );
     assert_eq!(
         Field::from_arrow_field(&mismatched).unwrap().dtype(),
-        &DataType::fixed_size_binary(3).unwrap()
+        &DataType::fixed_binary(3).unwrap()
     );
 }
 
@@ -587,7 +587,7 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
     );
     let plain = Field::new(
         "ccy",
-        DataType::dictionary(DataType::Int32, DataType::fixed_size_binary(3).unwrap()).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::fixed_binary(3).unwrap()).unwrap(),
         false,
     );
     assert_eq!(
@@ -806,7 +806,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
         "binary",
         "large_binary",
         "binary_view",
-        "fixed_size_binary(3)",
+        "fixed_binary(3)",
         "binary(3)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
@@ -820,7 +820,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
     // each refusal names both sides rather than leaving Arrow's builder to
     // complain about a slice length.
     for (spelling, expected) in [
-        ("fixed_size_binary(8)", "exactly 8 bytes"),
+        ("fixed_binary(8)", "exactly 8 bytes"),
         ("binary(2)", "at most 2 bytes"),
         ("utf8(2)", "at most 2"),
     ] {

@@ -388,7 +388,7 @@ mod options {
         /// same byte width are the same bytes under two readings, so every source
         /// bit pattern maps and the buffer is shared rather than rebuilt.
         /// `u64::MAX` reads as `-1_i64`, those eight bytes read as an
-        /// `int64`/`uint64`/`float64`/`fixed_size_binary(8)` alike, and every one
+        /// `int64`/`uint64`/`float64`/`fixed_binary(8)` alike, and every one
         /// of those round-trips back.
         ///
         /// It is a preference, not a mode: a pair that is not laid out that way

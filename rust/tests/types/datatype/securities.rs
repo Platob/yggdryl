@@ -375,7 +375,7 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
     assert_eq!(DataTypeId::Sedol.as_u8(), 65);
     assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
     assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 9..],
+        &DataTypeId::ALL[DataTypeId::ALL.len() - 11..],
         &[
             DataTypeId::MediaType,
             DataTypeId::Cusip,
@@ -385,7 +385,9 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
             DataTypeId::Struct2,
             DataTypeId::Uuidv4,
             DataTypeId::Uuidv7,
-            DataTypeId::Uuidv8
+            DataTypeId::Uuidv8,
+            DataTypeId::LargeBinaryView,
+            DataTypeId::SizedBinary
         ]
     );
     // The datatype order is total and appends too, so no earlier pair

@@ -63,7 +63,7 @@ fn quantities() -> ArrayRef {
 
 /// A coupled holder of the given width, naming its instant.
 fn coupled(name: &str, width: u32, time: &str) -> Field {
-    let mut field = Field::new(name, DataType::fixed_size_binary(width).unwrap(), false);
+    let mut field = Field::new(name, DataType::fixed_binary(width).unwrap(), false);
     field.as_digest_mut().set_holder().unwrap();
     field.as_digest_mut().set_time(time).unwrap();
     field
@@ -776,7 +776,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
 
     // A unit without an instant, and coupling metadata off a holder, written
     // raw where the typed setters would have refused.
-    let mut unit_only = Field::new("key", DataType::fixed_size_binary(16).unwrap(), false);
+    let mut unit_only = Field::new("key", DataType::fixed_binary(16).unwrap(), false);
     unit_only.as_digest_mut().set_holder().unwrap();
     unit_only.as_digest_mut().insert("unit", "s").unwrap();
     let error = refused(struct_root([event_field(), symbol_field(), unit_only]));
@@ -820,7 +820,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
 
 #[test]
 fn a_coupled_holder_of_the_wrong_width_is_refused_by_name() {
-    let mut odd = Field::new("key", DataType::fixed_size_binary(20).unwrap(), false);
+    let mut odd = Field::new("key", DataType::fixed_binary(20).unwrap(), false);
     odd.as_digest_mut().set_holder().unwrap();
     odd.as_digest_mut().insert("time", "event").unwrap();
     let root = struct_root([event_field(), symbol_field(), odd]);

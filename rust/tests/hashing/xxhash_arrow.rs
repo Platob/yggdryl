@@ -373,7 +373,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "fixed_size_binary",
-                DataType::fixed_size_binary(4).unwrap(),
+                DataType::fixed_binary(4).unwrap(),
                 true,
             ),
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
@@ -663,6 +663,26 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(100))]).unwrap(),
                 Scalar::from_mapping([]).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("large_binary_view", DataType::large_binary_view(), true),
+            // Arrow has one view width where this crate declares two, so the
+            // two hash the same bytes out of the same array.
+            Scalar::from_sequence([
+                Scalar::from(&b"AAPL"[..]),
+                Scalar::from(&b""[..]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("sized_binary", DataType::sized_binary(8).unwrap(), true),
+            // A maximum is the column's rule; the digest reads the payload
+            // the plain binary underneath it holds.
+            Scalar::from_sequence([
+                Scalar::from(&b"AAPL"[..]),
+                Scalar::from(&b""[..]),
                 Scalar::Null,
             ]),
         ),
@@ -1455,7 +1475,7 @@ fn mixed_holder_widths_resolve_algorithms_per_holder() {
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh3)
         .unwrap();
-    let h128 = holder("h128", DataType::fixed_size_binary(16).unwrap());
+    let h128 = holder("h128", DataType::fixed_binary(16).unwrap());
     let root = root([value.clone(), h32, h64, explicit, h128]);
     let source = batch(
         std::slice::from_ref(&value),

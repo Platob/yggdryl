@@ -584,7 +584,7 @@ fn a_datatype_is_named_the_same_by_both_documents() {
 /// refusal names is the door: a `u64` is at most twenty digits, so
 /// `decimal(20, 0)` holds every one of them losslessly. Only the previous
 /// message's UUID is sixteen bytes, and it crosses as the spec's `uuid`,
-/// which Arrow reads back as `fixed_size_binary(16)`.
+/// which Arrow reads back as `fixed_binary(16)`.
 ///
 /// The round trip writes stamped messages through the widened schema, reads
 /// them back, and compares each value to what the projected row stated.

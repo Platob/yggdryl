@@ -39,7 +39,7 @@ use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
-use crate::types::{BytesLayout, Str, StringLayout, StringType};
+use crate::types::{BytesType, Str, StringLayout, StringType};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
 
 use super::field::{
@@ -1095,13 +1095,17 @@ fn feed_cell(
         // Bytes digest as their payload, whichever layout holds them.
         DataType::Bytes(parameters) => write_binary(
             digester,
-            match parameters.layout() {
-                BytesLayout::FixedSizeBinary => {
+            match parameters {
+                BytesType::FixedBinary(_) => {
                     downcast::<FixedSizeBinaryArray>(array)?.value(index)
                 }
-                BytesLayout::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
-                BytesLayout::BinaryView => downcast::<BinaryViewArray>(array)?.value(index),
-                BytesLayout::Binary => downcast::<BinaryArray>(array)?.value(index),
+                BytesType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
+                BytesType::BinaryView | BytesType::LargeBinaryView => {
+                    downcast::<BinaryViewArray>(array)?.value(index)
+                }
+                BytesType::Binary | BytesType::SizedBinary(_) => {
+                    downcast::<BinaryArray>(array)?.value(index)
+                }
             },
         ),
         DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => write_decimal(
