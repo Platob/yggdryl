@@ -24,6 +24,7 @@ use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringParame
 use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 use crate::types::structure::StructureType;
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -868,7 +869,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Structure(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
-        D::Dictionary(dictionary) => canonicalize_dtype_value(dictionary.value(), value),
+        D::Enum(EnumType::Dictionary(dictionary)) => canonicalize_dtype_value(dictionary.value(), value),
         D::Decimal32 { .. }
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
@@ -1529,7 +1530,7 @@ fn validate_dtype_value(
         ),
         D::Structure(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
-        D::Dictionary(dictionary) => validate_dtype_value(dictionary.value(), value, depth + 1),
+        D::Enum(EnumType::Dictionary(dictionary)) => validate_dtype_value(dictionary.value(), value, depth + 1),
         D::Decimal32 { precision, .. } => validate_decimal_value(value, *precision, 32),
         D::Decimal64 { precision, .. } => validate_decimal_value(value, *precision, 64),
         D::Decimal128 { precision, .. } => validate_decimal_value(value, *precision, 128),

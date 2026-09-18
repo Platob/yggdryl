@@ -53,6 +53,7 @@ use crate::{TimeUnit, UnionMode};
 use super::bytes::{BytesLayout, BytesParameters};
 use super::string::{StringLayout, StringParameters};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -228,7 +229,7 @@ fn merge_encoded(
     recode: Recode,
 ) -> Result<Option<DataType>> {
     match (left, right) {
-        (DataType::Dictionary(left_dict), DataType::Dictionary(right_dict)) => {
+        (DataType::Enum(EnumType::Dictionary(left_dict)), DataType::Enum(EnumType::Dictionary(right_dict))) => {
             let key = left_dict.key().merge(right_dict.key(), how, recode)?;
             let value = left_dict.value().merge(right_dict.value(), how, recode)?;
             DataType::dictionary(key, value).map(Some)
@@ -243,10 +244,10 @@ fn merge_encoded(
         // One side encoded and the other not: the logical types meet, and the
         // result is plain, because an encoding one side never had is not
         // something a merge may impose.
-        (DataType::Dictionary(_) | DataType::RunEndEncoded(_), _) => {
+        (DataType::Enum(EnumType::Dictionary(_)) | DataType::RunEndEncoded(_), _) => {
             decoded(left).merge(right, how, recode).map(Some)
         }
-        (_, DataType::Dictionary(_) | DataType::RunEndEncoded(_)) => {
+        (_, DataType::Enum(EnumType::Dictionary(_)) | DataType::RunEndEncoded(_)) => {
             left.merge(decoded(right), how, recode).map(Some)
         }
         _ => Ok(None),
@@ -256,7 +257,7 @@ fn merge_encoded(
 /// The logical type under any number of encoding wrappers.
 fn decoded(dtype: &DataType) -> &DataType {
     match dtype {
-        DataType::Dictionary(dictionary) => decoded(dictionary.value()),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => decoded(dictionary.value()),
         DataType::RunEndEncoded(encoded) => decoded(encoded.values().dtype()),
         other => other,
     }

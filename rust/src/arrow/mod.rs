@@ -14,6 +14,7 @@ use crate::types::cast::ArrowCastPlan;
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
+use crate::types::enums::EnumType;
 
 pub(crate) mod rows;
 mod scalars;
@@ -1089,7 +1090,7 @@ fn collect_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) {
-    if let DataType::Dictionary(dictionary) = dtype {
+    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
         collect_dictionary_ids_in_dtype(dictionary.value(), path, ids);
         return;
     }
@@ -1218,7 +1219,7 @@ fn restore_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) -> Result<DataType> {
-    if let DataType::Dictionary(dictionary) = dtype {
+    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
         let value = restore_dictionary_ids_in_dtype(dictionary.value(), path, ids)?;
         return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
     }

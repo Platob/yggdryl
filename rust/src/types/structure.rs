@@ -18,6 +18,7 @@ use crate::types::family::{Children, NestedValue};
 use crate::types::scalar::Value;
 use crate::types::invalid;
 use crate::Scalar;
+use crate::types::enums::EnumType;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, Field, Result, TypedField,
 };
@@ -1705,7 +1706,7 @@ pub(crate) fn exploded(child: &Field) -> Field {
             encoded.values().dtype().clone(),
             encoded.values().is_nullable(),
         )),
-        DataType::Dictionary(dictionary) => Some((dictionary.value().clone(), false)),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => Some((dictionary.value().clone(), false)),
         _ => None,
     };
     match held {

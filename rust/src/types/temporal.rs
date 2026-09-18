@@ -13,6 +13,7 @@ use crate::{DataType, DataTypeId, Error, Result, TimeUnit, Timezone, TypedField}
 #[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
+    use crate::types::enums::EnumType;
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BooleanArray, StringArray};
@@ -132,7 +133,7 @@ pub(crate) mod casts {
             | DataType::DateTime64 { .. }
             | DataType::Duration32(_)
             | DataType::Duration64(_) => true,
-            DataType::Dictionary(dictionary) => holds_temporal(dictionary.value()),
+            DataType::Enum(EnumType::Dictionary(dictionary)) => holds_temporal(dictionary.value()),
             DataType::RunEndEncoded(encoded) => holds_temporal(encoded.values().dtype()),
             _ => false,
         }

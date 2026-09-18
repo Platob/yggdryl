@@ -13,6 +13,7 @@ use crate::{Error, Field, Result, Scheme, TimeUnit};
 
 use super::{BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -197,7 +198,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 target.engine()
             ),
         ),
-        D::Dictionary(dictionary) => {
+        D::Enum(EnumType::Dictionary(dictionary)) => {
             let value_path = path.child(Segment::DictionaryValue);
             let (value, _) = normalize_dtype(target, dictionary.value(), &value_path)?;
             Ok((value, true))

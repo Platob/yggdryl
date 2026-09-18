@@ -109,6 +109,7 @@ mod arrow {
 #[cfg(feature = "arrow")]
 /// Binary layout accounting and identity checks for Arrow casts.
 pub(crate) mod casts {
+    use crate::types::enums::EnumType;
     use arrow_array::builder::{
         BinaryBuilder, BinaryViewBuilder, FixedSizeBinaryBuilder, LargeBinaryBuilder,
     };
@@ -358,7 +359,7 @@ pub(crate) mod casts {
         if array.is_null(index)
             && !matches!(
                 source_type,
-                DataType::Dictionary(_) | DataType::Union(..) | DataType::RunEndEncoded(_)
+                DataType::Enum(EnumType::Dictionary(_)) | DataType::Union(..) | DataType::RunEndEncoded(_)
             )
         {
             return Ok(0);
@@ -370,7 +371,7 @@ pub(crate) mod casts {
             bytes if bytes.kind().is_bytes() || matches!(bytes, DataType::Uuid) => {
                 byte_cell_len(array, index)?
             }
-            DataType::Dictionary(dictionary) => {
+            DataType::Enum(EnumType::Dictionary(dictionary)) => {
                 macro_rules! dictionary_len {
                     ($key:ty) => {{
                         let dictionary_array = downcast::<DictionaryArray<$key>>(array)?;

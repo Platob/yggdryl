@@ -52,6 +52,7 @@ use super::scalar::{
 };
 use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -420,7 +421,7 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
     // A dictionary encodes a value type rather than a child column, so what it
     // holds carries no name of its own to extend the path with.
-    if let DataType::Dictionary(dictionary) = dtype {
+    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
         reject_unreachable_digests(dictionary.value(), path, container)?;
     }
     for index in 0..dtype.field_len() {
@@ -1229,7 +1230,7 @@ fn feed_cell(
         | DataType::Sequence(SequenceType::LargeListView(_))
         | DataType::Structure(_)
         | DataType::Union(..)
-        | DataType::Dictionary(_)
+        | DataType::Enum(EnumType::Dictionary(_))
         | DataType::Mapping(_)
         | DataType::RunEndEncoded(_)
         | DataType::Variant

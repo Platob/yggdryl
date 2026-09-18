@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::dictionary::DictionaryType;
+use crate::types::enums::EnumType;
 use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
 use crate::types::sequence::SequenceType;
@@ -16,7 +16,7 @@ use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, Un
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
 use crate::types::structure::cmp_fields;
-use crate::types::dictionary::validate_dictionary_key;
+use crate::types::enums::validate_dictionary_key;
 use crate::types::structure::validate_fields;
 use crate::types::mapping::validate_map_entries;
 use crate::types::runend::validate_run_ends;
@@ -147,8 +147,11 @@ pub enum DataType {
     Structure(StructureType),
     /// Tagged union fields and layout mode.
     Union(UnionFields, UnionMode),
-    /// Dictionary key and value types.
-    Dictionary(Arc<DictionaryType>),
+    /// A value stored as a code that stands for it: the whole enum family.
+    ///
+    /// The leaf - dictionary encoding today - is [`EnumType`]'s business,
+    /// not this enum's.
+    Enum(EnumType),
     /// Exact decimal backed by 32 bits.
     Decimal32 {
         precision: u8,
@@ -314,7 +317,7 @@ impl DataType {
             Self::Sequence(SequenceType::LargeListView(_)) => DataTypeId::LargeListView,
             Self::Structure(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
-            Self::Dictionary(_) => DataTypeId::Dictionary,
+            Self::Enum(EnumType::Dictionary(_)) => DataTypeId::Dictionary,
             Self::Decimal32 { .. } => DataTypeId::Decimal32,
             Self::Decimal64 { .. } => DataTypeId::Decimal64,
             Self::Decimal128 { .. } => DataTypeId::Decimal128,
@@ -345,7 +348,7 @@ impl DataType {
     /// encodes is nested.
     pub fn is_nested(&self) -> bool {
         match self {
-            Self::Dictionary(dictionary) => dictionary.value.is_nested(),
+            Self::Enum(EnumType::Dictionary(dictionary)) => dictionary.value.is_nested(),
             Self::RunEndEncoded(run_end) => run_end.values.dtype().is_nested(),
             other => other.id().is_nested(),
         }
@@ -455,7 +458,7 @@ impl DataType {
             }
             Self::Structure(fields) => validate_fields(fields.as_fields(), "Struct"),
             Self::Union(fields, _) => validate_union_fields(fields),
-            Self::Dictionary(dictionary) => {
+            Self::Enum(EnumType::Dictionary(dictionary)) => {
                 validate_dictionary_key(&dictionary.key)?;
                 dictionary.key.validate()?;
                 dictionary.value.validate()
@@ -523,7 +526,7 @@ impl Ord for DataType {
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
                 .cmp(right_mode)
                 .then_with(|| left_fields.cmp(right_fields)),
-            (D::Dictionary(left), D::Dictionary(right)) => left.cmp(right),
+            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => left.cmp(right),
             (
                 D::Decimal32 {
                     precision: left_precision,
@@ -623,7 +626,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Sequence(SequenceType::LargeListView(_)) => 40,
         DataType::Structure(_) => 41,
         DataType::Union(..) => 42,
-        DataType::Dictionary(_) => 43,
+        DataType::Enum(EnumType::Dictionary(_)) => 43,
         DataType::Decimal32 { .. } => 44,
         DataType::Decimal64 { .. } => 45,
         DataType::Decimal128 { .. } => 46,

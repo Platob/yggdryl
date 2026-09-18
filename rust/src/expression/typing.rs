@@ -32,6 +32,7 @@ use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -382,7 +383,7 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Term) -> Result<
 /// means the same thing whether or not the column is dictionary-encoded.
 pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
     match dtype {
-        DataType::Dictionary(dictionary) => unwrap_dictionary(dictionary.value()),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => unwrap_dictionary(dictionary.value()),
         DataType::RunEndEncoded(encoded) => unwrap_dictionary(encoded.values().dtype()),
         other => other,
     }

@@ -42,6 +42,7 @@ use half::f16;
 
 use super::{Error, Result};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -237,7 +238,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         }
         DataType::Structure(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
-        DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
+        DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_array(dictionary, values)?,
         DataType::Decimal32 { scale, .. } => {
             physical_primitive!(Decimal32Array, |value: &&Scalar| i32::try_from(
                 unscaled_i128(value, *scale)?
@@ -586,7 +587,7 @@ pub(crate) fn value_from_array(
             )?;
             Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload])
         }
-        DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
+        DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
             Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))

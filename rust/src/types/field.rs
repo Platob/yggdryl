@@ -18,6 +18,7 @@ use crate::types::{DataType, preflight_schema_shape};
 use crate::{DataTypeId, Error, Metadata, Result, Scheme, Url};
 
 use super::protocol::{self, ProtocolField, ProtocolFieldMut};
+use crate::types::enums::EnumType;
 
 /// Emit the borrowed and mutable named views of one protocol on a field.
 macro_rules! field_protocol_accessors {
@@ -149,7 +150,7 @@ impl Field {
 
     /// Returns the Arrow IPC dictionary identifier for dictionary fields.
     pub const fn dictionary_id(&self) -> Option<i64> {
-        if matches!(self.dtype, DataType::Dictionary(_)) {
+        if matches!(self.dtype, DataType::Enum(EnumType::Dictionary(_))) {
             Some(self.dictionary_id)
         } else {
             None
@@ -158,7 +159,7 @@ impl Field {
 
     /// Returns Arrow's dictionary ordering flag for dictionary fields.
     pub const fn dictionary_is_ordered(&self) -> Option<bool> {
-        if matches!(self.dtype, DataType::Dictionary(_)) {
+        if matches!(self.dtype, DataType::Enum(EnumType::Dictionary(_))) {
             Some(self.dictionary_is_ordered)
         } else {
             None
@@ -467,7 +468,7 @@ impl Field {
         dtype.validate()?;
         if self.dtype != dtype {
             self.dtype = dtype;
-            if !matches!(self.dtype, DataType::Dictionary(_)) {
+            if !matches!(self.dtype, DataType::Enum(EnumType::Dictionary(_))) {
                 self.dictionary_id = 0;
                 self.dictionary_is_ordered = false;
             }
@@ -498,7 +499,7 @@ impl Field {
 
     /// Replaces Arrow IPC dictionary options on a dictionary-typed field.
     pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()> {
-        if !matches!(self.dtype, DataType::Dictionary(_)) {
+        if !matches!(self.dtype, DataType::Enum(EnumType::Dictionary(_))) {
             return Err(Error::InvalidDataType {
                 kind: "Field",
                 reason: "dictionary options require a dictionary datatype".into(),
@@ -835,7 +836,7 @@ impl Field {
     /// Validates the complete recursive datatype.
     pub fn validate(&self) -> Result<()> {
         self.dtype.validate()?;
-        if !matches!(self.dtype, DataType::Dictionary(_))
+        if !matches!(self.dtype, DataType::Enum(EnumType::Dictionary(_)))
             && (self.dictionary_id != 0 || self.dictionary_is_ordered)
         {
             return Err(Error::InvalidDataType {

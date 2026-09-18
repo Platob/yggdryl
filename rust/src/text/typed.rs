@@ -3,6 +3,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Interpret a natural text value under one field, then validate it.
 pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
@@ -49,7 +50,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
                 into_natural(payload.clone(), branch)?,
             ]))
         }
-        DataType::Dictionary(dictionary) => into_natural(
+        DataType::Enum(EnumType::Dictionary(dictionary)) => into_natural(
             value,
             &Field::new(
                 field.name(),
@@ -135,7 +136,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::Sequence(SequenceType::LargeListView(child)) => sequence(value, |value| prepare(value, child), field),
         DataType::Structure(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
-        DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => prepare_for_type(value, dictionary.value(), field),
         DataType::Mapping(map) => mapping(value, map, field),
         DataType::RunEndEncoded(encoded) => prepare(value, encoded.values()),
         _ => Ok(value),
@@ -263,7 +264,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
         DataType::Union(fields, _) => fields
             .iter()
             .any(|(_, field)| holds_byte_leaf(field.dtype())),
-        DataType::Dictionary(dictionary) => holds_byte_leaf(dictionary.value()),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => holds_byte_leaf(dictionary.value()),
         DataType::Mapping(map) => holds_byte_leaf(map.entries().dtype()),
         _ => false,
     }

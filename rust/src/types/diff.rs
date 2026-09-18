@@ -13,6 +13,7 @@ use super::Field;
 use crate::types::mapping::MappingType;
 use crate::types::structure::StructureType;
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -117,7 +118,7 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode && left.shares_storage_with(right)
         }
-        (D::Dictionary(left), D::Dictionary(right)) => Arc::ptr_eq(left, right),
+        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => Arc::ptr_eq(left, right),
         (D::Mapping(left), D::Mapping(right)) => left.shares_storage_with(right),
         (D::RunEndEncoded(left), D::RunEndEncoded(right)) => Arc::ptr_eq(left, right),
         // Every remaining variant is scalar or carries only compact parameters.
@@ -399,7 +400,7 @@ impl DiffEngine {
                     index: 0,
                 });
             }
-            (D::Dictionary(left), D::Dictionary(right)) => {
+            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
                 self.push_dtype(left.value(), right.value(), property_path(&path, "value"));
                 self.push_dtype(left.key(), right.key(), property_path(&path, "key"));
             }
@@ -945,7 +946,7 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
                         left_id == right_id && fields_equal(left, right, false)
                     })
         }
-        (D::Dictionary(left), D::Dictionary(right)) => {
+        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
             dtypes_equal(left.key(), right.key(), false)
                 && dtypes_equal(left.value(), right.value(), false)
         }
@@ -1134,7 +1135,7 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
                         left_id == right_id && field_layout_eq(left, right)
                     })
         }
-        (D::Dictionary(left), D::Dictionary(right)) => {
+        (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
             dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
         }
         (D::Mapping(left), D::Mapping(right)) => map_layout_eq(left, right),

@@ -62,6 +62,7 @@ use crate::types::version::casts::{ingest_version_array, is_text_layout};
 use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Exact and preflight record-batch boundaries.
 mod batch {
@@ -774,6 +775,7 @@ mod plan {
 /// behind the reading for the spellings only it takes, so a column still reads
 /// everything it used to.
 pub(crate) mod text {
+    use crate::types::enums::EnumType;
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BooleanArray, StringArray};
@@ -801,7 +803,7 @@ pub(crate) mod text {
     /// tail encodes them, so a dictionary column reads like a plain one.
     pub(crate) fn encoded_value_of(target: &DataType) -> &DataType {
         match target {
-            DataType::Dictionary(dictionary) => encoded_value_of(dictionary.value()),
+            DataType::Enum(EnumType::Dictionary(dictionary)) => encoded_value_of(dictionary.value()),
             DataType::RunEndEncoded(encoded) => encoded_value_of(encoded.values().dtype()),
             other => other,
         }
@@ -2017,7 +2019,7 @@ impl ArrayCastPlan {
                 }
             }
             (
-                DataType::Dictionary(dictionary),
+                DataType::Enum(EnumType::Dictionary(dictionary)),
                 ArrowDataType::Dictionary(source_key, source_value),
             ) => ArrayCastKind::Dictionary {
                 source_key: source_key.as_ref().clone(),
@@ -2087,7 +2089,7 @@ impl ArrayCastPlan {
             // wrapper to Arrow's kernel silently skipped. The two arms above
             // stay ahead of this one because a source already in this encoding
             // is re-encoded rather than decoded and rebuilt.
-            (DataType::Dictionary(dictionary), _) => ArrayCastKind::Encoded {
+            (DataType::Enum(EnumType::Dictionary(dictionary)), _) => ArrayCastKind::Encoded {
                 values: Box::new(Self::new_nested_validated(
                     &Field::new("values", dictionary.value().clone(), true),
                     source_type,
@@ -2817,13 +2819,14 @@ pub(crate) mod columns {
     use crate::{DataType, Field, Scalar, UnionMode};
 
     use crate::types::sequence::SequenceType;
+        use crate::types::enums::EnumType;
     mod dictionary {
         
         use super::*;
 
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
-                DataType::Dictionary(_) => true,
+                DataType::Enum(EnumType::Dictionary(_)) => true,
                 DataType::Sequence(SequenceType::List(field))
                 | DataType::Sequence(SequenceType::ListView(field))
                 | DataType::Sequence(SequenceType::FixedSizeList(field, _))
@@ -2892,7 +2895,7 @@ pub(crate) mod columns {
             }
 
             match field.dtype() {
-                DataType::Dictionary(dictionary) => align_dictionary_arrays(
+                DataType::Enum(EnumType::Dictionary(dictionary)) => align_dictionary_arrays(
                     field,
                     dictionary,
                     left,
@@ -3931,7 +3934,7 @@ pub(crate) mod columns {
             if dtype_semantics && field.dtype().is_default_value(&Scalar::Null)? {
                 return Ok(array);
             }
-            if let DataType::Dictionary(dictionary) = field.dtype() {
+            if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
                 return fill_dictionary_nulls(field, dictionary, array, exposure, budget);
             }
             let phase = budget.mark();
@@ -4423,7 +4426,7 @@ pub(crate) mod columns {
                 return Ok(new_null_array(&arrow_type, len));
             }
             if exposed != 0 && hidden != 0 {
-                if let DataType::Dictionary(dictionary) = field.dtype() {
+                if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
                     let exposure = exposure.ok_or_else(|| {
                         Error::IncompatibleSchema(
                             "mixed missing dictionary exposure requires a mask".to_owned(),
@@ -4749,7 +4752,7 @@ pub(crate) mod columns {
             | DataType::Float64
             | DataType::Decimal256 { .. }
             | DataType::Union(..)
-            | DataType::Dictionary(_)
+            | DataType::Enum(EnumType::Dictionary(_))
             | DataType::RunEndEncoded(_) => true,
             DataType::Sequence(SequenceType::List(child))
             | DataType::Sequence(SequenceType::ListView(child))
@@ -4767,7 +4770,7 @@ pub(crate) mod columns {
     pub(crate) fn has_derived_logical_nulls(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::Null | DataType::Dictionary(_) | DataType::Union(..) | DataType::RunEndEncoded(_)
+            DataType::Null | DataType::Enum(EnumType::Dictionary(_)) | DataType::Union(..) | DataType::RunEndEncoded(_)
         )
     }
 
@@ -5084,7 +5087,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Dictionary(dictionary) => {
+            DataType::Enum(EnumType::Dictionary(dictionary)) => {
                 return match dictionary.key() {
                     DataType::Int8 => {
                         dictionary_key_comparator::<Int8Type>(left, right, dictionary, budget)
@@ -5409,7 +5412,7 @@ pub(crate) mod columns {
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
-            DataType::Dictionary(dictionary) => contains_struct(dictionary.value()),
+            DataType::Enum(EnumType::Dictionary(dictionary)) => contains_struct(dictionary.value()),
             DataType::RunEndEncoded(encoded) => contains_struct(encoded.values().dtype()),
             _ => false,
         }
@@ -5425,7 +5428,7 @@ pub(crate) mod columns {
                 | DataType::Sequence(SequenceType::LargeListView(_))
                 | DataType::Structure(_)
                 | DataType::Union(_, _)
-                | DataType::Dictionary(_)
+                | DataType::Enum(EnumType::Dictionary(_))
                 | DataType::Mapping(_)
                 | DataType::RunEndEncoded(_)
         )
@@ -5479,7 +5482,7 @@ pub(crate) mod columns {
         }
         match dtype {
             DataType::Null => Ok(true),
-            DataType::Dictionary(dictionary) => match dictionary.key() {
+            DataType::Enum(EnumType::Dictionary(dictionary)) => match dictionary.key() {
                 DataType::Int8 => dictionary_logical_null_at::<Int8Type>(array, dictionary, index),
                 DataType::Int16 => dictionary_logical_null_at::<Int16Type>(array, dictionary, index),
                 DataType::Int32 => dictionary_logical_null_at::<Int32Type>(array, dictionary, index),

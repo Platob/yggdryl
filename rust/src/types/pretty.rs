@@ -52,6 +52,7 @@ use std::fmt;
 
 use crate::{DataType, Field};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// How many columns one nesting level is indented in the readable form.
 const WIDTH: usize = 2;
@@ -183,7 +184,7 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
         }
         D::Union(fields, mode) => write!(formatter, "union[{mode},{}]", fields.len()),
         D::RunEndEncoded(_) => formatter.write_str("run_end_encoded"),
-        D::Dictionary(dictionary) => write!(formatter, "dictionary[{}]", dictionary.key()),
+        D::Enum(EnumType::Dictionary(dictionary)) => write!(formatter, "dictionary[{}]", dictionary.key()),
         // Everything else is one token, and the compact spelling is already
         // the readable one.
         other => write!(formatter, "{other}"),
@@ -234,7 +235,7 @@ fn write_children(
             formatter.write_str("\n")?;
             write_field(formatter, encoded.values(), columns)
         }
-        D::Dictionary(dictionary) => {
+        D::Enum(EnumType::Dictionary(dictionary)) => {
             formatter.write_str("\n")?;
             write_dtype(formatter, dictionary.value(), columns, Some("value"))
         }

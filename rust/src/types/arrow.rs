@@ -16,7 +16,7 @@ use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::media_type::MEDIATYPE_EXTENSION_NAME;
 use super::mime_type::MIMETYPE_EXTENSION_NAME;
-use crate::types::dictionary::validate_dictionary_key;
+use crate::types::enums::validate_dictionary_key;
 use crate::types::mapping::validate_map_entries;
 use crate::types::runend::validate_run_ends;
 use super::string::{STRING_EXTENSION_NAME, needs_extension};
@@ -27,6 +27,7 @@ use super::uuid::UUID_EXTENSION_NAME;
 use super::version::VERSION_EXTENSION_NAME;
 use super::{DataType, UnionMode, invalid, validate_non_negative};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Arrow field import, cached projection, and conversion traits.
 mod field {
@@ -1234,7 +1235,7 @@ impl DataType {
             Self::Union(fields, _) => fields
                 .iter()
                 .all(|(_, field)| field.arrow_import_is_projection_equivalent()),
-            Self::Dictionary(dictionary) => {
+            Self::Enum(EnumType::Dictionary(dictionary)) => {
                 dictionary.key().arrow_import_is_projection_equivalent()
                     && dictionary.value().arrow_import_is_projection_equivalent()
             }
@@ -1361,7 +1362,7 @@ impl TryFrom<&DataType> for ArrowDataType {
                     (*mode).into(),
                 )
             }
-            R::Dictionary(dictionary) => {
+            R::Enum(EnumType::Dictionary(dictionary)) => {
                 validate_dictionary_key(&dictionary.key)?;
                 Self::Dictionary(
                     Box::new((&dictionary.key).try_into()?),
@@ -1512,7 +1513,7 @@ impl TryFrom<DataType> for ArrowDataType {
                     mode.into(),
                 )
             }
-            R::Dictionary(dictionary) => match Arc::try_unwrap(dictionary) {
+            R::Enum(EnumType::Dictionary(dictionary)) => match Arc::try_unwrap(dictionary) {
                 Ok(dictionary) => {
                     validate_dictionary_key(&dictionary.key)?;
                     Self::Dictionary(
@@ -1658,7 +1659,7 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
 /// dictionary-encoded code is the ordinary case, not an edge one.
 pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, String)> {
     match dtype {
-        DataType::Dictionary(dictionary) => arrow_extension_parts(dictionary.value()),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => arrow_extension_parts(dictionary.value()),
         DataType::Variant => Some((VARIANT_EXTENSION_NAME, String::new())),
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
@@ -1800,7 +1801,7 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
             }
             (format, children, None, Flags::empty())
         }
-        DataType::Dictionary(dictionary) => {
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
             validate_dictionary_key(&dictionary.key)?;
             let key = dictionary.key.clone().into_arrow_ffi()?;
             // An encoded extension declares its identity once, on the node

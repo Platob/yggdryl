@@ -16,9 +16,11 @@ use crate::types::cast::columns::{dictionary_values_ref, offset_pair};
 use crate::types::{bytes, string};
 use crate::{DataType, Field, UnionMode};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Bounded Arrow materialization accounting.
 mod limits {
+    use crate::types::enums::EnumType;
     use crate::types::sequence::SequenceType;
     
     use crate::arrow::{Error, Result};
@@ -114,7 +116,7 @@ mod limits {
                     }
                     Ok(())
                 }
-                DataType::Dictionary(dictionary) => {
+                DataType::Enum(EnumType::Dictionary(dictionary)) => {
                     self.add_array_layout(dtype, rows)?;
                     if !include_dictionary_values
                         || dictionary.value().is_default_value(&Scalar::Null)?
@@ -179,7 +181,7 @@ mod limits {
                     }
                     Ok(())
                 }
-                DataType::Dictionary(dictionary) => {
+                DataType::Enum(EnumType::Dictionary(dictionary)) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     if dictionary.value().is_default_value(&Scalar::Null)? {
                         Ok(())
@@ -243,7 +245,7 @@ mod limits {
                         self.add_array(field.dtype(), rows)?;
                     }
                 }
-                DataType::Dictionary(dictionary) => {
+                DataType::Enum(EnumType::Dictionary(dictionary)) => {
                     // There can be at most one distinct dictionary value per row.
                     self.add_array(dictionary.value(), rows)?;
                 }
@@ -372,7 +374,7 @@ mod limits {
                 | DataType::Structure(_)
                 | DataType::RunEndEncoded(_) => {}
                 DataType::Union(_, mode) => self.add_union_buffers(rows, *mode)?,
-                DataType::Dictionary(dictionary) => {
+                DataType::Enum(EnumType::Dictionary(dictionary)) => {
                     self.add_fixed_rows(rows, integer_width(dictionary.key())?)?;
                 }
             }
@@ -507,7 +509,7 @@ mod limits {
                         }
                     }
                 }
-                DataType::Dictionary(dictionary) => {
+                DataType::Enum(EnumType::Dictionary(dictionary)) => {
                     self.add_fixed_rows(rows, integer_width(dictionary.key())?)?;
                 }
                 DataType::RunEndEncoded(encoded) => {
@@ -1268,7 +1270,7 @@ pub(crate) fn reserve_cast_output_payload(
         | DataType::Structure(_)
         | DataType::Mapping(_)
         | DataType::Union(..)
-        | DataType::Dictionary(_)
+        | DataType::Enum(EnumType::Dictionary(_))
         | DataType::RunEndEncoded(_) => {
             reserve_source_children_and_payload(array, source_type, selection, budget)
         }
@@ -1306,7 +1308,7 @@ pub(crate) fn reserve_concat_copy(
         }
         // Dictionary inputs are vocabulary-aligned before concat, so Arrow
         // allocates only the concatenated key array and retains one vocab Arc.
-        DataType::Dictionary(_) => budget.add_array_layout(dtype, array.len())?,
+        DataType::Enum(EnumType::Dictionary(_)) => budget.add_array_layout(dtype, array.len())?,
         DataType::Sequence(SequenceType::List(child)) => {
             let array = downcast::<ListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
@@ -1609,7 +1611,7 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::Dictionary(dictionary) => {
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
             let output_values = dictionary_values_ref(output.as_ref(), dictionary)?;
             let source_values = dictionary_values_ref(source.as_ref(), dictionary)?;
             let shared = if Arc::ptr_eq(output_values, source_values)

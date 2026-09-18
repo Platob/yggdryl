@@ -1,5 +1,6 @@
 //! Canonical display and recursive Arrow, SQL, Hive, and Spark parsing.
 
+use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
 use std::fmt::Write as _;
 use std::fmt;
@@ -15,6 +16,7 @@ use crate::UnionMode;
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
+    
     
     use std::borrow::Cow;
     use std::str::FromStr;
@@ -899,7 +901,7 @@ impl fmt::Display for DataType {
                 }
                 formatter.write_char(')')
             }
-            D::Dictionary(dictionary) => {
+            D::Enum(EnumType::Dictionary(dictionary)) => {
                 write!(
                     formatter,
                     "dictionary({},{})",

@@ -9,6 +9,7 @@ use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 const MAX_DEFAULT_NODES: usize = 1_000_000;
 const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
@@ -189,7 +190,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
                         .map(|(_, field)| (field.dtype(), child_depth)),
                 );
             }
-            DataType::Dictionary(dictionary) => {
+            DataType::Enum(EnumType::Dictionary(dictionary)) => {
                 reserve_pending(&mut pending, visited, 2, kind)?;
                 pending.push((dictionary.key(), child_depth));
                 pending.push((dictionary.value(), child_depth));
@@ -403,7 +404,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             })
         }
         D::Union(fields, _) => plan_union(fields, path),
-        D::Dictionary(dictionary) => {
+        D::Enum(EnumType::Dictionary(dictionary)) => {
             path.push(PathSegment::DictionaryValue);
             let value = plan_dtype(dictionary.value(), path);
             path.pop();
@@ -801,7 +802,7 @@ pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool 
         DataType::RunEndEncoded(encoded) => {
             value_is_logically_null(encoded.values().dtype(), value)
         }
-        DataType::Dictionary(dictionary) => value_is_logically_null(dictionary.value(), value),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => value_is_logically_null(dictionary.value(), value),
         _ => false,
     }
 }

@@ -1,4 +1,4 @@
-use yggdryl::types::{dictionary, mapping, runend, sequence};
+use yggdryl::types::{enums, mapping, runend, sequence};
 use yggdryl::{DataType, Field, UnionMode};
 
 use super::typed::assert_typed_marker;
@@ -15,7 +15,7 @@ fn nested_markers_cover_every_child_layout() {
     assert_typed_marker::<yggdryl::types::UnionType>(
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
     );
-    assert_typed_marker::<dictionary::DictionaryTypeMarker>(
+    assert_typed_marker::<enums::DictionaryTypeMarker>(
         DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
     );
     assert_typed_marker::<mapping::MapTypeMarker>(

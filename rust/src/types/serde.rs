@@ -7,6 +7,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result, Scalar};
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
 use crate::types::sequence::SequenceType;
+use crate::types::enums::EnumType;
 
 /// Structural JSON and Serde implementations for fields.
 mod field {
@@ -759,7 +760,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 mode: *mode,
                 fields: UnionFieldsRef(fields),
             },
-            D::Dictionary(dictionary) => Self::Dictionary {
+            D::Enum(EnumType::Dictionary(dictionary)) => Self::Dictionary {
                 key: &dictionary.key,
                 value: &dictionary.value,
             },
@@ -1263,7 +1264,7 @@ impl DataType {
                     ),
                 ));
             }
-            D::Dictionary(dictionary) => {
+            D::Enum(EnumType::Dictionary(dictionary)) => {
                 tag("dictionary");
                 entries.push((key("key"), dictionary.key.clone().into_value()));
                 entries.push((key("value"), dictionary.value.clone().into_value()));
