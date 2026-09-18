@@ -27,6 +27,8 @@ from .bytes import (
     bytes,
     fixed_size_binary,
     large_binary,
+    large_binary_view,
+    sized_binary,
 )
 from .codes import (
     BloombergField,
@@ -80,6 +82,9 @@ from .geospatial import (
     geography,
     geometry,
     uuid,
+    uuidv4,
+    uuidv7,
+    uuidv8,
     variant,
 )
 from .integer import (
@@ -277,6 +282,7 @@ __all__ = [
     "interval",
     "isin",
     "large_binary",
+    "large_binary_view",
     "large_list",
     "large_list_view",
     "large_utf8",
@@ -291,6 +297,7 @@ __all__ = [
     "sedol",
     "bloomberg",
     "side",
+    "sized_binary",
     "string",
     "struct",
     "time",
@@ -305,6 +312,9 @@ __all__ = [
     "utf8",
     "utf8_view",
     "uuid",
+    "uuidv4",
+    "uuidv7",
+    "uuidv8",
     "variant",
     "url",
     "version",

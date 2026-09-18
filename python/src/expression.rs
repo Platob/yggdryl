@@ -19,7 +19,6 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use std::sync::Arc;
 
-use yggdryl::ArrowCast;
 use yggdryl::expression::{
     Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
@@ -33,6 +32,7 @@ use yggdryl::expression::{
     UserRef as CoreUserRef, lookup_function, register_function, registered_functions,
     unregister_function,
 };
+use yggdryl::types::FieldValue as _;
 use yggdryl::{
     Expression as CoreExpression, Field as CoreField, Filter as CoreFilter, Scalar,
     Selector as CoreSelector,

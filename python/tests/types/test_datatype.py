@@ -576,36 +576,46 @@ def test_every_byte_column_is_one_datatype_with_a_layout_and_a_bound() -> None:
     assert plain.charset is None
     assert plain.fixed_byte_width is None
 
-    # `binary(16)` is a maximum; `fixed_size_binary(16)` the exact width.
+    # A maximum is `sized_binary`, and the exact width is `fixed_binary`.
+    # `binary(16)` is the sized leaf written short, because plain binary is
+    # exactly the storage a bounded column fills.
     bounded = DataType("binary(16)")
     assert bounded == DataType.bytes(bound=16) == DataType("varbinary(16)")
     assert bounded.bytes_parameters.max == 16
     assert bounded.bytes_parameters.fixed is None
-    assert str(bounded) == "binary(16)"
+    assert str(bounded) == "sized_binary(16)"
+    assert bounded.id == "sized_binary"
     fixed = DataType.fixed_size_binary(16)
     assert fixed == DataType("fixed_size_binary(16)") == DataType.bytes("fixed_binary", 16)
-    assert fixed.id == "fixed_size_binary"
+    assert fixed.id == "fixed_binary"
     assert fixed.fixed_byte_width == 16
-    assert fixed.bytes_parameters == BytesParameters("fixed_size_binary", 16)
+    assert fixed.bytes_parameters == BytesParameters("fixed_binary", 16)
     assert fixed.bytes_parameters.fixed == 16
     assert fixed.bytes_parameters.max is None
     assert fixed != bounded
     assert DataType.large_binary().id == "large_binary"
     assert DataType.binary_view().id == "binary_view"
-    assert DataType.bytes("large_binary", 8) == DataType("large_binary(8)")
+    assert DataType("large_binary_view").id == "large_binary_view"
+    # A large binary is just a large binary: only the two leaves that *are*
+    # a number take one, so a maximum beside any other leaf is refused by
+    # name rather than silently becoming something narrower.
+    with pytest.raises(ValueError, match="sized_binary"):
+        DataType.bytes("large_binary", 8)
+    with pytest.raises(ValueError, match="sized_binary"):
+        DataType("large_binary(8)")
 
     parameters = fixed.bytes_parameters
-    assert repr(parameters) == 'BytesParameters("fixed_size_binary", 16)'
+    assert repr(parameters) == 'BytesParameters("fixed_binary", 16)'
     assert repr(BytesParameters()) == 'BytesParameters("binary")'
-    assert str(parameters) == "fixed_size_binary(16)"
+    assert str(parameters) == "fixed_binary(16)"
     assert pickle.loads(pickle.dumps(parameters)) == parameters
-    assert hash(parameters) == hash(BytesParameters("fixed_size_binary", 16))
+    assert hash(parameters) == hash(BytesParameters("fixed_binary", 16))
     assert parameters.stable_hash() == fixed.stable_hash()
     assert BytesParameters() < parameters
 
     with pytest.raises(ValueError, match="at least one byte, got 0"):
         DataType.fixed_size_binary(0)
-    with pytest.raises(ValueError, match="fixed_size_binary"):
+    with pytest.raises(ValueError, match="got none"):
         DataType.bytes("fixed_size_binary")
     with pytest.raises(ValueError):
         BytesParameters("blob_view")
@@ -908,17 +918,17 @@ def test_a_string_and_a_byte_field_cross_json_under_one_tag_each() -> None:
         "charset": "us-ascii",
     }
 
-    bytes_field = Field("blob", DataType.bytes("large_binary", 16))
+    bytes_field = Field("blob", DataType.bytes("sized_binary", 16))
     assert json.loads(bytes_field.into_json())["dtype"] == {
         "type": "binary",
-        "layout": "large_binary",
+        "layout": "sized_binary",
         "max": 16,
     }
     assert Field.from_json(bytes_field.into_json()) == bytes_field
     assert json.loads(Field("b", "binary").into_json())["dtype"] == {"type": "binary"}
     assert json.loads(Field("b", "fixed_size_binary(4)").into_json())["dtype"] == {
         "type": "binary",
-        "layout": "fixed_size_binary",
+        "layout": "fixed_binary",
         "fixed": 4,
     }
 

@@ -11,7 +11,7 @@
 use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
-use yggdryl::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
+use yggdryl::types::{BytesType, StringLayout, StringType};
 use yggdryl::{Charset, DataType as CoreDataType};
 
 use crate::value_error;
@@ -21,10 +21,10 @@ pub(crate) fn core_string_parameters(
     layout: &str,
     charset: &str,
     bound: Option<u32>,
-) -> PyResult<StringParameters> {
+) -> PyResult<StringType> {
     let layout = StringLayout::from_str(layout).map_err(value_error)?;
     let charset = Charset::from_str(charset).map_err(value_error)?;
-    let mut parameters = StringParameters::new(layout, charset);
+    let mut parameters = StringType::new(layout, charset);
     if let Some(bound) = bound {
         parameters = parameters.try_with_bound(bound).map_err(value_error)?;
     }
@@ -32,15 +32,16 @@ pub(crate) fn core_string_parameters(
     Ok(parameters)
 }
 
-/// Read byte parameters out of Python's spelling of them.
-pub(crate) fn core_bytes_parameters(layout: &str, bound: Option<u32>) -> PyResult<BytesParameters> {
-    let layout = BytesLayout::from_str(layout).map_err(value_error)?;
-    let mut parameters = BytesParameters::new(layout);
-    if let Some(bound) = bound {
-        parameters = parameters.try_with_bound(bound).map_err(value_error)?;
-    }
-    parameters.validate().map_err(value_error)?;
-    Ok(parameters)
+/// Read a byte leaf out of Python's spelling of it.
+///
+/// The leaf is the whole declaration now, so a bound is not a second thing
+/// beside it: a number restates the leaf as the one that carries it, and a
+/// leaf that *is* a number stands with none. Both rules live on
+/// [`BytesType::with_declared_bound`], so Python decides neither.
+pub(crate) fn core_bytes_parameters(layout: &str, bound: Option<u32>) -> PyResult<BytesType> {
+    BytesType::from_str(layout)
+        .and_then(|leaf| leaf.with_declared_bound(bound))
+        .map_err(value_error)
 }
 
 /// What a string column declares: its layout, its charset, and its bound.
@@ -56,11 +57,11 @@ pub(crate) fn core_bytes_parameters(layout: &str, bound: Option<u32>) -> PyResul
 )]
 #[derive(Clone)]
 pub(crate) struct PyStringParameters {
-    inner: StringParameters,
+    inner: StringType,
 }
 
 impl PyStringParameters {
-    pub(crate) const fn from_inner(inner: StringParameters) -> Self {
+    pub(crate) const fn from_inner(inner: StringType) -> Self {
         Self { inner }
     }
 }
@@ -185,32 +186,33 @@ impl PyStringParameters {
 )]
 #[derive(Clone)]
 pub(crate) struct PyBytesParameters {
-    inner: BytesParameters,
+    inner: BytesType,
 }
 
 impl PyBytesParameters {
-    pub(crate) const fn from_inner(inner: BytesParameters) -> Self {
+    pub(crate) const fn from_inner(inner: BytesType) -> Self {
         Self { inner }
     }
 }
 
 #[pymethods]
 impl PyBytesParameters {
-    /// Declare a byte column: a layout and the bound its values are held to.
+    /// Declare a byte column: a leaf and, where the leaf carries one, its
+    /// number.
     ///
-    /// ``layout`` is ``binary``, ``fixed_size_binary`` (or ``fixed_binary``),
-    /// ``large_binary``, or ``binary_view``.
+    /// ``layout`` is one of the six leaves - ``binary``, ``large_binary``,
+    /// ``binary_view``, ``large_binary_view``, ``fixed_binary`` or
+    /// ``sized_binary`` - and only the last two take a ``bound``.
     #[new]
     #[pyo3(signature = (layout="binary", bound=None))]
     fn new(layout: &str, bound: Option<u32>) -> PyResult<Self> {
         core_bytes_parameters(layout, bound).map(Self::from_inner)
     }
 
-    /// The layout's name: ``binary``, ``fixed_size_binary``, ``large_binary``,
-    /// or ``binary_view``.
+    /// The leaf's name, one of the six.
     #[getter]
     fn layout(&self) -> &'static str {
-        self.inner.layout().as_str()
+        self.inner.as_str()
     }
 
     /// The declared byte bound, whichever reading the layout gives it.

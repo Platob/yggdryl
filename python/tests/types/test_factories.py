@@ -46,9 +46,11 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "duration64": types.duration64("value", "us"),
         "interval": types.interval("value", "month_day_nano"),
         "binary": types.binary("value"),
-        "fixed_size_binary": types.fixed_size_binary("value", 16),
+        "fixed_binary": types.fixed_size_binary("value", 16),
+        "sized_binary": types.sized_binary("value", 16),
         "large_binary": types.large_binary("value"),
         "binary_view": types.binary_view("value"),
+        "large_binary_view": types.large_binary_view("value"),
         "string": types.utf8("value"),
         "large_string": types.large_utf8("value"),
         "string_view": types.utf8_view("value"),
@@ -66,7 +68,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "decimal64": types.decimal64("value", 18, 2),
         "decimal128": types.decimal128("value", 38, 2),
         "decimal256": types.decimal256("value", 76, 2),
-        "map": types.map("value", entries, keys_sorted=True),
+        "map": types.map("value", entries),
+        "sorted_map": types.map("value", entries, keys_sorted=True),
         "run_end_encoded": types.run_end_encoded(
             "value", run_ends, values
         ),
@@ -80,6 +83,9 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "sedol": types.sedol("value"),
         "bloomberg": types.bloomberg("value"),
         "uuid": types.uuid("value"),
+        "uuidv4": types.uuidv4("value"),
+        "uuidv7": types.uuidv7("value"),
+        "uuidv8": types.uuidv8("value"),
         "version": types.version("value"),
         "url": types.url("value"),
         "timezone": types.timezone("value"),
@@ -92,14 +98,16 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 64
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
     # The factories cover every datatype Arrow has a layout for. `int128` and
     # `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-    # so no field builds them.
-    assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - {"int128", "uint128"}
+    # so no field builds them, and `struct2` is the two-child leaf a mapping's
+    # entries have rather than a shape a caller declares.
+    unbuildable = {"int128", "uint128", "struct2"}
+    assert len(values_by_kind) == len(enums.DATA_TYPE_IDS) - len(unbuildable)
+    assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - unbuildable
     assert all(type(value) is Field for value in values_by_kind.values())
     assert types.Int32Field is Field
     assert types.VersionField is Field
@@ -126,7 +134,7 @@ def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
     bounded = types.bytes("blob", max=16)
     assert bounded.dtype == DataType.bytes(bound=16) == DataType("binary(16)")
     assert bounded.dtype.bytes_parameters.max == 16
-    digest = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+    digest = types.bytes("digest", layout="fixed_binary", fixed=16)
     assert digest.dtype == DataType.fixed_size_binary(16)
     assert digest.dtype == types.fixed_size_binary("digest", 16).dtype
     assert types.bytes("blob").dtype == DataType.binary() == types.binary("blob").dtype

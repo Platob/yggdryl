@@ -51,7 +51,8 @@ use pyo3::types::{
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowCast, Field as CoreField, Level};
+use yggdryl::types::FieldValue as _;
+use yggdryl::{Field as CoreField, Level};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};

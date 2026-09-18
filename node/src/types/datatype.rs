@@ -7,8 +7,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::types::{
-    BytesLayout, BytesParameters as CoreBytesParameters, StringLayout,
-    StringParameters as CoreStringParameters,
+    BytesType as CoreBytesType, StringLayout, StringType as CoreStringParameters,
 };
 use yggdryl::{
     Charset, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
@@ -111,6 +110,7 @@ impl JsDataType {
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
+            "large_binary_view" => CoreDataType::large_binary_view(),
             "utf8" => CoreDataType::utf8(),
             "large_utf8" => CoreDataType::large_utf8(),
             "utf8_view" => CoreDataType::utf8_view(),
@@ -126,7 +126,10 @@ impl JsDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "uuid" => CoreDataType::Uuid,
+            "uuid" => CoreDataType::uuid(),
+            "uuidv4" => CoreDataType::uuidv4(),
+            "uuidv7" => CoreDataType::uuidv7(),
+            "uuidv8" => CoreDataType::uuidv8(),
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
             "timezone" => CoreDataType::Timezone,
@@ -285,7 +288,7 @@ impl JsDataType {
     /// Exactly `byteWidth` bytes per value - Arrow's `FixedSizeBinary`.
     #[napi(factory)]
     pub fn fixed_size_binary(byte_width: f64) -> Result<Self> {
-        CoreDataType::fixed_size_binary(exact_u32(byte_width, "byteWidth")?)
+        CoreDataType::fixed_binary(exact_u32(byte_width, "byteWidth")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1000,9 +1003,9 @@ pub struct BytesParameters {
 }
 
 impl BytesParameters {
-    fn from_core(parameters: CoreBytesParameters) -> Self {
+    fn from_core(parameters: CoreBytesType) -> Self {
         Self {
-            layout: parameters.layout().as_str().to_owned(),
+            layout: parameters.as_str().to_owned(),
             bound: parameters.bound(),
             fixed: parameters.fixed(),
             max: parameters.max(),
@@ -1073,16 +1076,16 @@ fn string_parameters_from_input(input: StringParametersInput) -> Result<CoreStri
     }
 }
 
-fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesParameters> {
-    let layout = match input.layout {
-        Some(layout) => BytesLayout::from_str(&layout).map_err(napi_error)?,
-        None => BytesLayout::Binary,
+fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesType> {
+    let leaf = match input.layout {
+        Some(layout) => CoreBytesType::from_str(&layout).map_err(napi_error)?,
+        None => CoreBytesType::Binary,
     };
-    let parameters = CoreBytesParameters::new(layout);
-    match declared_bound(layout.is_fixed(), input.bound, input.fixed, input.max)? {
-        Some(bound) => parameters.try_with_bound(bound).map_err(napi_error),
-        None => Ok(parameters),
-    }
+    // The leaf is the whole declaration, so a stated number restates the leaf
+    // as the one that carries it and a leaf that *is* a number stands with
+    // none. Both rules are the core's, read here rather than decided again.
+    let bound = declared_bound(leaf.is_fixed(), input.bound, input.fixed, input.max)?;
+    leaf.with_declared_bound(bound).map_err(napi_error)
 }
 
 /// The enum a string field's values name: one value per member name.

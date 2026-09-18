@@ -193,7 +193,7 @@ impl JsField {
         use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
         use arrow_ipc::writer::StreamWriter;
         use arrow_schema::Schema;
-        use yggdryl::ArrowCast;
+        use yggdryl::types::FieldValue as _;
 
         use crate::text::codec::{arrow_batches, ensure_one_column};
 
@@ -203,7 +203,7 @@ impl JsField {
         let target_schema = Arc::new(Schema::new([self
             .inner
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .map_err(napi_error)?]));
         let mut writer =
             StreamWriter::try_new(Vec::new(), target_schema.as_ref()).map_err(napi_error)?;

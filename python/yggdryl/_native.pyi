@@ -510,7 +510,8 @@ class Scalar:
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
         "uuid", "version", "timezone", "mimetype", "mediatype", "url",
-        "bytes", "fixed_size_binary", "large_binary", "binary_view",
+        "bytes", "large_binary", "binary_view", "large_binary_view",
+        "fixed_binary", "sized_binary",
         "geometry", "geography", "date32", "date64", "time32", "time64",
         "datetime64", "duration32", "duration64", "interval", "sequence",
         "mapping", "record", "arrow",
@@ -712,10 +713,11 @@ class StringParameters:
     def __deepcopy__(self, memo: Any) -> StringParameters: ...
 
 class BytesParameters:
-    """What a byte column declares: its layout and its bound.
+    """What a byte column declares: one of the six leaves, with its number.
 
-    The bound is one number with one reading per layout: the exact width on
-    ``fixed_size_binary``, the maximum everywhere else.
+    Two leaves *are* a number - ``fixed_binary`` is an exact width and
+    ``sized_binary`` a maximum - and the other four stand alone and refuse
+    one.
     """
 
     def __init__(self, layout: str = "binary", bound: int | None = None) -> None: ...

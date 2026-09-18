@@ -433,10 +433,15 @@ typed_string: StringField = types.string(
 )
 typed_fixed_utf8: StringField = types.fixed_utf8("name", 8)
 typed_bytes: BytesField = types.bytes("blob", layout="binary_view", max=64)
-typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_binary", fixed=16)
 typed_binary: BytesField = types.binary("payload", nullable=False)
 typed_binary_kind: Literal[
-    "binary", "fixed_size_binary", "large_binary", "binary_view"
+    "binary",
+    "large_binary",
+    "binary_view",
+    "large_binary_view",
+    "fixed_binary",
+    "sized_binary",
 ] = typed_binary.dtype.id
 typed_country: CountryField = types.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
@@ -453,7 +458,7 @@ typed_cusip_kind: Literal["cusip"] = typed_cusip.dtype.id
 typed_sedol: SedolField = types.sedol("sedol")
 typed_sedol_kind: Literal["sedol"] = typed_sedol.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
-typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
+typed_uuid_kind: Literal["uuid", "uuidv4", "uuidv7", "uuidv8"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
 typed_ascii_sedol: StringField = types.fixed_ascii("sedol", 7)

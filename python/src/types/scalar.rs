@@ -18,20 +18,18 @@ use pyo3::types::{
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
-use yggdryl::arrow::{
-    array_from_value, batch_from_value, scalar_array,
-};
-use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
+use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
+use yggdryl::types::bytes::{Bytes, BytesType};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry};
-use yggdryl::types::string::{Str, StringLayout, StringParameters};
+use yggdryl::types::string::{Str, StringLayout, StringType};
 use yggdryl::types::temporal::Interval;
 use yggdryl::types::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };
 use yggdryl::{
-    DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
-    Float32, Float64, Scalar, TimeUnit, Timezone, i256,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
+    Scalar, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
@@ -304,7 +302,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         // The ordinary string - UTF-8, the default layout, no width - pickles
         // its characters alone. A layout, a charset, or a width is what makes
         // a value carry more than that, and those pickle the whole declaration.
-        Scalar::String(value) if value.parameters() == StringParameters::default() => {
+        Scalar::String(value) if value.parameters() == StringType::default() => {
             tagged_pickle_state(
                 py,
                 "string",
@@ -369,15 +367,13 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         ),
         // Plain bytes pickle as the payload alone; another layout or a fixed
         // width pickles the declaration beside it.
-        Scalar::Bytes(value) if value.parameters() == BytesParameters::default() => {
-            tagged_pickle_state(
-                py,
-                "bytes",
-                Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-            )
-        }
+        Scalar::Bytes(value) if value.parameters() == BytesType::default() => tagged_pickle_state(
+            py,
+            "bytes",
+            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        ),
         Scalar::Bytes(value) => {
-            let layout = PyString::new(py, value.layout().as_str())
+            let layout = PyString::new(py, value.parameters().as_str())
                 .into_any()
                 .unbind();
             let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
@@ -598,7 +594,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 payload.extract::<(String, String, Option<u32>, String)>()?;
             let layout = StringLayout::from_str(&layout).map_err(value_error)?;
             let charset = yggdryl::Charset::from_str(&charset).map_err(value_error)?;
-            let mut parameters = StringParameters::new(layout, charset);
+            let mut parameters = StringType::new(layout, charset);
             if let Some(width) = fixed {
                 parameters = parameters.try_with_bound(width).map_err(value_error)?;
             }
@@ -683,11 +679,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                         "Scalar byte state must be bytes or (layout, fixed, bytes)",
                     )
                 })?;
-            let layout = BytesLayout::from_str(&layout).map_err(value_error)?;
-            let mut parameters = BytesParameters::new(layout);
-            if let Some(width) = fixed {
-                parameters = parameters.try_with_bound(width).map_err(value_error)?;
-            }
+            let parameters = crate::types::parameters::core_bytes_parameters(&layout, fixed)?;
             Bytes::from_shared(pickle_bytes(&bytes)?)
                 .try_with_parameters(parameters)
                 .map(Scalar::Bytes)
@@ -854,7 +846,7 @@ impl PyScalar {
     /// scalar; `kind` is the vocabulary the value has to belong to.
     #[staticmethod]
     fn from_enum(kind: &str, value: &str) -> PyResult<Self> {
-        Enum::from_parts(kind, value)
+        Vocabulary::from_parts(kind, value)
             .map(Scalar::from)
             .map(Self::from_inner)
             .map_err(value_error)
@@ -1540,11 +1532,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => decimal_as_py(py, value),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        code if code.is_code() => Ok(
-            PyString::new(py, code.as_str().expect("a code borrowed its text"))
-                .into_any()
-                .unbind(),
-        ),
+        code if code.is_code() => Ok(PyString::new(
+            py,
+            code.as_str().expect("a code borrowed its text"),
+        )
+        .into_any()
+        .unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?
@@ -1598,7 +1591,8 @@ pub(crate) fn as_py_with_field(
         return as_py(py, value);
     }
     match field.dtype() {
-        CoreDataType::Struct(fields) => {
+        CoreDataType::Structure(structure) => {
+            let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
                 Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
@@ -1627,11 +1621,8 @@ pub(crate) fn as_py_with_field(
             }
             Ok(output.into_any().unbind())
         }
-        CoreDataType::List(child)
-        | CoreDataType::ListView(child)
-        | CoreDataType::FixedSizeList(child, _)
-        | CoreDataType::LargeList(child)
-        | CoreDataType::LargeListView(child) => {
+        CoreDataType::Sequence(sequence) => {
+            let child = sequence.item();
             let values = value.as_sequence().ok_or_else(|| {
                 PyValueError::new_err(format!(
                     "expected a typed list sequence, got {}",
@@ -1644,8 +1635,8 @@ pub(crate) fn as_py_with_field(
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, values)?.into_any().unbind())
         }
-        CoreDataType::Map(map) => {
-            let [_key_field, value_field] = map.entries().fields() else {
+        CoreDataType::Mapping(mapping) => {
+            let [_key_field, value_field] = mapping.entries().fields() else {
                 return Err(PyValueError::new_err(
                     "typed map entries need key and value fields",
                 ));
@@ -1684,7 +1675,7 @@ pub(crate) fn as_py_with_field(
                 .ok_or_else(|| PyValueError::new_err("typed union id is not declared"))?;
             as_py_with_field(py, payload, branch)
         }
-        CoreDataType::Dictionary(dictionary) => {
+        CoreDataType::Enum(dictionary) => {
             let value_field = CoreField::new(
                 field.name(),
                 dictionary.value().clone(),

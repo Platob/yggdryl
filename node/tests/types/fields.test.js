@@ -214,9 +214,11 @@ test('typed field factories cover every native datatype variant', () => {
     ['duration64', fields.duration64('value', 'us')],
     ['interval', fields.interval('value', 'month_day_nano')],
     ['binary', fields.binary('value')],
-    ['fixed_size_binary', fields.fixedSizeBinary('value', 16)],
+    ['fixed_binary', fields.fixedSizeBinary('value', 16)],
+    ['sized_binary', fields.sizedBinary('value', 16)],
     ['large_binary', fields.largeBinary('value')],
     ['binary_view', fields.binaryView('value')],
+    ['large_binary_view', fields.largeBinaryView('value')],
     // One string datatype, five layouts: the identity is the layout, and
     // the charset-named factories pick a layout and a charset once.
     ['string', fields.utf8('value')],
@@ -236,6 +238,9 @@ test('typed field factories cover every native datatype variant', () => {
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
     ['uuid', fields.uuid('value')],
+    ['uuidv4', fields.uuidv4('value')],
+    ['uuidv7', fields.uuidv7('value')],
+    ['uuidv8', fields.uuidv8('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
     ['timezone', fields.timezone('value')],
@@ -253,7 +258,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['decimal64', fields.decimal64('value', 18, 2)],
     ['decimal128', fields.decimal128('value', 38, 2)],
     ['decimal256', fields.decimal256('value', 76, 2)],
-    ['map', fields.map('value', entries, true)],
+    ['map', fields.map('value', entries)],
+    ['sorted_map', fields.map('value', entries, true)],
     ['run_end_encoded', fields.runEndEncoded('value', runEnds, values)],
     ['variant', fields.variant('value')],
     ['geometry', fields.geometry('value')],
@@ -262,11 +268,13 @@ test('typed field factories cover every native datatype variant', () => {
 
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-  // so no field builds them.
-  assert.equal(byId.size, 64)
+  // so no field builds them, and `struct2` is the two-child leaf a mapping's
+  // entries have rather than a shape a caller declares.
+  const unbuildable = ['int128', 'uint128', 'struct2']
+  assert.equal(byId.size, binding.enums.dataTypeIds.length - unbuildable.length)
   assert.deepEqual(
     [...byId.keys()].sort(),
-    binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),
+    binding.enums.dataTypeIds.filter((id) => !unbuildable.includes(id)).sort(),
   )
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
@@ -279,7 +287,10 @@ test('typed field factories cover every native datatype variant', () => {
   // A string is the exception: its identity is the layout, and it renders
   // under the name its charset earns - `utf8` for UTF-8, `ascii` for
   // US-ASCII - with the bound as the parameter.
+  // A mapping renders under `map` whichever leaf it is, with the promise
+  // about its keys as a parameter, so the sorted leaf's spelling is `map`.
   const spellings = new Map([
+    ['sorted_map', 'map'],
     ['string', 'utf8'],
     ['fixed_string', 'fixed_ascii'],
     ['string_view', 'utf8_view'],
@@ -378,10 +389,13 @@ test('the string and bytes factories declare the datatype beside the field', () 
   assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /width/)
   assert.throws(() => fields.string('note', 'utf8'), /field options must be a plain object/)
 
+  // A maximum is its own leaf now: plain binary is the storage a bounded
+  // column fills, so `max` answers `sized_binary` rather than a bound
+  // carried beside `binary`.
   const blob = fields.bytes('payload', { max: 16, nullable: false })
-  assert.equal(blob.dtype.toString(), 'binary(16)')
+  assert.equal(blob.dtype.toString(), 'sized_binary(16)')
   assert.deepEqual(blob.dtype.bytesParameters, {
-    layout: 'binary',
+    layout: 'sized_binary',
     bound: 16,
     max: 16,
   })
@@ -389,7 +403,7 @@ test('the string and bytes factories declare the datatype beside the field', () 
   assert.ok(fields.bytes('payload').dtype.equals(DataType.binary()))
   assert.ok(
     fields
-      .bytes('key', { layout: 'fixed_size_binary', fixed: 16 })
+      .bytes('key', { layout: 'fixed_binary', fixed: 16 })
       .dtype.equals(DataType.fixedSizeBinary(16)),
   )
   assert.equal(fields.bytes('key', { layout: 'fixed_binary', bound: 16 }).dtype.fixedByteWidth, 16)

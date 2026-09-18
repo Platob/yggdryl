@@ -153,22 +153,25 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    # Sixty-six: `msgdirection` was retired (discriminant 58, never reused),
-    # so `url` keeps its byte 59 and sits one index earlier; `timezone`,
-    # `mimetype` and `mediatype` were appended after it, then `cusip` and
-    # `sedol` as code datatypes of their own, and
-    # `bloomberg` was appended after them - the one code whose width is only a
-    # bound, because a ticker, a market and a yellow key have no fixed length
-    # between them.
+    # Seventy-three: `msgdirection` was retired (discriminant 58, never
+    # reused), so `url` keeps its byte 59 and sits one index earlier;
+    # `timezone`, `mimetype` and `mediatype` were appended after it, then
+    # `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
+    # after them - the one code whose width is only a bound, because a
+    # ticker, a market and a yellow key have no fixed length between them.
+    # The families appended the rest: `uuidv4`, `uuidv7` and `uuidv8` when
+    # uuid became a family with a leaf per RFC 9562 version, then
+    # `large_binary_view` and `sized_binary` when the byte family became six
+    # real leaves. An identifier is a wire contract, so nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 66
+    assert len(enums.DATA_TYPE_IDS) == 73
     assert enums.DATA_TYPE_IDS.index("url") == 58
     assert list(enums.DATA_TYPE_IDS[-5:]) == [
-        "mimetype",
-        "mediatype",
-        "cusip",
-        "sedol",
-        "bloomberg",
+        "uuidv4",
+        "uuidv7",
+        "uuidv8",
+        "large_binary_view",
+        "sized_binary",
     ]
     with pytest.raises(ValueError):
         DataType("msgtype")

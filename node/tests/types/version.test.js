@@ -158,22 +158,24 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Sixty-six: `msgdirection` was retired (discriminant 58, never reused),
-  // so `url` keeps its byte 59 and sits one index earlier; `timezone`,
-  // `mimetype` and `mediatype` were appended after it, then `cusip` and
-  // `sedol` as code datatypes of their own, and
-  // `bloomberg` was appended after them - the one code whose width is only a
-  // bound, because a ticker, a market and a yellow key have no fixed length
-  // between them.
+  // Seventy-three: `msgdirection` was retired (discriminant 58, never
+  // reused), so `url` keeps its byte 59 and sits one index earlier;
+  // `timezone`, `mimetype` and `mediatype` were appended after it, then
+  // `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
+  // after them - the one code whose width is only a bound, because a ticker,
+  // a market and a yellow key have no fixed length between them. The families
+  // appended the rest: `uuidv4`, `uuidv7` and `uuidv8` when uuid became a
+  // family with a leaf per RFC 9562 version, then `large_binary_view` and
+  // `sized_binary` when the byte family became six real leaves.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 66)
+  assert.equal(enums.dataTypeIds.length, 73)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
   assert.deepEqual(enums.dataTypeIds.slice(-5), [
-    'mimetype',
-    'mediatype',
-    'cusip',
-    'sedol',
-    'bloomberg',
+    'uuidv4',
+    'uuidv7',
+    'uuidv8',
+    'large_binary_view',
+    'sized_binary',
   ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))

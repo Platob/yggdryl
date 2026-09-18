@@ -1164,7 +1164,7 @@ impl PyFixFieldIterator {
 /// here - that is `Field::canonicalize_value`'s work, on what this hands it.
 fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
     match field.dtype() {
-        CoreDataType::Struct(_) => {
+        CoreDataType::Structure(_) => {
             let children = field.fields();
             if let Some(items) = value.as_sequence() {
                 if items.len() == children.len() {
@@ -1193,11 +1193,8 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
                 .and_then(|named| Scalar::from_record(named).ok())
                 .unwrap_or(value)
         }
-        CoreDataType::List(item)
-        | CoreDataType::LargeList(item)
-        | CoreDataType::FixedSizeList(item, _)
-        | CoreDataType::ListView(item)
-        | CoreDataType::LargeListView(item) => {
+        CoreDataType::Sequence(sequence) => {
+            let item = sequence.item();
             let Some(entries) = value.as_sequence() else {
                 return value;
             };

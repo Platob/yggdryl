@@ -274,7 +274,7 @@ test('every byte column is one datatype: a layout and a bound', () => {
     [DataType.binary(), 'binary'],
     [DataType.largeBinary(), 'large_binary'],
     [DataType.binaryView(), 'binary_view'],
-    [DataType.fixedSizeBinary(16), 'fixed_size_binary'],
+    [DataType.fixedSizeBinary(16), 'fixed_binary'],
   ]) {
     assert.equal(dtype.id, layout)
     assert.equal(dtype.kind, 'bytes')
@@ -291,34 +291,37 @@ test('every byte column is one datatype: a layout and a bound', () => {
   }
   assert.ok(DataType.bytes().equals(DataType.binary()))
   assert.deepEqual(DataType.binary().bytesParameters, { layout: 'binary' })
-  assert.equal(DataType.fixedSizeBinary(16).toString(), 'fixed_size_binary(16)')
+  assert.equal(DataType.fixedSizeBinary(16).toString(), 'fixed_binary(16)')
   assert.equal(DataType.fixedSizeBinary(16).fixedByteWidth, 16)
   assert.deepEqual(DataType.fixedSizeBinary(16).bytesParameters, {
-    layout: 'fixed_size_binary',
+    layout: 'fixed_binary',
     bound: 16,
     fixed: 16,
   })
   assert.ok(
     DataType.bytes({ layout: 'fixed_binary', bound: 16 }).equals(DataType.fixedSizeBinary(16)),
   )
-  // `binary(16)` is a maximum of sixteen bytes; the fixed slot is the width.
+  // A maximum of sixteen bytes is its own leaf: plain binary is exactly the
+  // storage such a column fills, so `max` answers `sized_binary`, and the
+  // fixed slot stays empty because that slot is the width only the fixed
+  // leaf has.
   const bounded = DataType.bytes({ max: 16 })
-  assert.equal(bounded.toString(), 'binary(16)')
+  assert.equal(bounded.toString(), 'sized_binary(16)')
   assert.equal(bounded.fixedByteWidth, null)
   assert.deepEqual(bounded.bytesParameters, {
-    layout: 'binary',
+    layout: 'sized_binary',
     bound: 16,
     max: 16,
   })
   assert.ok(DataType.from('varbinary(16)').equals(bounded))
-  assert.deepEqual(bounded.toJSON(), { type: 'binary', max: 16 })
+  assert.deepEqual(bounded.toJSON(), { type: 'binary', layout: 'sized_binary', max: 16 })
   assert.ok(DataType.fromJSON(bounded.toJSON()).equals(bounded))
   assert.ok(DataType.from('bytes').equals(DataType.binary()))
   // A UUID is bytes with an identity, so it is not a byte column.
   assert.equal(new DataType('uuid').bytesParameters, null)
 
   assert.throws(() => DataType.bytes({ fixed: 4 }), /expected a maximum on a variable layout/)
-  assert.throws(() => DataType.bytes({ layout: 'fixed_size_binary' }), /got no width/)
+  assert.throws(() => DataType.bytes({ layout: 'fixed_binary' }), /got none/)
   assert.throws(() => DataType.fixedSizeBinary(0), /at least one byte, got 0/)
   assert.throws(() => DataType.fixedSizeBinary(-1), /byteWidth must be an unsigned 32-bit integer/)
   assert.throws(

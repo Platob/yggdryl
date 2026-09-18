@@ -10,6 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
+use yggdryl::types::DecimalType;
 use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
 
 use crate::napi_error;
@@ -80,10 +81,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Date64
         | D::Time64(_)
         | D::Duration64(_)
-        | D::Decimal32 { .. }
-        | D::Decimal64 { .. }
-        | D::Decimal128 { .. }
-        | D::Decimal256 { .. } => JsValueHint::BigInt,
+        | D::Decimal(_) => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
         D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
@@ -101,7 +99,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Side
         | D::State
         | D::TimeInForce
-        | D::Uuid
+        | D::Uuid(_)
         | D::Url
         | D::Timezone
         | D::MimeType
@@ -110,19 +108,15 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
-        | D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)
-        | D::Struct(_) => JsValueHint::Array,
+        | D::Sequence(_)
+        | D::Structure(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
         // `{ typeId, value }` object rather than a positional sequence.
         D::Union(..) => JsValueHint::Object,
         D::Interval(_) => return Err(napi_error("invalid native interval layout")),
-        D::Map(_) => JsValueHint::Map,
+        D::Mapping(_) => JsValueHint::Map,
         // Wrappers project as whatever they encode.
-        D::Dictionary(dictionary) => dtype_js_hint(dictionary.value())?,
+        D::Enum(dictionary) => dtype_js_hint(dictionary.value())?,
         D::RunEndEncoded(encoded) => dtype_js_hint(encoded.values().dtype())?,
         other => {
             return Err(napi_error(format!(
@@ -162,15 +156,11 @@ fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result
     }
     match dtype {
         D::Null => Null.into_unknown(env),
-        D::List(item)
-        | D::ListView(item)
-        | D::FixedSizeList(item, _)
-        | D::LargeList(item)
-        | D::LargeListView(item) => sequence_to_js(env, item, value),
-        D::Struct(fields) => struct_to_js(env, fields, value),
+        D::Sequence(sequence) => sequence_to_js(env, sequence.item(), value),
+        D::Structure(structure) => struct_to_js(env, structure.as_fields(), value),
         D::Union(fields, _) => union_to_js(env, fields, value),
-        D::Dictionary(dictionary) => dtype_to_js(env, dictionary.value(), value),
-        D::Map(map) => map_to_js(env, map, value),
+        D::Enum(dictionary) => dtype_to_js(env, dictionary.value(), value),
+        D::Mapping(mapping) => map_to_js(env, mapping.parameters(), value),
         D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value),
         // A non-null variant value crosses as the Parquet Variant binary
         // encoding, which the Iceberg v3 layer owns; refuse by name until
@@ -227,16 +217,18 @@ fn numeric_to_js<'env>(
             .as_f64()
             .ok_or_else(|| napi_error("invalid native floating record value"))?
             .into_unknown(env)?,
-        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
-            BigInt::from(
-                value
-                    .decimal_unscaled_at(*scale)
-                    .or_else(|| value.as_i128())
-                    .ok_or_else(|| napi_error("invalid native decimal record value"))?,
-            )
-            .into_unknown(env)?
-        }
-        D::Decimal256 { scale, .. } => decimal256_to_js(env, value, *scale)?,
+        D::Decimal(
+            DecimalType::Decimal32 { scale, .. }
+            | DecimalType::Decimal64 { scale, .. }
+            | DecimalType::Decimal128 { scale, .. },
+        ) => BigInt::from(
+            value
+                .decimal_unscaled_at(*scale)
+                .or_else(|| value.as_i128())
+                .ok_or_else(|| napi_error("invalid native decimal record value"))?,
+        )
+        .into_unknown(env)?,
+        D::Decimal(DecimalType::Decimal256 { scale, .. }) => decimal256_to_js(env, value, *scale)?,
         _ => return Ok(None),
     };
     Ok(Some(output))
@@ -325,7 +317,7 @@ fn text_or_binary_to_js<'env>(
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()
             .into_unknown(env)?,
-        D::Uuid => match value {
+        D::Uuid(_) => match value {
             Scalar::Uuid(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native uuid record value")),
         },
@@ -431,7 +423,7 @@ fn projected_value_to_js<'env>(
 /// Project one struct value as a positional JavaScript array.
 fn struct_to_js<'env>(
     env: &'env Env,
-    fields: &yggdryl::Fields,
+    fields: &[CoreField],
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     let values = value
@@ -551,7 +543,7 @@ pub(crate) fn arrow_scalar_to_ipc(
 
     let schema = Arc::new(Schema::new([field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(1));
     let batch =

@@ -187,6 +187,10 @@ function createFields(DataType, Field, native) {
     },
     largeBinary: simple('large_binary'),
     binaryView: simple('binary_view'),
+    largeBinaryView: simple('large_binary_view'),
+    sizedBinary(name, max, value) {
+      return field(name, DataType.bytes({ layout: 'sized_binary', max }), value)
+    },
     string: parameterized(
       (parameters) => DataType.string(parameters),
       ['layout', 'charset', 'bound', 'fixed', 'max'],
@@ -202,6 +206,9 @@ function createFields(DataType, Field, native) {
       return field(name, DataType.fixedAscii(width), value)
     },
     uuid: simple('uuid'),
+    uuidv4: simple('uuidv4'),
+    uuidv7: simple('uuidv7'),
+    uuidv8: simple('uuidv8'),
     version: simple('version'),
     url: simple('url'),
     // Canonical text the crate already owns: a zone, a MIME type, and a

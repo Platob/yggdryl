@@ -12,7 +12,7 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
-use yggdryl::ArrowCast;
+use yggdryl::types::{DataTypeValue as _, FieldValue as _, SequenceType};
 use yggdryl::{
     DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
     StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
@@ -43,7 +43,10 @@ pub(crate) fn core_dtype_to_pyarrow<'py>(
     py: Python<'py>,
     dtype: &CoreDataType,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = dtype.clone().into_arrow_ffi().map_err(value_error)?;
+    let schema = dtype
+        .clone()
+        .into_arrow_datatype_ffi()
+        .map_err(value_error)?;
     import_ffi_schema(py, "DataType", &schema)
 }
 
@@ -51,7 +54,7 @@ pub(crate) fn core_field_to_pyarrow<'py>(
     py: Python<'py>,
     field: &yggdryl::Field,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = field.clone().into_arrow_ffi().map_err(value_error)?;
+    let schema = field.clone().into_arrow_field_ffi().map_err(value_error)?;
     import_ffi_schema(py, "Field", &schema)
 }
 
@@ -80,9 +83,9 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
     field: Option<&yggdryl::Field>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let schema = match field {
-        Some(field) => field.clone().into_arrow_ffi().map_err(value_error)?,
-        None => CoreDataType::from_arrow(array.data_type())
-            .and_then(CoreDataType::into_arrow_ffi)
+        Some(field) => field.clone().into_arrow_field_ffi().map_err(value_error)?,
+        None => CoreDataType::from_arrow_datatype(array.data_type())
+            .and_then(CoreDataType::into_arrow_datatype_ffi)
             .map_err(value_error)?,
     };
     let schema_address = (std::ptr::from_ref(&schema) as usize).into_pyobject(py)?;
@@ -134,7 +137,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
 pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
     matches!(
         dtype,
-        CoreDataType::Uuid
+        CoreDataType::Uuid(_)
             | CoreDataType::Version
             | CoreDataType::Url
             | CoreDataType::Timezone
@@ -449,6 +452,7 @@ impl PyDataType {
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
+            "large_binary_view" => CoreDataType::large_binary_view(),
             "utf8" => CoreDataType::utf8(),
             "large_utf8" => CoreDataType::large_utf8(),
             "utf8_view" => CoreDataType::utf8_view(),
@@ -464,7 +468,10 @@ impl PyDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "uuid" => CoreDataType::Uuid,
+            "uuid" => CoreDataType::uuid(),
+            "uuidv4" => CoreDataType::uuidv4(),
+            "uuidv7" => CoreDataType::uuidv7(),
+            "uuidv8" => CoreDataType::uuidv8(),
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
             "timezone" => CoreDataType::Timezone,
@@ -749,7 +756,7 @@ impl PyDataType {
     /// Exactly ``width`` bytes per value - Arrow's ``fixed_size_binary``.
     #[staticmethod]
     fn fixed_size_binary(width: u32) -> PyResult<Self> {
-        let inner = CoreDataType::fixed_size_binary(width).map_err(value_error)?;
+        let inner = CoreDataType::fixed_binary(width).map_err(value_error)?;
         Self::from_validated(inner)
     }
 
@@ -793,7 +800,7 @@ impl PyDataType {
     /// Internal allocation-free dictionary value view for annotation inference.
     fn _dictionary_value_type(&self) -> PyResult<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => Ok(Self {
+            CoreDataType::Enum(dictionary) => Ok(Self {
                 inner: dictionary.value().clone(),
                 hash_locked: false,
                 borrowed_from_field: false,
@@ -1486,7 +1493,7 @@ impl PyDataType {
     #[getter]
     fn keys_sorted(&self) -> Option<bool> {
         match &self.inner {
-            CoreDataType::Map(map) => Some(map.keys_sorted()),
+            CoreDataType::Mapping(mapping) => Some(mapping.keys_sorted()),
             _ => None,
         }
     }
@@ -1495,9 +1502,7 @@ impl PyDataType {
     #[getter]
     fn dictionary_key(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => {
-                Some(Self::from_inner(dictionary.key().clone()))
-            }
+            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.key().clone())),
             _ => None,
         }
     }
@@ -1506,9 +1511,7 @@ impl PyDataType {
     #[getter]
     fn dictionary_value(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => {
-                Some(Self::from_inner(dictionary.value().clone()))
-            }
+            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.value().clone())),
             _ => None,
         }
     }
@@ -1573,7 +1576,7 @@ impl PyDataType {
     /// Internal field-class conversion view of fixed-size-list arity.
     fn _fixed_size_list_length(&self) -> Option<i32> {
         match &self.inner {
-            CoreDataType::FixedSizeList(_, length) => Some(*length),
+            CoreDataType::Sequence(SequenceType::FixedSizeList(_, length)) => Some(*length),
             _ => None,
         }
     }

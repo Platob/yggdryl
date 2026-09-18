@@ -22,10 +22,11 @@ use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::ArrowCastOptions;
 use yggdryl::text::{self, json, toml, yaml};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
+use yggdryl::types::FieldValue as _;
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, DataTypeId, DecimalValue, Enum, Field as CoreField,
-    Fields as CoreFields, MapType as CoreMapType, TemporalValue, TimeUnit, Timezone, i256,
+    DataType as CoreDataType, DataTypeId, DecimalValue, Field as CoreField, MapType as CoreMapType,
+    TemporalValue, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::types::timezone::{TimezoneInput, timezone_from_input};
@@ -160,7 +161,7 @@ impl JsScalar {
     /// scalar; `kind` is the vocabulary the value has to belong to.
     #[napi(factory)]
     pub fn from_enum(kind: String, value: String) -> Result<Self> {
-        Enum::from_parts(&kind, &value)
+        Vocabulary::from_parts(&kind, &value)
             .map(Scalar::from)
             .map(Self::from_core)
             .map_err(napi_error)
@@ -627,7 +628,7 @@ impl JsScalar {
             )));
         }
         let inferred =
-            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
         let field = field
             .as_ref()
             .map_or_else(|| inferred.clone(), |field| field.inner.clone());
@@ -657,7 +658,7 @@ impl JsScalar {
         let (schema, batches) = arrow_batches(&bytes)?;
         ensure_one_column(&schema, "Arrow array")?;
         let inferred =
-            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
         let field = field
             .as_ref()
             .map_or_else(|| inferred.clone(), |field| field.inner.clone());
@@ -823,7 +824,7 @@ pub(crate) fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
 pub(crate) fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
     let schema = Arc::new(Schema::new([field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
     let batch =
@@ -2396,7 +2397,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
 /// field recursively.
 fn struct_transport_with_field(
     value: &Scalar,
-    fields: &CoreFields,
+    fields: &[CoreField],
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
@@ -2489,21 +2490,21 @@ pub(crate) fn value_to_transport_with_field(
         return value_to_transport(value, depth, max_depth);
     }
     match field.dtype() {
-        CoreDataType::Struct(fields) => {
-            struct_transport_with_field(value, fields, depth, max_depth)
+        CoreDataType::Structure(structure) => {
+            struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
-        CoreDataType::List(child)
-        | CoreDataType::ListView(child)
-        | CoreDataType::FixedSizeList(child, _)
-        | CoreDataType::LargeList(child)
-        | CoreDataType::LargeListView(child) => value
+        CoreDataType::Sequence(sequence) => value
             .as_sequence()
             .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
             .iter()
-            .map(|value| value_to_transport_with_field(value, child, depth + 1, max_depth))
+            .map(|value| {
+                value_to_transport_with_field(value, sequence.item(), depth + 1, max_depth)
+            })
             .collect::<Result<Vec<_>>>()
             .map(JsonValue::Array),
-        CoreDataType::Map(map) => map_transport_with_field(value, map, depth, max_depth),
+        CoreDataType::Mapping(mapping) => {
+            map_transport_with_field(value, mapping.parameters(), depth, max_depth)
+        }
         CoreDataType::Union(fields, _) => {
             let Some([type_id, payload]) = value.as_sequence() else {
                 return Err(napi_error(
@@ -2520,7 +2521,7 @@ pub(crate) fn value_to_transport_with_field(
                 .ok_or_else(|| napi_error("typed union id is not declared"))?;
             value_to_transport_with_field(payload, branch, depth, max_depth)
         }
-        CoreDataType::Dictionary(dictionary) => value_to_transport_with_field(
+        CoreDataType::Enum(dictionary) => value_to_transport_with_field(
             value,
             &CoreField::new(
                 field.name(),
