@@ -497,12 +497,27 @@ test('Scalar arithmetic infers JavaScript operands once and stays native', () =>
     (error) =>
       error instanceof RangeError && error.code === 'ERR_YGGDRYL_ARITHMETIC_OVERFLOW',
   )
+  // Text, bytes and sequences have no sum, so `add` joins them.
+  assert.equal(Scalar.from('AA').add('PL').asJs(), 'AAPL')
+  assert.deepEqual(
+    Scalar.from(Buffer.from([1])).add(Buffer.from([2])).asBytes(),
+    Buffer.from([1, 2]),
+  )
+  assert.deepEqual(Scalar.from([1]).add([2]).asJs(), [1, 2])
+  // Two repertoires still do not join, and only `add` joins at all.
   assert.throws(
-    () => Scalar.from('a').add('b'),
+    () => Scalar.from('a').add(1),
     (error) =>
       error instanceof TypeError &&
       error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
       /addition/i.test(error.message),
+  )
+  assert.throws(
+    () => Scalar.from('a').subtract('b'),
+    (error) =>
+      error instanceof TypeError &&
+      error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
+      /subtraction/i.test(error.message),
   )
   for (const hidden of [
     '_addNative',
