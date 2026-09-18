@@ -36,10 +36,16 @@ console.assert(price.clone().compare(price) === 0)
 console.assert(price.intoJson() === '"12345678901234567890.1234"')
 ```
 
-`Scalar.float(value, width = 64)`, `decimal(coefficient, scale = 0)`, `date`,
-`time`, `datetime`, and `duration` centralize width selection in Rust. Plain
-objects become sorted named Records; JavaScript `Map` remains a Mapping.
-Temporal factories take `(count, unit, timezone)` and default to `NAIVE`.
+The width, unit, scale and zone are named on the type, and `DataType.scalar`
+and `Field.scalar` read a value under it - `fields.datetime64('at', 'ns',
+'UTC').scalar(1700000000123456789n)`, `new DataType('date32').scalar(19723)`.
+`Scalar.from` infers when no type is named. Three factories remain, each for
+something JavaScript cannot otherwise say: `decimal(coefficient, scale = 0)`,
+because there is no decimal type; `duration(count, unit)`, which picks
+`duration32` or `duration64` from the count itself; and `float(value, width =
+64)`, because `100` and `100.0` are the same `Number`, so an integral float
+has no literal and the type would read it as an integer. Plain objects become
+sorted named Records; JavaScript `Map` remains a Mapping.
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
 whenever the Rust value has those semantics. JavaScript has no object hash
 protocol, so `stableHash()` is the explicit deterministic `bigint`; JavaScript

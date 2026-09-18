@@ -181,15 +181,16 @@ assert.deepEqual(new Set(decoded.venues), new Set(['XPAR', 'XNAS']))
 No name in a document makes this binding look up a class or run a constructor.
 `Date`, `Buffer`, and `Map` are read off the intrinsic prototypes.
 
-## Scalar families
+## Building a scalar
 
-`Scalar.float(value, width = 64)` selects 16, 32, or 64 bits, and
-`decimal(coefficient, scale = 0)` the narrowest exact decimal. Temporal
-factories take `(count, unit, timezone)`, `date` defaults to days, and an
-omitted timezone is `NAIVE`.
+The width, unit, scale and zone are named on the **type**, and `scalar(value)`
+reads a value under it. `Scalar.from` infers when no type is named, and two
+factories remain for what nothing else expresses: `decimal(coefficient, scale
+= 0)`, since JavaScript has no decimal type, and `duration(count, unit)`,
+which picks `duration32` or `duration64` from the count itself.
 
 ```javascript
-const { Timezone, Scalar, json } = require('yggdryl')
+const { DataType, Scalar, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
 const price = Scalar.decimal(-(2n ** 200n), 7)
@@ -197,14 +198,20 @@ assert.equal(price.kind, 'd256')
 assert.equal(price.scale, 7)
 assert.ok(Scalar.decimal(150n, 2).equals(Scalar.decimal(15n, 1)))
 
-const at = Scalar.datetime(1700000000123456n, 'us', 'UTC')
+// The type names the width and the zone, so the value is just the count.
+const at = new DataType('datetime64(us,"UTC")').scalar(1700000000123456n)
 assert.equal(json.loads(json.dumps(at)), '2023-11-14T22:13:20.123456Z')
-assert.equal(Scalar.datetime(0n, 'ms').zone, 'NAIVE')
-assert.equal(Scalar.time(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
+assert.equal(new DataType('datetime64(ms)').scalar(0n).zone, 'NAIVE')
+// A time of day has no zone, so the type has nowhere to spell one.
+assert.equal(new DataType('time64(us)').scalar(1n).zone, 'NAIVE')
+// A width no factory could reach.
+assert.equal(new DataType('decimal32(9,2)').scalar(125).kind, 'd32')
+// A JavaScript `Date` is milliseconds in UTC, and inference knows that.
 assert.ok(
   Scalar.from(new Date('2026-08-15T12:30:00.000Z'))
-    .equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')),
+    .equals(new DataType('datetime64(ms,"UTC")').scalar(1786797000000n)),
 )
+assert.equal(Scalar.duration(2n ** 31n, 'us').kind, 'duration64')
 ```
 
 `kind`, `count`, `unit`, `zone`, `unscaled`, and `scale` expose the payload.

@@ -38,14 +38,18 @@ void tabbedOptions
 
 const unit: CodecTimeUnit = 'us'
 const utc: TimezoneInput = Timezone.UTC
-const at: Scalar = Scalar.datetime(1700000000000000n, unit, utc)
-const naive: Scalar = Scalar.datetime(1700000000000n, 'ms')
-const on: Scalar = Scalar.date(19723, 'd', 'NAIVE')
-const wideDate: Scalar = Scalar.date(1700000000000n, 'ms', Timezone.from('NAIVE'))
-const sinceMidnight: Scalar = Scalar.time(45296000000n, unit, 'NAIVE')
-const shortTime: Scalar = Scalar.time(1000, 'ms', Timezone.from('NAIVE'))
-const took: Scalar = Scalar.duration(90, 's', 'NAIVE')
-const longTook: Scalar = Scalar.duration(90n, 's', Timezone.from('NAIVE'))
+// A unit or zone held in a variable reaches the type through the spelling, so
+// these pin that a computed datatype expression still type-checks.
+const at: Scalar = new DataType(`datetime64(${unit},"UTC")`).scalar(
+  1700000000000000n,
+)
+const naive: Scalar = new DataType('datetime64(ms)').scalar(1700000000000n)
+const on: Scalar = new DataType('date32').scalar(19723)
+const wideDate: Scalar = new DataType('date64').scalar(1700000000000n)
+const sinceMidnight: Scalar = new DataType(`time64(${unit})`).scalar(45296000000n)
+const shortTime: Scalar = new DataType('time32(ms)').scalar(1000)
+const took: Scalar = Scalar.duration(90, 's')
+const longTook: Scalar = Scalar.duration(90n, 's')
 const price: Scalar = Scalar.decimal(-1050n, 2)
 const widePrice: Scalar = Scalar.decimal(-(2n ** 200n), 2)
 const half: Scalar = Scalar.float(1.5, 16)
@@ -59,7 +63,7 @@ const typedInstant: Scalar = new Field(
   new DataType('datetime64(ns,"UTC")'),
   true,
 ).scalar(1n)
-const typedWidth: Scalar = new DataType('float16').scalar(1.5)
+const typedWidth: Scalar = Scalar.float(1.5, 16)
 const kind: string = at.kind
 const scalarId: string = at.id
 const scalarFamily: string = at.family
@@ -89,7 +93,7 @@ const lowered: unknown = pivot.asJs()
 const scalarField: Field = Scalar.from(1).intoField()
 const arrayField: Field = Scalar.from([1]).intoArrayField()
 const inferredStructField: Field = Scalar.from([{ id: 1 }]).intoStructField()
-const nestedValues = Scalar.from({ rows: [Scalar.datetime(1n, 'ns')] })
+const nestedValues = Scalar.from({ rows: [new DataType('datetime64(ns)').scalar(1n)] })
 const childCount: number = nestedValues.length
 const emptyContainer: boolean = nestedValues.isEmpty()
 const childAt: Scalar | null = Scalar.from([1]).at(0)

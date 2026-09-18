@@ -3702,18 +3702,30 @@ export declare class Scalar {
    * scalar; `kind` is the vocabulary the value has to belong to.
    */
   static fromEnum(kind: string, value: string): Scalar
-  /** Build one floating scalar at 16, 32, or 64 bits. */
-  static float(value: number, width?: number | undefined | null): Scalar
   /** Build the narrowest exact decimal that holds the coefficient. */
   static decimal(coefficient: bigint, scale?: number | undefined | null): Scalar
-  /** Build the exact date width selected by its unit. */
-  static date(count: bigint | number, unit?: string | undefined | null, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build the exact time-of-day width selected by its unit. */
-  static time(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build an epoch or wall-clock datetime with a non-null timezone. */
-  static datetime(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
-  /** Build the narrowest duration width that holds the count. */
-  static duration(count: bigint | number, unit: string, timezone?: TimezoneInput | undefined | null): Scalar
+  /**
+   * Build the narrowest duration width that holds the count.
+   * Build one floating scalar at 16, 32, or 64 bits.
+   *
+   * The one construct the type side cannot express **in JavaScript**:
+   * `100` and `100.0` are the same `Number`, so the encoder reads an
+   * integral one as an integer and `new DataType("float64").scalar(100)`
+   * is refused. Python deletes this factory because `100.0` is a distinct
+   * literal there; JavaScript has no way to write one.
+   */
+  static float(value: number, width?: number | undefined | null): Scalar
+  /**
+   * Build an elapsed duration, picking the width from the count itself.
+   *
+   * The one construct the type side cannot express: `duration32` and
+   * `duration64` are two static choices, and a count that overflows 32 bits
+   * is an error there rather than a widening. Here it widens.
+   *
+   * An elapsed duration has no zone, so there is no `timezone` parameter to
+   * pass one that could only be refused.
+   */
+  static duration(count: bigint | number, unit: string): Scalar
   /** The canonical width-specific vocabulary name. */
   get kind(): string
   /** The parameter-free datatype identifier this value proves. */

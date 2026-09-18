@@ -75,8 +75,8 @@ test('TOML uses natural shapes and refuses values TOML cannot spell', () => {
 test('TOML writes natural temporals and field-directed exact decimals', () => {
   const written = toml.dumps({
     at: new Date('2026-08-15T12:30:00.000Z'),
-    on: Scalar.date(19723),
-    since: Scalar.time(27120, 's'),
+    on: new DataType('date32').scalar(19723),
+    since: new DataType('time32(s)').scalar(27120),
     price: Scalar.decimal(-1050n, 2),
     wide: Scalar.decimal(123456789012345678901234567890n, 4),
   })
@@ -90,8 +90,8 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   const decoded = toml.loads(written)
   assert.ok(decoded.at instanceof Date)
   assert.equal(decoded.at.toISOString(), '2026-08-15T12:30:00.000Z')
-  assert.ok(decoded.on.equals(Scalar.date(19723)))
-  assert.ok(decoded.since.equals(Scalar.time(27120, 's')))
+  assert.ok(decoded.on.equals(new DataType('date32').scalar(19723)))
+  assert.ok(decoded.since.equals(new DataType('time32(s)').scalar(27120)))
   assert.equal(decoded.price, '-10.50')
 
   const field = fields.struct('root', [
@@ -103,9 +103,9 @@ test('TOML writes natural temporals and field-directed exact decimals', () => {
   ], { nullable: false })
   const typed = toml.loads(written, { field })
   assert.ok(typed.at instanceof Date)
-  assert.ok(typed.on.equals(Scalar.date(19723)))
+  assert.ok(typed.on.equals(new DataType('date32').scalar(19723)))
   assert.ok(typed.price.equals(Scalar.decimal(-1050n, 2)))
-  assert.ok(typed.since.equals(Scalar.time(27120, 's')))
+  assert.ok(typed.since.equals(new DataType('time32(s)').scalar(27120)))
   assert.ok(typed.wide.equals(Scalar.decimal(123456789012345678901234567890n, 4)))
 })
 
@@ -136,9 +136,9 @@ test('native TOML date-times arrive as temporal values and write back exactly', 
 
   assert.ok(decoded.offset instanceof Date)
   assert.equal(decoded.offset.toISOString(), '1979-05-27T07:32:00.000Z')
-  assert.ok(decoded.local.equals(Scalar.datetime(296638320n, 's', 'NAIVE')))
-  assert.ok(decoded.date.equals(Scalar.date(3433)))
-  assert.ok(decoded.time.equals(Scalar.time(27120, 's')))
+  assert.ok(decoded.local.equals(new DataType('datetime64(s)').scalar(296638320n)))
+  assert.ok(decoded.date.equals(new DataType('date32').scalar(3433)))
+  assert.ok(decoded.time.equals(new DataType('time32(s)').scalar(27120)))
 
   assert.equal(
     toml.dumps(decoded).toString('utf8'),

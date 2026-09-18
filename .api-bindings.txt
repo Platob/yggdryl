@@ -322,7 +322,7 @@
     instance: equals(other: Version) -> boolean; compare(other: Version) -> number; stableHash() -> bigint; clone() -> Version; toString()/toJSON() -> string
     typed field: fields.version(name, options?) -> VersionField; native JavaScript value Version, native Arrow value canonical version text
   Scalar
-    statics: date, datetime, decimal, duration, float, from, fromArrowArray, fromArrowBatch, fromArrowScalar, fromArrowTable, fromEnum, time
+    statics: decimal, duration, float, from, fromArrowArray, fromArrowBatch, fromArrowScalar, fromArrowTable, fromEnum
     instance: absolute, add, asBytes, asJs, asStr, at, clone, compare, count, digest, divide, dtype, equals, family, get, has, id, intoArrayField, intoArrowArray, intoArrowBatch, intoArrowScalar, intoArrowTable, intoField, intoJson, intoJsonBytes, intoStructField, isEmpty, isTruthy, kind, length, multiply, negate, path, remainder, remove, scale, set, stableHash, subtract, Symbol.iterator, toJSON, toString, unit, unscaled, zone
     from(value, options?): optional options.field redirects to native Field.scalar once for validation and canonicalization; a Term, Filter, Selector, Plan or Expression crosses as its canonical text
   Digest

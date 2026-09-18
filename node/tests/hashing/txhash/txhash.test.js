@@ -192,7 +192,7 @@ test('every instant spelling reads the same way', () => {
   assert.equal(seconds.unit, 's')
   assert.ok(seconds.equals(expected.withUnit('s')))
   assert.equal(expected.withUnit('ns').unix, INSTANT * 1000n)
-  assert.ok(expected.intoDatetime().equals(Scalar.datetime(INSTANT, 'us', 'UTC')))
+  assert.ok(expected.intoDatetime().equals(new DataType('datetime64(us,"UTC")').scalar(INSTANT)))
   assert.deepEqual(Buffer.from(expected.intoScalar().asBytes()), Buffer.from(expected.bytes()))
   assert.throws(() => TxHash.fromParts(true, digest), TypeError)
   assert.throws(() => TxHash.fromParts(1.5, digest), /safe integer/)

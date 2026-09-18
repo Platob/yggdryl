@@ -740,7 +740,7 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
+    const { DataType, Scalar, hashing } = require('yggdryl')
     const { txhash, xxhash } = hashing
 
     const instant = 1_700_000_000_000_000n // 2023-11-14T22:13:20Z in microseconds
@@ -762,7 +762,11 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
     const seconds = txhash.txh3('AAPL', instant + 999_999n).withUnit('s')
     assert.equal(seconds.unix, 1_700_000_000n)
     assert.ok(seconds.digest.equals(value.digest))
-    assert.ok(seconds.intoDatetime().equals(Scalar.datetime(1_700_000_000n, 's', 'UTC')))
+    assert.ok(
+      seconds
+        .intoDatetime()
+        .equals(new DataType('datetime64(s,"UTC")').scalar(1_700_000_000n)),
+    )
     // Two units, like two algorithms, are never equal.
     assert.ok(!seconds.equals(seconds.withUnit('ms')))
     ```

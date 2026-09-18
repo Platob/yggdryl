@@ -39,7 +39,7 @@ const PIPE = '|'.charCodeAt(0)
 // The one intake clock the Rust suites build undated messages under
 // (`fixed_codec` in `rust/tests/fix.rs`), stated here as a message's own
 // SendingTime so two builds settle the same identity.
-const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
+const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 // The columns a row must carry a value at: the settled identity, and the
 // version every message opens with.
 const REQUIRED = ['unix', 'creatunix', 'curruuid', 'crossuuid', 'hashcode', 'crosshashcode', 'beginstring']

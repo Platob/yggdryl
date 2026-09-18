@@ -166,14 +166,6 @@ impl JsScalar {
             .map_err(napi_error)
     }
 
-    /// Build one floating scalar at 16, 32, or 64 bits.
-    #[napi(factory)]
-    pub fn float(value: f64, width: Option<f64>) -> Result<Self> {
-        Scalar::from_float(value, crate::exact_u8(width.unwrap_or(64.0), "width")?)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
     /// Build the narrowest exact decimal that holds the coefficient.
     #[napi(factory)]
     pub fn decimal(coefficient: BigInt, scale: Option<f64>) -> Result<Self> {
@@ -183,65 +175,35 @@ impl JsScalar {
         )))
     }
 
-    /// Build the exact date width selected by its unit.
-    #[napi(factory)]
-    pub fn date(
-        count: Either<BigInt, f64>,
-        unit: Option<String>,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_date(
-            exact_i64_input(count, "count")?,
-            time_unit(unit.as_deref().unwrap_or("d"))?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
-    /// Build the exact time-of-day width selected by its unit.
-    #[napi(factory)]
-    pub fn time(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_time(
-            exact_i64_input(count, "count")?,
-            time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
-    /// Build an epoch or wall-clock datetime with a non-null timezone.
-    #[napi(factory)]
-    pub fn datetime(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_datetime(
-            exact_i64_input(count, "count")?,
-            time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
     /// Build the narrowest duration width that holds the count.
+    /// Build one floating scalar at 16, 32, or 64 bits.
+    ///
+    /// The one construct the type side cannot express **in JavaScript**:
+    /// `100` and `100.0` are the same `Number`, so the encoder reads an
+    /// integral one as an integer and `new DataType("float64").scalar(100)`
+    /// is refused. Python deletes this factory because `100.0` is a distinct
+    /// literal there; JavaScript has no way to write one.
     #[napi(factory)]
-    pub fn duration(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
+    pub fn float(value: f64, width: Option<f64>) -> Result<Self> {
+        Scalar::from_float(value, crate::exact_u8(width.unwrap_or(64.0), "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Build an elapsed duration, picking the width from the count itself.
+    ///
+    /// The one construct the type side cannot express: `duration32` and
+    /// `duration64` are two static choices, and a count that overflows 32 bits
+    /// is an error there rather than a widening. Here it widens.
+    ///
+    /// An elapsed duration has no zone, so there is no `timezone` parameter to
+    /// pass one that could only be refused.
+    #[napi(factory)]
+    pub fn duration(count: Either<BigInt, f64>, unit: String) -> Result<Self> {
         Scalar::from_duration(
             exact_i64_input(count, "count")?,
             time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
+            yggdryl::Timezone::NAIVE,
         )
         .map(Self::from_core)
         .map_err(napi_error)

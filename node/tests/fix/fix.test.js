@@ -66,7 +66,7 @@ function definitionsOf(registry) {
 // The one intake clock the Rust suites read undated bytes under
 // (`fixed_codec` in `rust/tests/fix.rs`): 2024-01-02T10:15:30Z. Without it an
 // undated message reads UTC now, which is deliberately not deterministic.
-const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
+const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
 function fixedCodec(registry, options = {}) {
   return reading(registry, { ...options, defaultSendingTime: SENDING })

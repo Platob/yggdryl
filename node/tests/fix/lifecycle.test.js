@@ -12,7 +12,7 @@ const assert = require('node:assert/strict')
 const path = require('node:path')
 const test = require('node:test')
 
-const { BatchReader, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
+const { BatchReader, DataType, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 // A second of a ULBridge's own capture, anonymized: the corpus
@@ -33,7 +33,7 @@ const ROWHEADER =
   String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)` +
   String.raw`(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] ` +
   String.raw`\[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
-const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
+const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
 let seedRegistry
 function seed() {
