@@ -10,7 +10,6 @@ use crate::types::parser::Parser;
 use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, TypedField, Value};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
     use std::sync::Arc;

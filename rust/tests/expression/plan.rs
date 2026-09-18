@@ -389,7 +389,6 @@ fn a_plan_is_built_section_by_section() {
 // Streams and stores
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "arrow")]
 mod streams {
     use super::*;
     use yggdryl::arrow::BatchReader;

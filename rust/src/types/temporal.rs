@@ -10,7 +10,6 @@ use crate::types::timezone::{civil_from_days, days_from_civil};
 use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, Error, Result, TimeUnit, Timezone, TypedField};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
     use crate::types::enums::EnumType;

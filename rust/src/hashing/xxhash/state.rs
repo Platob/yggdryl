@@ -48,7 +48,6 @@ macro_rules! arrow_batch_fill {
         /// # Errors
         ///
         /// Returns an error for an invalid root, holder, digest path, or batch.
-        #[cfg(feature = "arrow")]
         pub fn apply_arrow_batch(
             &self,
             root: &crate::Field,

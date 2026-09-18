@@ -199,7 +199,6 @@ impl<H: IOBase> Coding<H> {
     /// unlocated source snapshots only the encoded bytes it already holds.
     /// Opened or dirty state must snapshot `plain`, because it is the stable
     /// presented value and may be newer than the resource underneath it.
-    #[cfg(feature = "arrow")]
     fn owned_presented_handle(&self) -> Result<Holder> {
         if let Some(plain) = self.materialized() {
             return Ok(Holder::buffer(
@@ -244,7 +243,6 @@ impl<H: IOBase> Coding<H> {
     }
 
     /// Apply the generic read shaping after an owning encoding seam.
-    #[cfg(feature = "arrow")]
     fn shape_owned_arrow_reader(
         reader: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
@@ -317,7 +315,6 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     /// restored in the owned handle's media type, so decoding remains lazy.
     /// Only an opened or dirty view snapshots the decoded value it already
     /// owns.
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
         options: &crate::media::RecordOptions,

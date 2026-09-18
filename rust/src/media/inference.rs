@@ -227,7 +227,6 @@ impl Scalar {
             // An Arrow payload already carries its exact field: one pinned
             // row is that field's datatype, and every wider shape is a list
             // of it - of items for a column, of rows for a table or a stream.
-            #[cfg(feature = "arrow")]
             Self::Arrow(value) => {
                 if value.is_scalar() {
                     return Ok(value.dtype().clone());

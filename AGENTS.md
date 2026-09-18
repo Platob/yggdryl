@@ -200,7 +200,7 @@ directions against an outside implementation.
 ## Layout
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
-`default-members = ["rust"]`; features are `default = ["arrow"]`, `parquet`,
+`default-members = ["rust"]`; features are `default = []`, `parquet`,
 `iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/` dir -
 and tests, benchmarks, bindings, and docs mirror these layers. A root file is not
 an implementation layer, a layer is not a facade over root-owned vocabulary, and

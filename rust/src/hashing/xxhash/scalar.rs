@@ -64,7 +64,6 @@ impl Scalar {
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            #[cfg(feature = "arrow")]
             Self::Arrow(_) => return None,
             Self::Null
             | Self::Sequence(_)
@@ -291,7 +290,6 @@ impl Scalar {
         match self {
             // An Arrow payload hashes as the native value it holds, so the
             // digest of a column does not depend on which side it crossed.
-            #[cfg(feature = "arrow")]
             Self::Arrow(_) => match self.into_native() {
                 Ok(native) => native.feed(sink, depth),
                 Err(_) => write_null(sink),
@@ -494,13 +492,11 @@ pub(super) fn write_integer(sink: &mut impl Hasher, negative: bool, magnitude: u
 }
 
 /// Write a signed integer of any width.
-#[cfg(feature = "arrow")]
 pub(super) fn write_signed(sink: &mut impl Hasher, value: i128) {
     write_integer(sink, value < 0, value.unsigned_abs());
 }
 
 /// Write an unsigned integer of any width.
-#[cfg(feature = "arrow")]
 pub(super) fn write_unsigned(sink: &mut impl Hasher, value: u128) {
     write_integer(sink, false, value);
 }

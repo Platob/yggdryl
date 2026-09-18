@@ -369,7 +369,7 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 - [Code](codes.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
-- Default `arrow` feature -> `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
+- `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
 
 ## Commands
 

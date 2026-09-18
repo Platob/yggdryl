@@ -169,7 +169,6 @@ impl DigestField<'_> {
     /// Returns an error when this view is not on a usable Struct root, a
     /// holder has the wrong width, a digest path cannot be resolved, or the
     /// batch cannot be cast to that root.
-    #[cfg(feature = "arrow")]
     pub fn apply_arrow_batch(
         &self,
         batch: &arrow_array::RecordBatch,

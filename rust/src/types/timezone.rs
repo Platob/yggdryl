@@ -56,7 +56,6 @@ pub(crate) use value::{civil_from_days, days_from_civil};
 use crate::types::typed::define_field_types;
 use crate::{Error, Result, TypedField};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by the time zone datatype.
 pub(crate) mod casts {
     use std::sync::Arc;

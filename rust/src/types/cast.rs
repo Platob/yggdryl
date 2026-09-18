@@ -2777,7 +2777,6 @@ pub(crate) fn internal_target_error(kind: &'static str) -> Error {
     }
 }
 
-#[cfg(feature = "arrow")]
 /// Arrow column planning, exposure, and logical-null traversal.
 ///
 /// This is array-level machinery, not a datatype layer: it reads and rebuilds

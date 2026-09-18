@@ -913,7 +913,6 @@ pub(crate) use validation::{
 };
 // Read only by `xxhash::arrow`, which the `arrow` feature gates, so the name
 // is gated the same way.
-#[cfg(feature = "arrow")]
 pub(crate) use validation::is_all_sources;
 
 #[cfg(test)]

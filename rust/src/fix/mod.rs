@@ -135,7 +135,6 @@ mod aliases;
 mod cfi;
 // Batching is the crate's Arrow surface seen from FIX, so it exists exactly
 // where that surface does.
-#[cfg(feature = "arrow")]
 mod batch;
 mod build;
 mod catalog;

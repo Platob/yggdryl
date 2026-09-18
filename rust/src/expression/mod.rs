@@ -68,7 +68,6 @@ mod transform;
 mod typing;
 mod user;
 
-#[cfg(feature = "arrow")]
 mod arrow;
 
 use smol_str::{SmolStr, format_smolstr};

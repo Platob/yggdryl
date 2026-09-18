@@ -156,7 +156,6 @@ mod arrow {
     }
 }
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
     use std::borrow::Cow;
@@ -2301,7 +2300,6 @@ mod scalars {
 
         /// The text a column's own storage holds, under the parameters it
         /// declares, checked when it was written and not again here.
-        #[cfg(feature = "arrow")]
         pub(crate) fn from_storage(text: &str, parameters: StringParameters) -> Self {
             Self {
                 text: SmolStr::new(text),

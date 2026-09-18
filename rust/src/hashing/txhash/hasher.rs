@@ -188,7 +188,6 @@ impl TxHasher {
     /// Returns an error when `root` is not a usable Struct schema, a holder
     /// has the wrong width, a digest or time path cannot be resolved, or the
     /// batch cannot be cast to `root`.
-    #[cfg(feature = "arrow")]
     pub fn apply_arrow_batch(
         &self,
         root: &crate::Field,
@@ -207,7 +206,6 @@ impl TxHasher {
     ///
     /// Returns an error when `times` is not an instant column of the batch's
     /// length, or a value cannot be represented.
-    #[cfg(feature = "arrow")]
     pub fn row_txhashes(
         &self,
         batch: &arrow_array::RecordBatch,
@@ -226,7 +224,6 @@ impl TxHasher {
     /// Returns an error when `times` is not an instant column of the array's
     /// length, the array cannot be reconciled to `field`, or a value cannot
     /// be represented.
-    #[cfg(feature = "arrow")]
     pub fn column_txhashes(
         &self,
         times: &dyn arrow_array::Array,

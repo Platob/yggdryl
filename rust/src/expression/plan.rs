@@ -241,7 +241,6 @@ impl Target {
     }
 
     /// Read one property as the type a knob has.
-    #[cfg(feature = "arrow")]
     pub fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
         self.property(name)
             .map(|value| {
@@ -906,7 +905,6 @@ impl Plan {
 
     /// Return whether every column the `order by` keys read is one of
     /// `names`, so the keys can be evaluated over rows of those columns.
-    #[cfg(feature = "arrow")]
     fn ordering_reads_only<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> bool {
         let names: Vec<&str> = names.into_iter().collect();
         self.order_by.iter().all(|key| {
@@ -1358,7 +1356,6 @@ impl IntoPlan for String {
 }
 
 /// The error a plan raises when its target cannot be written or read.
-#[cfg(feature = "arrow")]
 pub(crate) fn unreachable(target: &Target, reason: impl fmt::Display) -> Error {
     Error::InvalidRecord {
         path: format_smolstr!("$.{}", target.location()),
@@ -1366,7 +1363,6 @@ pub(crate) fn unreachable(target: &Target, reason: impl fmt::Display) -> Error {
     }
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use std::sync::Arc;
 

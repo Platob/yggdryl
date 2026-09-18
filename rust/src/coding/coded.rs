@@ -154,27 +154,22 @@ impl crate::IOMedia for Coded {
         self.as_io_mut()
     }
 
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         crate::IOMedia::row_size(self.as_io())
     }
 
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         crate::IOMedia::column_size(self.as_io())
     }
 
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::media::RecordOptions> {
         crate::IOMedia::record_options(self.as_io())
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(self.as_io(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
         options: &crate::media::RecordOptions,
@@ -182,7 +177,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::read_arrow_reader(self.as_io(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -191,7 +185,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::overwrite_arrow_reader(self.as_io_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_prepared_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -200,7 +193,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::overwrite_prepared_arrow_reader(self.as_io_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -209,7 +201,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::overwrite_arrow_batch(self.as_io_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -218,7 +209,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::append_arrow_reader(self.as_io_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -227,7 +217,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::append_arrow_batch(self.as_io_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -236,7 +225,6 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::merge_arrow_reader(self.as_io_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,

@@ -197,7 +197,6 @@ mod record {
         }
     }
 
-    #[cfg(feature = "arrow")]
     impl<'a> FieldRecord<'a> {
         /// Read one row of a batch under the field the batch was written under.
         ///
@@ -1251,7 +1250,6 @@ impl<'a> FieldScalar<'a> {
     }
 }
 
-#[cfg(feature = "arrow")]
 impl<'a> FieldScalar<'a> {
     /// Decode row 0 of a one-row Arrow array under the field.
     ///

@@ -1,25 +1,18 @@
 //! Per-row digest columns and holder filling.
 
-#[cfg(feature = "arrow")]
 use std::hint::black_box;
-#[cfg(feature = "arrow")]
 use std::sync::Arc;
 
 use criterion::Criterion;
 
-#[cfg(feature = "arrow")]
 use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, UInt64Array};
-#[cfg(feature = "arrow")]
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-#[cfg(feature = "arrow")]
 use yggdryl::{DataType, DigestAlgorithm, Field};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
-#[cfg(feature = "arrow")]
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
 
 /// A four-column batch whose columns all take the buffer path.
-#[cfg(feature = "arrow")]
 fn buffered_batch() -> RecordBatch {
     let ids: Int64Array = (0..ROWS as i64).collect::<Vec<_>>().into();
     let symbols: StringArray = (0..ROWS)
@@ -53,7 +46,6 @@ fn buffered_batch() -> RecordBatch {
 /// buffer arm and reads through the shared scalar boundary. The shape is
 /// otherwise identical to [`buffered_batch`], which is what makes the two rows
 /// a like-for-like comparison of the two paths rather than of two schemas.
-#[cfg(feature = "arrow")]
 fn fallback_batch() -> RecordBatch {
     use yggdryl::Scalar;
 
@@ -98,7 +90,6 @@ fn fallback_batch() -> RecordBatch {
 }
 
 /// One target root and the three source shapes holder filling distinguishes.
-#[cfg(feature = "arrow")]
 fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatch) {
     let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut digest = Field::new(
@@ -169,7 +160,6 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
 /// row as a `Scalar`, then digest each - so the gap is what reading the
 /// buffers directly is worth. The fallback row is the same work through the
 /// shared scalar boundary, which every layout without a buffer arm takes.
-#[cfg(feature = "arrow")]
 pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
@@ -220,7 +210,6 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
 }
 
 /// Fill insertion, conditional recomputation, preservation, and force paths.
-#[cfg(feature = "arrow")]
 pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
     use yggdryl::hashing::xxhash::Xxh3;
@@ -272,10 +261,4 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// Row digests need the Arrow runtime; a schema-only build has no batch.
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn row_digest_benchmarks(_criterion: &mut Criterion) {}
 
-/// Holder filling needs the Arrow runtime too.
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn holder_fill_benchmarks(_criterion: &mut Criterion) {}

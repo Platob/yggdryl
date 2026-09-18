@@ -325,7 +325,6 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     ));
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use yggdryl::types::{DataType, Field, FieldScalar, Scalar};
 

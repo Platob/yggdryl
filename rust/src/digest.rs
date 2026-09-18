@@ -552,7 +552,6 @@ impl Digester {
     /// Returns an error when `root` is not a usable Struct schema, a holder
     /// has the wrong width, a digest path cannot be resolved, or the batch
     /// cannot be cast to `root`.
-    #[cfg(feature = "arrow")]
     pub fn apply_arrow_batch(
         &self,
         root: &crate::Field,

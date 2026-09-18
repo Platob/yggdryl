@@ -248,7 +248,6 @@ fn write_scalar<W: Write>(
     depth: usize,
 ) -> Result<()> {
     match value {
-        #[cfg(feature = "arrow")]
         Scalar::Arrow(_) => {
             let native = value.into_native().map_err(|error| Error::Codec {
                 format: "toml",

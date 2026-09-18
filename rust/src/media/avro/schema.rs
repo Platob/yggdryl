@@ -144,7 +144,6 @@ pub(crate) struct FieldType {
     /// Iceberg resolves a column by identifier rather than by name, so the
     /// attribute is surfaced onto the decoded field's metadata rather than
     /// merely surviving as an unmodeled attribute.
-    #[cfg(feature = "arrow")]
     pub(crate) field_id: Option<i32>,
     /// The declared default, as the JSON it was written with.
     ///
@@ -712,7 +711,6 @@ impl Parser {
                 name: SmolStr::new(field_name),
                 aliases: field_aliases,
                 schema: self.parse(field_type, &child_namespace, depth + 1)?,
-                #[cfg(feature = "arrow")]
                 field_id: entry
                     .get_key_str("field-id")
                     .and_then(Scalar::as_i64)

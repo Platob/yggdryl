@@ -18,7 +18,6 @@ pub use value::Version;
 use crate::TypedField;
 use crate::types::typed::define_field_types;
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by the version datatype.
 pub(crate) mod casts {
     use std::sync::Arc;

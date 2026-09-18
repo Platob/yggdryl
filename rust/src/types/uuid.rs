@@ -8,7 +8,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::typed::define_field_types;
 use crate::{DataType, Error, Result, Scalar, TypedField, Value, types};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
     use std::sync::Arc;

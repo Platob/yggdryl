@@ -1028,7 +1028,6 @@ pub(crate) fn require_present(field: &Field, null: bool) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use std::sync::Arc;
 

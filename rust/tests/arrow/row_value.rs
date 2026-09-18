@@ -42,7 +42,6 @@ fn struct_expressions_evaluate_to_schema_ordered_sequences() {
     assert_eq!(reparsed.eval(&source).unwrap(), expected);
 }
 
-#[cfg(feature = "arrow")]
 mod arrow_bridge {
     use std::sync::Arc;
 

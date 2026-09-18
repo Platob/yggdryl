@@ -398,7 +398,6 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     );
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_coded_ipc_view_streams_through_its_owning_reader() {
     use std::sync::Arc;
@@ -637,7 +636,6 @@ mod held {
         assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn a_coded_holder_reads_its_text_records_through_the_decoded_view() {
         use yggdryl::IOMedia as _;

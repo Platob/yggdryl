@@ -1,11 +1,8 @@
 //! Stateful plain-text record media over one byte handle.
 
-#[cfg(feature = "arrow")]
 use smol_str::SmolStr;
 
-#[cfg(feature = "arrow")]
 use crate::media::{IORecordOptions as _, RecordOptions};
-#[cfg(feature = "arrow")]
 use crate::{Field, Result};
 use crate::{IOBase, IOMedia};
 
@@ -41,7 +38,6 @@ impl<H: IOBase> Text<H> {
 
     /// Return this media with a declared canonical row field.
     #[must_use]
-    #[cfg(feature = "arrow")]
     pub fn with_field(mut self, field: Field) -> Self {
         self.options.set_field(field);
         self
@@ -98,12 +94,10 @@ impl<H: IOBase> Text<H> {
     /// Returns the configuration's refusals - a framing mode with no header
     /// pattern, a rename naming no column, a lifted path with no name - before
     /// a byte is read.
-    #[cfg(feature = "arrow")]
     pub fn read_text_lines(&self) -> Result<super::TextLines> {
         super::read_text_lines(&self.handle, &self.options)
     }
 
-    #[cfg(feature = "arrow")]
     fn require_text_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a TextOptions> {
         match options {
             RecordOptions::Text(options) => Ok(options),
@@ -124,12 +118,10 @@ impl<H: IOBase> IOMedia for Text<H> {
         self
     }
 
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         super::arrow::row_size(&self.handle, &self.options)
     }
 
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
@@ -137,24 +129,20 @@ impl<H: IOBase> IOMedia for Text<H> {
         Ok(self.options.source_field()?.field_len())
     }
 
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<RecordOptions> {
         Ok(self.options.clone().into())
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let text = self.require_text_options(options)?;
         text.field().map_or_else(|| text.source_field(), Ok)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         self.require_text_options(options)?;
         IOMedia::read_arrow_reader(&self.handle, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -164,7 +152,6 @@ impl<H: IOBase> IOMedia for Text<H> {
         IOMedia::overwrite_arrow_reader(&mut self.handle, batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_prepared_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -174,7 +161,6 @@ impl<H: IOBase> IOMedia for Text<H> {
         IOMedia::overwrite_prepared_arrow_reader(&mut self.handle, batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -184,7 +170,6 @@ impl<H: IOBase> IOMedia for Text<H> {
         IOMedia::append_arrow_reader(&mut self.handle, batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,

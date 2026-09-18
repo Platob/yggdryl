@@ -610,7 +610,6 @@ pub(crate) fn derived_sync(schema_bytes: &[u8], payload: &[u8]) -> [u8; SYNC_LEN
 /// The marker only has to be constant within one file and improbable in its
 /// data, so hashing process-seeded state is enough and avoids a dependency
 /// whose only job would be sixteen bytes.
-#[cfg(feature = "arrow")]
 pub(crate) fn sync_marker() -> [u8; SYNC_LEN] {
     use std::hash::{BuildHasher, Hasher};
 
@@ -774,7 +773,6 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
     /// Block metadata walks use this to count rows without allocating,
     /// decompressing, or decoding a block payload. The next scalar read will
     /// refill the buffered window at the new position when necessary.
-    #[cfg(feature = "arrow")]
     fn skip(&mut self, count: usize) -> Result<()> {
         let remaining = self.size.saturating_sub(self.position);
         if count as u64 > remaining {
@@ -1069,7 +1067,6 @@ impl<H: IOBase + ?Sized> Blocks<'_, H> {
     /// This is crate-internal metadata traversal for the record surface. It
     /// still validates payload bounds and synchronization markers, while the
     /// potentially large compressed byte run is skipped positionally.
-    #[cfg(feature = "arrow")]
     pub(crate) fn next_block_count(&mut self) -> Result<Option<u64>> {
         let Some((count, payload_size)) = self.next_block_header()? else {
             return Ok(None);

@@ -753,7 +753,6 @@ fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
 /// Write one scalar or empty collection as one token.
 fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        #[cfg(feature = "arrow")]
         Scalar::Arrow(_) => {
             let native = value.into_native().map_err(|error| Error::Codec {
                 format: "yaml",

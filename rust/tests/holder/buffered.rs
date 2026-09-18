@@ -504,7 +504,6 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
     assert_eq!(handle.cached_pages(), 0);
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     use yggdryl::media::text::TextOptions;

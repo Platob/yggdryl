@@ -6,7 +6,6 @@ use std::hash::{Hash, Hasher};
 use regex::bytes::Regex;
 use smol_str::{SmolStr, format_smolstr};
 
-#[cfg(feature = "arrow")]
 use crate::media::IORecordOptions;
 use crate::{DataType, Error, Field, FieldPath, Level, Result, Timezone};
 
@@ -651,7 +650,6 @@ impl Default for TextOptions {
     }
 }
 
-#[cfg(feature = "arrow")]
 impl IORecordOptions for TextOptions {
     crate::record_options_fields!();
 }

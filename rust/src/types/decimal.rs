@@ -15,7 +15,6 @@ use crate::types::typed::define_field_types;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{DataType, DataTypeId, Error, Result, Scalar, TypedField, Value, i256};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
     use arrow_buffer::i256;

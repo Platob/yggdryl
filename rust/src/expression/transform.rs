@@ -258,7 +258,6 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use std::sync::Arc;
 

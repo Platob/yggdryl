@@ -64,7 +64,6 @@ const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 mod bytes;
 pub(crate) mod hierarchy;
 mod lifecycle;
-#[cfg(feature = "arrow")]
 mod transfer;
 
 pub(crate) use bytes::rest_of;
@@ -75,9 +74,7 @@ pub(crate) use lifecycle::{coding_mime, oversized};
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_onto;
-#[cfg(feature = "arrow")]
 pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
-#[cfg(feature = "arrow")]
 pub(crate) use transfer::{
     append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,
     merge_arrow_reader_default, non_empty_arrow_reader, overwrite_arrow_reader_default_with_field,

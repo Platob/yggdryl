@@ -445,7 +445,6 @@ pub trait UserFunction: Send + Sync {
     /// # Errors
     ///
     /// Returns a crossing failure, or whatever [`call`](Self::call) refuses.
-    #[cfg(feature = "arrow")]
     fn call_arrow(
         &self,
         fields: &[Field],

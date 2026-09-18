@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 
 use super::IOBase;
 use crate::holder::Holder;
-#[cfg(feature = "arrow")]
 use crate::media::RecordOptions;
 use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 
@@ -406,17 +405,14 @@ impl IOMedia for Box<dyn IOBase> {
         self.as_mut()
     }
 
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         IOMedia::row_size(self.as_ref())
     }
 
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         IOMedia::column_size(self.as_ref())
     }
 
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<RecordOptions> {
         IOMedia::record_options(self.as_ref())
     }
@@ -434,17 +430,14 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         IOMedia::read_arrow_field(self.as_ref(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         IOMedia::read_arrow_reader(self.as_ref(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -453,7 +446,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_prepared_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -462,7 +454,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_prepared_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -471,7 +462,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -480,7 +470,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::append_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -489,7 +478,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::append_arrow_batch(self.as_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -498,7 +486,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,

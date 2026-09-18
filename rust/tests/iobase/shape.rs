@@ -182,7 +182,6 @@ fn wrapping_a_handle_keeps_the_shape_it_wraps() {
     assert!(!held.is_tabular());
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn folder_dimensions_sum_only_the_selected_record_encoding() {
     use std::sync::Arc;

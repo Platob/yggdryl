@@ -244,7 +244,6 @@ fn subscripting_a_position_past_the_row_panics_like_a_field_does() {
     let _ = &record[3];
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use super::{DataType, Field, FieldRecord, Scalar, row, schema};
 

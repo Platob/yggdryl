@@ -1,6 +1,5 @@
 //! Plain-text rows reached through the shared record-media surface.
 
-#[cfg(feature = "arrow")]
 mod batch;
 mod bytes;
 mod entry;
@@ -12,12 +11,9 @@ mod plan;
 mod reader;
 mod sep;
 
-#[cfg(feature = "arrow")]
 pub(crate) mod arrow;
 
-#[cfg(feature = "arrow")]
 pub use arrow::{TextLines, read_text_lines};
-#[cfg(feature = "arrow")]
 pub use batch::{from_arrow_batch, from_arrow_reader, into_arrow_batch, into_arrow_reader};
 
 pub use bytes::TextBytes;

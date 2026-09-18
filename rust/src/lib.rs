@@ -10,7 +10,6 @@
 
 #![deny(unsafe_code)]
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 mod bytestream;
 pub mod charset;
@@ -50,7 +49,6 @@ pub mod types;
 mod union_mode;
 mod uri;
 
-#[cfg(feature = "arrow")]
 pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use charset::Charset;
@@ -82,7 +80,6 @@ pub use fix::{
     into_fix_document, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
-#[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub use iobase::{
     DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
@@ -105,7 +102,6 @@ pub use text::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_sc
 pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
-#[cfg(feature = "arrow")]
 pub use types::cast::{
     ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
 };

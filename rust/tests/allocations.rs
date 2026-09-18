@@ -1154,7 +1154,6 @@ fn building_a_sequence_costs_one_allocation() {
 ///
 /// The batches differ only in their values, so anything that varies between
 /// casting one and casting the other is per-batch work rather than schema work.
-#[cfg(feature = "arrow")]
 fn cast_corpus() -> (
     arrow_schema::SchemaRef,
     [arrow_array::RecordBatch; 2],
@@ -1191,7 +1190,6 @@ fn cast_corpus() -> (
 }
 
 #[test]
-#[cfg(feature = "arrow")]
 fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
     use yggdryl::{ArrowCastOptions, ArrowCastPlan};
 
@@ -1217,7 +1215,6 @@ fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
 }
 
 #[test]
-#[cfg(feature = "arrow")]
 fn planning_once_is_what_a_reused_plan_saves_per_batch() {
     use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
 

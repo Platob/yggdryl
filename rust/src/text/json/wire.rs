@@ -18,7 +18,6 @@ impl Serialize for JsonRef<'_> {
         S: Serializer,
     {
         match self.0 {
-            #[cfg(feature = "arrow")]
             Scalar::Arrow(_) => {
                 let native = self.0.into_native().map_err(S::Error::custom)?;
                 JsonRef(&native).serialize(serializer)

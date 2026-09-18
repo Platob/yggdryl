@@ -50,7 +50,6 @@ impl Records {
     /// # Errors
     ///
     /// Returns an error when the field cannot be expressed as an Arrow schema.
-    #[cfg(feature = "arrow")]
     pub fn into_arrow_reader(self) -> Result<crate::arrow::BatchReader> {
         crate::arrow::rows::result_reader(&self.field, self.rows, None, None, None, None)
             .map_err(Error::from)
@@ -62,7 +61,6 @@ impl Records {
     ///
     /// Returns an error when the reader's schema is not one this crate can
     /// type, or a batch cannot be read.
-    #[cfg(feature = "arrow")]
     pub fn from_arrow_reader(reader: crate::arrow::BatchReader) -> Result<Self> {
         let field = crate::arrow::field_from_arrow_schema(
             crate::media::DEFAULT_ROOT_NAME,
@@ -249,7 +247,6 @@ impl Expression {
             Self::Selector(selector) => selector.apply_records(schema, records),
             Self::Filter(filter) => filter.apply_records(schema, records),
             Self::Plan(_) | Self::Sequence(_) => {
-                #[cfg(feature = "arrow")]
                 {
                     let (schema, rows) = schema_of(schema, records)?;
                     let reader = Records {
@@ -258,14 +255,6 @@ impl Expression {
                     }
                     .into_arrow_reader()?;
                     Records::from_arrow_reader(self.apply_arrow_reader(reader)?)
-                }
-                #[cfg(not(feature = "arrow"))]
-                {
-                    let _ = (schema, records);
-                    Err(Error::unsupported(
-                        "running a plan over records",
-                        "a build without the arrow feature",
-                    ))
                 }
             }
         }

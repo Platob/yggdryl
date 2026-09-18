@@ -81,7 +81,6 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
 }
 
 /// The bridge's own capture, the same bytes the FIX suite reads it from.
-#[cfg(feature = "arrow")]
 const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
 
 /// Reading a capture as text and then as FIX asks storage for it once.
@@ -91,7 +90,6 @@ const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
 /// where a second decode would hide, because each half is correct on its own
 /// while the pair reads the file twice. So the count is taken over both at
 /// once: one bounded stream, and the codec never reaching past it.
-#[cfg(feature = "arrow")]
 #[test]
 fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     use yggdryl::media::RecordOptions;
@@ -441,7 +439,6 @@ fn walking_a_lake_is_one_listing_however_many_files_are_in_it() {
     });
 }
 
-#[cfg(feature = "arrow")]
 mod records {
     use std::sync::Arc;
 

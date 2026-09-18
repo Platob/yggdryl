@@ -212,12 +212,10 @@ pub(crate) fn call_benchmarks(criterion: &mut Criterion) {
     coding_calls(criterion);
     cache_calls(criterion);
     listing_calls(criterion);
-    #[cfg(feature = "arrow")]
     records::record_call_benchmarks(criterion);
 }
 
 /// The record encodings, where a dimension must never decode a row.
-#[cfg(feature = "arrow")]
 mod records {
     use std::hint::black_box;
     use std::sync::Arc;

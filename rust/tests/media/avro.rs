@@ -1437,7 +1437,6 @@ mod hardening {
     }
 }
 
-#[cfg(feature = "arrow")]
 mod records {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};

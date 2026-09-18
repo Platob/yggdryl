@@ -106,7 +106,6 @@ mod arrow {
         Ok(arrow_storage(parameters)? == *storage)
     }
 }
-#[cfg(feature = "arrow")]
 /// Binary layout accounting and identity checks for Arrow casts.
 pub(crate) mod casts {
     use crate::types::enums::EnumType;

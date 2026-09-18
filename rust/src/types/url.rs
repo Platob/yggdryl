@@ -22,7 +22,6 @@ use crate::types::scalar::Value;
 use crate::types::typed::define_field_types;
 use crate::{DataType, Result, Scalar, TypedField, Url};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by the URL datatype.
 pub(crate) mod casts {
     use std::sync::Arc;

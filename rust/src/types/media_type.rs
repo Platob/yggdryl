@@ -28,7 +28,6 @@ use crate::types::scalar::Value;
 use crate::types::typed::define_field_types;
 use crate::{DataType, MediaType, Result, Scalar, TypedField};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by the media type datatype.
 pub(crate) mod casts {
     use std::sync::Arc;

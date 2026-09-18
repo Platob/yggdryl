@@ -9,7 +9,6 @@ use crate::{Error, Result};
 ///
 /// Stateful media override the trait method only to perform that validation
 /// before the source reader is pulled, then call this shared implementation.
-#[cfg(feature = "arrow")]
 pub(crate) fn append_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -57,7 +56,6 @@ pub(crate) fn append_arrow_reader_default(
 
 /// The default merge implementation after an encoding-specific boundary has
 /// validated its option variant.
-#[cfg(feature = "arrow")]
 pub(crate) fn merge_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -113,7 +111,6 @@ pub(crate) fn merge_arrow_reader_default(
 ///
 /// Returns a field, cast, listing, encoding, or write failure. A non-empty
 /// match key is refused because overwrite never guesses merge intent.
-#[cfg(feature = "arrow")]
 #[doc(hidden)]
 pub fn overwrite_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
@@ -130,7 +127,6 @@ pub fn overwrite_arrow_reader_default(
 /// that consumes `batches`: declared-field casting and selection happen once,
 /// then an existing stored field completes the result. `None` is reserved for
 /// a table-format redirection whose own commit owns its metadata cache.
-#[cfg(feature = "arrow")]
 pub(crate) fn overwrite_arrow_reader_default_with_field(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -184,7 +180,6 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
 }
 
 /// Append through one folder routing plan shared by every publication cadence.
-#[cfg(feature = "arrow")]
 fn append_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -207,7 +202,6 @@ fn append_arrow_reader_folder(
 }
 
 /// Merge through one folder routing plan shared by every publication cadence.
-#[cfg(feature = "arrow")]
 fn merge_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -233,7 +227,6 @@ fn merge_arrow_reader_folder(
 }
 
 /// Overwrite through one folder routing plan shared by every publication cadence.
-#[cfg(feature = "arrow")]
 fn overwrite_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -274,7 +267,6 @@ fn overwrite_arrow_reader_folder(
 /// publish through an implementor's required overwrite hook without applying
 /// an incoming-only transform to the stored rows, splitting recursively, or
 /// casting the incoming rows twice.
-#[cfg(feature = "arrow")]
 pub(crate) fn prepare_arrow_write(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -292,7 +284,6 @@ pub(crate) fn prepare_arrow_write(
 /// native commit may defensively inspect the exact shape again, but every
 /// declared cast, selection, limit, and safe stored-field completion has
 /// already happened here over the one streaming reader.
-#[cfg(feature = "arrow")]
 pub(crate) fn prepare_arrow_write_onto(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -323,7 +314,6 @@ pub(crate) fn prepare_arrow_write_onto(
 /// schema-less and uses its native append implementation. The returned
 /// options have every incoming-only transform removed and are safe for the
 /// prepared publication hook.
-#[cfg(feature = "arrow")]
 fn prepare_leaf_arrow_write(
     handle: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -365,7 +355,6 @@ fn prepare_leaf_arrow_write(
 /// This is hidden because it is a narrow runtime bridge, not another write
 /// operation. Its mode is the same public [`crate::IOMode`] accepted by the
 /// generic media entry points.
-#[cfg(feature = "arrow")]
 #[doc(hidden)]
 pub struct ArrowWriteSession {
     mode: crate::IOMode,
@@ -386,7 +375,6 @@ pub struct ArrowWriteSession {
 }
 
 /// Destination state that must stay stable while an async source is awaited.
-#[cfg(feature = "arrow")]
 enum ArrowWriteTarget {
     /// A schema-bearing leaf after its one stable target is resolved.
     Leaf { stored: crate::Field },
@@ -404,7 +392,6 @@ enum ArrowWriteTarget {
     },
 }
 
-#[cfg(feature = "arrow")]
 impl ArrowWriteSession {
     /// Start an overwrite session without touching a destination or source.
     pub fn overwrite(options: &RecordOptions) -> Result<Self> {
@@ -853,7 +840,6 @@ impl ArrowWriteSession {
 /// Append and merge use this before touching a handle. A reader that ends (or
 /// yields only zero-row batches) is a true no-op, while a first real batch is
 /// returned ahead of the untouched remainder. At most that one batch is held.
-#[cfg(feature = "arrow")]
 pub(crate) fn non_empty_arrow_reader(
     mut batches: crate::arrow::BatchReader,
 ) -> Result<Option<crate::arrow::BatchReader>> {
@@ -877,14 +863,12 @@ pub(crate) fn non_empty_arrow_reader(
 }
 
 /// One peeked batch followed by the source it came from.
-#[cfg(feature = "arrow")]
 struct PrefixedBatchReader {
     schema: arrow_schema::SchemaRef,
     first: Option<arrow_array::RecordBatch>,
     rest: crate::arrow::BatchReader,
 }
 
-#[cfg(feature = "arrow")]
 impl Iterator for PrefixedBatchReader {
     type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
 
@@ -893,7 +877,6 @@ impl Iterator for PrefixedBatchReader {
     }
 }
 
-#[cfg(feature = "arrow")]
 impl arrow_array::RecordBatchReader for PrefixedBatchReader {
     fn schema(&self) -> arrow_schema::SchemaRef {
         std::sync::Arc::clone(&self.schema)
@@ -901,7 +884,6 @@ impl arrow_array::RecordBatchReader for PrefixedBatchReader {
 }
 
 /// Restore a declared field only for partition-layout discovery.
-#[cfg(feature = "arrow")]
 fn routing_options(mut delegated: RecordOptions, declared: Option<crate::Field>) -> RecordOptions {
     use crate::media::IORecordOptions;
 
@@ -917,7 +899,6 @@ fn routing_options(mut delegated: RecordOptions, declared: Option<crate::Field>)
 /// This is where a record read of a stored leaf reaches an encoding; a handle
 /// that owns its bytes decodes them in [`crate::coding`] and shapes the result
 /// the same way.
-#[cfg(feature = "arrow")]
 pub(crate) fn leaf_reader(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
@@ -953,7 +934,6 @@ pub(crate) fn leaf_reader(
 }
 
 /// Count one encoded leaf from format metadata without decoding row arrays.
-#[cfg(feature = "arrow")]
 pub(crate) fn leaf_row_size(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
@@ -972,7 +952,6 @@ pub(crate) fn leaf_row_size(
 /// Unlike asking a batch reader for its schema, each binary encoding reaches
 /// its header or footer directly, so discovering a large Avro container's
 /// width never fetches or decodes its block payloads.
-#[cfg(feature = "arrow")]
 pub(crate) fn leaf_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
@@ -996,7 +975,6 @@ pub(crate) fn leaf_field(
 /// This is the only place a record write reaches an encoding. Nothing reaches
 /// the handle until the last batch has been encoded, so a failure leaves the
 /// resource exactly as it was.
-#[cfg(feature = "arrow")]
 pub(crate) fn leaf_writer(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -1023,7 +1001,6 @@ pub(crate) fn leaf_writer(
 /// The declared schema is deliberately not consulted: this asks what is stored,
 /// which is the only thing that can say whether a write is filling a resource
 /// that already has a shape or giving one to a resource that has none.
-#[cfg(feature = "arrow")]
 pub(crate) fn stored_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
@@ -1044,7 +1021,6 @@ pub(crate) fn stored_field(
 }
 
 /// Merge `incoming` into a leaf's rows on the options' match key.
-#[cfg(feature = "arrow")]
 fn merge_leaf(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
@@ -1068,7 +1044,6 @@ fn merge_leaf(
 }
 
 /// Merge an already-shaped cadence under one target fixed for the operation.
-#[cfg(feature = "arrow")]
 fn merge_leaf_onto(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
@@ -1094,7 +1069,6 @@ fn merge_leaf_onto(
 }
 
 /// Add `incoming` after a leaf's current rows.
-#[cfg(feature = "arrow")]
 fn append_leaf(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
@@ -1110,7 +1084,6 @@ fn append_leaf(
 }
 
 /// Append an already-shaped cadence under one target fixed for the operation.
-#[cfg(feature = "arrow")]
 fn append_leaf_onto(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
@@ -1139,7 +1112,6 @@ fn append_leaf_onto(
 /// The declared schema wins, then what the resource already stores, then the
 /// shape the incoming reader arrived with - which is the only answer left when
 /// nothing has been declared and nothing has been stored.
-#[cfg(feature = "arrow")]
 fn target_field(
     handle: &(impl IOBase + ?Sized),
     incoming: &crate::arrow::BatchReader,

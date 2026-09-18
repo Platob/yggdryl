@@ -1,28 +1,21 @@
 //! Coupled columns beside the digest columns they wrap, and coupled holders.
 
-#[cfg(feature = "arrow")]
 use std::hint::black_box;
-#[cfg(feature = "arrow")]
 use std::sync::Arc;
 
 use criterion::Criterion;
 
-#[cfg(feature = "arrow")]
 use arrow_array::{
     ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
     TimestampNanosecondArray,
 };
-#[cfg(feature = "arrow")]
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-#[cfg(feature = "arrow")]
 use yggdryl::{DataType, DigestAlgorithm, Field, TimeUnit, Timezone};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
-#[cfg(feature = "arrow")]
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
 
 /// The instant column every case couples, one microsecond apart.
-#[cfg(feature = "arrow")]
 fn instants() -> ArrayRef {
     Arc::new(
         TimestampMicrosecondArray::from_iter_values(
@@ -33,7 +26,6 @@ fn instants() -> ArrayRef {
 }
 
 /// The same instants at nanoseconds, so the coupling has to floor each one.
-#[cfg(feature = "arrow")]
 fn nano_instants() -> ArrayRef {
     Arc::new(TimestampNanosecondArray::from_iter_values(
         (0..ROWS as i64).map(|index| (super::INSTANT + index) * 1_000 + 7),
@@ -41,7 +33,6 @@ fn nano_instants() -> ArrayRef {
 }
 
 /// A four-column batch whose columns all take the buffer path.
-#[cfg(feature = "arrow")]
 fn buffered_batch() -> RecordBatch {
     let ids: Int64Array = (0..ROWS as i64).collect::<Vec<_>>().into();
     let symbols: StringArray = (0..ROWS)
@@ -70,7 +61,6 @@ fn buffered_batch() -> RecordBatch {
 }
 
 /// Coupled columns against the digest column and instant column they join.
-#[cfg(feature = "arrow")]
 pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
@@ -184,7 +174,6 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
 }
 
 /// One root with a coupled holder beside one with a plain holder.
-#[cfg(feature = "arrow")]
 fn holder_fixtures() -> (Field, Field, RecordBatch) {
     let event = Field::new(
         "event",
@@ -236,7 +225,6 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
 }
 
 /// Filling a coupled holder beside filling a plain one over the same rows.
-#[cfg(feature = "arrow")]
 pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
@@ -262,8 +250,4 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn column_benchmarks(_criterion: &mut Criterion) {}
 
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn holder_fill_benchmarks(_criterion: &mut Criterion) {}

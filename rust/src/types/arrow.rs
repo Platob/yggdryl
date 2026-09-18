@@ -34,7 +34,6 @@ mod field {
     use std::collections::HashMap;
     use std::sync::{Arc, OnceLock};
 
-    #[cfg(feature = "arrow")]
     use arrow_schema::Schema;
     use arrow_schema::{
         DataType as ArrowDataType, Field as ArrowField,
@@ -62,7 +61,6 @@ mod field {
         ///
         /// Returns an error when the Arrow fields cannot form a non-null Struct
         /// root or the dictionary-ID sidecar is invalid.
-        #[cfg(feature = "arrow")]
         pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self> {
             crate::arrow::field_from_arrow_schema(name, schema)
         }
@@ -120,7 +118,6 @@ mod field {
         ///
         /// Returns an error unless this is a bounded, non-null Struct root or when
         /// caller metadata uses the transport-reserved sidecar key.
-        #[cfg(feature = "arrow")]
         pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema> {
             crate::arrow::arrow_exchange_schema_from_field(&self)
         }
@@ -130,7 +127,6 @@ mod field {
         /// # Errors
         ///
         /// Returns an error unless this is a bounded, non-nullable Struct root.
-        #[cfg(feature = "arrow")]
         pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
             crate::arrow::arrow_schema_from_field(&self)
         }
@@ -213,7 +209,6 @@ mod field {
         /// be cast to it, when either protocol refuses a declaration it carries, or
         /// when the applied batch leaves a declared non-null field null under
         /// [`Nullability::Strict`](crate::Nullability::Strict).
-        #[cfg(feature = "arrow")]
         pub fn apply_arrow_batch(
             &self,
             batch: &arrow_array::RecordBatch,
@@ -266,7 +261,6 @@ mod field {
         /// # Errors
         ///
         /// [`Self::apply_arrow_batch`] carries the rule.
-        #[cfg(feature = "arrow")]
         pub fn apply_arrow_schema(
             &self,
             schema: arrow_schema::SchemaRef,
@@ -293,7 +287,6 @@ mod field {
         /// Returns an error when the applied schema cannot be derived. A failure
         /// on one batch surfaces as that batch's `Err`, and the reader is not
         /// fused after it: it yields whatever the inner reader yields next.
-        #[cfg(feature = "arrow")]
         pub fn apply_arrow_reader(
             &self,
             inner: crate::arrow::BatchReader,
@@ -319,7 +312,6 @@ mod field {
         ///
         /// Returns an error when no physically valid default exists or Arrow
         /// cannot materialize the datatype.
-        #[cfg(feature = "arrow")]
         pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
             crate::arrow::default_scalar_array(self)
         }
@@ -802,7 +794,6 @@ mod field {
     /// from the schemas alone: which columns the cast reconciles, which columns
     /// each protocol declares, and what the applied shape therefore is. Compiling
     /// that once is what lets a stream pay for it once.
-    #[cfg(feature = "arrow")]
     pub(crate) struct AppliedPlan {
         root: Field,
         cast: Option<crate::types::cast::ArrowCastPlan>,
@@ -815,7 +806,6 @@ mod field {
         schema: arrow_schema::SchemaRef,
     }
 
-    #[cfg(feature = "arrow")]
     impl AppliedPlan {
         /// Compiles the three steps and derives the applied schema, without rows.
         pub(crate) fn compile(
@@ -922,13 +912,11 @@ mod field {
     ///
     /// The schema is the applied one from the start, so a consumer reads the shape
     /// it will get rather than the shape the inner reader stores.
-    #[cfg(feature = "arrow")]
     struct AppliedReader {
         inner: crate::arrow::BatchReader,
         plan: AppliedPlan,
     }
 
-    #[cfg(feature = "arrow")]
     impl Iterator for AppliedReader {
         type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
 
@@ -945,7 +933,6 @@ mod field {
         }
     }
 
-    #[cfg(feature = "arrow")]
     impl arrow_array::RecordBatchReader for AppliedReader {
         fn schema(&self) -> arrow_schema::SchemaRef {
             Arc::clone(&self.plan.schema)
@@ -967,7 +954,6 @@ impl DataType {
     /// # Errors
     ///
     /// Returns an error unless this is a bounded Struct datatype.
-    #[cfg(feature = "arrow")]
     pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
         crate::Field::new("row", self, false).into_arrow_schema()
     }
@@ -983,7 +969,6 @@ impl DataType {
     ///
     /// Returns an error when no physically valid default exists or Arrow
     /// cannot materialize the datatype.
-    #[cfg(feature = "arrow")]
     pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
         crate::arrow::default_dtype_scalar_array(self)
     }

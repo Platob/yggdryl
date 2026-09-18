@@ -3,7 +3,6 @@
 mod arithmetic;
 mod arrow;
 pub mod boolean;
-#[cfg(feature = "arrow")]
 pub(crate) mod budget;
 pub mod bytes;
 mod compatibility;
@@ -56,13 +55,11 @@ mod value;
 pub mod version;
 mod vocabulary;
 
-#[cfg(feature = "arrow")]
 pub mod cast;
 
 pub use crate::{TimeUnit, UnionMode};
 pub(crate) use scalar::code_scalars;
 pub(crate) use arithmetic::Arithmetic;
-#[cfg(feature = "arrow")]
 pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
 pub use boolean::*;
@@ -112,7 +109,6 @@ pub use state::*;
 pub use timeinforce::*;
 pub use code::*;
 pub use string::*;
-#[cfg(feature = "arrow")]
 pub(crate) use code::{code_refusal, code_text};
 pub(crate) use code::{code_cell_text, code_for_extension};
 pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding};

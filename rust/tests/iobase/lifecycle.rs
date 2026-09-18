@@ -1,5 +1,4 @@
 use yggdryl::IOBase;
-#[cfg(feature = "arrow")]
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::local::{File, Folder, Path};
@@ -291,7 +290,6 @@ fn a_coding_handle_removes_the_encoded_resource() {
     Folder::new(&root).expect("a container").remove(true).ok();
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_media_handle_drops_its_cache_as_part_of_the_removal() {
     use yggdryl::arrow::batch_reader;

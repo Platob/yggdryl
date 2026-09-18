@@ -451,27 +451,22 @@ fn slot(value: u64) -> usize {
 impl<H: IOBase> crate::IOMedia for Buffered<H> {
     crate::impl_default_iomedia!();
 
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         crate::IOMedia::row_size(&self.handle)
     }
 
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         crate::IOMedia::column_size(&self.handle)
     }
 
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<crate::media::RecordOptions> {
         crate::IOMedia::record_options(&self.handle)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(&self.handle, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
         options: &crate::media::RecordOptions,

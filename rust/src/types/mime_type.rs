@@ -27,7 +27,6 @@ use crate::types::scalar::{Value, text_scalar_value};
 use crate::types::typed::define_field_types;
 use crate::{DataType, MimeType, Result, Scalar, TypedField};
 
-#[cfg(feature = "arrow")]
 /// Arrow casts owned by the MIME type datatype.
 pub(crate) mod casts {
     use std::sync::Arc;

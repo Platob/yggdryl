@@ -17,7 +17,6 @@ mod lifecycle;
 mod positional;
 /// Any handle reads through one reader and writes through three explicit
 /// intents. Held record batches are zero-copy adapters over those primitives.
-#[cfg(feature = "arrow")]
 #[path = "iobase/records/mod.rs"]
 mod records;
 #[path = "iobase/shape.rs"]

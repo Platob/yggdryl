@@ -52,18 +52,13 @@ pub mod iceberg;
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
 mod inference;
-#[cfg(feature = "arrow")]
 pub mod ipc;
 mod magic;
-#[cfg(feature = "arrow")]
 pub(crate) mod merge;
-#[cfg(feature = "arrow")]
 mod options;
 #[cfg(feature = "parquet")]
 pub mod parquet;
-#[cfg(feature = "arrow")]
 pub mod partition;
-#[cfg(feature = "arrow")]
 pub(crate) mod structured;
 pub mod text;
 
@@ -72,20 +67,13 @@ pub use magic::MAGIC_PROBE_LEN;
 pub const DEFAULT_ROOT_NAME: &str = "row";
 /// How a partition directory spells an absent value.
 pub const NULL_PARTITION: &str = "null";
-#[cfg(feature = "arrow")]
 pub(crate) use options::{CommitBuffer, WriteLimitState};
-#[cfg(feature = "arrow")]
 pub use options::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions};
 
-#[cfg(feature = "arrow")]
 use crate::IOBase;
-#[cfg(feature = "arrow")]
 use crate::arrow::{Error, Result};
-#[cfg(feature = "arrow")]
 use crate::holder::Holder;
-#[cfg(feature = "arrow")]
 use crate::media::ipc::Ipc;
-#[cfg(feature = "arrow")]
 use crate::{Field, MimeType};
 
 /// A media implementation chosen by encoding.
@@ -93,7 +81,6 @@ use crate::{Field, MimeType};
 /// Construct one with [`Media::open`], which reads the handle's media type, or
 /// name a variant directly when the encoding is already known.
 #[derive(Debug)]
-#[cfg(feature = "arrow")]
 pub enum Media {
     /// An Arrow IPC stream.
     Ipc(Ipc<Holder>),
@@ -106,7 +93,6 @@ pub enum Media {
     Text(crate::media::text::Text<Holder>),
 }
 
-#[cfg(feature = "arrow")]
 impl Media {
     /// Bind the media implementation the handle's media type names.
     ///
@@ -267,7 +253,6 @@ impl Media {
     }
 }
 
-#[cfg(feature = "arrow")]
 impl crate::IOMedia for Media {
     fn as_io_base(&self) -> &dyn IOBase {
         self.as_io()
@@ -375,7 +360,6 @@ impl crate::IOMedia for Media {
 
 /// A `Media` is the bytes it encodes, so every byte operation reaches straight
 /// through to the handle underneath.
-#[cfg(feature = "arrow")]
 impl IOBase for Media {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -486,28 +470,25 @@ impl IOBase for Media {
     }
 }
 
-#[cfg(feature = "arrow")]
 impl From<Ipc<Holder>> for Media {
     fn from(value: Ipc<Holder>) -> Self {
         Self::Ipc(value)
     }
 }
 
-#[cfg(all(feature = "arrow", feature = "parquet"))]
+#[cfg(feature = "parquet")]
 impl From<crate::media::parquet::Parquet<Holder>> for Media {
     fn from(value: crate::media::parquet::Parquet<Holder>) -> Self {
         Self::Parquet(value)
     }
 }
 
-#[cfg(feature = "arrow")]
 impl From<crate::media::avro::Avro<Holder>> for Media {
     fn from(value: crate::media::avro::Avro<Holder>) -> Self {
         Self::Avro(value)
     }
 }
 
-#[cfg(feature = "arrow")]
 impl From<crate::media::text::Text<Holder>> for Media {
     fn from(value: crate::media::text::Text<Holder>) -> Self {
         Self::Text(value)

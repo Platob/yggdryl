@@ -89,7 +89,6 @@
 //! other reader would find them. [`crate::media::iceberg`] never calls this module for
 //! partitioning.
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 mod field;
 mod handle;

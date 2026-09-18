@@ -1630,7 +1630,6 @@ fn publishing_writes_one_record_each_and_one_trailer() {
     assert_eq!(root.archive().handle_writes(), 7);
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_member_reads_through_the_record_surface() {
     use std::sync::Arc as StdArc;

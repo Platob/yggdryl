@@ -138,7 +138,6 @@ fn a_content_coding_is_read_and_written_in_place_over_a_store() {
     assert_eq!(&stored[..2], &[0x1f, 0x8b], "a gzip member");
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn records_round_trip_through_a_store_like_any_other_handle() {
     use crate::IOMedia;
