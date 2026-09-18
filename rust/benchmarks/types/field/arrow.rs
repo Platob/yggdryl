@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, UInt64Array};
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Representation};
+use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
 
 use super::nested_field;
+use yggdryl::types::FieldValue as _;
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow");

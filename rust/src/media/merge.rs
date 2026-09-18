@@ -27,8 +27,9 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
 use crate::expression::BoundSelector;
-use crate::types::cast::{ArrowCast, ArrowCastOptions};
+use crate::types::cast::ArrowCastOptions;
 use crate::{Error, Field, Result, Selector};
+use crate::types::FieldValue as _;
 
 /// One key's positions in the held result, as `(batch, row)` pairs.
 type Positions = Vec<(usize, usize)>;

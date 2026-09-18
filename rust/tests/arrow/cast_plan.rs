@@ -12,7 +12,8 @@ use super::root;
 use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, cast_reader};
-use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::types::FieldValue as _;
 
 fn stored() -> SchemaRef {
     Arc::new(Schema::new(vec![
@@ -286,4 +287,84 @@ fn a_cast_column_is_the_only_thing_a_plan_rebuilds() {
     let ids: &Int64Array = cast.column(0).as_any().downcast_ref().unwrap();
     assert_eq!(ids.values(), &[0, 1]);
     let _: &ArrayRef = cast.column(1);
+}
+
+#[test]
+fn the_four_cast_doors_are_the_same_cast_at_four_widths() {
+    // `DataTypeValue` and `FieldValue` carry the cast, so every leaf answers
+    // it and the root answers it the same way. What the four doors differ in
+    // is only what they are handed: a value, an array, a batch, a stream.
+    use yggdryl::arrow::batch_reader;
+    use yggdryl::types::DataTypeValue as _;
+
+    let field = target();
+
+    // A batch, and a reader over batches of the same schema. The stream is the
+    // batch door repeated, so the two agree column for column.
+    let cast = field
+        .cast_arrow_batch(batch(0), ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(cast.column(0).data_type(), &ArrowDataType::Int64);
+
+    let (reader, _) = counted(2);
+    let streamed = field
+        .cast_arrow_reader(reader, ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(streamed.schema(), cast.schema());
+    let pulled: Vec<_> = streamed.map(std::result::Result::unwrap).collect();
+    assert_eq!(pulled.len(), 2);
+    assert_eq!(pulled[0], cast);
+
+    // A reader already carrying the declared shape is handed straight back,
+    // because casting it would rebuild arrays it would hand back unchanged.
+    let exact = batch_reader(cast.schema(), [cast.clone()]);
+    let same: Vec<_> = field
+        .cast_arrow_reader(exact, ArrowCastOptions::new())
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .collect();
+    assert_eq!(same, vec![cast.clone()]);
+
+    // An array and a one-row scalar, against the child that column is.
+    let child = DataType::Int64.required_field("id");
+    let column: ArrayRef = Arc::new(Int32Array::from(vec![7]));
+    let ids = child
+        .cast_arrow_array(Arc::clone(&column), ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(ids.as_ref(), &Int64Array::from(vec![7]) as &dyn arrow_array::Array);
+    let scalar = child
+        .cast_arrow_scalar(Arc::clone(&column), ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(arrow_array::Datum::get(&scalar).0, ids.as_ref());
+    // A scalar cast is one row, and says so when it is handed more.
+    assert!(
+        child
+            .cast_arrow_scalar(
+                Arc::new(Int32Array::from(vec![7, 8])) as ArrayRef,
+                ArrowCastOptions::new()
+            )
+            .is_err()
+    );
+
+    // The datatype answers the same cast with no field around it, and a value
+    // crosses the same boundary through `cast_scalar`.
+    let widened = DataType::Int64
+        .cast_arrow_array(Arc::clone(&column), ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(widened.as_ref(), ids.as_ref());
+    assert_eq!(
+        DataType::Int64
+            .cast_scalar(&yggdryl::Scalar::from(7_i32))
+            .unwrap(),
+        yggdryl::Scalar::from(7_i64)
+    );
+
+    // A field states one thing its datatype does not, and refuses on it.
+    assert!(child.cast_scalar(&yggdryl::Scalar::Null).is_err());
+    assert!(
+        DataType::Int64
+            .nullable_field("id")
+            .cast_scalar(&yggdryl::Scalar::Null)
+            .is_ok()
+    );
 }

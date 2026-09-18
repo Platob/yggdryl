@@ -51,7 +51,8 @@ use super::{
     scalar_value,
 };
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
+use crate::{ArrowCastOptions, DataType, Field, Scalar};
+use crate::types::FieldValue as _;
 
 /// Which of Arrow's four payload shapes an [`ArrowScalar`] holds.
 ///

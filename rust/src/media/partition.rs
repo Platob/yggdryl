@@ -29,13 +29,14 @@ use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::types::cast::{ArrowCastOptions, cast_field_array};
 use crate::types::string::is_text_storage;
-use crate::{ArrowCast, DataType, Error, Field, Result, Url};
+use crate::{DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
 pub use super::NULL_PARTITION;
+use crate::types::FieldValue as _;
 
 /// How every partition value in the project is rendered as directory text.
 ///

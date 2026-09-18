@@ -95,7 +95,7 @@ use crate::arrow::{
     BatchReader, Error, Result, field_from_arrow_schema, from_reader_error, projection_indices,
 };
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::ArrowCast as _;
+use crate::types::FieldValue as _;
 use crate::{Error as CoreError, Field};
 
 mod geospatial;

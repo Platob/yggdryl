@@ -1,9 +1,10 @@
 //! Casting an Arrow array into the exact array a typed field describes.
 //!
-//! [`ArrowCast`] answers "make this array fit that field" for any
-//! field, and returns an [`ArrayRef`] because any field could be any datatype.
-//! A field leaf already holds its own datatype, so it can answer with the
-//! array type itself: [`Int64Field`](crate::types::Int64Field) casts to an
+//! [`FieldValue::cast_arrow_array`](crate::types::FieldValue::cast_arrow_array)
+//! answers "make this array fit that field" for any field, and returns an
+//! [`ArrayRef`] because any field could be any datatype. A field leaf already
+//! holds its own datatype, so it can answer with the array type itself:
+//! [`Int64Field`](crate::types::Int64Field) casts to an
 //! [`Int64Array`](arrow_array::Int64Array), and the caller reads values without
 //! a downcast of its own.
 //!
@@ -18,7 +19,7 @@
 //! use yggdryl::types::Int64Field;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let field = Int64Field::new("id", false);
+//! let field = Int64Field::unit("id", false);
 //! let source: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
 //!
 //! // The result is an Int64Array, not an ArrayRef needing a downcast.
@@ -35,7 +36,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
+use arrow_array::{Array, ArrayRef, RecordBatch, StructArray};
 use arrow_buffer::BooleanBuffer;
 use arrow_cast::can_cast_types;
 use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef};
@@ -68,9 +69,10 @@ use crate::types::enums::EnumType;
 mod batch {
     use arrow_array::RecordBatch;
 
-    use super::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
+    use super::{ArrowCastOptions, ArrowCastPlan};
     use crate::Field;
     use crate::arrow::{Error, Result, arrow_schema_from_field};
+    use crate::types::FieldValue as _;
 
     /// Validates an exact source batch against one declared Struct root Field.
     ///
@@ -919,7 +921,7 @@ pub(crate) mod text {
 mod typed {
     use arrow_array::{Array, ArrayRef, Scalar};
 
-    use super::ArrowCast as _;
+    use crate::types::FieldValue as _;
     use crate::arrow::{Error, Result};
     use crate::types::cast::ArrowCastOptions;
 
@@ -1117,107 +1119,84 @@ mod typed {
 
 }
 
-/// Arrow array and record-batch casting owned by a canonical Yggdryl schema.
+/// Casts one Arrow array to a datatype, with no field around it.
 ///
-/// This extension trait lives in [`crate::arrow`], keeping recursive runtime
-/// casts behind Yggdryl's `arrow` feature while retaining method syntax on
-/// [`DataType`] and [`Field`].
-pub trait ArrowCast {
-    /// Casts an Arrow array to this exact physical datatype.
-    ///
-    /// [`ArrowCastOptions::is_safe`] is passed to Arrow's
-    /// [`CastOptions`](arrow_cast::CastOptions): with Arrow 59 a supported
-    /// conversion failure becomes null when it is true and an error when it is
-    /// false. [`ArrowCastOptions::nullability`] then decides what happens to a
-    /// null a non-nullable target cannot hold - the canonical default under
-    /// [`Nullability::Default`], an error naming the path under
-    /// [`Nullability::Strict`]. A nullable Field retains its nulls either way.
-    ///
-    /// Temporals cross a text boundary through this crate's own spellings, so
-    /// a column reads and prints what a row reads and prints; Arrow's kernel
-    /// keeps the spellings only it knows.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for an unsupported cast, an ambiguous case-insensitive
-    /// Struct match, or a result that cannot satisfy the target Field.
-    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef>;
-
-    /// Reconciles an Arrow record batch to this Struct schema.
-    ///
-    /// Struct children are selected in target order by ASCII-case-insensitive
-    /// name. Extra source columns are dropped and missing nullable columns are
-    /// null-filled. A missing required column uses the canonical default under
-    /// [`Nullability::Default`] and is refused by path under
-    /// [`Nullability::Strict`]. An already exact batch is returned unchanged -
-    /// the same batch object, not a rebuilt one.
-    ///
-    /// One batch compiles one [`ArrowCastPlan`]; a caller with many batches of
-    /// one schema compiles the plan itself and reuses it.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless this value is a Struct schema, or when a child
-    /// cast or missing-column default cannot be materialized.
-    fn cast_arrow_batch(
-        &self,
-        batch: RecordBatch,
-        options: ArrowCastOptions,
-    ) -> Result<RecordBatch>;
-
-    /// Casts a one-row Arrow array to this exact schema, as a scalar.
-    ///
-    /// A scalar is a one-row array with the row pinned, so the cast is
-    /// [`cast_arrow_array`](Self::cast_arrow_array) plus the length check
-    /// that makes the pinning honest.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the array does not hold exactly one row, or any
-    /// error the array cast returns.
-    fn cast_arrow_scalar(
-        &self,
-        array: ArrayRef,
-        options: ArrowCastOptions,
-    ) -> Result<ArrowScalar<ArrayRef>> {
-        if array.len() != 1 {
-            return Err(Error::IncompatibleSchema(format!(
-                "a scalar cast takes exactly one row, got {}",
-                array.len()
-            )));
-        }
-        Ok(ArrowScalar::new(self.cast_arrow_array(array, options)?))
-    }
+/// # Errors
+///
+/// Returns an error for an unsupported cast or a value the datatype cannot
+/// hold.
+pub(crate) fn cast_dtype_arrow_array(
+    dtype: &DataType,
+    array: ArrayRef,
+    options: ArrowCastOptions,
+) -> Result<ArrayRef> {
+    let plan = ArrayCastPlan::new_dtype(dtype, array.data_type(), options)?;
+    let mut budget = MaterializationBudget::default();
+    plan.cast(array, &mut budget)
 }
 
-impl ArrowCast for DataType {
-    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef> {
-        let plan = ArrayCastPlan::new_dtype(self, array.data_type(), options)?;
-        let mut budget = MaterializationBudget::default();
-        plan.cast(array, &mut budget)
-    }
-
-    fn cast_arrow_batch(
-        &self,
-        batch: RecordBatch,
-        options: ArrowCastOptions,
-    ) -> Result<RecordBatch> {
-        Field::new("record", self.clone(), false).cast_arrow_batch(batch, options)
-    }
+/// Casts one Arrow array to a field: its datatype and its nullability.
+///
+/// # Errors
+///
+/// Returns an error for an unsupported cast, a value that cannot satisfy the
+/// field, or a default that cannot be materialized.
+pub(crate) fn cast_field_arrow_array(
+    field: &Field,
+    array: ArrayRef,
+    options: ArrowCastOptions,
+) -> Result<ArrayRef> {
+    cast_field_array(field, None, array, options)
 }
 
-impl ArrowCast for Field {
-    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef> {
-        cast_field_array(self, None, array, options)
-    }
+/// Reconciles one Arrow record batch to a non-null Struct root.
+///
+/// # Errors
+///
+/// Returns an error unless the field is a Struct schema, or when a child cast
+/// or missing-column default cannot be materialized.
+pub(crate) fn cast_field_arrow_batch(
+    field: &Field,
+    batch: RecordBatch,
+    options: ArrowCastOptions,
+) -> Result<RecordBatch> {
+    ArrowCastPlan::compile(batch.schema_ref(), field, options)?.apply(batch)
+}
 
-    fn cast_arrow_batch(
-        &self,
-        batch: RecordBatch,
-        options: ArrowCastOptions,
-    ) -> Result<RecordBatch> {
-        ArrowCastPlan::compile(batch.schema_ref(), self, options)?.apply(batch)
+/// Wraps a reader so every batch it yields is reconciled to one root.
+///
+/// The streaming form of [`cast_field_arrow_batch`], and a reader for the
+/// reason every streaming shape in this crate is one: the plan is compiled
+/// once from the reader's own schema, so the returned reader answers the cast
+/// schema before the first batch is pulled and no batch is planned for twice.
+/// A reader already carrying the declared shape comes back as itself.
+///
+/// # Errors
+///
+/// Returns an error when the cast cannot be planned from the reader's schema.
+/// A failure on one batch surfaces as that batch's `Err`, and the reader is
+/// not fused after it.
+pub(crate) fn cast_field_arrow_reader(
+    field: &Field,
+    reader: crate::arrow::BatchReader,
+    options: ArrowCastOptions,
+) -> Result<crate::arrow::BatchReader> {
+    crate::arrow::cast_reader(reader, field, options)
+}
+
+/// Refuses an array that is not the one row a scalar cast takes.
+///
+/// # Errors
+///
+/// Returns an error naming the row count.
+pub(crate) fn one_row(array: &ArrayRef) -> Result<()> {
+    if array.len() == 1 {
+        return Ok(());
     }
+    Err(Error::IncompatibleSchema(format!(
+        "a scalar cast takes exactly one row, got {}",
+        array.len()
+    )))
 }
 
 /// View a batch as one struct array, keeping the row count of an empty batch.

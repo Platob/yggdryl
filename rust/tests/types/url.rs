@@ -7,8 +7,9 @@ use arrow_schema::DataType as ArrowDataType;
 
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::DataType;
+use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url,
     UrlField,
 };
 

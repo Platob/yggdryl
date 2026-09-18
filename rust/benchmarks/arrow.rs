@@ -23,8 +23,9 @@ use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_mai
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType,
+    ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType,
     MimeType, Scalar, TimeUnit, Timezone, Url,
 };
 
@@ -382,7 +383,7 @@ fn cast_target() -> Field {
 
 /// Casting, against the bare call the family wraps.
 ///
-/// A batch cast is `ArrowCast::cast_arrow_batch` plus one Field clone; a
+/// A batch cast is `FieldValue::cast_arrow_batch` plus one Field clone; a
 /// stream cast is `arrow::cast_reader`, which compiles one plan for the whole
 /// stream and applies it per batch. Each family arm sits next to the bare call
 /// over the same rows, so the wrapper's own overhead is what separates them.

@@ -39,8 +39,9 @@ use super::value::single_to_value;
 use crate::arrow::BatchReader;
 use crate::expression::{Attribute, Bound, Bounds};
 use crate::holder::Holder;
-use crate::types::cast::{ArrowCast, ArrowCastOptions};
+use crate::types::cast::ArrowCastOptions;
 use crate::{DataType, Error, Field, Filter, Result, Scalar};
+use crate::types::FieldValue as _;
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

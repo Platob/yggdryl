@@ -37,7 +37,7 @@ use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::metadata::is_all_sources;
-use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
+use crate::types::cast::{ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
 use crate::types::{BytesLayout, Str, StringLayout, StringType};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
@@ -53,6 +53,7 @@ use super::scalar::{
 use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::FieldValue as _;
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///

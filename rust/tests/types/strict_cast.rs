@@ -16,8 +16,9 @@ use arrow_array::{
     Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, RecordBatch, StringArray, StructArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 use yggdryl::types::SequenceType;
+use yggdryl::types::FieldValue as _;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)

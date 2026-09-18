@@ -2,6 +2,7 @@
 
 use yggdryl::types::Uuid;
 use yggdryl::{DataType, Error, Scalar};
+use yggdryl::types::FieldValue as _;
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(value.to_string(), text);
@@ -150,7 +151,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, RecordBatch, StringArray};
-    use yggdryl::{ArrowCast, ArrowCastOptions, Field};
+    use yggdryl::{ArrowCastOptions, Field};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
     let raw: [u8; 16] = [

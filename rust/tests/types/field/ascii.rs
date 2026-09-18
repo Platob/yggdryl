@@ -13,10 +13,11 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schem
 use yggdryl::types::string;
 use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField, StringField};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum,
+    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum,
 };
 
 use super::typed::assert_typed_marker;
+use yggdryl::types::FieldValue as _;
 
 #[test]
 fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {

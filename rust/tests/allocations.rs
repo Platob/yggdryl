@@ -33,6 +33,7 @@ use yggdryl::types::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType,
     UncheckedFieldScalar, Uuid,
 };
+use yggdryl::types::FieldValue as _;
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
     FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
@@ -1216,7 +1217,7 @@ fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
 
 #[test]
 fn planning_once_is_what_a_reused_plan_saves_per_batch() {
-    use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
 
     let (schema, batches, root) = cast_corpus();
     let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())

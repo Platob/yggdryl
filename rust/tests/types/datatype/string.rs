@@ -4,6 +4,7 @@ use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
 use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar};
+use yggdryl::types::FieldValue as _;
 
 /// Every layout, under its three spellings: general, UTF-8, US-ASCII.
 const SPELLINGS: [(StringLayout, &str, &str, &str); 5] = [
@@ -666,7 +667,7 @@ fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
 fn a_cast_into_another_charset_re_encodes_and_refuses_what_it_cannot_spell() {
     use arrow_array::{Array, ArrayRef, BinaryArray, StringArray};
     use std::sync::Arc;
-    use yggdryl::{ArrowCast, ArrowCastOptions};
+    use yggdryl::{ArrowCastOptions};
 
     // Arrow's kernel would hand a UTF-8 buffer to a windows-1252 column and
     // call it a framing change, and the column would read back as mojibake.

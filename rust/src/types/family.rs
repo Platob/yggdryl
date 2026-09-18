@@ -134,6 +134,96 @@ pub trait DataTypeValue:
     /// reference to lend. Every payload is either `Copy` or one shared
     /// pointer, so producing one is cheap.
     fn from_dtype(dtype: &DataType) -> Option<Self>;
+
+    // ---------------------------------------------------------------------
+    // Casting. A datatype is always the *target*: a value or an array is
+    // reconciled to it, never the other way around. Every family answers the
+    // four doors through the root's one recursive walk, so a leaf never has a
+    // cast rule the root does not have.
+    // ---------------------------------------------------------------------
+
+    /// Rewrite one value into this datatype, exactly.
+    ///
+    /// The crate's one value contract: the value is checked against the
+    /// datatype and restated in the representation it declares - an integer
+    /// narrowed to its width, a decimal restated at its scale, a temporal at
+    /// its unit. A value that already matches comes back untouched.
+    ///
+    /// Nullability belongs to the field holding the column, so a null is the
+    /// null of this datatype here; [`FieldValue::cast_scalar`] is where a
+    /// column refuses one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value cannot be stated in this datatype.
+    fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar> {
+        self.clone().into_dtype().cast_scalar(value)
+    }
+
+    /// Cast an Arrow array to this datatype's exact physical array.
+    ///
+    /// [`ArrowCastOptions::is_safe`](crate::ArrowCastOptions::is_safe) decides
+    /// whether a conversion failure becomes null or an error. There is no
+    /// field here, so nothing decides nullability: an incoming null stays one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unsupported cast or a value this datatype
+    /// cannot hold.
+    fn cast_arrow_array(
+        &self,
+        array: arrow_array::ArrayRef,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::ArrayRef> {
+        crate::types::cast::cast_dtype_arrow_array(&self.clone().into_dtype(), array, options)
+    }
+
+    /// Cast a one-row Arrow array to this datatype, as a scalar.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the array does not hold exactly one row, or any
+    /// error [`Self::cast_arrow_array`] returns.
+    fn cast_arrow_scalar(
+        &self,
+        array: arrow_array::ArrayRef,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>> {
+        crate::types::cast::one_row(&array)?;
+        Ok(arrow_array::Scalar::new(
+            self.cast_arrow_array(array, options)?,
+        ))
+    }
+
+    /// Reconcile an Arrow record batch to this Struct datatype.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error unless this is a Struct datatype, or when a child cast
+    /// or a missing-column default cannot be materialized.
+    fn cast_arrow_batch(
+        &self,
+        batch: arrow_array::RecordBatch,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::RecordBatch> {
+        let root = Field::new("record", self.clone().into_dtype(), false);
+        crate::types::cast::cast_field_arrow_batch(&root, batch, options)
+    }
+
+    /// Wrap a reader so every batch it yields is reconciled to this datatype.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::cast_arrow_batch`] carries the rule, raised once from the
+    /// reader's schema rather than once per batch.
+    fn cast_arrow_reader(
+        &self,
+        reader: crate::arrow::BatchReader,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<crate::arrow::BatchReader> {
+        let root = Field::new("record", self.clone().into_dtype(), false);
+        crate::types::cast::cast_field_arrow_reader(&root, reader, options)
+    }
 }
 
 /// One field: a family's field, or the root that redirects to it.
@@ -173,6 +263,100 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
 
     /// Narrow the field root to this family without cloning.
     fn from_field(field: &Field) -> Option<&Self>;
+
+    // ---------------------------------------------------------------------
+    // Casting. The field is the target, and it states one thing its datatype
+    // does not: whether a null may stand. That is the whole difference
+    // between these four doors and [`DataTypeValue`]'s.
+    // ---------------------------------------------------------------------
+
+    /// Rewrite one value into this field's column, exactly.
+    ///
+    /// [`DataTypeValue::cast_scalar`] plus the column's own rule: a null is
+    /// refused by name unless this field admits one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value cannot be stated in the field's
+    /// datatype, or when it is null and the field is not nullable.
+    fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar> {
+        self.clone().into_field().scalar(value.clone())
+    }
+
+    /// Cast an Arrow array to this field's exact physical array.
+    ///
+    /// The field is the target: `array` is reconciled to its datatype *and*
+    /// its nullability.
+    /// [`ArrowCastOptions::nullability`](crate::ArrowCastOptions::nullability)
+    /// decides what happens to a null a non-nullable field cannot hold - the
+    /// canonical default, or a refusal naming the path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unsupported cast, a value that cannot satisfy
+    /// the field, or a default that cannot be materialized.
+    fn cast_arrow_array(
+        &self,
+        array: arrow_array::ArrayRef,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::ArrayRef> {
+        crate::types::cast::cast_field_arrow_array(&self.clone().into_field(), array, options)
+    }
+
+    /// Cast a one-row Arrow array to this field, as a scalar.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the array does not hold exactly one row, or any
+    /// error [`Self::cast_arrow_array`] returns.
+    fn cast_arrow_scalar(
+        &self,
+        array: arrow_array::ArrayRef,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>> {
+        crate::types::cast::one_row(&array)?;
+        Ok(arrow_array::Scalar::new(
+            self.cast_arrow_array(array, options)?,
+        ))
+    }
+
+    /// Reconcile an Arrow record batch to this Struct root.
+    ///
+    /// Children are selected in target order by ASCII-case-insensitive name.
+    /// Extra source columns are dropped and missing nullable columns are
+    /// null-filled. An already exact batch comes back unchanged - the same
+    /// batch object, not a rebuilt one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error unless this is a bounded, non-nullable Struct root, or
+    /// when a child cast or a missing-column default cannot be materialized.
+    fn cast_arrow_batch(
+        &self,
+        batch: arrow_array::RecordBatch,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<arrow_array::RecordBatch> {
+        crate::types::cast::cast_field_arrow_batch(&self.clone().into_field(), batch, options)
+    }
+
+    /// Wrap a reader so every batch it yields is reconciled to this root.
+    ///
+    /// The plan is compiled once from the reader's schema, so the returned
+    /// reader answers the cast schema before the first batch is pulled: a lake
+    /// being read into a lake being written is never held in memory to be
+    /// reconciled.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::cast_arrow_batch`] carries the rule, raised once from the
+    /// reader's schema rather than once per batch.
+    fn cast_arrow_reader(
+        &self,
+        reader: crate::arrow::BatchReader,
+        options: crate::ArrowCastOptions,
+    ) -> crate::arrow::Result<crate::arrow::BatchReader> {
+        crate::types::cast::cast_field_arrow_reader(&self.clone().into_field(), reader, options)
+    }
 }
 
 /// The root is a datatype like any other family payload.

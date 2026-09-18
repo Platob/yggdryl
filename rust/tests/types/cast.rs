@@ -7,7 +7,7 @@ use arrow_array::{
     StructArray, UInt32Array, UInt64Array,
 };
 
-use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+use yggdryl::types::cast::ArrowCastOptions;
 
 /// The reading that carries the bytes rather than the number they spell.
 fn bits() -> ArrowCastOptions {
@@ -19,6 +19,7 @@ use yggdryl::types::{
 };
 use yggdryl::{DataType, EdgeAlgorithm, Field};
 use yggdryl::{TimeUnit, Timezone};
+use yggdryl::types::FieldValue as _;
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
@@ -577,7 +578,8 @@ mod layouts {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
 
     use yggdryl::DataType;
-    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::types::DataTypeValue as _;
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -786,7 +788,8 @@ mod strings {
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
-    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::types::{DataTypeValue as _, FieldValue as _};
     use yggdryl::{DataType, Field};
 
     fn dtype(expression: &str) -> DataType {
@@ -1006,7 +1009,8 @@ mod bytes {
 
     use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
-    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::types::{DataTypeValue as _, FieldValue as _};
     use yggdryl::{DataType, Field};
 
     fn dtype(expression: &str) -> DataType {

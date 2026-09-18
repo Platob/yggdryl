@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{ArrowCast, ArrowCastOptions, Field, Level, Limits};
+use crate::{ArrowCastOptions, Field, Level, Limits};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
 use super::container::{
@@ -50,6 +50,7 @@ use super::container::{
 };
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::schema::{Node, Schema};
+use crate::types::FieldValue as _;
 
 /// The settings an Avro record read or write takes.
 ///

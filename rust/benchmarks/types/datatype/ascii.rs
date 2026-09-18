@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar, StringEnum};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, StringEnum};
+use yggdryl::types::FieldValue as _;
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 

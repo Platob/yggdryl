@@ -1037,7 +1037,8 @@ mod arrow {
     use super::{BoundSelector, Selector};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
     use crate::expression::arrow::{collected, one_batch, struct_batch};
-    use crate::types::cast::{ArrowCast, ArrowCastOptions};
+    use crate::types::cast::ArrowCastOptions;
+    use crate::types::FieldValue as _;
     use crate::{Error, Result};
 
     impl Selector {

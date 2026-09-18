@@ -18,7 +18,8 @@ use std::time::{Duration, Instant};
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use criterion::{Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field};
+use yggdryl::types::FieldValue as _;
 
 /// Rows per batch: small on purpose, so the per-batch plan is what is timed.
 const ROWS: usize = crate::bench_profile::corpus(64, 8);

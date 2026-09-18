@@ -103,7 +103,7 @@ pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_sc
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use types::cast::{
-    ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
+    ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
 };
 pub use types::floating::{Float16, Float32, Float64};
 pub use types::i256::{i256, u256};
