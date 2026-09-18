@@ -1,4 +1,5 @@
 import {
+  DataType,
   Field,
   Timezone,
   Scalar,
@@ -53,6 +54,12 @@ const double: Scalar = Scalar.float(1.5)
 const enumScalar: Scalar = Scalar.fromEnum('IOMode', 'append')
 const enumText: string | null = enumScalar.asStr()
 const truthy: boolean = enumScalar.isTruthy()
+const typedInstant: Scalar = new Field(
+  'at',
+  new DataType('datetime64(ns,"UTC")'),
+  true,
+).scalar(1n)
+const typedWidth: Scalar = new DataType('float16').scalar(1.5)
 const kind: string = at.kind
 const scalarId: string = at.id
 const scalarFamily: string = at.family
@@ -104,6 +111,8 @@ void replacedValue
 void removedValue
 void iteratedValues
 void enumText
+void typedInstant
+void typedWidth
 void truthy
 
 const arrowVector = vectorFromArray([1, 2], new Int32())

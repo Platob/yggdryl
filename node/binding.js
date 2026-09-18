@@ -1115,6 +1115,30 @@ Object.defineProperty(Scalar, 'from', {
   },
 })
 
+// The typed door for a value: the width, unit, scale and zone are named on the
+// type, so a caller reaching an exact scalar says it once and where it belongs.
+// `Scalar.from(value, { field })` is the same conversion spelled through an
+// options bag; this is that call with the field in front, which is how Python
+// has always spelled it (`DataType.scalar`, `Field.scalar`).
+Object.defineProperty(Field.prototype, 'scalar', {
+  configurable: true,
+  value(value, options) {
+    return Scalar.from(value, { ...checkedOptions(options), field: this })
+  },
+})
+
+// A datatype has no name or nullability, so it borrows a nullable one for the
+// read. The value rules are the datatype's; the name never reaches the scalar.
+Object.defineProperty(DataType.prototype, 'scalar', {
+  configurable: true,
+  value(value, options) {
+    return Scalar.from(value, {
+      ...checkedOptions(options),
+      field: new Field('value', this, true),
+    })
+  },
+})
+
 Object.defineProperties(
   NativeTerm.prototype,
   Object.fromEntries(

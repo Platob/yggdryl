@@ -311,6 +311,18 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(Scalar.from('off').isTruthy(), false)
   assert.equal(Scalar.from('anything').isTruthy(), true)
   assert.equal(record.isTruthy(), true)
+
+  // The typed door for a value: the width, unit, scale and zone are named on
+  // the type. Node had no `scalar` on either prototype, so the only spelling
+  // was the options bag - which is the same conversion, said awkwardly.
+  const instant = new Field('at', new DataType('datetime64(ns,"UTC")'), true)
+  assert.equal(instant.scalar(1700000000123456789n).kind, 'datetime64')
+  assert.equal(instant.scalar(1n).unit, 'ns')
+  assert.equal(instant.scalar(1n).zone, 'UTC')
+  assert.ok(instant.scalar(1n).equals(Scalar.from(1n, { field: instant })))
+  // A width the statics cannot reach at all.
+  assert.equal(new DataType('decimal32(9,2)').scalar(125).kind, 'd32')
+  assert.ok(new DataType('float16').scalar(1.5).equals(Scalar.float(1.5, 16)))
   assert.deepEqual(record.toJSON(), { a: 1, z: 2 })
   const clone = record.clone()
   assert.notEqual(clone, record)

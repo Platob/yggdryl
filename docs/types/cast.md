@@ -280,9 +280,9 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
 === "JavaScript"
 
-    !!! note "Rust and Python only"
-        JavaScript binds no `scalar`, `validate_value` or `canonicalize_value`; a value enters
-        under a field through a codec's `field` option or an Arrow cast.
+    !!! note "`validate_value` and `canonicalize_value` are Rust and Python only"
+        JavaScript binds `scalar` on both `DataType` and `Field`; it binds no
+        `validate_value` or `canonicalize_value`.
 
 ## Record batches
 

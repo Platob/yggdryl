@@ -2459,6 +2459,12 @@ declare module './index' {
 
   interface DataType extends Iterable<Field> {
     showDiffs(other: DataType, withMetadata?: boolean): IterableIterator<string>
+    /**
+     * Read one value under this datatype, which names its width, unit, scale
+     * and zone. A datatype has no name or nullability, so the read borrows a
+     * nullable one; the name never reaches the scalar.
+     */
+    scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace DataType {
     function fromArrow(
@@ -2480,6 +2486,12 @@ declare module './index' {
   interface Field extends Iterable<readonly [string, string]> {
     showDiffs(other: Field, withMetadata?: boolean): IterableIterator<string>
     update(values: FieldMetadataInput): void
+    /**
+     * Read one value under this field, which names its width, unit, scale and
+     * zone. The same conversion as `Scalar.from(value, { field })`, spelled
+     * with the field in front.
+     */
+    scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace Field {
     function fromArrow(value: Field | string | ArrowStringCompatible): Field
