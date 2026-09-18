@@ -15,7 +15,7 @@ use crate::metadata::{
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::types::{DataType, preflight_schema_shape};
-use crate::{Error, Metadata, Result, Scheme, Url};
+use crate::{DataTypeId, Error, Metadata, Result, Scheme, Url};
 
 use super::protocol::{self, ProtocolField, ProtocolFieldMut};
 
@@ -128,6 +128,18 @@ impl Field {
     /// Returns the logical datatype without allocating.
     pub const fn dtype(&self) -> &DataType {
         &self.dtype
+    }
+
+    /// Returns the parameter-free identifier of this field's shape.
+    ///
+    /// The identifier is the whole answer wherever a caller branches on the
+    /// variant or names it for a binding, and it is the cheap one: reading it
+    /// never touches the nested state a datatype holds. [`Scalar::id`] is the
+    /// same verb on the value side.
+    ///
+    /// [`Scalar::id`]: crate::types::Scalar::id
+    pub const fn id(&self) -> DataTypeId {
+        self.dtype.id()
     }
 
     /// Returns whether values may be null.

@@ -167,7 +167,7 @@ fn a_value_names_the_shared_field_of_its_own_datatype() {
     assert_eq!(
         Scalar::d128(150, 2)
             .shared_field()
-            .map(|field| field.dtype().id()),
+            .map(|field| field.id()),
         Some(DataTypeId::Decimal128)
     );
     assert_eq!(

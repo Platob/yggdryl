@@ -106,7 +106,7 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
     ));
 
     let decimal = FieldScalar::infer(Scalar::d128(150, 2)).unwrap();
-    assert_eq!(decimal.dtype().id(), yggdryl::DataTypeId::Decimal128);
+    assert_eq!(decimal.field().id(), yggdryl::DataTypeId::Decimal128);
     assert_eq!(decimal.as_decimal().map(|(_, scale)| scale), Some(2));
 
     let nothing = FieldScalar::infer(Scalar::Null).unwrap();

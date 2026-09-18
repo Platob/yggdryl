@@ -1711,7 +1711,7 @@ mod records {
         let ids = read_field
             .fields()
             .iter()
-            .map(|field| field.dtype().id())
+            .map(|field| field.id())
             .collect::<Vec<_>>();
         assert_eq!(
             ids,

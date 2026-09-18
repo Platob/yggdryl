@@ -572,7 +572,7 @@ fn a_datatype_is_named_the_same_by_both_documents() {
         );
         let read = Field::from_json(&document)
             .unwrap_or_else(|error| panic!("{} does not read back: {error}", id.as_str()));
-        assert_eq!(read.dtype().id(), id, "{} changed identity", id.as_str());
+        assert_eq!(read.id(), id, "{} changed identity", id.as_str());
     }
 }
 

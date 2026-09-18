@@ -833,7 +833,7 @@ fn the_corpus_names_every_datatype_a_column_can_hold() {
     // a family whose buffer arm and fallback were never compared.
     let covered: std::collections::HashSet<DataTypeId> = columns()
         .iter()
-        .map(|(field, _)| field.dtype().id())
+        .map(|(field, _)| field.id())
         .collect();
     let missing: Vec<&str> = DataTypeId::ALL
         .into_iter()
