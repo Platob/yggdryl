@@ -897,3 +897,56 @@ fn a_container_of_empty_values_is_itself_empty() {
     let one_set = Scalar::from_record(vec![("a", Scalar::Null), ("b", Scalar::from(1))]).unwrap();
     assert!(one_set.is_truthy());
 }
+
+#[test]
+fn addition_joins_a_repertoire_that_has_no_sum() {
+    // Text, bytes and sequences have no sum, so `+` joins them.
+    assert_eq!(
+        (Scalar::from("AA") + Scalar::from("PL")).unwrap(),
+        Scalar::from("AAPL")
+    );
+    assert_eq!(
+        (Scalar::from(Arc::from(b"\x01".as_slice())) + Scalar::from(Arc::from(b"\x02".as_slice())))
+            .unwrap(),
+        Scalar::from(Arc::from(b"\x01\x02".as_slice()))
+    );
+    assert_eq!(
+        (Scalar::from_sequence([Scalar::from(1)]) + Scalar::from_sequence([Scalar::from(2)]))
+            .unwrap(),
+        Scalar::from_sequence([Scalar::from(1), Scalar::from(2)])
+    );
+
+    // A code joins as the text it is, and stops being a code: `FR` and `X`
+    // concatenated are not a country.
+    let country = yggdryl::DataType::Country
+        .scalar(Scalar::from("FR"))
+        .unwrap();
+    let joined = (country + Scalar::from("X")).unwrap();
+    assert_eq!(joined, Scalar::from("FRX"));
+    assert_eq!(joined.id(), yggdryl::DataTypeId::String);
+
+    // Only `+`. Nothing else names anything a reader would agree on.
+    for refused in [
+        Scalar::from("a") - Scalar::from("b"),
+        Scalar::from("a") * Scalar::from("b"),
+        Scalar::from("a") / Scalar::from("b"),
+    ] {
+        assert!(refused.is_err());
+    }
+
+    // Two repertoires do not join, and a null still answers null.
+    assert!((Scalar::from("a") + Scalar::from(1)).is_err());
+    assert_eq!((Scalar::from("a") + Scalar::Null).unwrap(), Scalar::Null);
+}
+
+#[test]
+fn two_wkb_payloads_are_not_a_geometry() {
+    // Geospatial values read as bytes, so an untyped join would have accepted
+    // them. Laying two WKB payloads end to end does not make a geometry.
+    let point = yggdryl::DataType::geometry(None)
+        .unwrap()
+        .default_value()
+        .unwrap();
+    assert!(point.as_bytes().is_some(), "it does read as bytes");
+    assert!((point.clone() + point).is_err());
+}

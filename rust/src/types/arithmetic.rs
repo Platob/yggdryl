@@ -261,6 +261,9 @@ impl Scalar {
         if self.is_null() || other.is_null() {
             return Ok(Self::Null);
         }
+        if let Some(joined) = concatenated(self, operation, other) {
+            return Ok(joined);
+        }
         let target = inferred_target(self, operation, other)?;
         checked_arithmetic_target(self, operation, other, &target)
     }
@@ -328,6 +331,56 @@ fn target_from_dtype(dtype: &DataType) -> Option<ArithmeticTarget> {
         return Some(ArithmeticTarget::Decimal { wide, scale });
     }
     temporal_target(dtype).map(|_| ArithmeticTarget::Temporal(dtype.clone()))
+}
+
+/// Join two values of one repertoire under `+`, or answer `None`.
+///
+/// Addition over text, bytes and sequences is concatenation: joining is what
+/// `+` means for a repertoire that has no sum.
+///
+/// This is deliberately not the expression language's `concat`, which stays
+/// where it is. That one is a variadic *text* function that also renders a
+/// version and answers null for anything it cannot read; this one is a binary
+/// join over one repertoire that refuses what it does not know. Same English
+/// word, two verbs - folding them together would drag version rendering into
+/// the operator or turn `concat`'s null into an error.
+///
+/// Only `+`. Subtraction, multiplication, division and remainder over text
+/// stay refusals, because none of them names anything a reader would agree
+/// on. The two sides must be the same repertoire: text joins text, bytes join
+/// bytes, a sequence extends a sequence.
+///
+/// A code joins as the text it is, and the result is a plain string rather
+/// than a code - `FR` and `X` concatenated are not a country. Geospatial
+/// values are deliberately absent even though they read as bytes: two WKB
+/// payloads laid end to end are not a geometry.
+fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<Scalar> {
+    if !matches!(operation, Arithmetic::Add) {
+        return None;
+    }
+    match (left, right) {
+        (Scalar::String(_) | Scalar::Code(_), Scalar::String(_) | Scalar::Code(_)) => {
+            let (left, right) = (left.as_str()?, right.as_str()?);
+            let mut joined = String::with_capacity(left.len() + right.len());
+            joined.push_str(left);
+            joined.push_str(right);
+            Some(Scalar::from(SmolStr::new(joined)))
+        }
+        (Scalar::Bytes(left), Scalar::Bytes(right)) => {
+            let (left, right) = (left.as_bytes(), right.as_bytes());
+            let mut joined = Vec::with_capacity(left.len() + right.len());
+            joined.extend_from_slice(left);
+            joined.extend_from_slice(right);
+            Some(Scalar::from(std::sync::Arc::<[u8]>::from(joined)))
+        }
+        (Scalar::Sequence(left), Scalar::Sequence(right)) => Some(Scalar::from_sequence(
+            left.as_slice()
+                .iter()
+                .chain(right.as_slice().iter())
+                .cloned(),
+        )),
+        _ => None,
+    }
 }
 
 fn inferred_target(
@@ -755,6 +808,10 @@ mod tests {
             Scalar::from(i8::MIN).checked_abs(),
             Err(Error::ArithmeticOverflow { .. })
         ));
-        assert!((Scalar::from("a") + Scalar::from("b")).is_err());
+        assert_eq!(
+            (Scalar::from("a") + Scalar::from("b")).unwrap(),
+            Scalar::from("ab")
+        );
+        assert!((Scalar::from("a") - Scalar::from("b")).is_err());
     }
 }

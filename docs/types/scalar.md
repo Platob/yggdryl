@@ -206,6 +206,7 @@ Arithmetic is checked in the Rust value model, both bindings redirect to it, and
 | floats | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | retain the widest float input; mixing an integer uses `F64` |
 | exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused |
 | temporal and duration | temporal `+/-` duration, temporal `-` temporal, duration `+/-` duration, duration `*` integer, duration `/` integer | preserve the temporal kind or return an exact duration in the finest required unit |
+| text, bytes, sequences | `+` only | concatenation - the join a repertoire with no sum has. Both sides one repertoire; a code joins as its text and stops being a code; a WKB payload does not join |
 | null | every binary operation above | propagate `Null` |
 
 Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods.
@@ -338,7 +339,12 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 
 - `readonly` or `random` at a write entry point -> refused.
 - Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
-- `+` on text or containers -> absent; concatenation is not arithmetic.
+- `+` on text, bytes or a sequence -> concatenation, the join a repertoire with
+  no sum has. Both sides must be the same repertoire, and only `+`: `-`, `*`,
+  `/` and `%` over text stay refusals. A code joins as its text and stops being
+  a code. Geospatial values read as bytes but do not join - two WKB payloads
+  end to end are not a geometry. This is not the expression language's
+  `concat`, which is a variadic text function that also renders a version.
 - `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
