@@ -829,11 +829,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
 #[pymethods]
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 impl PyScalar {
-    #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        from_py(value).map(Self::from_inner)
-    }
-
     /// Rebuild exact private state used by pickle and reconstructible repr.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -843,7 +838,9 @@ impl PyScalar {
     /// Convert a Python-native value without a text intermediate.
     ///
     /// Spelled `from_` because `from` is a Python keyword; it is the one
-    /// reading every native input crosses through.
+    /// reading every native input crosses through. `Scalar(value)` was a
+    /// second spelling of it - a `#[new]` with a byte-identical body - and is
+    /// gone.
     #[staticmethod]
     #[pyo3(name = "from_")]
     fn from_(value: &Bound<'_, PyAny>) -> PyResult<Self> {

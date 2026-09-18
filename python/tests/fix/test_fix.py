@@ -1018,7 +1018,7 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
 
     # A removal answers the value and the other tags still reach theirs.
     count = len(message)
-    assert message.remove(9999) == Scalar("custom")
+    assert message.remove(9999) == Scalar.from_("custom")
     assert len(message) == count - 1
     assert message.remove("nosuchfield") is None
     assert message.by_tag(11).as_py() == "A1"

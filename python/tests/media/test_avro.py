@@ -48,7 +48,7 @@ def test_record_options_expose_validated_avro_block_settings() -> None:
 
 def test_schema_accepts_natural_value_native_scalar_text_and_bytes() -> None:
     natural = avro.Schema(SCHEMA)
-    native = avro.Schema(Scalar(SCHEMA))
+    native = avro.Schema(Scalar.from_(SCHEMA))
     text = avro.Schema('{"type":"long"}')
     binary = avro.Schema(b'"long"')
 
