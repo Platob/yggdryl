@@ -16,7 +16,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use smol_str::format_smolstr;
-use crate::types::family::FamilyType;
+use crate::types::family::DataTypeValue;
 use crate::types::invalid;
 use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, DataTypeKind, Result};
@@ -100,7 +100,7 @@ impl EnumType {
     }
 }
 
-impl FamilyType for EnumType {
+impl DataTypeValue for EnumType {
     const FAMILY: &'static str = "enum";
 
     fn id(&self) -> DataTypeId {

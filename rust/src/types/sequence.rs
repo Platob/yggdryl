@@ -23,7 +23,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::types::dtype::validate_non_negative;
-use crate::types::family::FamilyType;
+use crate::types::family::DataTypeValue;
 use crate::types::typed::define_field_types;
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
 use serde::{Deserialize, Serialize};
@@ -122,7 +122,7 @@ impl SequenceType {
     }
 }
 
-impl FamilyType for SequenceType {
+impl DataTypeValue for SequenceType {
     const FAMILY: &'static str = "sequence";
 
     fn id(&self) -> DataTypeId {

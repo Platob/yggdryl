@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::FIELD_PARTITION_KEY;
 
-use crate::types::family::FamilyType;
+use crate::types::family::DataTypeValue;
 use crate::types::typed::define_field_types;
 use crate::types::sequence::SequenceType;
 use std::collections::{BTreeMap, HashSet};
@@ -1586,7 +1586,7 @@ impl StructureType {
     }
 }
 
-impl FamilyType for StructureType {
+impl DataTypeValue for StructureType {
     const FAMILY: &'static str = "structure";
 
     fn id(&self) -> DataTypeId {

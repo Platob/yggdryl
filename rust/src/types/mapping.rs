@@ -20,9 +20,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
-use crate::types::family::{FamilyField, FamilyType};
+use crate::types::family::DataTypeValue;
 use crate::types::structure::StructureType;
 use crate::types::family::Children;
 use crate::types::family::NestedValue;
@@ -160,7 +160,7 @@ impl MappingType {
     }
 }
 
-impl FamilyType for MappingType {
+impl DataTypeValue for MappingType {
     const FAMILY: &'static str = "mapping";
 
     fn id(&self) -> DataTypeId {
@@ -276,133 +276,6 @@ fn pair_entries(mut entries: Field) -> Result<Field> {
 // ------------------------------------------------------------------------
 // Field side: the family and its one leaf.
 // ------------------------------------------------------------------------
-
-/// Emit one mapping leaf's field type.
-///
-/// The two leaves differ only in which [`MappingType`] variant they accept,
-/// and that acceptance is the whole of what the type proves, so the bodies
-/// are written once here rather than twice below.
-macro_rules! mapping_leaf_field {
-    ($name:ident, $leaf:ident, $label:literal) => {
-        #[doc = concat!("A field whose datatype is ", $label, ".")]
-        ///
-        /// Constructing one validates the datatype, so holding it is the
-        /// proof; the parameters stay in the wrapped [`Field`] rather than
-        /// being copied out of it.
-        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        #[repr(transparent)]
-        pub struct $name(Field);
-
-        impl $name {
-            /// Checks and wraps a generic field.
-            pub fn try_from_field(field: Field) -> Result<Self> {
-                match field.dtype() {
-                    DataType::Mapping(MappingType::$leaf(_)) => Ok(Self(field)),
-                    other => Err(Error::InvalidDataType {
-                        kind: $label,
-                        reason: format_smolstr!(
-                            concat!("expected a ", $label, " field, got {}"),
-                            other
-                        ),
-                    }),
-                }
-            }
-
-            /// Returns the entries this field's datatype holds.
-            pub fn parameters(&self) -> &MapType {
-                match self.0.dtype() {
-                    DataType::Mapping(family) => family.parameters(),
-                    _ => unreachable!(concat!("a ", stringify!($name), " holds a mapping datatype")),
-                }
-            }
-
-            /// Borrows the generic field without allocating.
-            pub const fn as_field(&self) -> &Field {
-                &self.0
-            }
-
-            /// Consumes this field and returns the generic one.
-            pub fn into_field(self) -> Field {
-                self.0
-            }
-        }
-    };
-}
-
-mapping_leaf_field!(MapField, Map, "map");
-
-mapping_leaf_field!(SortedMapField, SortedMap, "sorted_map");
-
-/// The mapping family's field payload.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum MappingField {
-    /// A field whose keys are in no particular order.
-    Map(MapField),
-    /// A field whose keys are ordered within each row.
-    SortedMap(SortedMapField),
-}
-
-impl MappingField {
-    /// Returns the unordered-key field when this is that leaf.
-    pub const fn as_map(&self) -> Option<&MapField> {
-        match self {
-            Self::Map(field) => Some(field),
-            Self::SortedMap(_) => None,
-        }
-    }
-
-    /// Returns the ordered-key field when this is that leaf.
-    pub const fn as_sorted_map(&self) -> Option<&SortedMapField> {
-        match self {
-            Self::SortedMap(field) => Some(field),
-            Self::Map(_) => None,
-        }
-    }
-
-    /// Returns whether this leaf promises ordered keys.
-    pub const fn keys_sorted(&self) -> bool {
-        matches!(self, Self::SortedMap(_))
-    }
-}
-
-impl FamilyField for MappingField {
-    type Type = MappingType;
-
-    fn try_from_field(field: Field) -> Result<Self> {
-        match field.dtype() {
-            DataType::Mapping(MappingType::Map(_)) => MapField::try_from_field(field).map(Self::Map),
-            DataType::Mapping(MappingType::SortedMap(_)) => {
-                SortedMapField::try_from_field(field).map(Self::SortedMap)
-            }
-            other => Err(Error::InvalidDataType {
-                kind: MappingType::FAMILY,
-                reason: format_smolstr!("expected a mapping field, got {other}"),
-            }),
-        }
-    }
-
-    fn as_field(&self) -> &Field {
-        match self {
-            Self::Map(field) => field.as_field(),
-            Self::SortedMap(field) => field.as_field(),
-        }
-    }
-
-    fn family_type(&self) -> &MappingType {
-        match self.as_field().dtype() {
-            DataType::Mapping(family) => family,
-            _ => unreachable!("a MappingField holds a mapping datatype"),
-        }
-    }
-
-    fn into_field(self) -> Field {
-        match self {
-            Self::Map(field) => field.into_field(),
-            Self::SortedMap(field) => field.into_field(),
-        }
-    }
-}
 
 // ------------------------------------------------------------------------
 // Value side: the family and its one leaf.

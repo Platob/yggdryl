@@ -73,7 +73,7 @@ pub use diff::{Differences, OwnedDifferences};
 pub use dtype::{DataType, VariantField, VariantType};
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Vocabulary;
-pub use family::{Children, FamilyField, FamilyType, NestedValue};
+pub use family::{Children, DataTypeValue, FieldValue, NestedValue};
 pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]

@@ -126,8 +126,8 @@ pub use types::{
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,
-    GeospatialType, IntegerType, MapField, MapType, MappingField, MappingType, MediaTypeField,
-    MediaTypeType, MimeTypeField, MimeTypeType, RunEndEncodedType, SortedMapField,
+    GeospatialType, IntegerType, MapType, MappingType, MediaTypeField,
+    MediaTypeType, MimeTypeField, MimeTypeType, RunEndEncodedType,
     StringEnum, StringType, TemporalType, TimezoneField, TimezoneType, UnionFields, UrlField,
     StructType, StructureType, Struct2Type, UrlType, Version, VersionField,
     VersionType,

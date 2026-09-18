@@ -1,18 +1,19 @@
-//! What a datatype family owes the root that redirects to it.
+//! What a datatype, a field and a value each owe the root that holds them.
 //!
-//! [`DataType`], [`Field`] and [`Scalar`] each hold one variant per *family*,
-//! never one per leaf. A family owns the leaves that share a shape - every
-//! mapping, every sequence - and answers which leaf it is holding. The root is
-//! then a redirector: it matches one variant and hands the question down.
-//!
-//! The three traits here are the same three verbs on the three sides, so a
-//! family reads the same whichever side is being asked:
+//! [`DataType`], [`Field`] and [`Scalar`] are redirectors: each holds one
+//! variant per family, and the family answers which leaf it is. The traits
+//! here are the same verbs on the three sides, so a family reads the same
+//! whichever side is being asked:
 //!
 //! | side | trait | widen | narrow |
 //! | --- | --- | --- | --- |
-//! | datatype | [`FamilyType`] | `into_dtype` | `from_dtype` |
-//! | field | [`FamilyField`] | `into_field` | `from_field` |
+//! | datatype | [`DataTypeValue`] | `into_dtype` | `from_dtype` |
+//! | field | [`FieldValue`] | `into_field` | `from_field` |
 //! | value | [`crate::Value`] | `into_scalar` | `from_scalar` |
+//!
+//! The roots implement their own trait too - [`DataType`] is a
+//! [`DataTypeValue`] and [`Field`] is a `FieldValue<DataType>` - so code that
+//! is generic over a family works unchanged on the root that redirects to it.
 //!
 //! [`Field`]: crate::Field
 //! [`Scalar`]: crate::Scalar
@@ -20,17 +21,20 @@
 use std::fmt;
 use std::hash::Hash;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
 use smol_str::SmolStr;
-use crate::Scalar;
 
-/// One datatype family's payload.
+use crate::{DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar};
+
+/// One datatype: a family's payload, or the root that redirects to it.
 ///
-/// The implementor is what a [`DataType`] variant holds: an enum over the
-/// family's leaves when it has several, a single leaf's parameters when it has
-/// one. Either way [`Self::id`] names the exact leaf, which is what a caller
-/// branching on the variant actually wants.
-pub trait FamilyType: Clone + fmt::Debug + Eq + Hash + Sized {
+/// The implementor is what a [`DataType`] variant holds - an enum over the
+/// family's leaves when it has several, one leaf's parameters when it has one,
+/// and a parameter-free marker for the variants that carry nothing. Either way
+/// [`Self::id`] names the exact leaf, which is what a caller branching on the
+/// variant actually wants.
+pub trait DataTypeValue:
+    Clone + fmt::Debug + fmt::Display + Eq + Hash + Send + Sync + Sized + 'static
+{
     /// The family's parameter-free name, as a binding and a refusal spell it.
     const FAMILY: &'static str;
 
@@ -54,34 +58,65 @@ pub trait FamilyType: Clone + fmt::Debug + Eq + Hash + Sized {
     fn from_dtype(dtype: &DataType) -> Option<&Self>;
 }
 
-/// One field family's payload.
+/// One field: a family's field, or the root that redirects to it.
 ///
-/// A family's field is its datatype plus the per-column facts a datatype does
-/// not carry - the name, the nullability, the metadata. It validates on
-/// construction, so holding one is the proof that the field really is of this
-/// family.
-pub trait FamilyField: Clone + fmt::Debug + Sized {
-    /// The family this field's datatype belongs to.
-    type Type: FamilyType;
+/// A field is its datatype plus the per-column facts a datatype does not
+/// carry - the name, the nullability, the metadata. `D` is the datatype the
+/// implementor holds, so a leaf field answers with its own leaf datatype and
+/// the root answers with [`DataType`]; nothing has to widen to ask.
+///
+/// [`Self::dtype`] returns an owned datatype rather than a borrow, because a
+/// leaf stores the leaf's parameters, not a whole [`DataType`] to lend out.
+/// Every implementor's datatype is cheap to produce: the nested ones are one
+/// shared pointer, and the parameter-free ones are nothing at all.
+pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Sized {
+    /// Return the physical field name without allocating.
+    fn name(&self) -> &str;
 
-    /// Check a generic field and take ownership of it.
-    fn try_from_field(field: Field) -> Result<Self>;
+    /// Return the datatype this field carries.
+    fn dtype(&self) -> D;
 
-    /// Borrow the generic field without allocating.
-    fn as_field(&self) -> &Field;
+    /// Return whether this field admits nulls.
+    fn is_nullable(&self) -> bool;
 
-    /// Return the family payload of this field's datatype.
-    fn family_type(&self) -> &Self::Type;
+    /// Return the field's metadata without allocating.
+    fn metadata(&self) -> &Metadata;
 
-    /// Widen this payload back to the generic field.
+    /// Reject a field whose datatype and options cannot describe a column.
+    fn validate(&self) -> Result<()>;
+
+    /// Widen this field to the field root.
     fn into_field(self) -> Field;
+
+    /// Narrow the field root to this family without cloning.
+    fn from_field(field: &Field) -> Option<&Self>;
 }
 
-// ------------------------------------------------------------------------
-// Nested values and typed scalar aliases.
-// ------------------------------------------------------------------------
+/// The root is a datatype like any other family payload.
+impl DataTypeValue for DataType {
+    const FAMILY: &'static str = "datatype";
 
-/// Borrowing access shared by every nested value shape.
+    fn id(&self) -> DataTypeId {
+        Self::id(self)
+    }
+
+    fn kind(&self) -> DataTypeKind {
+        Self::kind(self)
+    }
+
+    fn validate(&self) -> Result<()> {
+        Self::validate(self)
+    }
+
+    fn into_dtype(self) -> DataType {
+        self
+    }
+
+    fn from_dtype(dtype: &DataType) -> Option<&Self> {
+        Some(dtype)
+    }
+}
+
 pub trait NestedValue: crate::Value {
     /// Return the number of direct children.
     fn len(&self) -> usize;
