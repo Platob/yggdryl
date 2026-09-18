@@ -180,7 +180,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     assert!(matches!(default, Scalar::Geometry(_)), "{default:?}");
     let bytes = default.as_wkb().expect("a WKB payload");
     assert_eq!(
-        yggdryl::types::geospatial::wkb::into_wkt(bytes).unwrap(),
+        yggdryl::types::wkb::into_wkt(bytes).unwrap(),
         "POINT EMPTY",
         "the default is POINT EMPTY"
     );

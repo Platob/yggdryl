@@ -3036,7 +3036,7 @@ pub enum DataType
   pub type UInt64Field = TypedField<integer::UInt64>;
   pub type DateTime64Field = TypedField<temporal::DateTime64Type>;
   pub type BytesField = TypedField<bytes::BytesType>;  (one alias for every byte layout; see yggdryl::types::bytes::fields)
-  pub type StringField = TypedField<string::StringType>;  (one alias for every string layout and charset; the nine code fields CountryField .. TimeInForceField are listed under yggdryl::types::string::fields)
+  pub type StringField = TypedField<string::StringType>;  (one alias for every string layout and charset; the nine code fields CountryField .. TimeInForceField are listed under their own modules)
   pub type StructField = TypedField<nested::Struct>;
   pub type Decimal128Field = TypedField<decimal::Decimal128>;
   pub type VariantField = TypedField<nested::Variant>;
@@ -3186,7 +3186,7 @@ pub enum DataType
   pub fn set_display(&mut self, value: impl Into<String>) -> Result<()>
   pub fn try_with_display(mut self, value: impl Into<String>) -> Result<Self>
   pub fn remove_display(&mut self) -> Option<String>
-  (string_enum / set_string_enum / try_with_string_enum / remove_string_enum: see yggdryl::types::string::fields)
+  (string_enum / set_string_enum / try_with_string_enum / remove_string_enum: see yggdryl::types::string)
   pub fn set_parquet_field_id(&mut self, id: i32)
   pub fn with_parquet_field_id(mut self, id: i32) -> Self
   pub fn set_init(&mut self, init: bool)
@@ -3665,6 +3665,147 @@ pub enum TemporalFamily
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
+
+### yggdryl::types::country  [rust/src/types/country.rs]
+  pub struct Country(SmolStr)  (one validated code; `CountryType` marks its field, `CountryField` is `TypedField<CountryType>`)
+  pub const fn country() -> Self
+  pub type CountryField = TypedField<CountryType>;
+
+### yggdryl::types::currency  [rust/src/types/currency.rs]
+  pub struct Currency(SmolStr)  (one validated code; `CurrencyType` marks its field, `CurrencyField` is `TypedField<CurrencyType>`)
+  pub fn none() -> Self
+  pub const fn currency() -> Self
+  pub type CurrencyField = TypedField<CurrencyType>;
+
+### yggdryl::types::mic  [rust/src/types/mic.rs]
+  pub struct Mic(SmolStr)  (one validated code; `MicType` marks its field, `MicField` is `TypedField<MicType>`)
+  pub fn none() -> Self
+  pub const fn mic() -> Self
+  pub type MicField = TypedField<MicType>;
+
+### yggdryl::types::cfi  [rust/src/types/cfi.rs]
+  pub struct Cfi(SmolStr)  (one validated code; `CfiType` marks its field, `CfiField` is `TypedField<CfiType>`)
+  pub const CFI_CATEGORIES: [CfiCategory; 14] = [
+  pub const LENGTH: usize = 6;
+  pub const UNKNOWN: char = 'X';
+  pub fn category_of(letter: char) -> Option<&'static CfiCategory>
+  pub fn is_classified(code: &str) -> bool
+  pub fn merged(left: &str, right: &str) -> Option<SmolStr>
+  pub fn coarse(category: char, group: Option<char>) -> Option<SmolStr>
+  pub const fn cfi() -> Self
+  pub type CfiField = TypedField<CfiType>;
+  pub struct CfiCategory
+  pub struct CfiGroup
+  pub const fn letter(&self) -> char
+  pub const fn name(&self) -> &'static str
+  pub const fn groups(&self) -> &'static [CfiGroup]
+  pub fn group(&self, letter: char) -> Option<&'static CfiGroup>
+  pub const fn letter(&self) -> char
+  pub const fn name(&self) -> &'static str
+  pub fn attributes(&self, at: usize) -> &'static str
+
+### yggdryl::types::isin  [rust/src/types/isin.rs]
+  pub struct Isin(SmolStr)  (one validated code; `IsinType` marks its field, `IsinField` is `TypedField<IsinType>`)
+  pub struct Isin(SmolStr);
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn prefix(&self) -> &str
+  pub fn nsin(&self) -> &str
+  pub fn check_digit(&self) -> u8
+  pub fn is_valid(text: &str) -> bool
+  pub fn is_canonical(text: &str) -> bool
+  pub fn closing_digit(body: &str) -> Option<u8>
+  pub const fn isin() -> Self
+  pub type IsinField = TypedField<IsinType>;
+
+### yggdryl::types::cusip  [rust/src/types/cusip.rs]
+  pub struct Cusip(SmolStr)  (one validated code; `CusipType` marks its field, `CusipField` is `TypedField<CusipType>`)
+  pub struct Cusip(SmolStr);
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn issuer(&self) -> &str
+  pub fn issue(&self) -> &str
+  pub fn check_digit(&self) -> u8
+  pub fn is_valid(text: &str) -> bool
+  pub fn is_canonical(text: &str) -> bool
+  pub fn closing_digit(body: &str) -> Option<u8>
+  pub const fn cusip() -> Self
+  pub type CusipField = TypedField<CusipType>;
+
+### yggdryl::types::sedol  [rust/src/types/sedol.rs]
+  pub struct Sedol(SmolStr)  (one validated code; `SedolType` marks its field, `SedolField` is `TypedField<SedolType>`)
+  pub struct Sedol(SmolStr);
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn check_digit(&self) -> u8
+  pub fn is_valid(text: &str) -> bool
+  pub fn is_canonical(text: &str) -> bool
+  pub fn closing_digit(body: &str) -> Option<u8>
+  pub const fn sedol() -> Self
+  pub type SedolField = TypedField<SedolType>;
+
+### yggdryl::types::bloomberg  [rust/src/types/bloomberg.rs]
+  pub struct Bloomberg(SmolStr)  (one validated code; `BloombergType` marks its field, `BloombergField` is `TypedField<BloombergType>`)
+  pub fn is_canonical(text: &str) -> bool
+
+### yggdryl::types::side  [rust/src/types/side.rs]
+  pub struct Side(SmolStr)  (one validated code; `SideType` marks its field, `SideField` is `TypedField<SideType>`)
+  pub fn unknown() -> Self
+  pub fn is_bid(&self) -> bool
+  pub fn is_ask(&self) -> bool
+  pub fn read(spelling: &str) -> Result<Self>
+  pub fn from_spelling(spelling: &str) -> Option<Self>
+  pub type SideField = TypedField<SideType>;
+
+### yggdryl::types::state  [rust/src/types/state.rs]
+  pub struct State(SmolStr)  (one validated code; `StateType` marks its field, `StateField` is `TypedField<StateType>`)
+  pub fn unknown() -> Self
+  pub fn rank(&self) -> Option<u8>
+  pub fn is_live(&self) -> bool
+  pub fn is_done(&self) -> bool
+  pub fn is_cancelled(&self) -> bool
+  pub fn is_failed(&self) -> bool
+  pub fn read(spelling: &str) -> Result<Self>
+  pub fn from_spelling(spelling: &str) -> Option<Self>
+  pub type StateField = TypedField<StateType>;
+
+### yggdryl::types::timeinforce  [rust/src/types/timeinforce.rs]
+  pub struct TimeInForce(SmolStr)  (one validated code; `TimeInForceType` marks its field, `TimeInForceField` is `TypedField<TimeInForceType>`)
+  pub type TimeInForceField = TypedField<TimeInForceType>;
+
+### yggdryl::types::code  [rust/src/types/code.rs]
+  pub trait CodeValue: crate::Value  (WIDTH, as_str, storage, merge_with; the one contract every registered code answers)
+  macro_rules! code_leaf  (the validated newtype and its Display)
+  macro_rules! code_value  (its Value impl, its Scalar variant and the From that builds one)
+  pub trait CodeValue: crate::Value
+  pub struct $name(SmolStr);
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub const fn code_name(&self) -> Option<&'static str>
+  pub const fn code_width(&self) -> Option<usize>
+  pub const fn is_code(&self) -> bool
+
+### yggdryl::types::wkb  [rust/src/types/wkb.rs]
+  pub enum Dimensions
+  pub const fn new(has_z: bool, has_m: bool) -> Self
+  pub const fn has_z(self) -> bool
+  pub const fn has_m(self) -> bool
+  pub struct Coord
+  pub enum Geometry
+  pub fn from_slice(bytes: &[u8]) -> Result<Self>
+  pub const fn dimensions(&self) -> Dimensions
+  pub const fn type_id(&self) -> u32
+  pub fn is_empty(&self) -> bool
+  pub fn into_wkt(self) -> String
+  pub struct BoundingBox
+  pub fn is_empty(&self) -> bool
+  pub fn bounding_box(bytes: &[u8]) -> Result<BoundingBox>
+  pub fn geometry_type_ids(bytes: &[u8]) -> Result<Vec<u32>>
+  pub fn into_wkt(bytes: &[u8]) -> Result<String>
 
 ### yggdryl::types::string  [rust/src/types/string.rs]
 pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, LargeString, LargeStringView; Display and serde as the general name)

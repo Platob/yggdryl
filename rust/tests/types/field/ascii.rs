@@ -28,10 +28,10 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     assert_typed_marker::<string::StringType>(DataType::large_utf8());
     assert_typed_marker::<string::StringType>(DataType::utf8_view());
     assert_typed_marker::<string::StringType>(DataType::from_str("string(windows-1252)").unwrap());
-    assert_typed_marker::<string::CountryType>(DataType::Country);
-    assert_typed_marker::<string::CurrencyType>(DataType::Currency);
-    assert_typed_marker::<string::MicType>(DataType::Mic);
-    assert_typed_marker::<string::CfiType>(DataType::Cfi);
+    assert_typed_marker::<yggdryl::types::CountryType>(DataType::Country);
+    assert_typed_marker::<yggdryl::types::CurrencyType>(DataType::Currency);
+    assert_typed_marker::<yggdryl::types::MicType>(DataType::Mic);
+    assert_typed_marker::<yggdryl::types::CfiType>(DataType::Cfi);
 
     // Every string is one parameterized datatype, so the field takes it
     // through `try_new`; a code is not a string and is refused by name.

@@ -556,8 +556,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
     assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
 
-    let currency = string::Currency::new("USD").unwrap();
-    assert_eq!(<string::Currency as CodeValue>::WIDTH, 3);
+    let currency = yggdryl::types::Currency::new("USD").unwrap();
+    assert_eq!(<yggdryl::types::Currency as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
     assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
 
@@ -620,7 +620,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
             string::StringLayout::String,
         ))
         .unwrap();
-    let currency = string::Currency::new("USD").unwrap();
+    let currency = yggdryl::types::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
     assert_eq!(ascii.charset(), yggdryl::Charset::Ascii);
     assert_eq!(currency.as_str(), "USD");
@@ -638,7 +638,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
             ))
             .is_err()
     );
-    assert!(string::Cfi::new("TOO-LONG").is_err());
+    assert!(yggdryl::types::Cfi::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary
@@ -709,8 +709,8 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
-    let side = Scalar::Side(string::Side::new("BUY").unwrap());
-    let time_in_force = Scalar::TimeInForce(string::TimeInForce::new("BUY").unwrap());
+    let side = Scalar::Side(yggdryl::types::Side::new("BUY").unwrap());
+    let time_in_force = Scalar::TimeInForce(yggdryl::types::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
     assert_ne!(side, Scalar::from("BUY"));

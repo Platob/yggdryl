@@ -15,6 +15,7 @@ mod enumeration;
 mod field;
 pub mod floating;
 pub mod geospatial;
+pub mod wkb;
 pub(crate) mod i256;
 pub mod integer;
 pub mod media_type;
@@ -27,6 +28,18 @@ pub mod protocol;
 mod regex;
 mod scalar;
 pub(crate) mod serde;
+pub mod code;
+pub mod bloomberg;
+pub mod cfi;
+pub mod country;
+pub mod currency;
+pub mod cusip;
+pub mod isin;
+pub mod mic;
+pub mod sedol;
+pub mod side;
+pub mod state;
+pub mod timeinforce;
 pub mod string;
 pub mod temporal;
 pub mod timezone;
@@ -74,15 +87,23 @@ pub use nested::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, Value};
+pub use bloomberg::*;
+pub use cfi::*;
+pub use country::*;
+pub use currency::*;
+pub use cusip::*;
+pub use isin::*;
+pub use mic::*;
+pub use sedol::*;
+pub use side::*;
+pub use state::*;
+pub use timeinforce::*;
+pub use code::*;
 pub use string::*;
 #[cfg(feature = "arrow")]
-pub(crate) use string::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
-    TIMEINFORCE_WIDTH, code_refusal, code_text,
-};
-pub(crate) use string::{
-    ascii_bytes, ascii_text, ascii_text_sized, code_cell_text, code_for_extension, trim_padding,
-};
+pub(crate) use code::{code_refusal, code_text};
+pub(crate) use code::{code_cell_text, code_for_extension};
+pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding};
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;

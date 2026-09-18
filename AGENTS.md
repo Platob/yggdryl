@@ -58,11 +58,11 @@ binding is documented as Rust-only.
 
 | Change | Touch, in this order |
 | --- | --- |
-| datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
+| datatype variant | `types/<type>.rs`, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
-| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
-| byte layout | a `BytesLayout` variant + `DataTypeId` appended + `types/bytes/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string.rs` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| byte layout | a `BytesLayout` variant + `DataTypeId` appended + `types/bytes.rs` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
@@ -302,6 +302,28 @@ would put a test fixture in the crate's API.
   `Scheme` owns URI and compatibility scheme vocabulary.
 
 ## Patterns
+
+### One type, one file
+
+A type lives in `rust/src/types/<type>.rs`, and that one file holds the whole
+of it in this order: the **datatype** - the `DataType` constructors and
+predicates naming it - then the **field** - its `FieldType` marker and
+`TypedField` alias - then the **scalar** - its value, its `Value` impl and the
+`Scalar` variant that carries it. Its Arrow reading belongs there too: the
+storage it projects to, the extension name it is recognised by, and the cast
+that reads it back. Nothing about a currency is anywhere but `currency.rs`.
+
+`<type>` is the vocabulary, not the width. Every integer width is one
+`IntegerValue` over one set of rules, so `integer.rs` holds all ten; every
+registered code is its own standard with its own validity, so `country.rs`,
+`currency.rs`, `isin.rs` and the eight beside them are eight more files.
+
+What is shared by several types is a file of its own beside them, never a
+folder under one of them: `code.rs` carries the contract every registered code
+answers, `wkb.rs` the reader three of them need. A file splits into inline
+modules only where the language forces it - a `#[cfg]` cannot gate a loose
+group of items, and a section reading `crate::arrow::{Error, Result}` cannot
+share a scope with one reading `crate::{Error, Result}`.
 
 ### `DataType`, `Field`, `Scalar`
 

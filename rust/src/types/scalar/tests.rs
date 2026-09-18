@@ -48,7 +48,7 @@ fn the_integer_sign_and_magnitude_reader_answers_every_width() {
 
 #[test]
 fn the_value_rank_sweep_is_unchanged() {
-    use crate::types::string::Side;
+    use crate::types::Side;
 
     let point =
         crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap();

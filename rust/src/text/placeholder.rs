@@ -531,9 +531,9 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
-        Scalar::Geometry(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
+        Scalar::Geometry(value) => crate::types::wkb::into_wkt(value.as_bytes())
             .unwrap_or_else(|_| hex_text(value.as_bytes())),
-        Scalar::Geography(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
+        Scalar::Geography(value) => crate::types::wkb::into_wkt(value.as_bytes())
             .unwrap_or_else(|_| hex_text(value.as_bytes())),
         Scalar::Bytes(value) => hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a

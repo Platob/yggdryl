@@ -106,21 +106,21 @@ typed_array!(
 );
 typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
 // A registered code stores as the text it is, exactly as a version does.
-typed_array!(crate::types::string::CountryType, arrow_array::StringArray);
-typed_array!(crate::types::string::CurrencyType, arrow_array::StringArray);
-typed_array!(crate::types::string::MicType, arrow_array::StringArray);
-typed_array!(crate::types::string::CfiType, arrow_array::StringArray);
-typed_array!(crate::types::string::IsinType, arrow_array::StringArray);
-typed_array!(crate::types::string::CusipType, arrow_array::StringArray);
-typed_array!(crate::types::string::SedolType, arrow_array::StringArray);
+typed_array!(crate::types::CountryType, arrow_array::StringArray);
+typed_array!(crate::types::CurrencyType, arrow_array::StringArray);
+typed_array!(crate::types::MicType, arrow_array::StringArray);
+typed_array!(crate::types::CfiType, arrow_array::StringArray);
+typed_array!(crate::types::IsinType, arrow_array::StringArray);
+typed_array!(crate::types::CusipType, arrow_array::StringArray);
+typed_array!(crate::types::SedolType, arrow_array::StringArray);
 typed_array!(
-    crate::types::string::BloombergType,
+    crate::types::BloombergType,
     arrow_array::StringArray
 );
-typed_array!(crate::types::string::SideType, arrow_array::StringArray);
-typed_array!(crate::types::string::StateType, arrow_array::StringArray);
+typed_array!(crate::types::SideType, arrow_array::StringArray);
+typed_array!(crate::types::StateType, arrow_array::StringArray);
 typed_array!(
-    crate::types::string::TimeInForceType,
+    crate::types::TimeInForceType,
     arrow_array::StringArray
 );
 // A UUID stores as the fixed binary of its sixteen bytes.

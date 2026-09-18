@@ -55,8 +55,9 @@ use super::geospatial::{Geography, Geometry};
 use super::integer::{compare_integer_parts, integer_parts};
 use super::integer::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
 use super::nested::{Children, Mapping, Record, Sequence};
-use super::string::{
-    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, Str, TimeInForce,
+use super::string::Str;
+use super::{
+    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };
 use super::temporal::scalars::temporal_key;
 use super::temporal::{
@@ -616,39 +617,39 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
             StructuralWire::String(value) => Ok(Self::String(value)),
-            StructuralWire::Country(value) => super::string::Country::new(value)
+            StructuralWire::Country(value) => super::Country::new(value)
                 .map(Self::Country)
                 .map_err(D::Error::custom),
-            StructuralWire::Currency(value) => super::string::Currency::new(value)
+            StructuralWire::Currency(value) => super::Currency::new(value)
                 .map(Self::Currency)
                 .map_err(D::Error::custom),
-            StructuralWire::Mic(value) => super::string::Mic::new(value)
+            StructuralWire::Mic(value) => super::Mic::new(value)
                 .map(Self::Mic)
                 .map_err(D::Error::custom),
-            StructuralWire::Cfi(value) => super::string::Cfi::new(value)
+            StructuralWire::Cfi(value) => super::Cfi::new(value)
                 .map(Self::Cfi)
                 .map_err(D::Error::custom),
-            StructuralWire::Isin(value) => super::string::Isin::new(value)
+            StructuralWire::Isin(value) => super::Isin::new(value)
                 .map(Self::Isin)
                 .map_err(D::Error::custom),
-            StructuralWire::Cusip(value) => super::string::Cusip::new(value)
+            StructuralWire::Cusip(value) => super::Cusip::new(value)
                 .map(Self::Cusip)
                 .map_err(D::Error::custom),
-            StructuralWire::Bloomberg(value) => super::string::Bloomberg::new(value)
+            StructuralWire::Bloomberg(value) => super::Bloomberg::new(value)
                 .map(Self::Bloomberg)
                 .map_err(serde::de::Error::custom),
-            StructuralWire::Sedol(value) => super::string::Sedol::new(value)
+            StructuralWire::Sedol(value) => super::Sedol::new(value)
                 .map(Self::Sedol)
                 .map_err(D::Error::custom),
             // A side and a state are read by their spelling, exactly as a
             // column reads them.
-            StructuralWire::Side(value) => super::string::Side::read(&value)
+            StructuralWire::Side(value) => super::Side::read(&value)
                 .map(Self::Side)
                 .map_err(D::Error::custom),
-            StructuralWire::State(value) => super::string::State::read(&value)
+            StructuralWire::State(value) => super::State::read(&value)
                 .map(Self::State)
                 .map_err(D::Error::custom),
-            StructuralWire::TimeInForce(value) => super::string::TimeInForce::new(value)
+            StructuralWire::TimeInForce(value) => super::TimeInForce::new(value)
                 .map(Self::TimeInForce)
                 .map_err(D::Error::custom),
             StructuralWire::Uuid(value) => Uuid::from_bytes(value.as_bytes())
