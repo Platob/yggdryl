@@ -12,9 +12,7 @@ use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
 use yggdryl::types::string;
 use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField, StringField};
-use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum,
-};
+use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum};
 
 use super::typed::assert_typed_marker;
 use yggdryl::types::FieldValue as _;
@@ -343,9 +341,7 @@ fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
     // The fixed binary of the same width is the storage itself.
     let same = cast_column(
         batch_of(&source, Arc::clone(&stored)),
-        DataType::fixed_binary(4)
-            .unwrap()
-            .nullable_field("ccy"),
+        DataType::fixed_binary(4).unwrap().nullable_field("ccy"),
     )
     .unwrap();
     assert!(Arc::ptr_eq(&same, &stored));

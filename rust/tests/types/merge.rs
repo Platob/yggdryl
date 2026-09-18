@@ -76,25 +76,25 @@ fn two_byte_types_meet_parameter_by_parameter() {
     assert_eq!(up("binary_view", "large_binary"), "large_binary");
     assert_eq!(up("fixed_binary(4)", "binary_view"), "binary_view");
     assert_eq!(up("fixed_binary(4)", "sized_binary(2)"), "sized_binary(2)");
-    assert_eq!(
-        up("fixed_binary(4)", "fixed_binary(8)"),
-        "sized_binary(8)"
-    );
+    assert_eq!(up("fixed_binary(4)", "fixed_binary(8)"), "sized_binary(8)");
     assert_eq!(up("sized_binary(16)", "binary"), "binary");
-    assert_eq!(up("sized_binary(16)", "sized_binary(32)"), "sized_binary(32)");
+    assert_eq!(
+        up("sized_binary(16)", "sized_binary(32)"),
+        "sized_binary(32)"
+    );
     // Narrowing: the mirror.
     assert_eq!(down("binary", "large_binary"), "binary");
     assert_eq!(down("binary_view", "large_binary"), "binary");
-    assert_eq!(
-        down("fixed_binary(4)", "binary_view"),
-        "fixed_binary(4)"
-    );
+    assert_eq!(down("fixed_binary(4)", "binary_view"), "fixed_binary(4)");
     assert_eq!(
         down("fixed_binary(4)", "fixed_binary(8)"),
         "fixed_binary(4)"
     );
     assert_eq!(down("sized_binary(16)", "binary"), "sized_binary(16)");
-    assert_eq!(down("sized_binary(16)", "sized_binary(32)"), "sized_binary(16)");
+    assert_eq!(
+        down("sized_binary(16)", "sized_binary(32)"),
+        "sized_binary(16)"
+    );
 }
 
 #[test]
@@ -106,7 +106,10 @@ fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
             DataType::fixed_ascii(4).unwrap(),
             DataType::fixed_binary(4).unwrap(),
         ),
-        (DataType::Uuid(UuidType::Uuid), DataType::fixed_binary(16).unwrap()),
+        (
+            DataType::Uuid(UuidType::Uuid),
+            DataType::fixed_binary(16).unwrap(),
+        ),
     ] {
         assert_eq!(
             left.merge_with(&right, false).unwrap(),

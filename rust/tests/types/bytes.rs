@@ -20,7 +20,10 @@ fn serde_and_the_structural_value_round_trip() {
             DataType::binary_view(),
             r#"{"type":"binary","layout":"binary_view"}"#,
         ),
-        (bounded_binary(16), r#"{"type":"binary","layout":"sized_binary","max":16}"#),
+        (
+            bounded_binary(16),
+            r#"{"type":"binary","layout":"sized_binary","max":16}"#,
+        ),
         (
             DataType::fixed_binary(4).unwrap(),
             r#"{"type":"binary","layout":"fixed_binary","fixed":4}"#,
@@ -52,9 +55,7 @@ fn serde_and_the_structural_value_round_trip() {
     assert!(DataType::from_json(r#"{"type":"binary","layout":"fixed_binary","fixed":0}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"binary","max":0}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"binary","fixed":4}"#).is_err());
-    assert!(
-        DataType::from_json(r#"{"type":"binary","layout":"fixed_binary","max":4}"#).is_err()
-    );
+    assert!(DataType::from_json(r#"{"type":"binary","layout":"fixed_binary","max":4}"#).is_err());
     let refused = DataType::from_value(
         DataType::binary()
             .into_value()
@@ -73,9 +74,7 @@ fn only_plain_binary_crosses_a_foreign_target_unchanged() {
         bounded_binary(16).required_field("bounded"),
         DataType::large_binary().required_field("large"),
         DataType::binary_view().required_field("view"),
-        DataType::fixed_binary(4)
-            .unwrap()
-            .required_field("fixed"),
+        DataType::fixed_binary(4).unwrap().required_field("fixed"),
     ])
     .unwrap()
     .required_field("row");
@@ -90,10 +89,7 @@ fn only_plain_binary_crosses_a_foreign_target_unchanged() {
     for name in ["plain", "bounded", "large", "view"] {
         assert_eq!(compat[name].dtype(), &DataType::binary(), "{name}");
     }
-    assert_eq!(
-        compat["fixed"].dtype(),
-        &DataType::fixed_binary(4).unwrap()
-    );
+    assert_eq!(compat["fixed"].dtype(), &DataType::fixed_binary(4).unwrap());
     assert_eq!(
         schema.clone().into_scheme_compat(&Scheme::ARROW).unwrap(),
         schema

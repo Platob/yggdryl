@@ -1723,7 +1723,11 @@ impl<'doc> Parse<'doc> {
         let mut counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is dropped while the parent keeps the rest.
-        if matches!(counter.dtype(), DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_))) {
+        if matches!(
+            counter.dtype(),
+            DataType::Sequence(SequenceType::List(_))
+                | DataType::Sequence(SequenceType::LargeList(_))
+        ) {
             self.dropped(&self.refused(
                 "a nested grammar opening with its counter",
                 format_args!(

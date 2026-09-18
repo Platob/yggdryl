@@ -30,10 +30,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -434,7 +434,9 @@ pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
         DataType::Decimal(DecimalType::Decimal32 { precision, scale })
         | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
         | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => Some((*precision, *scale)),
+        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            Some((*precision, *scale))
+        }
         _ => None,
     }
 }

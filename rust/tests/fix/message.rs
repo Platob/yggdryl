@@ -9,8 +9,8 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event};
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, fix_schema,
-    fix_schema_carrying,
+    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone,
+    fix_schema, fix_schema_carrying,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -92,7 +92,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         if tag == 55 || tag == 54 {
             continue;
         }
-        if tag == yggdryl::HASHCODE_TAG_NAME.0 {
+        if tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(tag).unwrap(), value);
             continue;
         }
@@ -111,7 +111,14 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
     message.set(1, Scalar::from("A-1")).unwrap();
-    assert_eq!(message.remove(54).unwrap(), Some(Scalar::from("BUY")));
+    assert_eq!(
+        message
+            .remove(54)
+            .unwrap()
+            .as_ref()
+            .and_then(Scalar::as_str),
+        Some("BUY")
+    );
     let symbol = message
         .entries()
         .iter()
@@ -128,7 +135,7 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     );
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|59=0|11=A1|55=MSFT|venuething=7|9999=x|10=0|1=A-1|"
+        b"8=FIX.4.4|35=D|11=A1|55=MSFT|venuething=7|9999=x|59=0|1=A-1|10=0|"
     );
     assert_ne!(message.digest(), parsed.digest());
     assert_ne!(message.entries(), parsed.entries());
@@ -248,7 +255,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
         if *tag == 55 {
             continue;
         }
-        if *tag == yggdryl::HASHCODE_TAG_NAME.0 {
+        if *tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(*tag).unwrap(), *value);
             continue;
         }
@@ -267,7 +274,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     // the dictionary derived for the order stays.
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|54=1|59=0|11=A1|10=0|"
+        b"8=FIX.4.4|35=D|11=A1|54=1|59=0|10=0|"
     );
 }
 
@@ -310,16 +317,16 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     // The same message on the wire, and the code it digests to. The
     // sending time is the one fact a row cannot give back: the line stated
     // none, so it is intake's stand-in rather than something the message
-    // said, the row carries the instant under `unix` alone, and the message
+    // said, the row carries the instant under `currunix` alone, and the message
     // a row makes stands one in again.
     assert!(!parsed.header().stated_sendingtime());
     assert!(!held.header().stated_sendingtime());
     assert_eq!(held.header().beginstring(), parsed.header().beginstring());
     assert_eq!(held.header().msgtype(), parsed.header().msgtype());
     assert_eq!(held.header().msgseqnum(), parsed.header().msgseqnum());
-    assert_eq!(held.get_unix(), parsed.get_unix());
+    assert_eq!(held.get_currunix(), parsed.get_currunix());
     assert_eq!(held.into_bytes(b'|'), parsed.into_bytes(b'|'));
-    assert_eq!(held.get_hashcode(), parsed.get_hashcode());
+    assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
 }
 
 #[test]
@@ -387,13 +394,13 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
         .find(|entry| entry.tag() == 96)
         .expect("the data field");
     assert_eq!(arrived.value(), Some("\u{ff}\u{fe} A"));
-    // `TimeInForce` is the dictionary's derivation for an order and one of
-    // the event's own facts, so it re-emits in the event's band rather than
-    // behind the entries.
+    // `TimeInForce` is the dictionary's derivation for an order and an
+    // ordinary child of the row, so it re-emits where the row carries it -
+    // appended behind the content the line stated, in front of the trailer.
     assert_eq!(
         parsed.into_bytes(1),
         line.body()
-            .replace("35=D\u{1}", "35=D\u{1}59=0\u{1}")
+            .replace("\u{1}10=", "\u{1}59=0\u{1}10=")
             .as_bytes()
     );
     assert_ne!(parsed.into_bytes(1), wire);
@@ -406,9 +413,9 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
 }
 
 #[test]
-fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
+fn a_captures_own_columns_never_reach_the_message() {
     let (registry, reader) = reader();
-    // Nullable, because a message parsed on its own states none of them.
+    // Nullable, because a message states none of them - ever.
     let capture = DataType::from_fields([
         DataType::utf8().nullable_field("url"),
         DataType::Int64.nullable_field("rownum"),
@@ -423,27 +430,36 @@ fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
     // A parsed message has no capture columns: they are null in its row, and
     // a row read back off that one is the message it came from.
     let row = parsed.into_row(&schema).unwrap();
-    assert!(row.get(at("url")).unwrap().is_null());
-    assert!(row.get(at("rownum")).unwrap().is_null());
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(row.get(at(carrier)).unwrap().is_null(), "{carrier}");
+    }
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(held.entries(), parsed.entries());
     assert_eq!(held.into_row(&schema).unwrap(), row);
 
-    // A row a reader put its own columns in front of says what the line was
-    // read from, not what the message states. Read back, those columns stay
-    // columns: each is a child of the row under its own name, none is an
-    // entry, and so none of them reaches a counterparty.
+    // A row a reader put its own statements in - the two the crate tags
+    // among them - says what the *line* was read from. Read back, the
+    // message holds none of it: no child, no entry, nothing on the wire, and
+    // nothing to answer by name or by tag.
     let mut columns = row.as_sequence().expect("a row").to_vec();
     columns[at("url")] = Scalar::from("file:///capture.log");
     columns[at("rownum")] = Scalar::from(42_i64);
     columns[at("body")] = Scalar::from(ORDER.to_vec());
+    columns[at("sourceurl")] = Scalar::from(yggdryl::Url::from_str("file:///capture.log").unwrap());
+    columns[at("recordedat")] = Scalar::datetime64(
+        1_704_190_530_000_000_000,
+        TimeUnit::Nanosecond,
+        Timezone::UTC,
+    )
+    .unwrap();
     let carried = Scalar::from_sequence(columns);
     let again = FixMsg::from_row(Arc::clone(&registry), &schema, &carried).unwrap();
     assert_eq!(again.entries(), held.entries());
     assert_eq!(again.into_bytes(b'|'), held.into_bytes(b'|'));
     assert_eq!(again.by_tag(55).unwrap().as_str(), Some("AAPL"));
-    for carrier in ["url", "rownum", "body"] {
-        assert!(again.as_field().index_of(carrier).is_some(), "{carrier}");
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(again.as_field().index_of(carrier).is_none(), "{carrier}");
+        assert!(again.get_by_name(carrier).is_none(), "{carrier}");
         assert!(
             !again.entries().iter().any(|entry| entry.name() == carrier),
             "{carrier}"
@@ -451,15 +467,45 @@ fn a_captures_own_columns_stay_the_captures_when_a_row_is_read_back() {
         let wire = String::from_utf8_lossy(&again.into_bytes(b'|')).into_owned();
         assert!(!wire.contains(&format!("{carrier}=")), "{wire}");
     }
-    assert_eq!(
-        again.by_name("url").unwrap().as_str(),
-        Some("file:///capture.log")
+    assert!(again.capture().pluginid().is_none());
+    assert!(
+        again.get_by_tag(yggdryl::SOURCEURL_TAG_NAME.0).is_none(),
+        "the object a line came out of is not a fact of the message"
     );
 
-    // And the row returns to its schema whole: a column that is not content
-    // is still a column, so what the reader put in front of the row is
-    // where it was.
-    assert_eq!(again.into_row(&schema).unwrap(), carried);
+    // So a message alone cannot put them back: the row it writes states them
+    // null, and only a reader holding the batch they arrived in can.
+    let written = again.into_row(&schema).unwrap();
+    for carrier in ["url", "rownum", "body", "sourceurl", "recordedat"] {
+        assert!(written.get(at(carrier)).unwrap().is_null(), "{carrier}");
+    }
+    assert_eq!(written, row, "every other column is the message's own");
+}
+
+/// Writing one of the capture's own columns onto a message is refused.
+///
+/// Silence would leave a caller believing the message states where its line
+/// came from, and a row child would put `sourceurl=` on the wire.
+#[test]
+fn writing_a_captures_own_column_onto_a_message_is_refused() {
+    let (_registry, reader) = reader();
+    let mut parsed = reader.sole_line(ORDER).unwrap();
+    for (tag, name) in [yggdryl::SOURCEURL_TAG_NAME, yggdryl::RECORDEDAT_TAG_NAME] {
+        let refusal = parsed
+            .set(tag, Scalar::from("file:///capture.log"))
+            .unwrap_err()
+            .to_string();
+        assert!(refusal.contains(name), "{refusal}");
+        assert!(refusal.contains("capture"), "{refusal}");
+        // Removing one reaches nothing rather than refusing: there was never
+        // a fact there to clear.
+        assert_eq!(parsed.remove(tag).unwrap(), None);
+    }
+    // Refused and unchanged: the row grew nothing and the wire is the line.
+    assert_eq!(
+        parsed.into_bytes(b'|'),
+        reader.sole_line(ORDER).unwrap().into_bytes(b'|')
+    );
 }
 
 #[test]
@@ -484,12 +530,13 @@ fn a_row_without_the_entries_group_has_no_entries() {
 
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &row).unwrap();
     assert!(held.entries().is_empty());
-    // The typed facts are the holders' and still on the wire; the content
-    // is gone with the record.
+    // The typed facts are the holders' and still on the wire - the frame
+    // and the identifier the message lifted - and the content is gone with
+    // the record, the side and the symbol among it.
     let wire = String::from_utf8(held.into_bytes(b'|')).unwrap();
     assert!(wire.starts_with("8=FIX.4.4|35=D|"), "{wire}");
-    assert!(wire.contains("|54=1|"), "{wire}");
-    assert!(!wire.contains("11=") && !wire.contains("55="), "{wire}");
+    assert!(wire.contains("|11=A1|"), "{wire}");
+    assert!(!wire.contains("54=") && !wire.contains("55="), "{wire}");
     // A row that dropped the record cannot give the content back, so the
     // row it makes is the one a message of typed facts alone fills - and
     // that row is its own fixed point.

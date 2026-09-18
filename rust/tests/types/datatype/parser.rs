@@ -1,5 +1,5 @@
-use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
 use yggdryl::types::UuidType;
+use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {
@@ -363,10 +363,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
     // Every parameterized id name is a grammar keyword too.
     for (named, expected) in [
         ("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap()),
-        (
-            "fixed_binary(16)",
-            DataType::fixed_binary(16).unwrap(),
-        ),
+        ("fixed_binary(16)", DataType::fixed_binary(16).unwrap()),
         ("fixed_size_list(int32, 4)", {
             DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap()
         }),
@@ -392,14 +389,29 @@ fn a_declared_sql_length_is_a_length() {
         "char(1)".parse::<DataType>().unwrap().to_string(),
         "fixed_utf8(1)"
     );
-    for (accepted, max) in [("sized_binary(16)", 16_u32), ("varbinary(4)", 4), ("binary(8)", 8)] {
+    for (accepted, max) in [
+        ("sized_binary(16)", 16_u32),
+        ("varbinary(4)", 4),
+        ("binary(8)", 8),
+    ] {
         let parsed = accepted.parse::<DataType>().unwrap();
-        assert_eq!(parsed.to_string(), format!("sized_binary({max})"), "{accepted}");
-        assert_eq!(parsed.bytes_parameters().unwrap().max(), Some(max), "{accepted}");
+        assert_eq!(
+            parsed.to_string(),
+            format!("sized_binary({max})"),
+            "{accepted}"
+        );
+        assert_eq!(
+            parsed.bytes_parameters().unwrap().max(),
+            Some(max),
+            "{accepted}"
+        );
     }
     for malformed in ["binary(-1)", "varbinary(0)"] {
         let refused = malformed.parse::<DataType>().unwrap_err().to_string();
-        assert!(refused.contains("maximum") || refused.contains("width"), "{refused}");
+        assert!(
+            refused.contains("maximum") || refused.contains("width"),
+            "{refused}"
+        );
     }
     for malformed in ["varchar(0)", "char(-1)"] {
         assert!(malformed.parse::<DataType>().is_err(), "{malformed}");

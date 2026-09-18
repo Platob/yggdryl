@@ -123,7 +123,6 @@ define_field_types!(UInt16Type, UInt16);
 define_field_types!(UInt32Type, UInt32);
 define_field_types!(UInt64Type, UInt64);
 
-
 // ------------------------------------------------------------------------
 // Integer scalar canonicalization and validation.
 // ------------------------------------------------------------------------

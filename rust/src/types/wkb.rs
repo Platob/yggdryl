@@ -326,7 +326,11 @@ mod read {
 
     /// Read one member header of a multi geometry and refuse the wrong shape by
     /// name, at the byte where the member started.
-    fn read_member_header(cursor: &mut Cursor<'_>, expected: Base, container: Base) -> Result<Header> {
+    fn read_member_header(
+        cursor: &mut Cursor<'_>,
+        expected: Base,
+        container: Base,
+    ) -> Result<Header> {
         let position = cursor.position;
         let header = read_header(cursor)?;
         if header.base != expected {
@@ -374,7 +378,8 @@ mod read {
                 let count = take_count(cursor, header.order, "geometry count", MEMBER_BYTES)?;
                 let mut lines = Vec::with_capacity(count);
                 for _ in 0..count {
-                    let member = read_member_header(cursor, Base::LineString, Base::MultiLineString)?;
+                    let member =
+                        read_member_header(cursor, Base::LineString, Base::MultiLineString)?;
                     lines.push(read_line(cursor, &member)?);
                 }
                 Geometry::MultiLineString { dimensions, lines }
@@ -637,7 +642,11 @@ mod write {
 
     /// Write a comma-separated run between parentheses, or `EMPTY` when the run
     /// holds nothing, which is WKT's one spelling for absence.
-    fn write_sequence<T>(text: &mut String, items: &[T], mut write_item: impl FnMut(&mut String, &T)) {
+    fn write_sequence<T>(
+        text: &mut String,
+        items: &[T],
+        mut write_item: impl FnMut(&mut String, &T),
+    ) {
         if items.is_empty() {
             text.push_str("EMPTY");
             return;

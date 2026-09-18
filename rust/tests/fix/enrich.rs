@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
+use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::holder::local::Folder;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -51,6 +52,25 @@ fn text(message: &FixMsg, tag: i32) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+/// The instrument's ISIN, as the trait derives it from `SecurityID(48)`
+/// under its source and the `SecurityAltID` group.
+fn isincode(message: &FixMsg) -> Option<String> {
+    message.get_isincode().map(|held| held.as_str().to_owned())
+}
+
+/// The market, as the trait derives it from `SecurityExchange(207)`,
+/// `ExDestination(100)` or `LastMkt(30)`.
+fn miccode(message: &FixMsg) -> Option<String> {
+    message.get_miccode().map(|held| held.as_str().to_owned())
+}
+
+/// The ranked lifecycle state, as the trait derives it from `OrdStatus(39)`
+/// or `ExecType(150)`; `None` where neither says.
+fn statecode(message: &FixMsg) -> Option<String> {
+    let held = message.get_state();
+    (held != &State::unknown()).then(|| held.as_str().to_owned())
+}
+
 /// The integer one tag holds.
 fn integer(message: &FixMsg, tag: i32) -> Option<i128> {
     message.get_by_tag(tag).as_ref().and_then(Scalar::as_i128)
@@ -79,10 +99,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // SEDOL: a `SecurityID` one of them closes has stated its own source.
     let isin = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|");
     assert_eq!(text(&isin, 22).as_deref(), Some("4"));
-    assert_eq!(
-        text(&isin, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("US0378331005")
-    );
+    assert_eq!(isincode(&isin).as_deref(), Some("US0378331005"));
     assert_eq!(
         text(&isin, 470).as_deref(),
         Some("US"),
@@ -91,7 +108,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
 
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
     assert_eq!(text(&cusip, 22).as_deref(), Some("1"));
-    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    assert_eq!(isincode(&cusip), None);
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
@@ -100,10 +117,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
     assert_eq!(text(&folded, 22).as_deref(), Some("4"));
-    assert_eq!(
-        text(&folded, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("US0378331005")
-    );
+    assert_eq!(isincode(&folded).as_deref(), Some("US0378331005"));
 
     // A value no standard closes answers nothing, and a typo is not an
     // identifier of anything.
@@ -120,14 +134,14 @@ fn an_identifier_names_the_standard_that_closes_it() {
             "{}",
             String::from_utf8_lossy(line)
         );
-        assert_eq!(held.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+        assert_eq!(isincode(&held), None);
     }
 
     // A stated source wins over what the value would validate as, and an
     // ISIN under another source is not read as one.
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=1|10=0|");
     assert_eq!(text(&stated, 22).as_deref(), Some("1"));
-    assert_eq!(stated.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    assert_eq!(isincode(&stated), None);
 
     // The rules read codes. A bridge row spelling the source in its own
     // word has stated one, which stands, and `isin` is not the code `4`: the
@@ -138,7 +152,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
         b"MSGTYPE=D|CLORDID=A|SECURITYID=CH0012221716|SECURITYIDSOURCE=isin",
     );
     assert_eq!(text(&worded, 22).as_deref(), Some("isin"));
-    assert_eq!(worded.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    assert_eq!(isincode(&worded), None);
 }
 
 #[test]
@@ -147,10 +161,7 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     // The alternate identifier whose source says ISIN is the ISIN, and once
     // the row holds one it holds the primary identifier and its source too.
     let held = settled(&reader, &alternate("CH0012221716", "4"));
-    assert_eq!(
-        text(&held, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("CH0012221716")
-    );
+    assert_eq!(isincode(&held).as_deref(), Some("CH0012221716"));
     assert_eq!(text(&held, 48).as_deref(), Some("CH0012221716"));
     assert_eq!(text(&held, 22).as_deref(), Some("4"));
     assert_eq!(text(&held, 470).as_deref(), Some("CH"));
@@ -163,10 +174,7 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
         b"MSGTYPE=D|#CLORDID=A|#SECURITYID=US0378331005|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID=CH0012221716\x04\x03SECURITYALTIDSOURCE=4",
     );
     assert_eq!(text(&both, 22).as_deref(), Some("4"));
-    assert_eq!(
-        text(&both, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("US0378331005")
-    );
+    assert_eq!(isincode(&both).as_deref(), Some("US0378331005"));
     assert_eq!(text(&both, 470).as_deref(), Some("US"));
     // Under another source the primary is no ISIN, and the alternate is.
     let sourced = settled(
@@ -175,36 +183,44 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     );
     assert_eq!(text(&sourced, 22).as_deref(), Some("1"));
     assert_eq!(text(&sourced, 48).as_deref(), Some("037833100"));
-    assert_eq!(
-        text(&sourced, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("CH0012221716")
-    );
+    assert_eq!(isincode(&sourced).as_deref(), Some("CH0012221716"));
     assert_eq!(text(&sourced, 470).as_deref(), Some("CH"));
 
-    // A bridge row stating only the crate's own column has stated the
-    // primary identifier.
-    let bridge = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
+    // A bridge row stating an ISIN under FIX's own name has stated the
+    // primary identifier, and the source and the country follow from it.
+    let bridge = settled(&reader, b"MSGTYPE=D|CLORDID=A|SECURITYID=GB0002634946");
     assert_eq!(text(&bridge, 48).as_deref(), Some("GB0002634946"));
     assert_eq!(text(&bridge, 22).as_deref(), Some("4"));
     assert_eq!(text(&bridge, 470).as_deref(), Some("GB"));
+    assert_eq!(isincode(&bridge).as_deref(), Some("GB0002634946"));
+    // A bridge row spelling `ISINCODE` names no field of the dictionary -
+    // this crate stopped owning a column by that name - so it is kept as
+    // the venue's own key and states no identifier.
+    let spelled = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
+    assert_eq!(isincode(&spelled), None);
+    assert_eq!(spelled.get_by_tag(48), None);
+    assert_eq!(
+        spelled
+            .by_name("isincode")
+            .expect("the venue's own key")
+            .as_str(),
+        Some("GB0002634946")
+    );
 
     // An international prefix is an agency and not a country.
     for id in ["XS0000000009", "EU0000000008"] {
         let held = settled(&reader, &alternate(id, "4"));
-        assert_eq!(
-            text(&held, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-            Some(id)
-        );
+        assert_eq!(isincode(&held).as_deref(), Some(id));
         assert_eq!(held.get_by_tag(470), None, "{id}");
     }
 
     // An alternate identifier under another source is not an ISIN, and one
     // the check digit does not close is nothing at all.
     let cusip = settled(&reader, &alternate("037833100", "1"));
-    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    assert_eq!(isincode(&cusip), None);
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
-    assert_eq!(masked.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    assert_eq!(isincode(&masked), None);
     assert_eq!(masked.get_by_tag(48), None);
     assert_eq!(masked.get_by_tag(22), None);
 }
@@ -324,25 +340,16 @@ fn the_crates_market_and_state_columns_are_stated_on_the_message() {
         (b"8=FIX.4.4|35=D|11=A|30=XLON|10=0|", "XLON"),
     ] {
         let held = settled(&reader, line);
-        assert_eq!(
-            text(&held, yggdryl::MICCODE_TAG_NAME.0).as_deref(),
-            Some(market)
-        );
+        assert_eq!(miccode(&held).as_deref(), Some(market));
     }
     let silent = settled(&reader, b"8=FIX.4.4|35=D|11=A|10=0|");
-    assert_eq!(silent.get_by_tag(yggdryl::MICCODE_TAG_NAME.0), None);
+    assert_eq!(miccode(&silent), None);
 
     // The column spells a state by its rank, whichever code stated it.
     let status = settled(&reader, b"8=FIX.4.4|35=8|39=1|150=F|10=0|");
-    assert_eq!(
-        text(&status, yggdryl::STATE_TAG_NAME.0).as_deref(),
-        Some(state("1").as_str())
-    );
+    assert_eq!(statecode(&status).as_deref(), Some(state("1").as_str()));
     let trade = settled(&reader, b"8=FIX.4.4|35=8|150=F|10=0|");
-    assert_eq!(
-        text(&trade, yggdryl::STATE_TAG_NAME.0).as_deref(),
-        Some(state("F").as_str())
-    );
+    assert_eq!(statecode(&trade).as_deref(), Some(state("F").as_str()));
     assert_eq!(trade.get_by_tag(39), None, "a trade alone says no status");
 }
 
@@ -429,11 +436,8 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     // reads: one pass answers both.
     let chained = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
     assert_eq!(text(&chained, 39).as_deref(), Some("0"));
-    assert_eq!(chained.by_tag(151).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(
-        text(&chained, yggdryl::STATE_TAG_NAME.0).as_deref(),
-        Some(state("0").as_str())
-    );
+    assert_eq!(chained.by_tag(151).unwrap(), super::decimal("100"));
+    assert_eq!(statecode(&chained).as_deref(), Some(state("0").as_str()));
 }
 
 #[test]
@@ -509,7 +513,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
 
     let reader = super::fixed_codec(Arc::new(registry));
     let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
-    assert_eq!(held.by_tag(151).unwrap(), Scalar::from(8.0_f64));
+    assert_eq!(held.by_tag(151).unwrap(), super::decimal("8"));
 
     // Removing it silences the fill. `update` merges, and a stored key the
     // incoming field omits is kept as every `fix:` key is, so the removal
@@ -645,19 +649,21 @@ fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
     let half = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|10=0|");
     assert_eq!(half.get_by_tag(381), None);
     let whole = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|10=0|");
-    assert_eq!(whole.by_tag(381).unwrap(), Scalar::from(25.0_f64));
+    assert_eq!(whole.by_tag(381).unwrap(), super::decimal("25"));
 
     // A stated value stands whatever the derivation would say, and a stated
     // null is not a stated value: the derivation fills it in place.
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=99|10=0|");
-    assert_eq!(stated.by_tag(381).unwrap(), Scalar::from(99.0_f64));
+    assert_eq!(stated.by_tag(381).unwrap(), super::decimal("99"));
     let nulled = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|");
-    assert_eq!(nulled.by_tag(381).unwrap(), Scalar::from(25.0_f64));
-    // The wire re-emits the message as it now stands, so the column the
-    // fill landed in is what the pair says.
+    assert_eq!(nulled.by_tag(381).unwrap(), super::decimal("25"));
+    // The wire re-emits the message as it now stands: the frame, then the
+    // fields it lifted in tag order, then its content, then the trailer.
+    // What it *derived* - the price and the quantity it is about, read off
+    // the fill it stated - is emitted nowhere.
     assert_eq!(
         String::from_utf8(nulled.into_bytes(b'|')).unwrap(),
-        "8=FIX.4.4|35=8|31=2.5|32=10|38=10|44=2.5|59=0|37=A|381=25|10=0|"
+        "8=FIX.4.4|35=8|31=2.5|32=10|37=A|381=25|59=0|10=0|"
     );
 }
 
@@ -669,14 +675,12 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     // country off the column.
     let chain = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=GB0002634946|10=0|");
     assert_eq!(text(&chain, 22).as_deref(), Some("4"));
-    assert_eq!(
-        text(&chain, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("GB0002634946")
-    );
+    assert_eq!(isincode(&chain).as_deref(), Some("GB0002634946"));
     assert_eq!(text(&chain, 470).as_deref(), Some("GB"));
-    // The other way round, from the crate's column: `isincode` ->
-    // `securityid` -> `securityidsource`, a lower tag filled off a higher.
-    let reversed = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
+    // The other way round, from the alternate a message states instead of
+    // a primary: `secaltidgrp` -> `securityid` -> `securityidsource`, a
+    // lower tag filled off a group.
+    let reversed = settled(&reader, &alternate("GB0002634946", "4"));
     assert_eq!(text(&reversed, 48).as_deref(), Some("GB0002634946"));
     assert_eq!(text(&reversed, 22).as_deref(), Some("4"));
     // `cficode` -> `securitytype` -> `product`, and `exectype` ->
@@ -686,11 +690,8 @@ fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
     assert_eq!(integer(&typed, 460), Some(13));
     let report = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
     assert_eq!(text(&report, 39).as_deref(), Some("0"));
-    assert_eq!(report.by_tag(151).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(
-        text(&report, yggdryl::STATE_TAG_NAME.0).as_deref(),
-        Some(state("0").as_str())
-    );
+    assert_eq!(report.by_tag(151).unwrap(), super::decimal("100"));
+    assert_eq!(statecode(&report).as_deref(), Some(state("0").as_str()));
 }
 
 #[test]
@@ -732,22 +733,16 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
             panic!("{} binds against what it reads: {error}", field.name())
         });
     }
-    // The dictionary's own rules and the crate's own columns.
-    assert_eq!(carried, 43);
-    for (tag, _) in [
-        yggdryl::ISINCODE_TAG_NAME,
-        yggdryl::MICCODE_TAG_NAME,
-        yggdryl::STATE_TAG_NAME,
-    ] {
-        assert!(
-            registry
-                .field_by_tag(tag)
-                .expect("a crate field")
-                .as_fix()
-                .derivation()
-                .expect("readable")
-                .is_some(),
-            "tag {tag} derives"
+    // Every rule is the dictionary's own: the crate owns no derived
+    // column, because what a message implies about its market is what the
+    // traits answer off the FIX fields it lifted.
+    assert_eq!(carried, 29);
+    for field in yggdryl::fix_crate_fields().expect("the crate's own fields") {
+        assert_eq!(
+            field.as_fix().derivation().expect("readable"),
+            None,
+            "{} derives nothing",
+            field.name()
         );
     }
     let _ = registry
@@ -756,36 +751,31 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
 }
 
 #[test]
-fn the_crates_columns_fill_a_row_of_an_unenriched_message_as_the_pass_fills_it() {
-    // The row door evaluates the crate columns' own derivations, the same
-    // terms the pass evaluates, so a row of a message nobody enriched holds
-    // what the pass would have stated.
+fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
+    // A derived market fact is the traits' answer and not a column: the
+    // row carries the FIX fields it was read off - `SecurityID(48)` under
+    // its source, `ExDestination(100)`, `ExecType(150)` - and no column
+    // restates the ISIN, the market or the ranked state, because a second
+    // owner of a fact is what this crate stopped keeping.
     let reader = reader();
     let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
-    // A parse states the crate columns' own derivations, and the row door
-    // evaluates the same terms, so the message and its row agree.
     let filled = reader.sole_line(line).expect("a readable line");
     let row = filled.clone().into_row(&schema).expect("a row");
     let column = |name: &str| {
         let at = schema.index_of(name).expect(name);
         row.as_sequence().expect("a row")[at].clone()
     };
-    assert_eq!(column("isincode").as_str(), Some("US0378331005"));
-    assert_eq!(column("miccode").as_str(), Some("XNAS"));
-    assert_eq!(column("state").as_str(), Some(state("F").as_str()));
-    assert_eq!(
-        text(&filled, yggdryl::ISINCODE_TAG_NAME.0).as_deref(),
-        Some("US0378331005")
-    );
-    assert_eq!(
-        text(&filled, yggdryl::MICCODE_TAG_NAME.0).as_deref(),
-        Some("XNAS")
-    );
-    assert_eq!(
-        text(&filled, yggdryl::STATE_TAG_NAME.0).as_deref(),
-        Some(state("F").as_str())
-    );
+    for name in ["isincode", "miccode", "state", "px", "qty", "symbolticker"] {
+        assert_eq!(schema.index_of(name), None, "{name} is no column");
+    }
+    assert_eq!(column("securityid").as_str(), Some("US0378331005"));
+    assert_eq!(column("exdestination").as_str(), Some("XNAS"));
+    assert_eq!(column("exectype").as_str(), Some("F"));
+    // And the traits answer every one of them off exactly those fields.
+    assert_eq!(isincode(&filled).as_deref(), Some("US0378331005"));
+    assert_eq!(miccode(&filled).as_deref(), Some("XNAS"));
+    assert_eq!(statecode(&filled).as_deref(), Some(state("F").as_str()));
 }
 
 /// A refusal's text, which names the field and what was refused.
@@ -879,7 +869,7 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     .required_field("8");
     let value = Scalar::from_record([
         ("orderid", Scalar::from("A")),
-        ("lastqty", Scalar::from(10.0_f64)),
+        ("lastqty", super::decimal("10")),
     ])
     .expect("a record");
     let read =
@@ -918,7 +908,6 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
 #[test]
 fn an_unvalidated_primary_under_the_isin_source_falls_through_to_the_alternate() {
     let reader = reader();
-    let isincode = yggdryl::ISINCODE_TAG_NAME.0;
     // A primary no check digit closes, stated under the ISIN source beside
     // an alternate the digit does close: the alternate answers, and the
     // country is read off it.
@@ -926,7 +915,7 @@ fn an_unvalidated_primary_under_the_isin_source_falls_through_to_the_alternate()
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=NOTANISIN00|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&fallen, isincode).as_deref(), Some("CH0012221716"));
+    assert_eq!(isincode(&fallen).as_deref(), Some("CH0012221716"));
     assert_eq!(text(&fallen, 470).as_deref(), Some("CH"));
     // A typo in the primary is the same fall-through: one digit off is not
     // that security.
@@ -934,20 +923,20 @@ fn an_unvalidated_primary_under_the_isin_source_falls_through_to_the_alternate()
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=US0378331006|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&typo, isincode).as_deref(), Some("CH0012221716"));
+    assert_eq!(isincode(&typo).as_deref(), Some("CH0012221716"));
     // A primary the digit closes answers itself, whatever the alternate says.
     let primary = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=US0378331005|454=1|455=CH0012221716|456=4|10=0|",
     );
-    assert_eq!(text(&primary, isincode).as_deref(), Some("US0378331005"));
+    assert_eq!(isincode(&primary).as_deref(), Some("US0378331005"));
     assert_eq!(text(&primary, 470).as_deref(), Some("US"));
     // Neither closes: silence, and nothing downstream reads a country.
     let neither = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=NOTANISIN00|454=1|455=CH0012221717|456=4|10=0|",
     );
-    assert_eq!(neither.get_by_tag(isincode), None);
+    assert_eq!(isincode(&neither), None);
     assert_eq!(neither.get_by_tag(470), None);
 }
 
@@ -958,7 +947,6 @@ fn a_country_of_issue_is_exactly_a_prefix_the_crates_registry_lists() {
     // 676 pairs, closed by its own check digit, answers its prefix where the
     // registry lists it and nothing where it does not.
     let reader = reader();
-    let isincode = yggdryl::ISINCODE_TAG_NAME.0;
     let mut listed = 0;
     for first in b'A'..=b'Z' {
         for second in b'A'..=b'Z' {
@@ -969,7 +957,7 @@ fn a_country_of_issue_is_exactly_a_prefix_the_crates_registry_lists() {
             let line = format!("8=FIX.4.4|35=D|11=A|22=4|48={number}|10=0|");
             let held = reader.sole_line(line.as_bytes()).expect("a readable line");
             assert_eq!(
-                text(&held, isincode).as_deref(),
+                isincode(&held).as_deref(),
                 Some(number.as_str()),
                 "{prefix}"
             );
@@ -996,12 +984,12 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
     // outright, whether the report states nothing left or states nothing.
     let reader = reader();
     let closed = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|84=60|10=0|");
-    assert_eq!(closed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(closed.by_tag(151).unwrap(), Scalar::from(0.0_f64));
+    assert_eq!(closed.by_tag(38).unwrap(), super::decimal("100"));
+    assert_eq!(closed.by_tag(151).unwrap(), super::decimal("0"));
     let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|14=40|151=0|84=60|10=0|");
-    assert_eq!(stated.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(stated.by_tag(38).unwrap(), super::decimal("100"));
     let typed = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=4|14=40|84=60|10=0|");
-    assert_eq!(typed.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(typed.by_tag(38).unwrap(), super::decimal("100"));
     assert_eq!(text(&typed, 39).as_deref(), Some("4"));
     // A working report stating what is left orders done plus left, whatever
     // it canceled along the way: a replace that cut the quantity restated
@@ -1010,7 +998,7 @@ fn a_report_with_nothing_left_that_states_what_was_canceled_ordered_done_plus_ca
         &reader,
         b"8=FIX.4.4|35=8|37=A|39=1|14=40|151=40|84=20|10=0|",
     );
-    assert_eq!(working.by_tag(38).unwrap(), Scalar::from(80.0_f64));
+    assert_eq!(working.by_tag(38).unwrap(), super::decimal("80"));
 }
 
 #[test]
@@ -1024,29 +1012,29 @@ fn the_fixpoint_reaches_the_chains_one_pass_could_not() {
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(forward.by_tag(31).unwrap(), Scalar::from(1.5_f64));
-    assert_eq!(forward.by_tag(381).unwrap(), Scalar::from(15.0_f64));
+    assert_eq!(forward.by_tag(31).unwrap(), super::decimal("1.5"));
+    assert_eq!(forward.by_tag(381).unwrap(), super::decimal("15"));
     let average = settled(
         &reader,
         b"8=FIX.4.4|35=8|37=A|32=10|14=10|194=1.25|195=0.25|10=0|",
     );
-    assert_eq!(average.by_tag(6).unwrap(), Scalar::from(1.5_f64));
+    assert_eq!(average.by_tag(6).unwrap(), super::decimal("1.5"));
     // What was ordered, read off what was canceled, is what the remainder
     // reads: a new order that canceled nothing yet has everything left.
     let fresh = settled(&reader, b"8=FIX.4.4|35=8|37=A|150=0|14=0|84=100|10=0|");
-    assert_eq!(fresh.by_tag(38).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(fresh.by_tag(38).unwrap(), super::decimal("100"));
     assert_eq!(text(&fresh, 39).as_deref(), Some("0"));
-    assert_eq!(fresh.by_tag(151).unwrap(), Scalar::from(100.0_f64));
+    assert_eq!(fresh.by_tag(151).unwrap(), super::decimal("100"));
     // A trade over several periods, then the multiplied and the gross
     // quantities read off it.
     let periods = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|32=10|31=3|2353=2|231=5|10=0|",
     );
-    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
-    assert_eq!(periods.by_tag(2370).unwrap(), Scalar::from(100.0_f64));
-    assert_eq!(periods.by_tag(2369).unwrap(), Scalar::from(60.0_f64));
-    assert_eq!(periods.by_tag(2368).unwrap(), Scalar::from(50.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), super::decimal("20"));
+    assert_eq!(periods.by_tag(2370).unwrap(), super::decimal("100"));
+    assert_eq!(periods.by_tag(2369).unwrap(), super::decimal("60"));
+    assert_eq!(periods.by_tag(2368).unwrap(), super::decimal("50"));
 }
 
 #[test]
@@ -1066,7 +1054,7 @@ fn a_typed_read_fires_where_the_old_text_read_could_not() {
     );
     assert_eq!(original.get_by_tag(122), None);
     let periods = settled(&reader, b"8=FIX.4.4|35=D|11=A|32=10|2353=2|10=0|");
-    assert_eq!(periods.by_tag(2367).unwrap(), Scalar::from(20.0_f64));
+    assert_eq!(periods.by_tag(2367).unwrap(), super::decimal("20"));
 }
 
 #[test]
@@ -1081,26 +1069,20 @@ fn a_source_code_is_compared_exactly_because_fix_codes_are_case_sensitive() {
 }
 
 #[test]
-fn a_registry_of_a_handful_of_fields_enriches_and_its_crate_columns_are_silent() {
-    // The crate columns' terms read the standard's fields by name; a
-    // registry holding none of them widens them as columns no message
-    // states, and a message enriches without a refusal and without a fill.
+fn a_registry_of_a_handful_of_fields_derives_its_market_from_what_it_holds() {
+    // A registry holding none of the standard's fields compiles no rule,
+    // so a message enriches without a refusal and without a fill - and the
+    // market facts the traits answer are read off the row rather than
+    // filled, so they answer whatever the line stated under a tag the
+    // registry could still type.
     let registry = FixRegistry::new();
     let reader = super::fixed_codec(Arc::new(registry));
-    let read = reader
+    let held = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|207=XNAS|10=0|")
         .expect("a readable line");
-    let held = read;
-    for (tag, _) in [
-        yggdryl::ISINCODE_TAG_NAME,
-        yggdryl::MICCODE_TAG_NAME,
-        yggdryl::STATE_TAG_NAME,
-    ] {
-        assert!(
-            held.get_by_tag(tag).is_none_or(|held| held.is_null()),
-            "tag {tag} is silent"
-        );
-    }
+    assert_eq!(isincode(&held).as_deref(), Some("US0378331005"));
+    assert_eq!(miccode(&held).as_deref(), Some("XNAS"));
+    assert_eq!(statecode(&held), None, "no status and no execution type");
 }
 
 #[test]

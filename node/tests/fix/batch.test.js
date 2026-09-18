@@ -42,7 +42,7 @@ const PIPE = '|'.charCodeAt(0)
 const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 // The columns a row must carry a value at: the settled identity, and the
 // version every message opens with.
-const REQUIRED = ['unix', 'creatunix', 'curruuid', 'crossuuid', 'hashcode', 'crosshashcode', 'beginstring']
+const REQUIRED = ['currunix', 'creatunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'beginstring']
 
 // Two frames on one row: a line is none, one or many messages, and this
 // one is two.
@@ -106,6 +106,11 @@ function one(codec, line) {
 
 function column(table, name) {
   return table.getChild(name).toJSON()
+}
+
+/** One exact column, as the unscaled coefficients Arrow JS renders it. */
+function exactColumn(table, name) {
+  return column(table, name).map((held) => (held === null ? null : BigInt(JSON.parse(held))))
 }
 
 function mapColumn(table, name) {
@@ -293,7 +298,7 @@ test('the schema is decided before the first row is read', () => {
   // when the event happened, each named by its folded name and carrying
   // its tag.
   assert.equal(names[0], 'body')
-  assert.equal(names[1], 'unix')
+  assert.equal(names[1], 'currunix')
   const header = names.indexOf('beginstring')
   assert.ok(header > 0)
   assert.equal(reader.field.fieldAt(header).fix.tag, 8)
@@ -377,13 +382,15 @@ test('a parse fills what the dictionary derives, through both doors', () => {
   const [message] = codec.parseLines([REPORT])
   // There is no enriching pass: what a message implies is filled where it
   // is parsed, so the row a capture lands in states it already.
-  assert.deepEqual(column(rows, 'leavesqty'), [60])
-  assert.equal(message.byTag(151).asJs(), 60)
-  assert.deepEqual(column(rows, 'avgpx'), [10.5])
-  assert.equal(message.byTag(6).asJs(), 10.5)
+  // An exact column crosses as its unscaled coefficient at the one scale
+  // this crate keeps a number at.
+  assert.deepEqual(exactColumn(rows, 'leavesqty'), [60n * 10n ** 18n])
+  assert.ok(message.byTag(151).equals(Scalar.decimal(60n)))
+  assert.deepEqual(exactColumn(rows, 'avgpx'), [105n * 10n ** 17n])
+  assert.ok(message.byTag(6).equals(Scalar.decimal(105n, 1)))
   // A derived tag the fixed row does not carry is filled on the message and
   // has no column to appear in: the row is a projection of the message.
-  assert.equal(message.byTag(381).asJs(), 420)
+  assert.ok(message.byTag(381).equals(Scalar.decimal(420n)))
   assert.equal(rows.schema.fields.some((field) => field.name === 'grosstradeamt'), false)
   // The carried column still leads the row.
   assert.equal(rows.schema.fields[0].name, 'body')
@@ -401,7 +408,7 @@ test('messages and arrowReader invert each other', () => {
     // The same arrival record, the same wire, the same digest, the same
     // stated values by tag, and the same row again.
     assert.deepEqual(held.entries(), message.entries())
-    assert.equal(held.hashcode, message.hashcode)
+    assert.equal(held.currhashcode, message.currhashcode)
     assert.equal(held.curruuid, message.curruuid)
     // The row states the sending clock, so a message read back emits it
     // where a parsed one settled it silently.
@@ -496,7 +503,7 @@ test('messages pull from the reader one batch at a time', () => {
   assert.ok(source.consumed, 'the stream is taken, not copied')
   const first = messages.next().value
   assert.equal(first.byTag(11).asJs(), 'ORDER-1')
-  assert.equal(Buffer.from(first.byName('body').asJs()).toString(), CAPTURE[0], 'a carried column is a child of its own name')
+  assert.equal(first.getByName('body'), null, "a carried column stays the row's, never a child of the message")
   assert.equal([...messages].length, CARRYING.length - 1)
 })
 
@@ -572,16 +579,16 @@ test('a set value is typed by the registry field and appended when absent', () =
   assert.equal(message.byName('Account').asJs(), 'ACC-1', 'reached by name through the registry')
 
   // A header tag is a typed fact: it fills the holder and the row is
-  // exactly as long as it was. So is `Price(44)`, which the crate's own
-  // `px` is what a message holds it as.
+  // exactly as long as it was. So is `Price(44)`, which the message lifts
+  // and holds exact, so it takes an exact value and not a float.
   const held = message.size
   message.set(34, 7)
-  message.set(44, 10.5)
+  message.set(44, '10.5')
   assert.equal(message.size, held)
   assert.equal(message.header().msgseqnum, 7)
   assert.equal(message.byTag(34).asJs(), 7)
   assert.equal(message.px, '10.5')
-  assert.equal(message.byTag(44).asJs(), 10.5)
+  assert.ok(message.byTag(44).equals(Scalar.decimal(105n, 1)))
 })
 
 test('a set value replaces an existing child in place and keeps the tag index', () => {
@@ -607,7 +614,7 @@ test('a set value replaces an existing child in place and keeps the tag index', 
     }
     assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
   }
-  assert.equal(message.byTag(65017).asJs(), message.hashcode)
+  assert.equal(message.byTag(65017).asJs(), message.currhashcode)
 })
 
 test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -615,14 +622,16 @@ test('a set leaves the entries, the wire and the digest untouched', () => {
   const message = parsed.clone()
   message.set(55, 'MSFT')
   message.set(1, 'ACC-1')
+  // The written `Account(1)` is an entry and the removed `Side(54)` was
+  // one, so the two cancel out: the side is an ordinary child now.
   assert.notEqual(message.remove(54), null)
-  assert.deepEqual(message.entries().length, parsed.entries().length + 1, 'the written child is an entry')
-  // `OrderQty(38)` is the quantity the event is about, so writing it moves
-  // no child and adds no entry.
-  message.set(38, Scalar.float(100))
-  assert.deepEqual(message.entries().length, parsed.entries().length + 1)
+  assert.deepEqual(message.entries().length, parsed.entries().length, 'the written child is an entry')
+  // `OrderQty(38)` is a fact the message lifts, so writing it moves no
+  // child and adds no entry.
+  message.set(38, '100')
+  assert.deepEqual(message.entries().length, parsed.entries().length)
   assert.equal(message.qty, '100')
-  assert.equal(message.byTag(38).asJs(), 100)
+  assert.ok(message.byTag(38).equals(Scalar.decimal(100n)))
   // A null is stored as a stated null.
   message.set(55, null)
   assert.equal(message.field.fieldAt(message.field.indexOf('symbol')).nullable, true)
@@ -711,17 +720,17 @@ test('a row is refused where it cannot state the settled identity', () => {
     assert.throws(() => fix.FixMsg.fromRow(schema, cells, registry), new RegExp(name), name)
   }
 
-  // A typed fact clears on its holder rather than refusing, and the row is
-  // untouched by it.
+  // Removing the side takes its child out of the row, and the trait falls
+  // back to the unknown it reads off a message that states none.
   const message = parsed.clone()
   const size = message.size
   assert.notEqual(message.remove(54), null)
   assert.equal(message.side, 'UNKNOWN')
-  assert.equal(message.size, size)
+  assert.equal(message.size, size - 1)
   // An ordinary child leaves, and the content identity follows it.
-  const identity = message.hashcode
+  const identity = message.currhashcode
   assert.equal(message.remove('VenueThing').asJs(), '7')
-  assert.notEqual(message.hashcode, identity)
+  assert.notEqual(message.currhashcode, identity)
   const settled = message.clone()
   assert.equal(message.remove('absent'), null)
   assert.ok(message.equals(settled))
@@ -741,7 +750,7 @@ test('a row reads back into the message that made it', () => {
   // The content is the row's children, and the facts are read off the
   // columns that hold them, so the message emits what it emitted.
   assert.deepEqual(held.entries(), parsed.entries())
-  assert.equal(held.hashcode, parsed.hashcode)
+  assert.equal(held.currhashcode, parsed.currhashcode)
   assert.equal(held.curruuid, parsed.curruuid)
   for (const tag of [8, 35, 11, 55, 54]) assert.ok(held.byTag(tag).equals(parsed.byTag(tag)), `tag ${tag}`)
   // And it makes the row it came from, whole.
@@ -757,35 +766,45 @@ test('a row reads back into the message that made it', () => {
   const named = fix.FixMsg.fromRow(schema, row.asJs(), registry)
   assert.deepEqual(named.entries(), parsed.entries())
   assert.ok(named.byTag(55).equals(parsed.byTag(55)))
-  assert.equal(named.hashcode, held.hashcode)
+  assert.equal(named.currhashcode, held.currhashcode)
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
 })
 
-test("a row carrying its capture's own columns returns to its schema whole", () => {
+test("a capture's own columns never reach the message", () => {
   const registry = seed()
   const codec = reading(registry)
   const line = fields.struct('line', [fields.utf8('url'), fields.int64('rownum'), fields.binary('body')], { nullable: false })
   const schema = fix.schemaCarrying(line, fix.schema(registry))
+  // A carried column is nullable whatever the capture declared: only a pass
+  // holding the source row can state one.
+  assert.ok(schema.field('url').nullable)
   const parsed = one(codec, ORDER)
 
-  // A parsed message has no capture columns: they are null in its row.
+  // A parsed message has no capture columns: they are null in its row, the
+  // two the crate tags among them.
   const row = parsed.intoRow(schema).asJs()
-  assert.equal(row[schema.indexOf('url')], null)
-  assert.equal(row[schema.indexOf('rownum')], null)
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+    assert.equal(row[schema.indexOf(carrier)], null, carrier)
+  }
 
-  // Read back, the message holds them as children, and a written one lands
-  // in its column: a column no tag names takes the child of its name.
-  const held = fix.FixMsg.fromRow(schema, parsed.intoRow(schema), registry)
-  assert.ok(held.intoRow(schema).equals(parsed.intoRow(schema)))
-  held.set('url', 'file:///capture.log')
-  held.set('rownum', 42n)
-  const filled = held.intoRow(schema).asJs()
-  assert.equal(filled[schema.indexOf('url')], 'file:///capture.log')
-  assert.equal(Number(filled[schema.indexOf('rownum')]), 42)
-  assert.equal(filled[schema.indexOf('symbol')], 'AAPL')
-  const again = fix.FixMsg.fromRow(schema, held.intoRow(schema), registry)
-  assert.deepEqual(again.entries(), held.entries())
-  assert.equal(again.byName('url').asJs(), 'file:///capture.log')
+  // A row a reader stated them on reads back holding none of them, and a
+  // write to one of the crate's two is refused rather than silently kept.
+  const stated = [...row]
+  stated[schema.indexOf('url')] = 'file:///capture.log'
+  stated[schema.indexOf('rownum')] = 42n
+  const again = fix.FixMsg.fromRow(schema, stated, registry)
+  assert.deepEqual(again.entries(), parsed.entries())
+  for (const carrier of ['url', 'rownum', 'body']) {
+    assert.equal(again.getByName(carrier), null, carrier)
+  }
+  assert.throws(() => again.set('sourceurl', 'file:///capture.log'), /sourceurl/)
+
+  // So a message alone writes them null: the readers restate them.
+  const written = again.intoRow(schema).asJs()
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+    assert.equal(written[schema.indexOf(carrier)], null, carrier)
+  }
+  assert.equal(written[schema.indexOf('symbol')], 'AAPL')
 })
 
 test('a row without the entries column has no entries', () => {
@@ -804,19 +823,23 @@ test('a row without the entries column has no entries', () => {
   assert.deepEqual(held.entries(), [])
   // The typed facts survive the column that holds each; the content does
   // not, because the record is what it was rebuilt from, so the wire is the
-  // header and the event's own tags with nothing behind them.
+  // header, the fields the message lifted and the trailer, with nothing
+  // between them.
   const emitted = held.intoBytes(PIPE).toString()
-  assert.equal(emitted, '8=FIX.4.4|35=D|54=1|59=0|')
+  assert.equal(emitted, '8=FIX.4.4|35=D|11=A1|10=0|')
   assert.equal(held.header().msgtype, parsed.header().msgtype)
-  assert.equal(held.side, parsed.side)
   assert.equal(held.crosscode, parsed.crosscode)
+  // The side does not survive: it is an ordinary child, and a row read back
+  // without the record has no content for the trait to read it off.
+  assert.equal(parsed.side, 'BUY')
+  assert.equal(held.side, 'UNKNOWN')
   assert.equal(held.size, 0)
   assert.equal(held.getByTag(55), null)
   // The row it makes states the facts it kept and nothing of the content it
   // could not rebuild - so the identity it writes is its own, over what it
   // now says, rather than the one the parsed message settled.
   const again = held.intoRow(narrow)
-  for (const name of ['unix', 'creatunix', 'crossuuid', 'crosshashcode']) {
+  for (const name of ['currunix', 'creatunix', 'crossuuid', 'crosshashcode']) {
     const at = narrow.indexOf(name)
     assert.ok(again.at(at).equals(row.at(at)), name)
   }

@@ -9,8 +9,8 @@ use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::DataType;
 use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar,
-    Scheme, Version, VersionField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme, Version,
+    VersionField,
 };
 
 fn version(text: &str) -> Version {

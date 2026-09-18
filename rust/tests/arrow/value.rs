@@ -90,10 +90,7 @@ mod widths {
 
     #[test]
     fn a_maximum_is_the_columns_rule_and_never_the_cells() {
-        let column = DataType::bytes(
-            BytesType::SizedBinary(8),
-        )
-        .unwrap();
+        let column = DataType::bytes(BytesType::SizedBinary(8)).unwrap();
         let decoded = round_trip(column, Scalar::from(b"AAPL".as_slice()));
         assert_eq!(decoded.dtype().unwrap(), DataType::binary());
     }

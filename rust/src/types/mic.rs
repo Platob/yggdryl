@@ -42,7 +42,6 @@ pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";
 pub(crate) const MIC_WIDTH: usize = 4;
 
 impl DataType {
-
     /// Creates ISO 10383's four-character market identifier code.
     ///
     /// ```
@@ -60,4 +59,3 @@ impl DataType {
 
 // /// A MIC-typed field: ISO 10383's market identifier.
 define_field_types!(MicType, Mic);
-

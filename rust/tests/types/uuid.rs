@@ -1,9 +1,9 @@
 //! UUID layouts belong to the UUID value, not a protocol.
 
-use yggdryl::types::Uuid;
-use yggdryl::{DataType, Error, Scalar};
 use yggdryl::types::FieldValue as _;
+use yggdryl::types::Uuid;
 use yggdryl::types::UuidType;
+use yggdryl::{DataType, Error, Scalar};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(value.to_string(), text);
@@ -413,7 +413,13 @@ mod versions {
     #[test]
     fn a_leaf_names_the_version_it_admits_and_the_open_one_admits_every_version() {
         for (family, dtype, id, name, version) in [
-            (UuidType::Uuid, DataType::uuid(), DataTypeId::Uuid, "uuid", None),
+            (
+                UuidType::Uuid,
+                DataType::uuid(),
+                DataTypeId::Uuid,
+                "uuid",
+                None,
+            ),
             (
                 UuidType::Uuidv4,
                 DataType::uuidv4(),
@@ -506,7 +512,10 @@ mod versions {
         // A field says the same: it adds nullability to the leaf's rule and
         // changes nothing else about which identifiers may stand.
         let column = DataType::uuidv7().required_field("id");
-        assert_eq!(column.scalar(Scalar::Uuid(v7())).unwrap(), Scalar::Uuid(v7()));
+        assert_eq!(
+            column.scalar(Scalar::Uuid(v7())).unwrap(),
+            Scalar::Uuid(v7())
+        );
         assert!(column.scalar(Scalar::Uuid(v8())).is_err());
         assert!(column.scalar(Scalar::Null).is_err());
         assert!(
@@ -558,7 +567,10 @@ mod versions {
 
         // A `yggdryl.uuid` document this crate does not write leaves the
         // column the storage it is, exactly as a foreign string document does.
-        assert_eq!(UuidType::from_extension_json("{\"version\":7}"), Some(UuidType::Uuidv7));
+        assert_eq!(
+            UuidType::from_extension_json("{\"version\":7}"),
+            Some(UuidType::Uuidv7)
+        );
         assert_eq!(UuidType::from_extension_json("{\"version\":1}"), None);
         assert_eq!(UuidType::from_extension_json("{}"), None);
         assert_eq!(UuidType::from_extension_json(""), None);

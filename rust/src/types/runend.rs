@@ -5,12 +5,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::types::structure::cmp_fields;
-use smol_str::format_smolstr;
 use crate::types::invalid;
-use crate::{
-    DataType, Field, Result,
-};
+use crate::types::structure::cmp_fields;
+use crate::{DataType, Field, Result};
+use smol_str::format_smolstr;
 
 /// Shared run-end encoding child fields.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize)]
@@ -64,7 +62,6 @@ impl<'de> Deserialize<'de> for RunEndEncodedType {
 }
 
 impl DataType {
-
     /// Creates a run-end encoded type after validating its run-end field.
     pub fn run_end_encoded(run_ends: Field, values: Field) -> Result<Self> {
         validate_run_ends(&run_ends)?;
@@ -98,7 +95,6 @@ pub(crate) fn validate_run_ends(run_ends: &Field) -> Result<()> {
     }
     Ok(())
 }
-
 
 // ------------------------------------------------------------------------
 // Arrow projection: a run-end column beside the values it repeats.

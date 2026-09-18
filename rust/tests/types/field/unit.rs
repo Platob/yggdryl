@@ -200,7 +200,10 @@ fn arrow_display_and_dictionary_state_round_trip_after_cache_invalidation() {
 
     let shared = Arc::new(arrow);
     let imported = Field::from_arrow_field_ref(Arc::clone(&shared)).unwrap();
-    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_field_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &shared,
+        &imported.into_arrow_field_ref().unwrap()
+    ));
 }
 
 #[test]

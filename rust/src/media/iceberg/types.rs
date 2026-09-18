@@ -21,10 +21,10 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::string::is_text_storage;
-use crate::{DataType, Error, Result, TimeUnit};
 use crate::types::DecimalType;
 use crate::types::UuidType;
+use crate::types::string::is_text_storage;
+use crate::{DataType, Error, Result, TimeUnit};
 
 /// A primitive type from the Iceberg specification.
 ///

@@ -965,8 +965,8 @@ mod values {
 
     use yggdryl::hashing::xxhash::{Xxh3, xxh3};
     use yggdryl::types::{
-        Bytes, BytesType, Currency, Decimal32, Decimal64, Geography,
-        Interval, Side, Str, StringLayout, StringType, TimeInForce,
+        Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
+        StringLayout, StringType, TimeInForce,
     };
     use yggdryl::{
         Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit, Timezone,
@@ -1055,14 +1055,8 @@ mod values {
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
-            Scalar::String(stored(
-                "AAPL",
-                StringType::utf8(StringLayout::LargeString),
-            )),
-            Scalar::String(stored(
-                "AAPL",
-                StringType::utf8(StringLayout::StringView),
-            )),
+            Scalar::String(stored("AAPL", StringType::utf8(StringLayout::LargeString))),
+            Scalar::String(stored("AAPL", StringType::utf8(StringLayout::StringView))),
             Scalar::String(stored("USD", StringType::ascii(StringLayout::String))),
             Scalar::String(stored("USD", fixed_ascii(4))),
             Scalar::Currency(Currency::new("USD").unwrap()),
@@ -1125,17 +1119,11 @@ mod values {
                 Scalar::d256(i256::from_i128(1), 0),
             ),
             (
-                Scalar::String(stored(
-                    "AAPL",
-                    StringType::utf8(StringLayout::LargeString),
-                )),
+                Scalar::String(stored("AAPL", StringType::utf8(StringLayout::LargeString))),
                 Scalar::from("AAPL"),
             ),
             (
-                Scalar::String(stored(
-                    "AAPL",
-                    StringType::utf8(StringLayout::StringView),
-                )),
+                Scalar::String(stored("AAPL", StringType::utf8(StringLayout::StringView))),
                 Scalar::from("AAPL"),
             ),
             (

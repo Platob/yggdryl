@@ -279,7 +279,9 @@
   {
     "name": "posttradepaymentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -453,7 +455,9 @@
   {
     "name": "currentdisplayprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -553,7 +557,9 @@
   {
     "name": "nbboprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -565,7 +571,9 @@
   {
     "name": "nbboqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -667,7 +675,9 @@
   {
     "name": "currentworkingprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -733,7 +743,9 @@
   {
     "name": "collateralreinvestmentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -869,7 +881,9 @@
   {
     "name": "fundingsourcemarketvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -953,7 +967,9 @@
   {
     "name": "sidecollateralreinvestmentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1122,7 +1138,9 @@
   {
     "name": "posamtprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1428,7 +1446,9 @@
   {
     "name": "underlyingaccruedinterestamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1503,7 +1523,9 @@
   {
     "name": "relatedorderqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

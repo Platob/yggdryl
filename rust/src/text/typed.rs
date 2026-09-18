@@ -1,9 +1,9 @@
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar};
-use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
 pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
@@ -133,10 +133,14 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::Sequence(SequenceType::ListView(child))
         | DataType::Sequence(SequenceType::FixedSizeList(child, _))
         | DataType::Sequence(SequenceType::LargeList(child))
-        | DataType::Sequence(SequenceType::LargeListView(child)) => sequence(value, |value| prepare(value, child), field),
+        | DataType::Sequence(SequenceType::LargeListView(child)) => {
+            sequence(value, |value| prepare(value, child), field)
+        }
         DataType::Structure(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
-        DataType::Enum(EnumType::Dictionary(dictionary)) => prepare_for_type(value, dictionary.value(), field),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            prepare_for_type(value, dictionary.value(), field)
+        }
         DataType::Mapping(map) => mapping(value, map, field),
         DataType::RunEndEncoded(encoded) => prepare(value, encoded.values()),
         _ => Ok(value),

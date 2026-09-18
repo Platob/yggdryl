@@ -6,9 +6,9 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
-    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
-    GeospatialType, IntegerType, MapType, RunEndEncodedType, StringLayout,
-    StringType, TemporalType, TimeUnit, UnionFields, UnionMode,
+    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
+    IntegerType, MapType, RunEndEncodedType, StringLayout, StringType, TemporalType, TimeUnit,
+    UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 

@@ -4,8 +4,8 @@ use super::path as fpath;
 
 use std::path::PathBuf;
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
 use yggdryl::types::SequenceType;
+use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
 
 fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary().unwrap().path().unwrap().join(format!(

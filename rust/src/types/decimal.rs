@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
+use crate::types::family::DataTypeValue;
 use crate::types::invalid;
 use crate::types::parser::Parser;
 use crate::types::value::{ValidationFailure, expected};
-use crate::types::family::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, Value, i256};
 
 /// Arrow casts owned by this datatype family.
@@ -338,12 +338,6 @@ pub(crate) fn validate_decimal(
 // ------------------------------------------------------------------------
 // Fixed-width decimal field markers.
 // ------------------------------------------------------------------------
-
-
-
-
-
-
 
 /// One fixed-point decimal: `decimal128(38, 18)` already applied, so a price
 /// and a quantity add, multiply and compare as integers do.
@@ -770,8 +764,9 @@ mod fixed {
                 type Output = Self;
 
                 fn $method(self, other: Self) -> Self {
-                    self.$checked(other)
-                        .unwrap_or_else(|| panic!(concat!("decimal ", $what, " overflows 38 digits")))
+                    self.$checked(other).unwrap_or_else(|| {
+                        panic!(concat!("decimal ", $what, " overflows 38 digits"))
+                    })
                 }
             }
 

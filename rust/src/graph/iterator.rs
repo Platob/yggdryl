@@ -95,7 +95,7 @@ enum Source<E, I> {
 /// // Unsorted, the walk sorts by the elements' own order first.
 /// let mut walk = EventIterator::new(arrived, false);
 /// let first = walk.next().expect("the earliest");
-/// assert_eq!((first.get_unix(), first.get_seqnum(), first.get_prevuuid()), (10, 0, None));
+/// assert_eq!((first.get_currunix(), first.get_seqnum(), first.get_prevuuid()), (10, 0, None));
 /// let other = walk.next().expect("the other order's");
 /// assert_eq!((other.get_crosscode(), other.get_seqnum()), ("O-900", 0));
 /// let second = walk.next().expect("the partial fill");
@@ -106,7 +106,7 @@ enum Source<E, I> {
 /// // starts one afresh, and is alive beside the other order.
 /// let again = walk.next().expect("the late one");
 /// assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
-/// let mut alive = walk.alive().map(|held| (held.get_crosscode().to_owned(), held.get_unix())).collect::<Vec<_>>();
+/// let mut alive = walk.alive().map(|held| (held.get_crosscode().to_owned(), held.get_currunix())).collect::<Vec<_>>();
 /// alive.sort();
 /// assert_eq!(alive, [("O-100".to_owned(), 40), ("O-900".to_owned(), 15)]);
 /// assert!(walk.next().is_none());
@@ -198,7 +198,7 @@ where
     /// walk has a grid.
     fn step_of(&self, element: &E) -> Option<i64> {
         let step = self.snapshot_ns()?;
-        Some(element.get_unix().div_euclid(step) * step)
+        Some(element.get_currunix().div_euclid(step) * step)
     }
 
     /// Stamps `element` as the snapshot of its grid step where its identity
@@ -325,12 +325,12 @@ fn is_alive<E: Event>(element: &E) -> bool {
     element.get_state().is_live()
         && element
             .get_expirunix()
-            .is_none_or(|expiration| expiration > element.get_unix())
+            .is_none_or(|expiration| expiration > element.get_currunix())
 }
 
 /// The elements' own order as a sort reads it: after is greater, before is
 /// less, and neither is equal.
-fn order<E: Element>(left: &E, right: &E) -> Ordering {
+pub(crate) fn order<E: Element>(left: &E, right: &E) -> Ordering {
     if left.is_after(right) {
         Ordering::Greater
     } else if left.is_before(right) {

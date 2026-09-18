@@ -24,4 +24,3 @@ pub(crate) const TIMEINFORCE_WIDTH: usize = 8;
 
 // /// A field declared as how long an order stands.
 define_field_types!(TimeInForceType, TimeInForce);
-

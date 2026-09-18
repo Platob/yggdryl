@@ -4,8 +4,8 @@
 
 use super::path as fpath;
 
-use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry};
 use yggdryl::types::SequenceType;
+use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
@@ -56,7 +56,9 @@ fn names(field: &Field) -> Vec<&str> {
 
 /// The occurrence a group's list holds.
 fn occurrence(group: &Field) -> &Field {
-    let (DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item))) = group.dtype() else {
+    let (DataType::Sequence(SequenceType::List(item))
+    | DataType::Sequence(SequenceType::LargeList(item))) = group.dtype()
+    else {
         panic!("a group list")
     };
     item

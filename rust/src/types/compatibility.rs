@@ -12,9 +12,9 @@ use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
 use super::{BytesType, DataType, StringType, preflight_schema, preflight_schema_shape};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -158,7 +158,9 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
                 Ok((dtype.clone(), false))
             }
         }
-        D::Sequence(SequenceType::FixedSizeList(field, length)) if target.supports_fixed_size_list() => {
+        D::Sequence(SequenceType::FixedSizeList(field, length))
+            if target.supports_fixed_size_list() =>
+        {
             let (field, changed) = normalize_item(target, field, path)?;
             if changed {
                 Ok((D::fixed_size_list(field, *length)?, true))
@@ -305,12 +307,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesType::default() => {
-            Ok((dtype.clone(), false))
-        }
-        D::String(parameters) if *parameters == StringType::default() => {
-            Ok((dtype.clone(), false))
-        }
+        D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
+        D::String(parameters) if *parameters == StringType::default() => Ok((dtype.clone(), false)),
         D::UInt8 => Ok((D::Int16, true)),
         D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
@@ -432,12 +430,8 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesType::default() => {
-            Ok((dtype.clone(), false))
-        }
-        D::String(parameters) if *parameters == StringType::default() => {
-            Ok((dtype.clone(), false))
-        }
+        D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
+        D::String(parameters) if *parameters == StringType::default() => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // Polars datetimes are millisecond, microsecond, or nanosecond.
         D::DateTime64 {
@@ -533,12 +527,8 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Date32 => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
-        D::Bytes(parameters) if *parameters == BytesType::default() => {
-            Ok((dtype.clone(), false))
-        }
-        D::String(parameters) if *parameters == StringType::default() => {
-            Ok((dtype.clone(), false))
-        }
+        D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
+        D::String(parameters) if *parameters == StringType::default() => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // `datetime64[ns]` is the pandas timestamp representation.
         D::DateTime64 {

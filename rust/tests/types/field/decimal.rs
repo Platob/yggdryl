@@ -69,8 +69,8 @@ fn a_leaf_is_the_width_and_the_family_is_what_the_number_means() {
 
 #[test]
 fn a_decimal_field_holds_its_own_leaf_and_the_root_redirects_to_it() {
-    let field = DecimalField::try_new("price", DataType::decimal128(38, 18).unwrap(), false)
-        .unwrap();
+    let field =
+        DecimalField::try_new("price", DataType::decimal128(38, 18).unwrap(), false).unwrap();
     assert_eq!(field.typed_dtype_ref().precision(), 38);
     assert_eq!(field.typed_dtype_ref().scale(), 18);
     assert_eq!(field.dtype(), &DataType::decimal128(38, 18).unwrap());

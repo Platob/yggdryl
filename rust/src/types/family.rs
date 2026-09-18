@@ -447,12 +447,6 @@ impl ExactSizeIterator for Children<'_> {
 
 impl std::iter::FusedIterator for Children<'_> {}
 
-
-
-
-
-
-
 /// Emit a datatype payload that stands beside one variant's parameters.
 ///
 /// The variant already holds what describes the column; this is the type a

@@ -271,7 +271,8 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
         yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
-        yggdryl::DataType::Sequence(yggdryl::types::SequenceType::List(item)) | yggdryl::DataType::Sequence(yggdryl::types::SequenceType::LargeList(item))
+        yggdryl::DataType::Sequence(yggdryl::types::SequenceType::List(item))
+        | yggdryl::DataType::Sequence(yggdryl::types::SequenceType::LargeList(item))
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
             yggdryl::FixCategory::Fields
@@ -321,4 +322,13 @@ fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
 /// every column the capture landed in.
 fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
     yggdryl::fix_schema(registry, "fix").expect("the fixed row")
+}
+
+/// One exact number, spelled the way a wire spells it.
+///
+/// Every FIX quantity, price, price offset and amount is
+/// `decimal128(38, 18)`, so a pin states the number in text and never as a
+/// float: `41.25` is a value a `f64` cannot hold and a decimal can.
+fn decimal(text: &str) -> yggdryl::Scalar {
+    yggdryl::Scalar::from(yggdryl::Decimal::parse(text).expect("an exact number"))
 }

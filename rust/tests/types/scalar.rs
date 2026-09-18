@@ -10,10 +10,10 @@ const POINT_EMPTY_WKB: [u8; 21] = [
 
 use std::sync::Arc;
 
+use yggdryl::types::UuidType;
 use yggdryl::types::floating::FloatingValue;
 use yggdryl::types::{Float16, Float32, Float64, Scalar};
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
-use yggdryl::types::UuidType;
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -203,7 +203,10 @@ fn the_eleven_codes_sort_by_which_code_then_by_text() {
     let one = Scalar::Currency(Currency::new("EUR").unwrap());
     let other = Scalar::Currency(Currency::new("USD").unwrap());
     assert!(one < other);
-    assert_eq!(hash_of(&one), hash_of(&Scalar::Currency(Currency::new("EUR").unwrap())));
+    assert_eq!(
+        hash_of(&one),
+        hash_of(&Scalar::Currency(Currency::new("EUR").unwrap()))
+    );
     assert_ne!(hash_of(&one), hash_of(&other));
 }
 
@@ -544,9 +547,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
     let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringType::utf8(
-            string::StringLayout::LargeString,
-        ))
+        .try_with_parameters(string::StringType::utf8(string::StringLayout::LargeString))
         .unwrap();
     assert_eq!(text.as_str(), "AAPL");
     assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
@@ -585,8 +586,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
     use yggdryl::types::{
-        bytes, decimal, geospatial, integer, mapping, sequence, string, structure, temporal,
-        uuid,
+        bytes, decimal, geospatial, integer, mapping, sequence, string, structure, temporal, uuid,
     };
 
     let integer = integer::Int32::new(-7);
@@ -607,9 +607,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let utf8 = string::Str::new("東京");
     let view = utf8
         .clone()
-        .try_with_parameters(string::StringType::utf8(
-            string::StringLayout::StringView,
-        ))
+        .try_with_parameters(string::StringType::utf8(string::StringLayout::StringView))
         .unwrap();
     assert_eq!(utf8.as_str(), view.as_str());
     assert_eq!(utf8.layout(), string::StringLayout::String);
@@ -620,9 +618,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     );
 
     let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringType::ascii(
-            string::StringLayout::String,
-        ))
+        .try_with_parameters(string::StringType::ascii(string::StringLayout::String))
         .unwrap();
     let currency = yggdryl::types::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
@@ -630,16 +626,12 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(currency.as_str(), "USD");
     assert!(
         string::Str::new("café")
-            .try_with_parameters(string::StringType::ascii(
-                string::StringLayout::String
-            ))
+            .try_with_parameters(string::StringType::ascii(string::StringLayout::String))
             .is_err()
     );
     assert!(
         string::Str::new("")
-            .try_with_parameters(string::StringType::ascii(
-                string::StringLayout::FixedString
-            ))
+            .try_with_parameters(string::StringType::ascii(string::StringLayout::FixedString))
             .is_err()
     );
     assert!(yggdryl::types::Cfi::new("TOO-LONG").is_err());
@@ -701,9 +693,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let utf8 = string::Str::new("same");
     let large = utf8
         .clone()
-        .try_with_parameters(string::StringType::utf8(
-            string::StringLayout::LargeString,
-        ))
+        .try_with_parameters(string::StringType::utf8(string::StringLayout::LargeString))
         .unwrap();
     assert_eq!(utf8, large);
 

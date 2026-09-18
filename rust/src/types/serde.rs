@@ -4,17 +4,16 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Field, Result, Scalar};
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
 use crate::types::UuidType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
+use crate::{Error, Field, Result, Scalar};
 
 /// Structural JSON and Serde implementations for fields.
 mod field {
     use std::fmt;
-    
 
     use serde::de::{Error as DeError, Visitor};
     use serde::ser::SerializeStruct;
@@ -156,12 +155,8 @@ mod field {
             }
 
             let value = FieldWire::deserialize(deserializer)?;
-            let mut field = Self::new_with_metadata(
-                value.name,
-                value.dtype,
-                value.nullable,
-                value.metadata,
-            );
+            let mut field =
+                Self::new_with_metadata(value.name, value.dtype, value.nullable, value.metadata);
             // A stated sidecar is a claim about the datatype, so it is
             // checked: only a dictionary field can carry one.
             if value.dictionary_id != 0 || value.dictionary_is_ordered {
@@ -290,10 +285,11 @@ mod field {
             let mut field = Self::new(name, dtype, nullable);
             // Only a dictionary carries the pair, and both settle together so a
             // half-declared state can never reach the field.
-            let dictionary_id = match at("dictionary_id").filter(|held| !matches!(held, Scalar::Null)) {
-                Some(held) => i64::from(integer(Some(held), "dictionary_id")?),
-                None => 0,
-            };
+            let dictionary_id =
+                match at("dictionary_id").filter(|held| !matches!(held, Scalar::Null)) {
+                    Some(held) => i64::from(integer(Some(held), "dictionary_id")?),
+                    None => 0,
+                };
             let dictionary_is_ordered =
                 at("dictionary_is_ordered").and_then(Scalar::as_bool) == Some(true);
             if dictionary_id != 0 || dictionary_is_ordered {
@@ -378,7 +374,10 @@ mod field {
         /// # Errors
         ///
         /// Returns the encoder's failure.
-        pub fn into_json_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        pub fn into_json_with_formatting(
+            self,
+            formatting: crate::text::Formatting,
+        ) -> Result<String> {
             text_of(crate::text::json::into_bytes_with_formatting(
                 &self.into_value(),
                 formatting,
@@ -409,7 +408,10 @@ mod field {
         /// # Errors
         ///
         /// Returns the encoder's failure.
-        pub fn into_yaml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        pub fn into_yaml_with_formatting(
+            self,
+            formatting: crate::text::Formatting,
+        ) -> Result<String> {
             text_of(crate::text::yaml::into_bytes_with_formatting(
                 &self.into_value(),
                 formatting,
@@ -440,7 +442,10 @@ mod field {
         /// # Errors
         ///
         /// Returns the encoder's failure.
-        pub fn into_toml_with_formatting(self, formatting: crate::text::Formatting) -> Result<String> {
+        pub fn into_toml_with_formatting(
+            self,
+            formatting: crate::text::Formatting,
+        ) -> Result<String> {
             text_of(crate::text::toml::into_bytes_with_formatting(
                 &self.into_value(),
                 formatting,

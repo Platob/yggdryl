@@ -9,8 +9,7 @@ use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::DataType;
 use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url,
-    UrlField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url, UrlField,
 };
 
 fn url(text: &str) -> Scalar {
@@ -133,7 +132,10 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
     );
     // The extension name is what makes a URL column come back a URL column
     // rather than prose that happens to look like one.
-    assert_eq!(Field::from_arrow_field(&arrow).unwrap().dtype(), &DataType::Url);
+    assert_eq!(
+        Field::from_arrow_field(&arrow).unwrap().dtype(),
+        &DataType::Url
+    );
 
     let value = url("https://example.com/a");
     let stored = scalar_array(&field, &value).unwrap();

@@ -16,11 +16,11 @@
 use std::hash::Hasher;
 
 use super::Xxh3;
-use crate::types::decimal as decimal;
+use crate::types::code_scalars;
+use crate::types::decimal;
 use crate::types::integer::integer_parts;
 use crate::types::temporal::scalars::temporal_key;
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Scalar, i256};
-use crate::types::code_scalars;
 
 /// The tag byte a value nested past the shared recursion limit feeds instead
 /// of descending further.

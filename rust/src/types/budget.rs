@@ -2,30 +2,44 @@
 
 use std::sync::Arc;
 
-use arrow_array::types::{BinaryType, BinaryViewType, ByteArrayType, ByteViewType, Int16Type, Int32Type, Int64Type, Int8Type, LargeBinaryType, LargeUtf8Type, RunEndIndexType, StringViewType, UInt16Type, UInt32Type, UInt64Type, UInt8Type, Utf8Type};
-use arrow_array::{Array, ArrayRef, BinaryViewArray, DictionaryArray, FixedSizeListArray, GenericByteArray, GenericByteViewArray, Int16RunArray, Int32RunArray, Int64RunArray, LargeListArray, LargeListViewArray, ListArray, ListViewArray, MapArray, RunArray, StringViewArray, StructArray, UnionArray};
+use arrow_array::types::{
+    BinaryType, BinaryViewType, ByteArrayType, ByteViewType, Int8Type, Int16Type, Int32Type,
+    Int64Type, LargeBinaryType, LargeUtf8Type, RunEndIndexType, StringViewType, UInt8Type,
+    UInt16Type, UInt32Type, UInt64Type, Utf8Type,
+};
+use arrow_array::{
+    Array, ArrayRef, BinaryViewArray, DictionaryArray, FixedSizeListArray, GenericByteArray,
+    GenericByteViewArray, Int16RunArray, Int32RunArray, Int64RunArray, LargeListArray,
+    LargeListViewArray, ListArray, ListViewArray, MapArray, RunArray, StringViewArray, StructArray,
+    UnionArray,
+};
 use arrow_buffer::ArrowNativeType;
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::DataType as ArrowDataType;
-pub(crate) use limits::{ MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value, physical_limit_error, physical_union_branch, unsupported, };
+pub(crate) use limits::{
+    MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
+    physical_limit_error, physical_union_branch, unsupported,
+};
 
 use crate::arrow::{Error, Result};
-use crate::types::bytes::casts::{byte_array_storage_ptr_eq, checked_valid_payload_bytes, projected_byte_len};
-use crate::types::cast::downcast;
+use crate::types::bytes::casts::{
+    byte_array_storage_ptr_eq, checked_valid_payload_bytes, projected_byte_len,
+};
 use crate::types::cast::columns::{dictionary_values_ref, offset_pair};
+use crate::types::cast::downcast;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 use crate::types::{bytes, string};
 use crate::{DataType, Field, UnionMode};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 
 /// Bounded Arrow materialization accounting.
 mod limits {
     use crate::types::enums::EnumType;
     use crate::types::sequence::SequenceType;
-    
+
     use crate::arrow::{Error, Result};
-    use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
     use crate::types::DecimalType;
+    use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
 
     // Composite Arrow layouts can turn one logical null or inactive union member
     // into a large number of mandatory physical child slots. Keep the same
@@ -91,8 +105,12 @@ mod limits {
                     self.add_array_layout(dtype, rows)?;
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
-                    let child_rows =
-                        checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
+                    let child_rows = checked_physical_mul(
+                        rows,
+                        size,
+                        "fixed-size-list slots",
+                        MAX_PHYSICAL_SLOTS,
+                    )?;
                     self.add_repeated_field_default(child, child_rows, include_dictionary_values)
                 }
                 DataType::Structure(fields) => {
@@ -110,7 +128,11 @@ mod limits {
                             continue;
                         }
                         if type_id == selected_id {
-                            self.add_repeated_field_default(field, rows, include_dictionary_values)?;
+                            self.add_repeated_field_default(
+                                field,
+                                rows,
+                                include_dictionary_values,
+                            )?;
                         } else {
                             self.add_null_array(field.dtype(), rows)?;
                         }
@@ -220,8 +242,12 @@ mod limits {
                 DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
-                    let child_rows =
-                        checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
+                    let child_rows = checked_physical_mul(
+                        rows,
+                        size,
+                        "fixed-size-list slots",
+                        MAX_PHYSICAL_SLOTS,
+                    )?;
                     self.add_array(child.dtype(), child_rows)?;
                 }
                 DataType::Structure(fields) => {
@@ -677,7 +703,8 @@ mod limits {
         fields: &'a crate::UnionFields,
     ) -> Result<(i8, &'a Field)> {
         if let Ok(Some(selected)) = dtype.default_union_type_id() {
-            if let Some((type_id, field)) = fields.iter().find(|(type_id, _)| *type_id == selected) {
+            if let Some((type_id, field)) = fields.iter().find(|(type_id, _)| *type_id == selected)
+            {
                 return Ok((type_id, field));
             }
         }
@@ -1430,24 +1457,30 @@ fn reserve_new_materialized_array_without_dictionary_values(
             // A fixed width was charged by the layout.
             _ => {}
         },
-        DataType::Sequence(SequenceType::List(child)) => reserve_new_materialized_array_without_dictionary_values(
-            downcast::<ListArray>(output.as_ref())?.values(),
-            downcast::<ListArray>(source.as_ref())?.values(),
-            child.dtype(),
-            budget,
-        )?,
-        DataType::Sequence(SequenceType::LargeList(child)) => reserve_new_materialized_array_without_dictionary_values(
-            downcast::<LargeListArray>(output.as_ref())?.values(),
-            downcast::<LargeListArray>(source.as_ref())?.values(),
-            child.dtype(),
-            budget,
-        )?,
-        DataType::Sequence(SequenceType::ListView(child)) => reserve_new_materialized_array_without_dictionary_values(
-            downcast::<ListViewArray>(output.as_ref())?.values(),
-            downcast::<ListViewArray>(source.as_ref())?.values(),
-            child.dtype(),
-            budget,
-        )?,
+        DataType::Sequence(SequenceType::List(child)) => {
+            reserve_new_materialized_array_without_dictionary_values(
+                downcast::<ListArray>(output.as_ref())?.values(),
+                downcast::<ListArray>(source.as_ref())?.values(),
+                child.dtype(),
+                budget,
+            )?
+        }
+        DataType::Sequence(SequenceType::LargeList(child)) => {
+            reserve_new_materialized_array_without_dictionary_values(
+                downcast::<LargeListArray>(output.as_ref())?.values(),
+                downcast::<LargeListArray>(source.as_ref())?.values(),
+                child.dtype(),
+                budget,
+            )?
+        }
+        DataType::Sequence(SequenceType::ListView(child)) => {
+            reserve_new_materialized_array_without_dictionary_values(
+                downcast::<ListViewArray>(output.as_ref())?.values(),
+                downcast::<ListViewArray>(source.as_ref())?.values(),
+                child.dtype(),
+                budget,
+            )?
+        }
         DataType::Sequence(SequenceType::LargeListView(child)) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<LargeListViewArray>(output.as_ref())?.values(),
@@ -1672,18 +1705,22 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
             child.dtype(),
             budget,
         )?,
-        DataType::Sequence(SequenceType::LargeListView(child)) => reserve_new_dictionary_vocabularies(
-            downcast::<LargeListViewArray>(output.as_ref())?.values(),
-            downcast::<LargeListViewArray>(source.as_ref())?.values(),
-            child.dtype(),
-            budget,
-        )?,
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => reserve_new_dictionary_vocabularies(
-            downcast::<FixedSizeListArray>(output.as_ref())?.values(),
-            downcast::<FixedSizeListArray>(source.as_ref())?.values(),
-            child.dtype(),
-            budget,
-        )?,
+        DataType::Sequence(SequenceType::LargeListView(child)) => {
+            reserve_new_dictionary_vocabularies(
+                downcast::<LargeListViewArray>(output.as_ref())?.values(),
+                downcast::<LargeListViewArray>(source.as_ref())?.values(),
+                child.dtype(),
+                budget,
+            )?
+        }
+        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
+            reserve_new_dictionary_vocabularies(
+                downcast::<FixedSizeListArray>(output.as_ref())?.values(),
+                downcast::<FixedSizeListArray>(source.as_ref())?.values(),
+                child.dtype(),
+                budget,
+            )?
+        }
         DataType::Mapping(map) => {
             let output: ArrayRef =
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());

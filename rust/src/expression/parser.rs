@@ -1705,8 +1705,8 @@ fn number_literal(text: &str, position: usize) -> Result<Term> {
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
-    use DataType as D;
     use crate::types::DecimalType;
+    use DataType as D;
 
     let fail = |expected: &str| {
         parse_error(
@@ -1751,14 +1751,14 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         D::Float64 => {
             Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
         }
-        D::Decimal(DecimalType::Decimal32 { scale, .. }) | D::Decimal(DecimalType::Decimal64 { scale, .. }) | D::Decimal(DecimalType::Decimal128 { scale, .. }) => {
-            Scalar::d128(
-                decimal_from_text(text, *scale).ok_or_else(|| {
-                    fail("an exact decimal that fits the declared precision and scale")
-                })?,
-                *scale,
-            )
-        }
+        D::Decimal(DecimalType::Decimal32 { scale, .. })
+        | D::Decimal(DecimalType::Decimal64 { scale, .. })
+        | D::Decimal(DecimalType::Decimal128 { scale, .. }) => Scalar::d128(
+            decimal_from_text(text, *scale).ok_or_else(|| {
+                fail("an exact decimal that fits the declared precision and scale")
+            })?,
+            *scale,
+        ),
         D::Decimal(DecimalType::Decimal256 { scale, .. }) => Scalar::d256(
             i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")

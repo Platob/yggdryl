@@ -14,7 +14,9 @@
   {
     "name": "legpaymentstreamcompoundingspread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -871,7 +873,9 @@
   {
     "name": "legpaymentstreamcompoundingratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1587,7 +1591,9 @@
   {
     "name": "legpaymentstreamlinkinitiallevel",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1635,7 +1641,9 @@
   {
     "name": "legpaymentstreamlinkstrikeprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

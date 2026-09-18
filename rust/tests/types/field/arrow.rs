@@ -212,7 +212,10 @@ fn fixed_ascii_ffi_schemas_carry_the_string_document() {
     assert_eq!(imported, currency);
 
     // A bare datatype carries the identity too.
-    let schema = DataType::fixed_ascii(16).unwrap().into_arrow_datatype_ffi().unwrap();
+    let schema = DataType::fixed_ascii(16)
+        .unwrap()
+        .into_arrow_datatype_ffi()
+        .unwrap();
     assert_eq!(schema.format(), "w:16");
     assert_eq!(
         schema.metadata().unwrap().get("ARROW:extension:name"),

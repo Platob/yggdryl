@@ -1679,7 +1679,9 @@
   {
     "name": "underlyingstrikeprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1715,7 +1717,9 @@
   {
     "name": "ratioqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2196,7 +2200,9 @@
   {
     "name": "buyvolume",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2208,7 +2214,9 @@
   {
     "name": "sellvolume",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2220,7 +2228,9 @@
   {
     "name": "highpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2232,7 +2242,9 @@
   {
     "name": "lowpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2801,7 +2813,9 @@
   {
     "name": "allocprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4342,13 +4356,15 @@
   {
     "name": "grosstradeamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
       "description": "Total amount traded expressed in units of currency - usually quantity * price. For FX Futures this is used to express the notional value of a fill when quantity fields are expressed in terms of contract size (i.e. quantity * price * contract size).",
       "display": "GrossTradeAmt",
-      "fix:derivation": "case when msgtype in ('8', '9') then lastqty * lastpx end",
+      "fix:derivation": "case when msgtype in ('8', '9') then try_cast(lastqty as decimal128(38,9)) * try_cast(lastpx as decimal128(38,9)) end",
       "fix:tag": "381"
     }
   },
@@ -4427,7 +4443,9 @@
   {
     "name": "totalvolumetraded",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4600,7 +4618,9 @@
   {
     "name": "sidevalue1",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4612,7 +4632,9 @@
   {
     "name": "sidevalue2",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

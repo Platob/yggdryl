@@ -7,7 +7,9 @@ fn nested_markers_cover_every_child_layout() {
     let item = || Field::new("item", DataType::utf8(), true);
     assert_typed_marker::<yggdryl::types::SequenceType>(DataType::list(item()));
     assert_typed_marker::<yggdryl::types::SequenceType>(DataType::list_view(item()));
-    assert_typed_marker::<yggdryl::types::SequenceType>(DataType::fixed_size_list(item(), 3).unwrap());
+    assert_typed_marker::<yggdryl::types::SequenceType>(
+        DataType::fixed_size_list(item(), 3).unwrap(),
+    );
     assert_typed_marker::<yggdryl::types::SequenceType>(DataType::large_list(item()));
     assert_typed_marker::<yggdryl::types::SequenceType>(DataType::large_list_view(item()));
     assert_typed_marker::<yggdryl::types::StructureType>(DataType::from_fields([item()]).unwrap());

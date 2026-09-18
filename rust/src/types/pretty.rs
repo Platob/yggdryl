@@ -50,9 +50,9 @@
 
 use std::fmt;
 
-use crate::{DataType, Field};
-use crate::types::sequence::SequenceType;
 use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
+use crate::{DataType, Field};
 
 /// How many columns one nesting level is indented in the readable form.
 const WIDTH: usize = 2;
@@ -63,7 +63,10 @@ impl Field {
     /// The named spelling of `{:#}`; both run the one implementation, and
     /// [`Pretty`] documents the shape they produce.
     #[must_use]
-    #[allow(clippy::wrong_self_convention, reason = "the rendering borrows; the string is new")]
+    #[allow(
+        clippy::wrong_self_convention,
+        reason = "the rendering borrows; the string is new"
+    )]
     pub fn into_pretty_str(&self) -> String {
         self.pretty_view().to_string()
     }
@@ -99,7 +102,10 @@ impl DataType {
     /// # }
     /// ```
     #[must_use]
-    #[allow(clippy::wrong_self_convention, reason = "the rendering borrows; the string is new")]
+    #[allow(
+        clippy::wrong_self_convention,
+        reason = "the rendering borrows; the string is new"
+    )]
     pub fn into_pretty_str(&self) -> String {
         self.pretty_view().to_string()
     }
@@ -188,7 +194,9 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
         D::Sequence(SequenceType::ListView(_)) => formatter.write_str("list_view"),
         D::Sequence(SequenceType::LargeList(_)) => formatter.write_str("large_list"),
         D::Sequence(SequenceType::LargeListView(_)) => formatter.write_str("large_list_view"),
-        D::Sequence(SequenceType::FixedSizeList(_, length)) => write!(formatter, "fixed_size_list[{length}]"),
+        D::Sequence(SequenceType::FixedSizeList(_, length)) => {
+            write!(formatter, "fixed_size_list[{length}]")
+        }
         D::Mapping(map) => {
             formatter.write_str("map")?;
             if map.keys_sorted() {
@@ -198,7 +206,9 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
         }
         D::Union(fields, mode) => write!(formatter, "union[{mode},{}]", fields.len()),
         D::RunEndEncoded(_) => formatter.write_str("run_end_encoded"),
-        D::Enum(EnumType::Dictionary(dictionary)) => write!(formatter, "dictionary[{}]", dictionary.key()),
+        D::Enum(EnumType::Dictionary(dictionary)) => {
+            write!(formatter, "dictionary[{}]", dictionary.key())
+        }
         // Everything else is one token, and the compact spelling is already
         // the readable one.
         other => write!(formatter, "{other}"),

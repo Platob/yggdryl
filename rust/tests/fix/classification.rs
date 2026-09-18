@@ -118,7 +118,7 @@ fn the_classification_column_is_the_one_the_event_holds() {
         classified.as_deref()
     );
     assert!(
-        held.as_field().index_of("cficode").is_none(),
-        "a typed fact is held once, never in the row"
+        held.as_field().index_of("cficode").is_some(),
+        "the classification is FIX's own field and a column like any other"
     );
 }

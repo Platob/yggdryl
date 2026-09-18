@@ -2,27 +2,25 @@
 
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
-use std::fmt::Write as _;
 use std::fmt;
+use std::fmt::Write as _;
 use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{EdgeAlgorithm, Error, Field, Result};
 use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::UnionMode;
+use crate::types::BytesType;
 use crate::types::DecimalType;
 use crate::types::UuidType;
-use crate::types::BytesType;
+use crate::{EdgeAlgorithm, Error, Field, Result};
 
 /// Recursive field grammar and FromStr implementation.
 mod field {
-    
-    
+
     use std::borrow::Cow;
     use std::str::FromStr;
-    
 
     use smol_str::SmolStr;
 
@@ -55,7 +53,9 @@ mod field {
             return Err(field_parse_error(base, "expected a field expression"));
         }
 
-        if let Some(body) = function_body(value, "field").map_err(|error| offset_error(error, base))? {
+        if let Some(body) =
+            function_body(value, "field").map_err(|error| offset_error(error, base))?
+        {
             let body_base = base + subslice_offset(value, body);
             return parse_canonical_field(body).map_err(|error| offset_error(error, body_base));
         }
@@ -66,8 +66,8 @@ mod field {
             let rest = value[5..].trim_start();
             if rest.starts_with('{') {
                 let rest_base = base + subslice_offset(value, rest);
-                let body =
-                    enclosed_body(rest, '{', '}').map_err(|error| offset_error(error, rest_base))?;
+                let body = enclosed_body(rest, '{', '}')
+                    .map_err(|error| offset_error(error, rest_base))?;
                 let body_base = base + subslice_offset(value, body);
                 return parse_arrow_field(body).map_err(|error| offset_error(error, body_base));
             }
@@ -82,7 +82,10 @@ mod field {
     fn parse_canonical_field(body: &str) -> Result<Field> {
         let values = split_top_level(body, ',')?;
         if values.len() < 2 {
-            return Err(field_parse_error(0, "field(...) requires a name and datatype"));
+            return Err(field_parse_error(
+                0,
+                "field(...) requires a name and datatype",
+            ));
         }
         let name = parse_string(values[0].1).map_err(|error| offset_error(error, values[0].0))?;
         let dtype = parse_dtype(values[1].1, values[1].0)?;
@@ -109,9 +112,14 @@ mod field {
                 }
                 metadata = parse_metadata(raw_value, offset)?;
                 saw_metadata = true;
-            } else if key.eq_ignore_ascii_case("dictionary_id") || key.eq_ignore_ascii_case("dict_id") {
+            } else if key.eq_ignore_ascii_case("dictionary_id")
+                || key.eq_ignore_ascii_case("dict_id")
+            {
                 if saw_dictionary_id {
-                    return Err(field_parse_error(offset, "duplicate dictionary id argument"));
+                    return Err(field_parse_error(
+                        offset,
+                        "duplicate dictionary id argument",
+                    ));
                 }
                 dictionary_id = parse_i64(raw_value, offset)?;
                 saw_dictionary_id = true;
@@ -156,7 +164,9 @@ mod field {
                 continue;
             }
             if index == 0 {
-                if let Some((display_name, display_type)) = split_arrow_display_field(member, offset)? {
+                if let Some((display_name, display_type)) =
+                    split_arrow_display_field(member, offset)?
+                {
                     name = Some(display_name);
                     let (display_type, is_nullable) = strip_nullable_prefix(display_type);
                     nullable = Some(is_nullable);
@@ -167,7 +177,10 @@ mod field {
             }
             if member.trim().eq_ignore_ascii_case("dict_is_ordered") {
                 if dictionary_is_ordered.is_some() {
-                    return Err(field_parse_error(offset, "duplicate dictionary ordering flag"));
+                    return Err(field_parse_error(
+                        offset,
+                        "duplicate dictionary ordering flag",
+                    ));
                 }
                 dictionary_is_ordered = Some(true);
                 continue;
@@ -182,8 +195,9 @@ mod field {
                     if name.is_some() {
                         return Err(field_parse_error(offset, "duplicate field name"));
                     }
-                    name =
-                        Some(parse_string(value).map_err(|error| offset_error(error, value_offset))?);
+                    name = Some(
+                        parse_string(value).map_err(|error| offset_error(error, value_offset))?,
+                    );
                 }
                 "datatype" | "dtype" | "type" => {
                     if dtype.is_some() {
@@ -212,7 +226,10 @@ mod field {
                 }
                 "dictionaryisordered" | "dictisordered" => {
                     if dictionary_is_ordered.is_some() {
-                        return Err(field_parse_error(offset, "duplicate dictionary ordering flag"));
+                        return Err(field_parse_error(
+                            offset,
+                            "duplicate dictionary ordering flag",
+                        ));
                     }
                     dictionary_is_ordered = Some(parse_bool(value, offset)?);
                 }
@@ -258,8 +275,9 @@ mod field {
         } else if parts.len() > 2 {
             return Err(field_parse_error(parts[2].0, "unexpected top-level colon"));
         } else {
-            let index = top_level_whitespace(value)?
-                .ok_or_else(|| field_parse_error(0, "expected `name: datatype` or `name datatype`"))?;
+            let index = top_level_whitespace(value)?.ok_or_else(|| {
+                field_parse_error(0, "expected `name: datatype` or `name datatype`")
+            })?;
             let dtype = value[index..].trim_start();
             (
                 &value[..index],
@@ -349,8 +367,9 @@ mod field {
 
     fn parse_metadata(value: &str, base: usize) -> Result<Metadata> {
         let value = value.trim();
-        let body = enclosed_body(value, '{', '}')
-            .map_err(|_| field_parse_error(base, "metadata must be an object enclosed by `{` and `}`"))?;
+        let body = enclosed_body(value, '{', '}').map_err(|_| {
+            field_parse_error(base, "metadata must be an object enclosed by `{` and `}`")
+        })?;
         if body.trim().is_empty() {
             return Ok(Metadata::new());
         }
@@ -425,7 +444,12 @@ mod field {
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
-                _ => return Err(field_parse_error(0, format!("unsupported escape `\\{escaped}`"))),
+                _ => {
+                    return Err(field_parse_error(
+                        0,
+                        format!("unsupported escape `\\{escaped}`"),
+                    ));
+                }
             });
         }
         Ok(output)
@@ -536,7 +560,10 @@ mod field {
                 stack.push(index);
             } else if character == close {
                 if stack.pop().is_none() {
-                    return Err(field_parse_error(index, format!("unexpected closing `{close}`")));
+                    return Err(field_parse_error(
+                        index,
+                        format!("unexpected closing `{close}`"),
+                    ));
                 }
                 if stack.is_empty() {
                     return Ok(index);
@@ -682,7 +709,9 @@ mod field {
                 reason,
                 ..
             } => field_parse_error(position.saturating_add(nested), reason),
-            Error::UnknownDataType(name) => field_parse_error(position, format!("unknown datatype {name:?}")),
+            Error::UnknownDataType(name) => {
+                field_parse_error(position, format!("unknown datatype {name:?}"))
+            }
             Error::InvalidDataType { kind, reason } => {
                 field_parse_error(position, format!("invalid {kind} datatype: {reason}"))
             }
@@ -703,7 +732,9 @@ mod field {
 
     fn metadata_parse_error(error: Error, position: usize) -> Error {
         match error {
-            Error::EmptyMetadataKey => field_parse_error(position, "metadata key must not be empty"),
+            Error::EmptyMetadataKey => {
+                field_parse_error(position, "metadata key must not be empty")
+            }
             Error::DuplicateMetadataKey(key) => {
                 field_parse_error(position, format!("duplicate metadata key {key:?}"))
             }
@@ -871,15 +902,23 @@ impl fmt::Display for DataType {
             D::Interval(unit) => write!(formatter, "interval({unit})"),
             D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::Sequence(SequenceType::List(field)) => fmt_single_field_type(formatter, "list", field),
-            D::Sequence(SequenceType::ListView(field)) => fmt_single_field_type(formatter, "list_view", field),
+            D::Sequence(SequenceType::List(field)) => {
+                fmt_single_field_type(formatter, "list", field)
+            }
+            D::Sequence(SequenceType::ListView(field)) => {
+                fmt_single_field_type(formatter, "list_view", field)
+            }
             D::Sequence(SequenceType::FixedSizeList(field, length)) => {
                 formatter.write_str("fixed_size_list(")?;
                 fmt_field(formatter, field)?;
                 write!(formatter, ",{length})")
             }
-            D::Sequence(SequenceType::LargeList(field)) => fmt_single_field_type(formatter, "large_list", field),
-            D::Sequence(SequenceType::LargeListView(field)) => fmt_single_field_type(formatter, "large_list_view", field),
+            D::Sequence(SequenceType::LargeList(field)) => {
+                fmt_single_field_type(formatter, "large_list", field)
+            }
+            D::Sequence(SequenceType::LargeListView(field)) => {
+                fmt_single_field_type(formatter, "large_list_view", field)
+            }
             D::Structure(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {

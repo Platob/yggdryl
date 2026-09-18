@@ -469,7 +469,11 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
         ),
     ];
     for (dtype, storage, document) in cases {
-        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{dtype}");
+        assert_eq!(
+            dtype.clone().into_arrow_datatype().unwrap(),
+            storage,
+            "{dtype}"
+        );
         let field = dtype.clone().nullable_field("ccy");
         let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &storage, "{dtype}");
@@ -541,7 +545,8 @@ fn a_string_enum_needs_a_fixed_ascii_width_its_members_pack_into() {
             .try_with_string_enum(&sides)
             .unwrap_or_else(|error| panic!("{accepted}: {error}"));
         assert_eq!(field.string_enum().unwrap().as_ref(), Some(&sides));
-        let recovered = Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
+        let recovered =
+            Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field, "{accepted}");
     }
     for refused in [

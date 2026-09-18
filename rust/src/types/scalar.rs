@@ -41,23 +41,33 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256};
 use super::boolean::Boolean;
 use super::bytes::Bytes;
-use super::decimal::{Decimal128, Decimal256, Decimal32, Decimal64};
+use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
 use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
-use super::integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, compare_integer_parts, integer_parts};
-use crate::types::family::Children;
+use super::integer::{
+    Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
+    compare_integer_parts, integer_parts,
+};
 use super::mapping::{Map, Mapping};
-use crate::types::structure::Record;
-use crate::types::sequence::Sequence;
 use super::string::Str;
 use super::temporal::scalars::temporal_key;
-use super::temporal::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
+use super::temporal::{
+    Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64,
+};
 use super::uuid::Uuid;
 use super::version::Version;
-use super::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal as decimal};
+use super::{
+    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal,
+};
+use crate::types::family::Children;
+use crate::types::sequence::Sequence;
+use crate::types::structure::Record;
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone,
+    i256,
+};
 use std::ops::Index;
 
 /// One concrete scalar representation.
@@ -425,8 +435,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Duration32(value) => {
-                match super::temporal::format_duration(i64::from(value.count()), value.unit())
-                {
+                match super::temporal::format_duration(i64::from(value.count()), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration32", &spelled)
                     }
@@ -1981,7 +1990,9 @@ mod tests {
             (Scalar::duration32(1, TimeUnit::Second).unwrap(), 10),
             (Scalar::duration64(1, TimeUnit::Second).unwrap(), 10),
             (
-                Scalar::Interval(crate::types::Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap()),
+                Scalar::Interval(
+                    crate::types::Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap(),
+                ),
                 16,
             ),
             (Scalar::from("a"), 5),

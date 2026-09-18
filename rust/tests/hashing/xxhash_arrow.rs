@@ -10,9 +10,9 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
 use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 use yggdryl::types::Uuid;
 use yggdryl::types::UuidType;
+use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -911,10 +911,8 @@ fn the_corpus_names_every_datatype_a_column_can_hold() {
     // The corpus is the contract the two tests above check, so it has to name
     // every datatype rather than a selection of them: a family absent here is
     // a family whose buffer arm and fallback were never compared.
-    let covered: std::collections::HashSet<DataTypeId> = columns()
-        .iter()
-        .map(|(field, _)| field.id())
-        .collect();
+    let covered: std::collections::HashSet<DataTypeId> =
+        columns().iter().map(|(field, _)| field.id()).collect();
     let missing: Vec<&str> = DataTypeId::ALL
         .into_iter()
         .filter(|id| {

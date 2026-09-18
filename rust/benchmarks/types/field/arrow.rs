@@ -37,7 +37,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("field_projection_consuming", |bencher| {
         bencher.iter_batched(
             nested_field,
-            |field| field.into_arrow_field().expect("the benchmark field is valid"),
+            |field| {
+                field
+                    .into_arrow_field()
+                    .expect("the benchmark field is valid")
+            },
             BatchSize::SmallInput,
         );
     });

@@ -3,9 +3,16 @@
 
 use smol_str::SmolStr;
 
-use crate::types::{BLOOMBERG_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME, CURRENCY_EXTENSION_NAME, CUSIP_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME, SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME};
-use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH};
 use crate::types::string::ascii_text_sized;
+use crate::types::{
+    BLOOMBERG_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME, CURRENCY_EXTENSION_NAME,
+    CUSIP_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME,
+    SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME,
+};
+use crate::types::{
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+};
 use crate::{DataType, Error, Result};
 
 // ------------------------------------------------------------------------
@@ -154,7 +161,6 @@ macro_rules! code_value {
 }
 
 impl DataType {
-
     /// The canonical name of a registered code, `None` for every other type.
     ///
     /// This is the code's identity: it names the datatype, and the Arrow

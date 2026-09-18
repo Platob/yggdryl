@@ -30,7 +30,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// `crosscode` is the text that names it there: the identifier every
 /// incarnation of one thing shares, an order's `OrderID`, a quote's
 /// `QuoteID`, empty where the element states none. Two codes are derived:
-/// `hashcode` is the XXH3-64 digest of the element's content, what
+/// `currhashcode` is the XXH3-64 digest of the element's content, what
 /// [`Self::finalize`] recomputes, and `crosshashcode` the XXH3-64 of the
 /// cross code, zero where none is stated, what [`Self::sync_cross`] keeps in
 /// step with it. The cross element is never absent: it is the identity the
@@ -109,10 +109,10 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     fn set_crosscode(&mut self, crosscode: String) {
 ///         self.crosscode = crosscode;
 ///     }
-///     fn get_hashcode(&self) -> u64 {
+///     fn get_currhashcode(&self) -> u64 {
 ///         self.hashcode
 ///     }
-///     fn set_hashcode(&mut self, hashcode: u64) {
+///     fn set_currhashcode(&mut self, hashcode: u64) {
 ///         self.hashcode = hashcode;
 ///     }
 ///     fn get_crosshashcode(&self) -> u64 {
@@ -167,7 +167,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// // The cross code stated, its digest and the cross identity follow it.
 /// assert_ne!(child.get_crosshashcode(), 0);
 /// assert_eq!(child.get_crossuuid(), child.cross_uuid());
-/// assert_ne!(child.get_hashcode(), 0);
+/// assert_ne!(child.get_currhashcode(), 0);
 /// // The implementor's rule: a node never follows itself.
 /// assert!(Node::new(1).with_previous(&root).is_none());
 ///
@@ -212,10 +212,10 @@ pub trait Element {
     fn set_crosscode(&mut self, crosscode: String);
 
     /// The code this element's content digests to.
-    fn get_hashcode(&self) -> u64;
+    fn get_currhashcode(&self) -> u64;
 
     /// Records the code this element's content digests to.
-    fn set_hashcode(&mut self, hashcode: u64);
+    fn set_currhashcode(&mut self, hashcode: u64);
 
     /// The code the cross code digests to: what this element is in another
     /// graph, as a digest; zero where it states no cross code.
@@ -266,7 +266,7 @@ pub trait Element {
     /// The implementor's, because only it knows its content: it brings the
     /// cross codes in step with [`Self::sync_cross`], digests what it says
     /// from [`Self::digest`] or the continuation its traits provide, and
-    /// hands the code to [`Self::set_hashcode`] - or, for an event, to
+    /// hands the code to [`Self::set_currhashcode`] - or, for an event, to
     /// [`Event::finalized`], which sets the identity the instant and the
     /// code derive; an element whose identity is assigned keeps it. Every
     /// provided reading that changes an element calls this once it has, so
@@ -512,7 +512,7 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
         this.set_prevuuid(uuid)
     });
-    changed |= moved(this.get_prevunix(), Some(previous.get_unix()), |unix| {
+    changed |= moved(this.get_prevunix(), Some(previous.get_currunix()), |unix| {
         this.set_prevunix(unix)
     });
     changed |= moved(
@@ -531,9 +531,9 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 /// this one states none; whether any moved.
 fn merge_timed<E: Event>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
-    if other.get_unix() > this.get_unix() {
-        this.set_unix(other.get_unix());
-        this.set_hashcode(other.get_hashcode());
+    if other.get_currunix() > this.get_currunix() {
+        this.set_currunix(other.get_currunix());
+        this.set_currhashcode(other.get_currhashcode());
         changed = true;
     }
     if other.get_seqnum() > this.get_seqnum() {
@@ -566,10 +566,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 
 /// An element that happened at one instant: an event.
 ///
-/// The instant is `unix`: a count of nanoseconds since the Unix epoch, UTC,
+/// The instant is `currunix`: a count of nanoseconds since the Unix epoch, UTC,
 /// held as an `i64`, the count every clock this crate reads states. Coupled
 /// with the code the element's content digests to,
-/// [`Element::get_hashcode`], it is the event's identity: [`Self::txhash`]
+/// [`Element::get_currhashcode`], it is the event's identity: [`Self::txhash`]
 /// is the crate's own [`TxHash`] of the two, and [`Self::time_uuid`] the
 /// UUID it answers - RFC 9562 UUIDv7 with the instant in front, so
 /// identities sort by instant first, to the microsecond, and by content
@@ -661,10 +661,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     fn set_crosscode(&mut self, crosscode: String) {
 ///         self.crosscode = crosscode;
 ///     }
-///     fn get_hashcode(&self) -> u64 {
+///     fn get_currhashcode(&self) -> u64 {
 ///         self.hashcode
 ///     }
-///     fn set_hashcode(&mut self, hashcode: u64) {
+///     fn set_currhashcode(&mut self, hashcode: u64) {
 ///         self.hashcode = hashcode;
 ///     }
 ///     fn get_crosshashcode(&self) -> u64 {
@@ -706,10 +706,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// }
 ///
 /// impl Event for Report {
-///     fn get_unix(&self) -> i64 {
+///     fn get_currunix(&self) -> i64 {
 ///         self.unix
 ///     }
-///     fn set_unix(&mut self, unix: i64) {
+///     fn set_currunix(&mut self, unix: i64) {
 ///         self.unix = unix;
 ///     }
 ///     fn get_state(&self) -> &State {
@@ -780,7 +780,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// // An event is an element: one walk reads both.
 /// let held: &dyn Event = &second;
 /// assert_eq!(held.get_curruuid(), Uuid::from_v8(2));
-/// assert_eq!(held.get_unix(), 20_000);
+/// assert_eq!(held.get_currunix(), 20_000);
 /// assert_eq!(held.get_creatunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
 /// // The identity its instant and code derive: later sorts later.
@@ -791,11 +791,11 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// ```
 pub trait Event: Element {
     /// When this event happened: nanoseconds since the Unix epoch, UTC.
-    fn get_unix(&self) -> i64;
+    fn get_currunix(&self) -> i64;
 
     /// Records when this event happened, as nanoseconds since the Unix
     /// epoch, UTC.
-    fn set_unix(&mut self, unix: i64);
+    fn set_currunix(&mut self, unix: i64);
 
     /// Where this event stands in its lifecycle: the crate's ranked
     /// [`State`] code, never absent - an event that reached no state says
@@ -811,7 +811,7 @@ pub trait Event: Element {
     /// Records where this event stands in its chain.
     fn set_seqnum(&mut self, seqnum: u64);
 
-    /// When this event was created, in the same count as [`Self::get_unix`],
+    /// When this event was created, in the same count as [`Self::get_currunix`],
     /// where it knows.
     fn get_creatunix(&self) -> Option<i64>;
 
@@ -819,7 +819,7 @@ pub trait Event: Element {
     /// know.
     fn set_creatunix(&mut self, unix: Option<i64>);
 
-    /// When this event expires, in the same count as [`Self::get_unix`], where
+    /// When this event expires, in the same count as [`Self::get_currunix`], where
     /// it has an expiry.
     fn get_expirunix(&self) -> Option<i64>;
 
@@ -842,7 +842,7 @@ pub trait Event: Element {
     fn set_prevuuid(&mut self, uuid: Option<Uuid>);
 
     /// The grid instant this event was read as the snapshot of, in the
-    /// same count as [`Self::get_unix`], where a walk over a grid took one
+    /// same count as [`Self::get_currunix`], where a walk over a grid took one
     /// of it: the opening instant of the grid step its instant fell in.
     fn get_snapunix(&self) -> Option<i64>;
 
@@ -877,7 +877,7 @@ pub trait Event: Element {
         Self: Sized,
     {
         if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_unix() > self.get_unix()
+            || previous.get_currunix() > self.get_currunix()
             || !follow_timed(&mut self, previous)
         {
             return None;
@@ -982,7 +982,7 @@ pub trait Event: Element {
     /// cross element is [`Element::cross_uuid`] over the identity that
     /// results, which is the identity itself for an event in no chain.
     fn finalized(&mut self, hashcode: u64) {
-        self.set_hashcode(hashcode);
+        self.set_currhashcode(hashcode);
         if let Ok(uuid) = self.time_uuid() {
             self.set_curruuid(uuid);
         }
@@ -1004,8 +1004,8 @@ pub trait Event: Element {
         state
     }
 
-    /// The instant and the code coupled: a [`TxHash`] of [`Self::get_unix`]
-    /// at nanosecond resolution and [`Element::get_hashcode`] as the XXH3-64
+    /// The instant and the code coupled: a [`TxHash`] of [`Self::get_currunix`]
+    /// at nanosecond resolution and [`Element::get_currhashcode`] as the XXH3-64
     /// digest it is, which is the crate's own time-ordered identity.
     ///
     /// Provided, so every event derives it the same way.
@@ -1015,7 +1015,7 @@ pub trait Event: Element {
     /// Returns the [`TxHash`]'s own refusal, which a nanosecond count never
     /// raises.
     fn txhash(&self) -> Result<TxHash> {
-        coupled(self.get_unix(), self.get_hashcode())
+        coupled(self.get_currunix(), self.get_currhashcode())
     }
 
     /// The identity the instant and the code derive: the UUID
@@ -1539,18 +1539,18 @@ pub trait MarketElement: Element {
 /// // A market event is an event is a market element is an element: one
 /// // walk reads all.
 /// let held: &dyn MarketEvent = &trade;
-/// assert_eq!(held.get_unix(), 10);
+/// assert_eq!(held.get_currunix(), 10);
 /// assert_eq!(held.get_side().as_str(), "BUY");
 /// assert_eq!(held.get_curruuid(), trade.time_uuid()?);
 /// // A later statement of the trade merges in: its price has the last
 /// // word, and the CFI it states fills what this one left unknown.
 /// let mut later = trade.clone();
-/// later.set_unix(20);
+/// later.set_currunix(20);
 /// later.set_px("83".parse()?);
 /// later.set_cficode(Some(Cfi::new("ESVUFR")?));
 /// let merged = trade.merge_with(&later).expect("the same trade");
 /// assert_eq!(merged.get_px(), Decimal::from_int(83));
-/// assert_eq!(merged.get_unix(), 20);
+/// assert_eq!(merged.get_currunix(), 20);
 /// assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
 /// # Ok(())
 /// # }
@@ -1614,7 +1614,7 @@ pub trait MarketEvent: Event + MarketElement {
         }
         // Which statement is the later one is read before the timed merge
         // moves this event's instant to it.
-        let later = other.get_unix() > self.get_unix();
+        let later = other.get_currunix() > self.get_currunix();
         let changed = merge_element(&mut self, other);
         let changed = merge_timed(&mut self, other) || changed;
         if !(merge_market(&mut self, other, later) || changed) {

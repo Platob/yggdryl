@@ -164,8 +164,8 @@ pub(crate) mod casts {
     };
     use arrow_array::{
         Array, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeBinaryArray, Int16RunArray,
-        Int32RunArray, Int64RunArray, LargeBinaryArray, LargeStringArray, StringArray, StringViewArray,
-        UnionArray,
+        Int32RunArray, Int64RunArray, LargeBinaryArray, LargeStringArray, StringArray,
+        StringViewArray, UnionArray,
     };
 
     use std::sync::Arc;
@@ -177,12 +177,12 @@ pub(crate) mod casts {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::arrow::{Error, Result};
+    use crate::types::DecimalType;
     use crate::types::budget::MaterializationBudget;
     use crate::types::bytes::BytesType;
-    use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
     use crate::types::cast::columns::{is_exposed, null_buffers_ptr_eq};
+    use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
     use crate::{DataType, Field};
-    use crate::types::DecimalType;
 
     /// Whether one byte layout reaches another only through Arrow's `Binary`.
     ///
@@ -412,7 +412,9 @@ pub(crate) mod casts {
         if array.is_null(index)
             && !matches!(
                 source_type,
-                DataType::Enum(EnumType::Dictionary(_)) | DataType::Union(..) | DataType::RunEndEncoded(_)
+                DataType::Enum(EnumType::Dictionary(_))
+                    | DataType::Union(..)
+                    | DataType::RunEndEncoded(_)
             )
         {
             return Ok(0);
@@ -431,13 +433,13 @@ pub(crate) mod casts {
                         if dictionary_array.keys().is_null(index) {
                             0
                         } else {
-                            let key = usize::try_from(dictionary_array.keys().value(index)).map_err(
-                                |_| {
+                            let key = usize::try_from(dictionary_array.keys().value(index))
+                                .map_err(|_| {
                                     Error::IncompatibleSchema(
-                                        "Arrow dictionary key is negative or exceeds usize".to_owned(),
+                                        "Arrow dictionary key is negative or exceeds usize"
+                                            .to_owned(),
                                     )
-                                },
-                            )?;
+                                })?;
                             projected_byte_len(
                                 dictionary_array.values().as_ref(),
                                 dictionary.value(),
@@ -565,9 +567,9 @@ pub(crate) mod casts {
             if !is_valid(index) {
                 return Ok(bytes);
             }
-            bytes
-                .checked_add(value_len(index))
-                .ok_or_else(|| Error::IncompatibleSchema("Arrow payload bytes exceed usize".to_owned()))
+            bytes.checked_add(value_len(index)).ok_or_else(|| {
+                Error::IncompatibleSchema("Arrow payload bytes exceed usize".to_owned())
+            })
         })
     }
 
@@ -608,7 +610,8 @@ pub(crate) mod casts {
     }
 
     fn byte_slices_ptr_eq(left: &[u8], right: &[u8]) -> bool {
-        left.len() == right.len() && (left.is_empty() || std::ptr::eq(left.as_ptr(), right.as_ptr()))
+        left.len() == right.len()
+            && (left.is_empty() || std::ptr::eq(left.as_ptr(), right.as_ptr()))
     }
 }
 
@@ -716,7 +719,6 @@ impl DataType {
 // ------------------------------------------------------------------------
 // The byte family's field marker.
 // ------------------------------------------------------------------------
-
 
 // ------------------------------------------------------------------------
 // What a byte datatype declares beyond its layout.
@@ -974,7 +976,8 @@ impl BytesType {
 
         let document: Document = serde_json::from_str(value)
             .map_err(|error| invalid(format_smolstr!("expected bytes parameters, got {error}")))?;
-        let named = Self::from_str(&document.layout).map_err(|error| invalid(format_smolstr!("{error}")))?;
+        let named = Self::from_str(&document.layout)
+            .map_err(|error| invalid(format_smolstr!("{error}")))?;
         // A maximum makes a column sized whichever plain layout names it, so
         // `{"layout":"binary","max":16}` and `{"layout":"sized_binary","max":16}`
         // are one document written two ways; a width only belongs to the
@@ -1103,9 +1106,7 @@ impl Parser<'_> {
                 // so rather than silently becoming something narrower.
                 parameters = match leaf {
                     BytesType::FixedBinary(_) => BytesType::FixedBinary(bound),
-                    BytesType::Binary | BytesType::SizedBinary(_) => {
-                        BytesType::SizedBinary(bound)
-                    }
+                    BytesType::Binary | BytesType::SizedBinary(_) => BytesType::SizedBinary(bound),
                     other => {
                         return Err(self.error_at(
                             position,
@@ -1623,7 +1624,8 @@ impl<'de> Deserialize<'de> for Bytes {
         match Representation::deserialize(deserializer)? {
             Representation::Plain(bytes) => Ok(Self::from(bytes)),
             Representation::Declared(declared) => {
-                let named = BytesType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
+                let named =
+                    BytesType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
                 let parameters = match (named, declared.fixed) {
                     (BytesType::FixedBinary(_), Some(width)) => BytesType::FixedBinary(width),
                     (other, _) => other,
@@ -1699,7 +1701,6 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
         _ => value.as_str().map(|text| Bytes::new(text.as_bytes())),
     }
 }
-
 
 impl crate::types::DataTypeValue for BytesType {
     const FAMILY: &'static str = "bytes";

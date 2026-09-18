@@ -10,22 +10,25 @@ use std::collections::HashSet;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::DecimalType;
 use crate::types::boolean::boolean_from_text;
 use crate::types::bytes::bytes_from_value;
 use crate::types::decimal::{validate_decimal_value, validate_decimal256_value};
+use crate::types::enums::EnumType;
 use crate::types::floating::{FloatWidth, canonical_float, float_from_text};
 use crate::types::integer::{
     canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
     validate_signed, validate_unsigned,
 };
-use crate::types::string::str_from_value;
-use crate::types::temporal::{validate_date64, validate_time};
-use crate::types::{Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null};
-use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
-use crate::types::structure::StructureType;
 use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
-use crate::types::DecimalType;
+use crate::types::string::str_from_value;
+use crate::types::structure::StructureType;
+use crate::types::temporal::{validate_date64, validate_time};
+use crate::types::{
+    Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized,
+    code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
+};
+use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
@@ -421,7 +424,9 @@ fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, 
 fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
     use DataType as D;
     match dtype {
-        D::Decimal(DecimalType::Decimal32 { scale, .. }) | D::Decimal(DecimalType::Decimal64 { scale, .. }) | D::Decimal(DecimalType::Decimal128 { scale, .. })
+        D::Decimal(DecimalType::Decimal32 { scale, .. })
+        | D::Decimal(DecimalType::Decimal64 { scale, .. })
+        | D::Decimal(DecimalType::Decimal128 { scale, .. })
             if value.is_decimal() =>
         {
             value.decimal_unscaled_at(*scale)
@@ -529,9 +534,10 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
             Ok(integer_from_text(text)?)
         }
         D::Float16 | D::Float32 | D::Float64 => Ok(float_from_text(text)?),
-        D::Decimal(DecimalType::Decimal32 { .. }) | D::Decimal(DecimalType::Decimal64 { .. }) | D::Decimal(DecimalType::Decimal128 { .. }) | D::Decimal(DecimalType::Decimal256 { .. }) => {
-            Scalar::from_decimal_text(dtype, text)
-        }
+        D::Decimal(DecimalType::Decimal32 { .. })
+        | D::Decimal(DecimalType::Decimal64 { .. })
+        | D::Decimal(DecimalType::Decimal128 { .. })
+        | D::Decimal(DecimalType::Decimal256 { .. }) => Scalar::from_decimal_text(dtype, text),
         D::Date32
         | D::Date64
         | D::Time32(_)
@@ -801,8 +807,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 family.accept(*held)?;
                 return Ok((value.clone(), false));
             }
-            let bytes = uuid_bytes(value)
-                .ok_or_else(|| canonical_error("expected UUID text or bytes"))?;
+            let bytes =
+                uuid_bytes(value).ok_or_else(|| canonical_error("expected UUID text or bytes"))?;
             let uuid = crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(bytes)?));
             family.accept(uuid)?;
             Ok((Scalar::Uuid(uuid), true))
@@ -873,7 +879,9 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Structure(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
-        D::Enum(EnumType::Dictionary(dictionary)) => canonicalize_dtype_value(dictionary.value(), value),
+        D::Enum(EnumType::Dictionary(dictionary)) => {
+            canonicalize_dtype_value(dictionary.value(), value)
+        }
         D::Decimal(DecimalType::Decimal32 { .. })
         | D::Decimal(DecimalType::Decimal64 { .. })
         | D::Decimal(DecimalType::Decimal128 { .. })
@@ -1532,7 +1540,10 @@ fn validate_dtype_value(
                 .map_err(|_| expected("mediatype", value)),
             _ => Err(expected("mediatype", value)),
         },
-        D::Sequence(SequenceType::List(field)) | D::Sequence(SequenceType::ListView(field)) | D::Sequence(SequenceType::LargeList(field)) | D::Sequence(SequenceType::LargeListView(field)) => {
+        D::Sequence(SequenceType::List(field))
+        | D::Sequence(SequenceType::ListView(field))
+        | D::Sequence(SequenceType::LargeList(field))
+        | D::Sequence(SequenceType::LargeListView(field)) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)
         }
         D::Sequence(SequenceType::FixedSizeList(field, size)) => validate_sequence(
@@ -1544,11 +1555,21 @@ fn validate_dtype_value(
         ),
         D::Structure(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
-        D::Enum(EnumType::Dictionary(dictionary)) => validate_dtype_value(dictionary.value(), value, depth + 1),
-        D::Decimal(DecimalType::Decimal32 { precision, .. }) => validate_decimal_value(value, *precision, 32),
-        D::Decimal(DecimalType::Decimal64 { precision, .. }) => validate_decimal_value(value, *precision, 64),
-        D::Decimal(DecimalType::Decimal128 { precision, .. }) => validate_decimal_value(value, *precision, 128),
-        D::Decimal(DecimalType::Decimal256 { precision, scale }) => validate_decimal256_value(value, *precision, *scale),
+        D::Enum(EnumType::Dictionary(dictionary)) => {
+            validate_dtype_value(dictionary.value(), value, depth + 1)
+        }
+        D::Decimal(DecimalType::Decimal32 { precision, .. }) => {
+            validate_decimal_value(value, *precision, 32)
+        }
+        D::Decimal(DecimalType::Decimal64 { precision, .. }) => {
+            validate_decimal_value(value, *precision, 64)
+        }
+        D::Decimal(DecimalType::Decimal128 { precision, .. }) => {
+            validate_decimal_value(value, *precision, 128)
+        }
+        D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            validate_decimal256_value(value, *precision, *scale)
+        }
         D::Mapping(map) => validate_map(map, value, depth + 1),
         D::RunEndEncoded(encoded) => {
             validate_field_value_at_depth(encoded.values(), value, depth + 1)

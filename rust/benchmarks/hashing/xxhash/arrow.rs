@@ -84,7 +84,11 @@ fn fallback_batch() -> RecordBatch {
         arrays.push(
             yggdryl::arrow::array_from_value(&field, &values).expect("a valid column fixture"),
         );
-        fields.push(field.into_arrow_field().expect("the field projects to Arrow"));
+        fields.push(
+            field
+                .into_arrow_field()
+                .expect("the field projects to Arrow"),
+        );
     }
     RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("a valid batch fixture")
 }
@@ -260,5 +264,3 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
-
-

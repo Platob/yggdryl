@@ -80,12 +80,12 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 /// rather than by tag number, so a row reads the way the message it came
 /// from reads.
 ///
-/// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not among them, and
-/// that is the one omission worth naming: a message holds what those tags
-/// state as [`get_px`](crate::graph::MarketElement::get_px) and
-/// [`get_qty`](crate::graph::MarketElement::get_qty), so the crate's own
-/// `px` and `qty` are the columns they are read and written through, and a
-/// row carrying both would carry one fact twice.
+/// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
+/// like the rest, each exact and stated once. What a message is *about* is
+/// what [`get_px`](crate::graph::MarketElement::get_px) and
+/// [`get_qty`](crate::graph::MarketElement::get_qty) read off them, and no
+/// column of this crate's restates either, because a row carrying both
+/// would carry one fact twice.
 pub const BODY_TAGS: [i32; 50] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
@@ -161,22 +161,16 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        ASKCURRENCY_TAG_NAME as ASKCURRENCY, ASKUNIT_TAG_NAME as ASKUNIT,
-        BIDCURRENCY_TAG_NAME as BIDCURRENCY, BIDUNIT_TAG_NAME as BIDUNIT,
-        BLOOMBERGCODE_TAG_NAME as BLOOMBERG, CREATUNIX_TAG_NAME as CREATUNIX,
-        CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
-        CROSSUUID_TAG_NAME as CROSSUUID, CURRUUID_TAG_NAME as CURRUUID,
-        CUSIPCODE_TAG_NAME as CUSIP, EXPIRUNIX_TAG_NAME as EXPIRUNIX,
-        HASHCODE_TAG_NAME as HASHCODE, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
-        ISINCODE_TAG_NAME as ISIN, METADATA_TAG_NAME as METADATA, MICCODE_TAG_NAME as MIC,
-        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
-        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
-        PLUGINID_TAG_NAME as PLUGINID, PREVPX_TAG_NAME as PREVPX, PREVQTY_TAG_NAME as PREVQTY,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, PX_TAG_NAME as PX,
-        QTY_TAG_NAME as QTY, RECORDEDAT_TAG_NAME as RECORDEDAT, SEDOLCODE_TAG_NAME as SEDOL,
-        SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
-        STATE_TAG_NAME as STATE, SYMBOLTICKER_TAG_NAME as SYMBOLTICKER,
-        TRADABLE_TAG_NAME as TRADABLE, UNIT_TAG_NAME as UNIT, UNIX_TAG_NAME as UNIX,
+        CREATUNIX_TAG_NAME as CREATUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
+        CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
+        CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
+        CURRUUID_TAG_NAME as CURRUUID, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
+        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
+        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
+        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PLUGINID_TAG_NAME as PLUGINID,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
+        RECORDEDAT_TAG_NAME as RECORDEDAT, SEQNUM_TAG_NAME as SEQNUM,
+        SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -199,7 +193,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             UNIX.0,
             CREATUNIX.0,
             PREVUNIX.0,
-            EXPIRUNIX.0,
             SNAPUNIX.0,
             RECORDEDAT.0,
             52,
@@ -208,6 +201,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
             64,
             75,
             126,
+            62,
+            432,
         ],
     );
     // Which event: its own identity, the chain it stands in and what it
@@ -250,31 +245,13 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(
         &mut tags,
         &[
-            55,
-            SYMBOLTICKER.0,
-            48,
-            22,
-            167,
-            762,
-            207,
-            461,
-            541,
-            460,
-            ISIN.0,
-            CUSIP.0,
-            SEDOL.0,
-            BLOOMBERG.0,
-            MIC.0,
-            326,
-            340,
-            965,
-            TRADABLE.0,
+            55, 48, 22, 167, 762, 207, 100, 30, 461, 541, 460, 326, 340, 965,
         ],
     );
     // Which order: the chain of identifiers a message and its answers share.
     band(
         &mut tags,
-        &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693],
+        &[1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 262, 693],
     );
     // What it states: the side it takes, then one ladder of prices and one
     // of quantities, each from the number the message is about down through
@@ -282,41 +259,20 @@ pub fn fix_schema_tags() -> Vec<i32> {
     // where it has got to - then what those are counted and denominated in,
     // how the order was written, and last the quote's two lanes.
     //
-    // `Price(44)`, `OrderQty(38)` and `Quantity(53)` are not columns: `px`
-    // and `qty` are what a message holds them as, so the row states each
-    // number once.
+    // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
+    // and `Quantity(53)` are columns like the rest of the ladder, and what a
+    // message is *about* is what [`MarketElement::get_px`] reads off them
+    // rather than a column restating one of them.
     band(
         &mut tags,
         &[
-            54,
-            PX.0,
-            PREVPX.0,
-            31,
-            6,
-            QTY.0,
-            PREVQTY.0,
-            32,
-            14,
-            151,
-            UNIT.0,
-            15,
-            120,
-            854,
-            40,
-            59,
-            132,
-            BIDCURRENCY.0,
-            BIDUNIT.0,
-            134,
-            133,
-            ASKCURRENCY.0,
-            ASKUNIT.0,
-            135,
+            54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
         ],
     );
-    // How it went: the state this crate ranked it at, the protocol's own
-    // statuses and reasons, and whatever the venue said in words.
-    band(&mut tags, &[STATE.0, 39, 150, 297, 301, 368, 103, 102, 58]);
+    // How it went: the protocol's own statuses and reasons, and whatever the
+    // venue said in words. The ranked state the traits answer is read off
+    // `OrdStatus` and `ExecType` and is no column of its own.
+    band(&mut tags, &[39, 150, 297, 301, 368, 103, 102, 58]);
     // The groups kept whole, which no scalar column can hold.
     band(&mut tags, &GROUP_TAGS);
     // The frame: every standard header, body and trailer field no band above
@@ -345,9 +301,9 @@ pub fn fix_schema_tags() -> Vec<i32> {
 fn is_required(tag: i32) -> bool {
     tag == 8
         || [
-            super::UNIX_TAG_NAME.0,
+            super::CURRUNIX_TAG_NAME.0,
             super::CREATUNIX_TAG_NAME.0,
-            super::HASHCODE_TAG_NAME.0,
+            super::CURRHASHCODE_TAG_NAME.0,
             super::CROSSHASHCODE_TAG_NAME.0,
             super::CURRUUID_TAG_NAME.0,
             super::CROSSUUID_TAG_NAME.0,
@@ -515,6 +471,21 @@ pub(super) fn rooted(
 /// What that column stated is not lost: the row fills the FIX column from
 /// it, which is the whole point of naming a capture after a field.
 ///
+/// # A carried column is nullable, whatever the capture declared
+///
+/// A capture's own column is the *reading's* statement, and no message holds
+/// one: only a pass that has the source row in hand can state it. So a pass
+/// that has not - the message halves,
+/// [`messages`](super::FixCodec::messages) into
+/// [`arrow_reader`](super::FixCodec::arrow_reader), with anything in between -
+/// writes null there, and a column the capture declared non-nullable would
+/// turn that into a refusal per row. It is relaxed here instead, so the
+/// schema promises only what something can keep. The one-pass doors -
+/// [`parse_text_arrow_reader`](super::FixCodec::parse_text_arrow_reader),
+/// [`lifecycle_arrow_reader`](super::FixCodec::lifecycle_arrow_reader),
+/// [`format_arrow_reader`](super::FixCodec::format_arrow_reader) - state
+/// every one of them and never write that null.
+///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// # use yggdryl::holder::local::Folder;
@@ -534,6 +505,9 @@ pub(super) fn rooted(
 /// // The capture leads, and the fixed columns follow it.
 /// assert_eq!(held.fields()[0].name(), "url");
 /// assert_eq!(held.index_of("msgtype"), read.index_of("msgtype").map(|at| at + 3));
+/// // And it leads it nullable: only a pass holding the source row can
+/// // state where a line came from.
+/// assert!(held.fields()[0].is_nullable());
 /// # Ok(())
 /// # }
 /// ```
@@ -546,6 +520,10 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
     let mut fields: Vec<Field> = carried(carrier, read)
         .into_iter()
         .filter_map(|at| carrier.fields().get(at).cloned())
+        .map(|mut held| {
+            held.set_nullable(true);
+            held
+        })
         .collect();
     fields.extend(read.fields().iter().cloned());
     Ok(DataType::from_fields(fields)?.required_field(read.name()))
@@ -614,7 +592,7 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 #[derive(Clone, Copy)]
 pub(super) struct Column {
     pub(super) tag: Option<i32>,
-    counter: Option<i32>,
+    pub(super) counter: Option<i32>,
 }
 
 /// One schema's resolved projections.
@@ -1129,7 +1107,9 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_)) | DataType::Mapping(_) => {
+        DataType::Sequence(SequenceType::List(_))
+        | DataType::Sequence(SequenceType::LargeList(_))
+        | DataType::Mapping(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -1178,13 +1158,29 @@ impl super::FixMsg {
     /// the deepest level folded into decoded through the crate's own JSON
     /// reader, each entry typed through the dictionary exactly as the builder
     /// types a pair, so every lookup reaches the rebuilt message as it
-    /// reaches a parsed one. A column no tag and no counter names is the
-    /// capture's own - the body the line was read from, its place in the
-    /// object, the bridge's row header - and it is kept so the row returns
-    /// to its schema whole, but it is not content: [`FixMsg::entries`] skips
-    /// it, so it reaches no digest and no wire and a message rebuilt from a
-    /// capture row never carries `body=` to a counterparty. Nothing is
-    /// parsed again: this is
+    /// reaches a parsed one.
+    ///
+    /// # The capture's own columns are read past
+    ///
+    /// A column no tag and no counter names is the capture's own - the body
+    /// the line was cut from, its place in the object, its media type, what
+    /// a bound dropped - and so are the two the crate does tag,
+    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME) and
+    /// [`recordedat`](crate::RECORDEDAT_TAG_NAME). All of them are read
+    /// past: a message is what parsing one line answered, and what a
+    /// *reader* said about that line is not it. Nothing on the message
+    /// holds them, so none can reach a digest, an entry, or a `body=` at a
+    /// counterparty, and no rule has to keep telling one apart from a key
+    /// no dictionary explains.
+    ///
+    /// They stay columns of the row, and the row is still where they are
+    /// read: whoever writes rows back restates them from the batch they
+    /// arrived in - [`parse_text_arrow_reader`](super::FixCodec::parse_text_arrow_reader)
+    /// and [`format_arrow_reader`](super::FixCodec::format_arrow_reader) do -
+    /// which is the one place that can state them without a message
+    /// pretending to.
+    ///
+    /// Nothing is parsed again: this is
     /// what makes a batch of rows a stream of messages at the cost of the
     /// values it already holds. A row without the entries column rebuilds a
     /// message with the typed facts and no content.
@@ -1227,8 +1223,15 @@ impl super::FixMsg {
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
     /// assert_eq!(held.entries(), order.entries());
     /// assert_eq!(held.into_bytes(b'|'), order.into_bytes(b'|'));
-    /// assert!(held.into_text('|')?.starts_with("8=FIX.4.4|35=D|52=20240102-10:15:30|54=1|59=0|11=A1|55=AAPL|"));
-    /// assert_eq!(held.get_hashcode(), order.get_hashcode());
+    /// // The emission is the standard header, then the facts the message
+    /// // lifts and holds - `ClOrdID(11)` here - then what arrived in the
+    /// // order it arrived, the derived `TimeInForce(59)` among it, then the
+    /// // trailer.
+    /// assert_eq!(
+    ///     held.into_text('|')?,
+    ///     "8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|54=1|55=AAPL|9999=x|59=0|10=0|",
+    /// );
+    /// assert_eq!(held.get_currhashcode(), order.get_currhashcode());
     /// // And the row it came from is the row it makes.
     /// assert_eq!(held.into_row(&schema)?, row);
     /// # Ok(())
@@ -1269,18 +1272,24 @@ impl super::FixMsg {
                 }
                 Some(_) => {}
                 None if planned.counter.is_some() => {}
-                // A column no tag and no counter names is the capture's own -
-                // the line it was read from, its place in the object, the
-                // bridge's row header. It is kept, so the row a reader walks
-                // returns to its schema whole, and it says so on the field,
-                // so the entries skip it and it reaches no digest and no
-                // wire.
-                None => {
-                    let mut held = column.clone();
-                    held.as_fix_mut().set_captured(true)?;
-                    members.push(held);
+                // A key spelled under a namespace is a bridge's own
+                // statement and the message's to keep: it is carried over
+                // so the assembly below lands it in the metadata, exactly
+                // as a parsed line's is.
+                None if column.name().contains('.') => {
+                    members.push(column.clone());
                     values.push(value.clone());
                 }
+                // Any other column no tag and no counter names is the
+                // capture's own, as the two tagged ones above are: the body
+                // the line was cut from, its place in the object, its media
+                // type, what a bound dropped. Read past, every one of them.
+                // A message is what parsing a line answered, and a column
+                // that outlived the reading would be content - an entry, a
+                // digest input, a `body=` at a counterparty. Whoever reads
+                // the row back restates them from the batch they are
+                // still in.
+                None => {}
             }
         }
         if let Some((fields, held)) = content {
@@ -1309,12 +1318,15 @@ impl super::FixMsg {
     /// The columns are the schema's own, in its own order, and each is filled
     /// by its scalar tag or logical group's `fix:counter`. A message carrying
     /// nothing at a column answers null there rather than shifting its neighbours, which
-    /// is what makes two rows of one capture comparable at all. A column no
-    /// tag or group counter names is a capture's own: it takes the child of
-    /// the same name where the message has one - which is how a row read
-    /// back through [`Self::from_row`] returns to its schema whole - and is
-    /// left null otherwise, which a required column refuses. The capture
-    /// reader supplies its prefix before validation, not after projection.
+    /// is what makes two rows of one capture comparable at all.
+    ///
+    /// [The capture's own columns](Self::from_row) answer null here, because
+    /// a message holds no fact for any of them: the two the crate tags,
+    /// `sourceurl` and `recordedat`, and every column no tag and no counter
+    /// names. Whoever read the rows states them instead, each at its own
+    /// column and before the field contract runs, which is what the capture
+    /// readers do. Nothing derives one either: when a capture wrote a line
+    /// down is whoever read it to say, so a column nobody stated is null.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
@@ -1365,33 +1377,43 @@ impl super::FixMsg {
 
     /// The fixed row as the values it is made of, before they are wrapped.
     ///
-    /// What [`Self::into_row`] answers, still open: a reader carrying its own
-    /// columns in front of the tags writes them into the slots the schema
-    /// left for them and wraps the row once, rather than unwrapping a row to
-    /// wrap it again. `plan` is [`column_plan`] over the same schema, read
-    /// once by the caller rather than once per row.
+    /// What [`Self::into_row`] answers, still open: a reader holding the
+    /// capture's own cells states each at the column it lands in and wraps
+    /// the row once, rather than unwrapping a row to wrap it again. `plan`
+    /// is [`column_plan`] over the same schema, read once by the caller
+    /// rather than once per row.
+    ///
+    /// `restated` is those cells, each beside its column's position in
+    /// `schema`, in ascending order - the carried prefix leading the row and
+    /// the two tagged capture columns wherever the schema puts them. A cell
+    /// states its column outright: the message holds no fact for any of
+    /// them, and a column nobody restates answers null.
     pub(super) fn row_values(
         &self,
         schema: &Field,
         plan: &Columns,
-        front: Vec<crate::Scalar>,
+        restated: Vec<(usize, crate::Scalar)>,
     ) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
-        if front.len() > columns.len() {
+        if let Some((at, _)) = restated.iter().find(|(at, _)| *at >= columns.len()) {
             return Err(super::identity::refused(
                 schema.name(),
-                columns.len(),
-                front.len(),
+                format_args!("a column of the {} this row has", columns.len()),
+                format_args!("a cell restated at column {at}"),
             ));
         }
-        let mut front = front.into_iter();
+        let mut restated = restated.into_iter().peekable();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         // The crate columns' derivations and the working row they read,
         // gathered off this message once for the three of them, and only
         // when one is asked for.
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
-        for (column, planned) in columns.iter().zip(plan.iter()) {
-            if let Some(value) = front.next() {
+        for (at, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
+            // A position already passed is dropped rather than left to
+            // block the ones behind it, so a caller stating one column twice
+            // loses the second statement and nothing else.
+            while restated.next_if(|(held, _)| *held < at).is_some() {}
+            if let Some((_, value)) = restated.next_if(|(held, _)| *held == at) {
                 values.push(fitted(column, value)?);
                 continue;
             }
@@ -1410,10 +1432,10 @@ impl super::FixMsg {
                 }
                 // A column declaring a group's `fix:counter` answers with
                 // that group, read from the message's own occurrences. Any
-                // other column answers for the tag its field carries; one that
-                // carries none is a capture's own column, and only a child
-                // spelled as it is - what a row read back through `from_row`
-                // holds - answers for it.
+                // other column answers for the tag its field carries; one
+                // that carries none is a capture's own column, which no
+                // message holds, so only a content child spelled exactly as
+                // it is could answer for it - and nothing else does.
                 _ => match (planned.tag, planned.counter) {
                     // A typed fact is its holder's, whatever shape its
                     // column takes: the identifiers Map is the event's.
@@ -1688,14 +1710,16 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
         | DataType::Sequence(SequenceType::LargeList(item))
         | DataType::Sequence(SequenceType::ListView(item))
         | DataType::Sequence(SequenceType::LargeListView(item))
-        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => value.as_sequence().map(|stated| {
-            Some(crate::Scalar::from_sequence(
-                stated
-                    .iter()
-                    .filter_map(|held| refit(item, held.clone()))
-                    .collect::<Vec<_>>(),
-            ))
-        }),
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => {
+            value.as_sequence().map(|stated| {
+                Some(crate::Scalar::from_sequence(
+                    stated
+                        .iter()
+                        .filter_map(|held| refit(item, held.clone()))
+                        .collect::<Vec<_>>(),
+                ))
+            })
+        }
         DataType::Mapping(map) => value.as_mapping().map(|stated| {
             // A pair whose key will not read names nothing, so it is left
             // out; one whose value will not read keeps its name and loses

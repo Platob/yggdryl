@@ -14,22 +14,16 @@ use crate::metadata::{
     LOCATION_KEY, MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol,
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
-use crate::types::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 use crate::types::{
-    NullType, BooleanType, Int8Type, Int16Type,
-    Int32Type, Int64Type, UInt8Type, UInt16Type,
-    UInt32Type, UInt64Type, Float16Type, Float32Type,
-    Float64Type, DateTime64Type, Date32Type, Date64Type,
-    Time32Type, Time64Type, Duration32Type, Duration64Type,
-    IntervalType, BytesType, StringType, CountryType,
-    CurrencyType, MicType, CfiType, IsinType,
-    SideType, StateType, TimeInForceType, UuidType,
-    VersionType, UrlType, SequenceType, StructureType,
-    UnionType, EnumType, DecimalType, MappingType, RunEndType,
-    VariantType, GeometryType, GeographyType, TimezoneType,
-    MimeTypeType, MediaTypeType, CusipType, SedolType,
-    BloombergType,
+    BloombergType, BooleanType, BytesType, CfiType, CountryType, CurrencyType, CusipType,
+    Date32Type, Date64Type, DateTime64Type, DecimalType, Duration32Type, Duration64Type, EnumType,
+    Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
+    Int32Type, Int64Type, IntervalType, IsinType, MappingType, MediaTypeType, MicType,
+    MimeTypeType, NullType, RunEndType, SedolType, SequenceType, SideType, StateType, StringType,
+    StructureType, Time32Type, Time64Type, TimeInForceType, TimezoneType, UInt8Type, UInt16Type,
+    UInt32Type, UInt64Type, UnionType, UrlType, UuidType, VariantType, VersionType,
 };
+use crate::types::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
 use crate::{DataTypeId, Error, Metadata, Result, Scheme, Url};
 
@@ -328,10 +322,6 @@ impl<D: DataTypeValue> FieldOf<D> {
             .transpose()
     }
 
-
-
-
-
     /// Returns whether this field participates in caller-side initialization.
     ///
     /// The reserved `field:init` metadata key is absent for an ordinary field,
@@ -384,9 +374,6 @@ impl<D: DataTypeValue> FieldOf<D> {
     ) -> Option<(&'field str, &'field str)> {
         self.metadata.next_property_entry(scheme, after_name)
     }
-
-
-
 
     /// Changes the field name and invalidates a populated Arrow cache once.
     pub fn set_name(&mut self, name: impl Into<SmolStr>) {
@@ -1003,9 +990,7 @@ impl<D: DataTypeValue> Hash for FieldOf<D> {
 ///
 /// Panics when this node has no child at that position.
 
-impl<D: DataTypeValue> FieldOf<D> {
-
-}
+impl<D: DataTypeValue> FieldOf<D> {}
 
 // ------------------------------------------------------------------------
 // The field leaves, and the enum that redirects to them.
@@ -1779,7 +1764,11 @@ impl Field {
         recode: crate::types::Recode,
     ) -> Result<Self> {
         let dtype = self.dtype().merge(other.dtype(), how, recode)?;
-        let mut merged = Self::new(self.name(), dtype, self.is_nullable() || other.is_nullable());
+        let mut merged = Self::new(
+            self.name(),
+            dtype,
+            self.is_nullable() || other.is_nullable(),
+        );
         // One rule, on `Metadata` itself: the union of both, this field
         // winning any key they disagree on.
         merged.set_metadata(self.as_metadata().merge_with(other.as_metadata())?.iter())?;
@@ -1947,18 +1936,6 @@ mod arrow {
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
 
     impl<D: crate::types::DataTypeValue> crate::types::FieldOf<D> {
-
-
-
-
-
-
-
-
-
-
-
-
         /// Projects this field to an owned Arrow C Data Interface schema.
         ///
         /// Name, metadata, nullability, dictionary ordering, and nested datatype
@@ -2031,8 +2008,10 @@ mod arrow {
             if let Some(field) = self.arrow.get() {
                 return Ok(field);
             }
-            let projected =
-                projected_arrow_metadata(self.dtype(), self.metadata.clone().into_arrow_metadata())?;
+            let projected = projected_arrow_metadata(
+                self.dtype(),
+                self.metadata.clone().into_arrow_metadata(),
+            )?;
             let built = Arc::new(arrow_field_from_parts(
                 self.name.as_str(),
                 self.dtype().clone().into_arrow_datatype()?,
@@ -2194,7 +2173,8 @@ mod arrow {
             cast: bool,
             options: crate::ArrowCastOptions,
         ) -> Result<arrow_array::RecordBatch> {
-            AppliedPlan::compile(self, batch.schema(), digest, transform, cast, options)?.apply(batch)
+            AppliedPlan::compile(self, batch.schema(), digest, transform, cast, options)?
+                .apply(batch)
         }
         /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
         ///
@@ -2273,7 +2253,8 @@ mod arrow {
             if !digest && !transform && !cast {
                 return Ok(inner);
             }
-            let plan = AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
+            let plan =
+                AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
             Ok(Box::new(AppliedReader { inner, plan }))
         }
         /// Materializes [`Field::default_value`] as an exact one-row array.
@@ -2323,7 +2304,10 @@ mod arrow {
             seed_imported_arrow_cache(&mut field, cacheable, || value);
             Ok(field)
         }
-        pub(crate) fn from_arrow_field_owned_at_depth(value: ArrowField, depth: usize) -> Result<Self> {
+        pub(crate) fn from_arrow_field_owned_at_depth(
+            value: ArrowField,
+            depth: usize,
+        ) -> Result<Self> {
             let (dtype, metadata) = imported_parts(&value, depth)?;
             let mut field = imported_field(&value, dtype, metadata);
             let cacheable = imported_arrow_is_cacheable(&field, value.metadata());
@@ -2331,7 +2315,6 @@ mod arrow {
             Ok(field)
         }
     }
-
 
     fn seed_imported_arrow_cache(
         field: &mut Field,
@@ -2343,7 +2326,10 @@ mod arrow {
         }
     }
 
-    fn imported_arrow_is_cacheable(field: &Field, arrow_metadata: &HashMap<String, String>) -> bool {
+    fn imported_arrow_is_cacheable(
+        field: &Field,
+        arrow_metadata: &HashMap<String, String>,
+    ) -> bool {
         field.as_metadata().matches_arrow(arrow_metadata)
             && field.dtype().arrow_import_is_projection_equivalent()
     }
@@ -2528,9 +2514,11 @@ mod arrow {
             MIMETYPE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::MimeType))
             }
-            MEDIATYPE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
-                Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::MediaType))
-            }
+            MEDIATYPE_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(matches!(
+                storage,
+                ArrowDataType::Utf8
+            )
+            .then_some(RecognizedExtension::MediaType)),
             code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
                 Ok(code_for_extension(code).map(RecognizedExtension::Code))
             }
@@ -2554,9 +2542,10 @@ mod arrow {
     /// imports.
     fn encoded_values(storage: &ArrowDataType) -> Result<(&ArrowDataType, Option<DataType>)> {
         match storage {
-            ArrowDataType::Dictionary(key, value) => {
-                Ok((value.as_ref(), Some(DataType::from_arrow_datatype(key.as_ref())?)))
-            }
+            ArrowDataType::Dictionary(key, value) => Ok((
+                value.as_ref(),
+                Some(DataType::from_arrow_datatype(key.as_ref())?),
+            )),
             other => Ok((other, None)),
         }
     }
@@ -2636,12 +2625,8 @@ mod arrow {
     fn imported_field(value: &ArrowField, dtype: DataType, metadata: Metadata) -> Field {
         #[allow(deprecated)]
         let dictionary_id = value.dict_id().unwrap_or_default();
-        let mut field = Field::new_with_metadata(
-            value.name(),
-            dtype,
-            value.is_nullable(),
-            metadata,
-        );
+        let mut field =
+            Field::new_with_metadata(value.name(), dtype, value.is_nullable(), metadata);
         field.set_dictionary_options_unchecked(
             dictionary_id,
             value.dict_is_ordered().unwrap_or_default(),
@@ -2771,12 +2756,12 @@ mod arrow {
             let schema = applied.schema();
             // A cast with no protocol behind it already refused every hole, so the
             // re-check exists only where something could still have left one.
-            let verify = if options.nullability().is_strict() && (transform || digest || cast.is_none())
-            {
-                Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
-            } else {
-                None
-            };
+            let verify =
+                if options.nullability().is_strict() && (transform || digest || cast.is_none()) {
+                    Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
+                } else {
+                    None
+                };
             Ok(Self {
                 root: root.clone(),
                 cast,
@@ -2913,7 +2898,6 @@ mod arrow {
             Err(field) => field.as_ref().clone().into_arrow_field_ref(),
         }
     }
-
 }
 
 pub(crate) use arrow::{

@@ -52,9 +52,9 @@ use crate::{TimeUnit, UnionMode};
 
 use super::bytes::BytesType;
 use super::string::{StringLayout, StringType};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -230,7 +230,10 @@ fn merge_encoded(
     recode: Recode,
 ) -> Result<Option<DataType>> {
     match (left, right) {
-        (DataType::Enum(EnumType::Dictionary(left_dict)), DataType::Enum(EnumType::Dictionary(right_dict))) => {
+        (
+            DataType::Enum(EnumType::Dictionary(left_dict)),
+            DataType::Enum(EnumType::Dictionary(right_dict)),
+        ) => {
             let key = left_dict.key().merge(right_dict.key(), how, recode)?;
             let value = left_dict.value().merge(right_dict.value(), how, recode)?;
             DataType::dictionary(key, value).map(Some)
@@ -659,11 +662,7 @@ fn holds_width(parameters: StringType, fixed: StringType) -> bool {
 /// charset, UTF-8 unless both agree; for the bound, none unless both have
 /// one, and then the larger. Narrowing is the mirror: the narrower layout,
 /// the narrower repertoire, the smaller bound.
-fn merge_parameters(
-    left: StringType,
-    right: StringType,
-    how: Widening,
-) -> Result<StringType> {
+fn merge_parameters(left: StringType, right: StringType, how: Widening) -> Result<StringType> {
     let layout = match how {
         Widening::Up => match (left.is_fixed(), right.is_fixed()) {
             (true, true) => StringLayout::FixedString,
@@ -860,7 +859,9 @@ const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
         DataType::Decimal(DecimalType::Decimal32 { precision, scale })
         | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
         | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => Some((*precision, *scale)),
+        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            Some((*precision, *scale))
+        }
         _ => None,
     }
 }

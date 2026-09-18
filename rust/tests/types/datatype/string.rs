@@ -2,9 +2,9 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
+use yggdryl::types::FieldValue as _;
 use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringType};
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar};
-use yggdryl::types::FieldValue as _;
 
 /// Every layout, under its three spellings: general, UTF-8, US-ASCII.
 const SPELLINGS: [(StringLayout, &str, &str, &str); 5] = [
@@ -53,10 +53,7 @@ fn a_plain_string_is_one_datatype_under_every_spelling() {
         DataType::string(StringType::utf8(StringLayout::LargeString)).unwrap(),
         DataType::large_utf8()
     );
-    assert_eq!(
-        DataType::utf8(),
-        DataType::String(StringType::default())
-    );
+    assert_eq!(DataType::utf8(), DataType::String(StringType::default()));
     assert_eq!(DataType::utf8().id(), DataTypeId::String);
     assert_eq!(DataType::large_utf8().id(), DataTypeId::LargeString);
     assert_eq!(DataType::utf8_view().id(), DataTypeId::StringView);
@@ -285,7 +282,11 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
     ];
     for (spelling, storage) in cases {
         let dtype = DataType::from_str(spelling).unwrap();
-        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{spelling}");
+        assert_eq!(
+            dtype.clone().into_arrow_datatype().unwrap(),
+            storage,
+            "{spelling}"
+        );
 
         let field = dtype.clone().nullable_field("value");
         let arrow = field.clone().into_arrow_field().unwrap();
@@ -304,7 +305,11 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
                 .is_some_and(|document| document.contains("\"layout\"")),
             "{spelling} should declare its layout"
         );
-        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{spelling}");
+        assert_eq!(
+            Field::from_arrow_field(&arrow).unwrap(),
+            field,
+            "{spelling}"
+        );
     }
 
     // Plain UTF-8 is Arrow's own datatype and crosses bare.
@@ -313,7 +318,11 @@ fn a_charset_string_lays_out_as_bytes_and_reads_back_as_itself() {
         DataType::large_utf8(),
         DataType::utf8_view(),
     ] {
-        let arrow = dtype.clone().nullable_field("value").into_arrow_field().unwrap();
+        let arrow = dtype
+            .clone()
+            .nullable_field("value")
+            .into_arrow_field()
+            .unwrap();
         assert!(
             !arrow.metadata().contains_key(EXTENSION_TYPE_NAME_KEY),
             "{dtype} should cross bare"
@@ -479,10 +488,7 @@ fn str_is_the_compact_string_and_compares_by_its_characters() {
     // value whichever column holds it.
     let latin = short
         .clone()
-        .try_with_parameters(StringType::new(
-            StringLayout::LargeString,
-            Charset::Cp1252,
-        ))
+        .try_with_parameters(StringType::new(StringLayout::LargeString, Charset::Cp1252))
         .unwrap();
     assert_eq!(latin, short);
     assert_eq!(latin, "AAPL");
@@ -655,10 +661,7 @@ fn a_string_value_survives_the_scalar_wire_format() {
 fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
     // The variant is public, so a caller can build what the constructor would
     // have refused; `validate` is where that stops.
-    let unwidened = DataType::String(StringType::new(
-        StringLayout::FixedString,
-        Charset::Cp1252,
-    ));
+    let unwidened = DataType::String(StringType::new(StringLayout::FixedString, Charset::Cp1252));
     assert!(unwidened.validate().is_err());
     assert!(unwidened.clone().into_arrow_datatype().is_err());
 }
@@ -667,7 +670,7 @@ fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
 fn a_cast_into_another_charset_re_encodes_and_refuses_what_it_cannot_spell() {
     use arrow_array::{Array, ArrayRef, BinaryArray, StringArray};
     use std::sync::Arc;
-    use yggdryl::{ArrowCastOptions};
+    use yggdryl::ArrowCastOptions;
 
     // Arrow's kernel would hand a UTF-8 buffer to a windows-1252 column and
     // call it a framing change, and the column would read back as mojibake.

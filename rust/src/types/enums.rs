@@ -15,10 +15,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use smol_str::format_smolstr;
 use crate::types::family::DataTypeValue;
 use crate::types::invalid;
 use crate::{DataType, DataTypeId, DataTypeKind, Result};
+use smol_str::format_smolstr;
 
 /// Shared dictionary key and value types.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize)]
@@ -143,7 +143,6 @@ impl From<EnumType> for DataType {
 }
 
 impl DataType {
-
     /// Creates a dictionary and validates its integer key type.
     pub fn dictionary(key: Self, value: Self) -> Result<Self> {
         validate_dictionary_key(&key)?;
@@ -166,7 +165,6 @@ pub(crate) fn validate_dictionary_key(key: &DataType) -> Result<()> {
         ))
     }
 }
-
 
 fn is_valid_dictionary_key(key: &DataType) -> bool {
     key.is_integer()

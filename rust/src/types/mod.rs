@@ -1,66 +1,73 @@
 //! Core datatypes, fields, scalars, and their family-owned behavior.
 
 mod arithmetic;
+pub mod bloomberg;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
+pub mod cfi;
+pub mod code;
 mod compatibility;
+pub mod country;
+pub mod currency;
+pub mod cusip;
 pub mod decimal;
 mod default;
 mod diff;
 mod dtype;
-mod family;
 mod enumeration;
+pub mod enums;
+mod family;
 mod field;
 pub mod floating;
 pub mod geospatial;
-pub mod wkb;
 pub(crate) mod i256;
 pub mod integer;
+pub mod isin;
+pub mod mapping;
 pub mod media_type;
 mod merge;
+pub mod mic;
 pub mod mime_type;
-pub mod enums;
-pub mod sequence;
-pub mod mapping;
-pub mod runend;
-pub mod structure;
-pub mod union;
 mod parser;
 mod pretty;
 pub mod protocol;
 mod regex;
+pub mod runend;
 mod scalar;
-pub(crate) mod serde;
-pub mod code;
-pub mod bloomberg;
-pub mod cfi;
-pub mod country;
-pub mod currency;
-pub mod cusip;
-pub mod isin;
-pub mod mic;
 pub mod sedol;
+pub mod sequence;
+pub(crate) mod serde;
 pub mod side;
 pub mod state;
-pub mod timeinforce;
 pub mod string;
+pub mod structure;
 pub mod temporal;
+pub mod timeinforce;
 pub mod timezone;
 mod typed;
+pub mod union;
 pub mod url;
 pub mod uuid;
 mod value;
 pub mod version;
 mod vocabulary;
+pub mod wkb;
 
 pub mod cast;
 
 pub use crate::{TimeUnit, UnionMode};
-pub(crate) use scalar::code_scalars;
 pub(crate) use arithmetic::Arithmetic;
+pub use bloomberg::*;
 pub use boolean::*;
 pub use bytes::*;
+pub use cfi::*;
+pub use code::*;
+pub(crate) use code::{code_cell_text, code_for_extension};
+pub(crate) use code::{code_refusal, code_text};
+pub use country::*;
+pub use currency::*;
+pub use cusip::*;
 pub use decimal::*;
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
@@ -70,6 +77,7 @@ pub use diff::{Differences, OwnedDifferences};
 pub use dtype::{DataType, VariantType};
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Vocabulary;
+pub use enums::*;
 pub use family::{
     Children, DataTypeValue, DateTime64Type, DictionaryOptions, Duration32Type, Duration64Type,
     FieldSidecar, FieldValue, GeographyType, GeometryType, IntervalType, NestedValue, RunEndType,
@@ -84,44 +92,34 @@ pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, is_variant_storage,
 };
 pub use integer::*;
+pub use isin::*;
+pub use mapping::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
+pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
-pub use enums::*;
-pub use sequence::*;
-pub use mapping::*;
-pub use runend::*;
-pub use structure::*;
-pub use union::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
+pub use runend::*;
+pub(crate) use scalar::code_scalars;
 pub use scalar::{Scalar, Value};
-pub use bloomberg::*;
-pub use cfi::*;
-pub use country::*;
-pub use currency::*;
-pub use cusip::*;
-pub use isin::*;
-pub use mic::*;
 pub use sedol::*;
+pub use sequence::*;
 pub use side::*;
 pub use state::*;
-pub use timeinforce::*;
-pub use code::*;
 pub use string::*;
-pub(crate) use code::{code_refusal, code_text};
-pub(crate) use code::{code_cell_text, code_for_extension};
 pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding};
+pub use structure::*;
 pub use temporal::TemporalFamily;
 pub use temporal::*;
+pub use timeinforce::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};
-pub use typed::{
-    FieldRecord, FieldScalar, UncheckedFieldScalar,
-};
+pub use typed::{FieldRecord, FieldScalar, UncheckedFieldScalar};
+pub use union::*;
 pub use url::*;
 pub use uuid::*;
 pub(crate) use uuid::{

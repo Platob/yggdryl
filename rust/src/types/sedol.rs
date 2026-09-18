@@ -158,7 +158,6 @@ pub(crate) const SEDOL_EXTENSION_NAME: &str = "yggdryl.sedol";
 pub(crate) const SEDOL_WIDTH: usize = 7;
 
 impl DataType {
-
     /// Creates the seven-character SEDOL securities identifier.
     ///
     /// ```
@@ -176,4 +175,3 @@ impl DataType {
 
 // /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
 define_field_types!(SedolType, Sedol);
-

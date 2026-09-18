@@ -55,7 +55,7 @@ fn named(order: &str, ms: i64, scheme: &str, name: &str) -> MarketEventData {
 fn places(walk: impl Iterator<Item = MarketEventData>) -> Vec<(i64, u64, Option<i64>)> {
     walk.map(|event| {
         (
-            ms(event.get_unix()),
+            ms(event.get_currunix()),
             event.get_seqnum(),
             event.get_prevunix().map(ms),
         )
@@ -70,7 +70,7 @@ fn alive(
 ) -> Vec<(String, i64)> {
     let mut alive = walk
         .alive()
-        .map(|held| (held.get_crosscode().to_owned(), ms(held.get_unix())))
+        .map(|held| (held.get_crosscode().to_owned(), ms(held.get_currunix())))
         .collect::<Vec<_>>();
     alive.sort_unstable();
     alive
@@ -209,7 +209,7 @@ fn an_element_with_no_cross_identity_stands_under_its_own() {
     let restated = walk.next().expect("the restatement");
     assert_eq!(
         (
-            restated.get_unix(),
+            restated.get_currunix(),
             restated.get_seqnum(),
             restated.get_prevuuid()
         ),
@@ -307,7 +307,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     assert_eq!(report.get_crossuuid(), order.get_crossuuid());
     assert_eq!(walk.alive().count(), 1);
     let live = walk.alive().next().expect("the report stands");
-    assert_eq!(live.get_unix(), at(20));
+    assert_eq!(live.get_currunix(), at(20));
     assert_eq!(live.get_identifiers()["ExecID"], "E-1");
 
     // A name no live element goes by starts a chain of its own, and an

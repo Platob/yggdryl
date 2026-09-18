@@ -1,11 +1,11 @@
 //! Registry lookups: fields by tag, name, alias, identifier and path; the
 //! code sets a field carries, read borrowed.
 
-use yggdryl::types::SequenceType;
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
 use yggdryl::graph::{Element, Event};
+use yggdryl::types::SequenceType;
 use yggdryl::{
     DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, MimeType,
 };
@@ -63,9 +63,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             let held = black_box(&identifier_message);
             black_box((
-                held.get_unix(),
+                held.get_currunix(),
                 held.get_creatunix(),
-                held.get_hashcode(),
+                held.get_currhashcode(),
                 held.get_crosshashcode(),
             ))
         });

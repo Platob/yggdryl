@@ -10,8 +10,8 @@ use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
 use super::{FixId, FixRegistry, MsgType};
 use crate::types::folds_equal;
-use crate::{DataType, Error, Field, FixCategory, Result};
 use crate::types::sequence::SequenceType;
+use crate::{DataType, Error, Field, FixCategory, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Definition {
@@ -419,7 +419,8 @@ fn is_column_list(field: &Field) -> bool {
         return false;
     }
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::LargeList(item)) => {
             !item.is_nullable() && !item.dtype().is_nested()
         }
         _ => false,
@@ -437,7 +438,8 @@ fn is_column_list(field: &Field) -> bool {
 /// nothing.
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item))
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::LargeList(item))
             if !item.is_nullable() && matches!(item.dtype(), DataType::Structure(_)) =>
         {
             Some(FixCategory::Groups)
@@ -468,7 +470,8 @@ fn restates_datatype(occurrence: &DataType, target: &DataType) -> bool {
 /// The occurrence a group's list or map holds.
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
-        DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => Some(item),
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::LargeList(item)) => Some(item),
         DataType::Mapping(map) => Some(map.entries()),
         _ => None,
     }
@@ -622,7 +625,9 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::Sequence(SequenceType::List(_)) | DataType::Sequence(SequenceType::LargeList(_)) | DataType::Mapping(_) => {
+        DataType::Sequence(SequenceType::List(_))
+        | DataType::Sequence(SequenceType::LargeList(_))
+        | DataType::Mapping(_) => {
             let item = occurrence_of(&field).expect("a group has an occurrence");
             Some(group_dtype(
                 &field,
@@ -1132,7 +1137,9 @@ impl FixRegistry {
     pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
-            DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Mapping(_)) => {
+            DefinitionField::Group(field, plan)
+                if !matches!(field.dtype(), DataType::Mapping(_)) =>
+            {
                 Some(plan)
             }
             _ => None,

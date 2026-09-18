@@ -1,8 +1,8 @@
 //! Focused edge cases for the one path grammar.
 
 use yggdryl::expression::Term;
-use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar};
 use yggdryl::types::SequenceType;
+use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")
@@ -412,7 +412,10 @@ fn a_step_types_one_level_and_reads_one_value() {
     .unwrap()
     .required_field("row");
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
-    assert!(matches!(legs.dtype(), DataType::Sequence(SequenceType::List(_))));
+    assert!(matches!(
+        legs.dtype(),
+        DataType::Sequence(SequenceType::List(_))
+    ));
     let first = FieldSegment::index(0).apply_field(&legs).unwrap();
     assert_eq!(first.dtype(), &DataType::Int64);
     assert!(first.is_nullable(), "a position past the end reads as null");

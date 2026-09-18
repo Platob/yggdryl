@@ -176,7 +176,6 @@ pub(crate) const CUSIP_EXTENSION_NAME: &str = "yggdryl.cusip";
 pub(crate) const CUSIP_WIDTH: usize = 9;
 
 impl DataType {
-
     /// Creates the nine-character CUSIP securities identifier.
     ///
     /// ```
@@ -194,4 +193,3 @@ impl DataType {
 
 // /// A CUSIP-typed field: the nine-character North American securities identifier.
 define_field_types!(CusipType, Cusip);
-

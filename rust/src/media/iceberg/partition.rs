@@ -22,8 +22,8 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar};
 use crate::types::DecimalType;
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
 pub const FIRST_PARTITION_ID: i32 = 1000;

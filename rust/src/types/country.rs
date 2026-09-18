@@ -57,7 +57,6 @@ pub(crate) const COUNTRY_EXTENSION_NAME: &str = "yggdryl.country";
 pub(crate) const COUNTRY_WIDTH: usize = 2;
 
 impl DataType {
-
     /// Creates ISO 3166-1's two-letter country code.
     ///
     /// ```
@@ -75,4 +74,3 @@ impl DataType {
 
 // /// A country-typed field: ISO 3166-1 alpha-2.
 define_field_types!(CountryType, Country);
-

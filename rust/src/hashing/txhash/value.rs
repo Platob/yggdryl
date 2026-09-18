@@ -41,9 +41,7 @@ pub const fn width(algorithm: DigestAlgorithm) -> usize {
 /// fixed-unit, fixed-algorithm and sign-range bounds.
 pub const fn dtype(algorithm: DigestAlgorithm) -> DataType {
     match NonZeroU32::new(fixed_width(algorithm)) {
-        Some(width) => {
-            DataType::Bytes(BytesType::FixedBinary(width.get()))
-        }
+        Some(width) => DataType::Bytes(BytesType::FixedBinary(width.get())),
         // Every width below is a literal above zero.
         None => DataType::binary(),
     }

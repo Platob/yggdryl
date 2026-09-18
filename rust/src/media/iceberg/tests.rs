@@ -15,13 +15,13 @@ use crate::holder::fs::{
 use crate::holder::local::Folder;
 use crate::{DataType, Field, Scalar};
 
-use crate::types::DecimalType;
 use super::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestEntry, ManifestFile, PartitionField, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     schema_from_json, schema_into_json,
 };
+use crate::types::DecimalType;
 
 #[test]
 fn immutable_reports_and_metadata_have_complete_value_traits() {
@@ -5890,9 +5890,7 @@ mod datatype_coverage {
             .nullable_field("at"),
             DataType::utf8().nullable_field("name"),
             DataType::binary().nullable_field("raw"),
-            DataType::fixed_binary(4)
-                .unwrap()
-                .nullable_field("tag"),
+            DataType::fixed_binary(4).unwrap().nullable_field("tag"),
         ];
         let rows = vec![
             vec![
@@ -5965,7 +5963,10 @@ mod datatype_coverage {
         ])
         .unwrap();
         let deep = DataType::from_fields([
-            DataType::Sequence(SequenceType::List(Arc::new(DataType::Int64.nullable_field("item")))).nullable_field("xs"),
+            DataType::Sequence(SequenceType::List(Arc::new(
+                DataType::Int64.nullable_field("item"),
+            )))
+            .nullable_field("xs"),
             DataType::map_of(DataType::utf8(), point.clone(), false)
                 .unwrap()
                 .nullable_field("m"),
@@ -5974,7 +5975,10 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             point.clone().nullable_field("p"),
-            DataType::Sequence(SequenceType::List(Arc::new(deep.clone().nullable_field("item")))).nullable_field("rows"),
+            DataType::Sequence(SequenceType::List(Arc::new(
+                deep.clone().nullable_field("item"),
+            )))
+            .nullable_field("rows"),
         ];
 
         let point_value =

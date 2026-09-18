@@ -4,21 +4,19 @@ use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
 use smol_str::SmolStr;
 
+use super::code_scalars;
 use super::decimal::{
     decimal_arithmetic, decimal_target, decimal_value_parts, inferred_decimal_division_scale,
     is_exact_number, result_decimal_scale,
 };
 use super::floating::{float_arithmetic, float_value_width, float_width};
-use super::integer::{
-    common_integer, integer_arithmetic, integer_kind, integer_value_kind,
-};
+use super::integer::{common_integer, integer_arithmetic, integer_kind, integer_value_kind};
 use super::scalar::Scalar;
 use super::temporal::scalars::{
     TemporalFamily, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
     temporal_target, temporal_value_parts,
 };
 use crate::{DataType, Error, Result};
-use super::code_scalars;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Arithmetic {

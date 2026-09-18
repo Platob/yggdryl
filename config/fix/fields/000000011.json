@@ -70,7 +70,9 @@
   {
     "name": "triggerprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -399,7 +401,9 @@
   {
     "name": "triggernewprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -435,7 +439,9 @@
   {
     "name": "triggernewqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2490,7 +2496,9 @@
   {
     "name": "displayqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2514,7 +2522,9 @@
   {
     "name": "maxtradevol",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2610,7 +2620,9 @@
   {
     "name": "minpriceincrementamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2623,7 +2635,9 @@
   {
     "name": "unitofmeasureqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2635,7 +2649,9 @@
   {
     "name": "lowlimitprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2647,7 +2663,9 @@
   {
     "name": "highlimitprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2659,7 +2677,9 @@
   {
     "name": "tradingreferenceprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2743,7 +2763,9 @@
   {
     "name": "ccyamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3251,7 +3273,9 @@
   {
     "name": "mdsecsize",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3889,7 +3913,9 @@
   {
     "name": "priceunitofmeasureqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3964,7 +3990,9 @@
   {
     "name": "optpayoutamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4079,7 +4107,9 @@
   {
     "name": "capprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

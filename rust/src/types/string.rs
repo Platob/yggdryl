@@ -58,10 +58,12 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::types::parser::Parser;
-use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH};
+use crate::types::{
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+};
 
 use crate::types::parser;
-
 
 use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar};
 
@@ -134,7 +136,9 @@ mod arrow {
             (StringLayout::LargeString, false) => ArrowDataType::LargeBinary,
             // Arrow has one view layout, so both of this crate's project onto it
             // and the `large` half of the distinction rides the metadata.
-            (StringLayout::StringView | StringLayout::LargeStringView, true) => ArrowDataType::Utf8View,
+            (StringLayout::StringView | StringLayout::LargeStringView, true) => {
+                ArrowDataType::Utf8View
+            }
             (StringLayout::StringView | StringLayout::LargeStringView, false) => {
                 ArrowDataType::BinaryView
             }
@@ -195,8 +199,8 @@ pub(crate) mod casts {
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::types::bytes::casts::variable_binary_source;
     use crate::types::cast::arrow_cast_exposed;
-    use crate::types::cast::{downcast, internal_target_error, named_cell};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{downcast, internal_target_error, named_cell};
     use crate::types::string::arrow_storage;
     use crate::types::{
         Str, StringType, code_cell_text, code_text, trim_padding, uuid_parse, uuid_text,
@@ -278,7 +282,9 @@ pub(crate) mod casts {
                 (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
                     Str::from_storage(text, StringType::default()).try_with_parameters(target)
                 }
-                (StringSource::Bare, Cell::Slot(bytes)) => Str::from_bytes(trim_padding(bytes), target),
+                (StringSource::Bare, Cell::Slot(bytes)) => {
+                    Str::from_bytes(trim_padding(bytes), target)
+                }
                 (StringSource::Bare, Cell::Bytes(bytes)) => Str::from_bytes(bytes, target),
             }
         };
@@ -427,9 +433,11 @@ pub(crate) mod casts {
             // Arrow's view layout carries a prefix per cell rather than offsets,
             // so it takes the row count and grows its own payload blocks.
             ArrowDataType::Utf8View => filled!(StringViewBuilder::with_capacity(rows), characters),
-            ArrowDataType::Binary => filled!(BinaryBuilder::with_capacity(rows, payload), |value| {
-                encoded(charset, value)
-            }),
+            ArrowDataType::Binary => {
+                filled!(BinaryBuilder::with_capacity(rows, payload), |value| {
+                    encoded(charset, value)
+                })
+            }
             ArrowDataType::LargeBinary => {
                 filled!(LargeBinaryBuilder::with_capacity(rows, payload), |value| {
                     encoded(charset, value)
@@ -470,15 +478,25 @@ pub(crate) mod casts {
     ) -> Result<ArrayRef> {
         if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
             let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-            return code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
-                source.is_valid(index).then(|| source.value(index))
-            });
+            return code_text_array::<WIDTH>(
+                field,
+                source.len(),
+                safe,
+                exposure,
+                budget,
+                |index| source.is_valid(index).then(|| source.value(index)),
+            );
         }
         if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
             let source = downcast::<BinaryArray>(bytes.as_ref())?;
-            return code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
-                source.is_valid(index).then(|| source.value(index))
-            });
+            return code_text_array::<WIDTH>(
+                field,
+                source.len(),
+                safe,
+                exposure,
+                budget,
+                |index| source.is_valid(index).then(|| source.value(index)),
+            );
         }
         let text = if array.data_type() == &ArrowDataType::Utf8 {
             Arc::clone(array)
@@ -645,29 +663,17 @@ impl DataType {
     /// The one listing: the parser, the Arrow extension table and every
     /// binding read the codes from here rather than repeating four arms.
     pub const CODES: &'static [(&'static str, DataType, usize)] = &[
-
         ("country", DataType::Country, COUNTRY_WIDTH),
-
         ("currency", DataType::Currency, CURRENCY_WIDTH),
-
         ("mic", DataType::Mic, MIC_WIDTH),
-
         ("cfi", DataType::Cfi, CFI_WIDTH),
-
         ("isin", DataType::Isin, ISIN_WIDTH),
-
         ("cusip", DataType::Cusip, CUSIP_WIDTH),
-
         ("sedol", DataType::Sedol, SEDOL_WIDTH),
-
         ("side", DataType::Side, SIDE_WIDTH),
-
         ("state", DataType::State, STATE_WIDTH),
-
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
-
         ("bloomberg", DataType::Bloomberg, BLOOMBERG_WIDTH),
-
     ];
 }
 
@@ -1354,7 +1360,6 @@ impl DataType {
 // family; splitting them would be two lists to keep in step rather than one.
 // ------------------------------------------------------------------------
 
-
 impl Field {
     /// The enum this field's string values name, if one is declared.
     ///
@@ -1709,7 +1714,6 @@ impl StringType {
         parameters.validate()?;
         Ok(parameters)
     }
-
 }
 
 /// The refusal every invalid parameter answers with.
@@ -2887,9 +2891,7 @@ mod scalars {
                         reason: format_smolstr!("payload is not UTF-8: {error}"),
                     })
             }
-            Scalar::Geometry(value) => {
-                crate::types::wkb::into_wkt(value.as_bytes()).map(Str::from)
-            }
+            Scalar::Geometry(value) => crate::types::wkb::into_wkt(value.as_bytes()).map(Str::from),
             Scalar::Geography(value) => {
                 crate::types::wkb::into_wkt(value.as_bytes()).map(Str::from)
             }
@@ -2928,10 +2930,7 @@ mod scalars {
 
             let plain = Str::new("Grüße");
             let latin = Str::new("Grüße")
-                .try_with_parameters(StringType::new(
-                    StringLayout::LargeString,
-                    Charset::Cp1252,
-                ))
+                .try_with_parameters(StringType::new(StringLayout::LargeString, Charset::Cp1252))
                 .unwrap();
             assert_eq!(plain, latin);
             assert_eq!(plain.cmp(&latin), std::cmp::Ordering::Equal);
@@ -3023,11 +3022,7 @@ mod scalars {
             // UTF-8 and US-ASCII are validated, not transcribed.
             assert!(Str::from_bytes(b"caf\xe9", StringType::default()).is_err());
             assert!(
-                Str::from_bytes(
-                    b"caf\xc3\xa9",
-                    StringType::ascii(StringLayout::String)
-                )
-                .is_err()
+                Str::from_bytes(b"caf\xc3\xa9", StringType::ascii(StringLayout::String)).is_err()
             );
             assert_eq!(
                 Str::from_bytes(b"caf\xc3\xa9", StringType::default()).unwrap(),
@@ -3081,10 +3076,7 @@ mod scalars {
             assert_eq!(Scalar::from("x").as_str(), Some("x"));
             assert_eq!(Scalar::from("x").dtype().unwrap(), DataType::utf8());
             let latin = Str::new("x")
-                .try_with_parameters(StringType::new(
-                    StringLayout::StringView,
-                    Charset::Latin1,
-                ))
+                .try_with_parameters(StringType::new(StringLayout::StringView, Charset::Latin1))
                 .unwrap();
             assert_eq!(
                 Scalar::String(latin).dtype().unwrap(),
@@ -3297,8 +3289,8 @@ impl<'de> Deserialize<'de> for StringLayout {
 /// `tests/types/datatype/coded.rs`.
 #[cfg(test)]
 mod tests {
-    use crate::types::code::{code_cell_text, code_for_extension, code_text};
     use crate::DataType;
+    use crate::types::code::{code_cell_text, code_for_extension, code_text};
 
     #[test]
     fn every_code_names_itself_and_its_width() {

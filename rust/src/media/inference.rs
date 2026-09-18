@@ -43,8 +43,8 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
 use crate::types::UuidType;
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;

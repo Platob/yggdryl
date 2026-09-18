@@ -9,24 +9,41 @@ use yggdryl::{DataType, DataTypeId, Field, Scalar};
 fn every_leaf_is_one_datatype_under_every_spelling() {
     for (leaf, id, spelling) in [
         (BytesType::Binary, DataTypeId::Binary, "binary"),
-        (BytesType::LargeBinary, DataTypeId::LargeBinary, "large_binary"),
+        (
+            BytesType::LargeBinary,
+            DataTypeId::LargeBinary,
+            "large_binary",
+        ),
         (BytesType::BinaryView, DataTypeId::BinaryView, "binary_view"),
         (
             BytesType::LargeBinaryView,
             DataTypeId::LargeBinaryView,
             "large_binary_view",
         ),
-        (BytesType::FixedBinary(16), DataTypeId::FixedBinary, "fixed_binary"),
-        (BytesType::SizedBinary(16), DataTypeId::SizedBinary, "sized_binary"),
+        (
+            BytesType::FixedBinary(16),
+            DataTypeId::FixedBinary,
+            "fixed_binary",
+        ),
+        (
+            BytesType::SizedBinary(16),
+            DataTypeId::SizedBinary,
+            "sized_binary",
+        ),
     ] {
         assert_eq!(leaf.as_str(), spelling);
         assert_eq!(leaf.id(), id);
         assert_eq!(BytesType::from_id(id, 16), Some(leaf));
         assert_eq!(BytesType::from_str(spelling).unwrap().id(), id);
         // The fold is the grammar's: case, underscores and hyphens all drop.
-        assert_eq!(BytesType::from_str(&spelling.to_uppercase()).unwrap().id(), id);
         assert_eq!(
-            BytesType::from_str(&spelling.replace('_', "-")).unwrap().id(),
+            BytesType::from_str(&spelling.to_uppercase()).unwrap().id(),
+            id
+        );
+        assert_eq!(
+            BytesType::from_str(&spelling.replace('_', "-"))
+                .unwrap()
+                .id(),
             id
         );
         assert!(id.is_binary(), "{id}");
@@ -55,8 +72,14 @@ fn every_leaf_is_one_datatype_under_every_spelling() {
         DataType::large_binary_view(),
         DataType::bytes(BytesType::LargeBinaryView).unwrap()
     );
-    assert_eq!(DataType::fixed_binary(16).unwrap().to_string(), "fixed_binary(16)");
-    assert_eq!(DataType::sized_binary(16).unwrap().to_string(), "sized_binary(16)");
+    assert_eq!(
+        DataType::fixed_binary(16).unwrap().to_string(),
+        "fixed_binary(16)"
+    );
+    assert_eq!(
+        DataType::sized_binary(16).unwrap().to_string(),
+        "sized_binary(16)"
+    );
 
     // The accepted aliases render as the canonical spellings, and a number
     // after a plain layout is a maximum - which is its own leaf.
@@ -113,7 +136,10 @@ fn a_width_and_a_maximum_are_two_leaves_and_never_one_column() {
     // The value a sized column holds is the plain binary it fills: the
     // maximum is the column's rule and never the value's.
     assert_eq!(BytesType::SizedBinary(16).storage(), BytesType::Binary);
-    assert_eq!(BytesType::FixedBinary(16).storage(), BytesType::FixedBinary(16));
+    assert_eq!(
+        BytesType::FixedBinary(16).storage(),
+        BytesType::FixedBinary(16)
+    );
     assert_eq!(BytesType::LargeBinary.storage(), BytesType::LargeBinary);
 
     // A column of no bytes is not a column, whichever leaf states the number.
@@ -123,7 +149,11 @@ fn a_width_and_a_maximum_are_two_leaves_and_never_one_column() {
     assert!(DataType::sized_binary(0).is_err());
     assert!(BytesType::FixedBinary(0).validate().is_err());
     assert!(BytesType::SizedBinary(0).validate().is_err());
-    assert!(DataType::Bytes(BytesType::FixedBinary(0)).validate().is_err());
+    assert!(
+        DataType::Bytes(BytesType::FixedBinary(0))
+            .validate()
+            .is_err()
+    );
 
     // A bare fixed spelling is a question rather than a declaration.
     assert!(DataType::from_str("fixed_size_binary").is_err());
@@ -173,27 +203,20 @@ fn a_byte_value_is_the_compact_byte_string_and_carries_no_maximum() {
     assert_ne!(format!("{large:?}"), format!("{short:?}"));
     let bounded = short
         .clone()
-        .try_with_parameters(
-            BytesType::SizedBinary(4),
-        )
+        .try_with_parameters(BytesType::SizedBinary(4))
         .unwrap();
     assert_eq!(bounded.parameters(), BytesType::default());
     assert!(
         short
             .clone()
-            .try_with_parameters(
-                BytesType::SizedBinary(2)
-            )
+            .try_with_parameters(BytesType::SizedBinary(2))
             .is_err()
     );
     // Bytes are never padded: a fixed value is exactly its width.
     let fixed = BytesType::FixedBinary(3);
     let held = short.clone().try_with_parameters(fixed).unwrap();
     assert_eq!(held.fixed(), Some(3));
-    assert_eq!(
-        held.dtype().unwrap(),
-        DataType::fixed_binary(3).unwrap()
-    );
+    assert_eq!(held.dtype().unwrap(), DataType::fixed_binary(3).unwrap());
     assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
     assert!(
         Bytes::new([1_u8, 2, 3, 4])
@@ -243,11 +266,7 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
         ("binary", ArrowDataType::Binary, None),
         ("large_binary", ArrowDataType::LargeBinary, None),
         ("binary_view", ArrowDataType::BinaryView, None),
-        (
-            "fixed_binary(16)",
-            ArrowDataType::FixedSizeBinary(16),
-            None,
-        ),
+        ("fixed_binary(16)", ArrowDataType::FixedSizeBinary(16), None),
         (
             "binary(16)",
             ArrowDataType::Binary,
@@ -261,7 +280,11 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
     ];
     for (spelling, storage, document) in cases {
         let dtype = DataType::from_str(spelling).unwrap();
-        assert_eq!(dtype.clone().into_arrow_datatype().unwrap(), storage, "{spelling}");
+        assert_eq!(
+            dtype.clone().into_arrow_datatype().unwrap(),
+            storage,
+            "{spelling}"
+        );
         // A bare storage is the layout it names, with no maximum.
         assert_eq!(
             DataType::from_arrow_datatype(&storage).unwrap(),
@@ -288,7 +311,11 @@ fn bytes_ride_their_own_arrow_layout_and_a_maximum_rides_the_document() {
             document,
             "{spelling}"
         );
-        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{spelling}");
+        assert_eq!(
+            Field::from_arrow_field(&arrow).unwrap(),
+            field,
+            "{spelling}"
+        );
     }
 
     // The document round-trips through its own door, and a document over a
@@ -328,7 +355,10 @@ fn a_byte_datatype_and_value_survive_the_serde_doors_under_one_tag() {
     // `binary` and the bound under the reading its layout gives it.
     for (spelling, json) in [
         ("binary", r#"{"type":"binary"}"#),
-        ("binary(16)", r#"{"type":"binary","layout":"sized_binary","max":16}"#),
+        (
+            "binary(16)",
+            r#"{"type":"binary","layout":"sized_binary","max":16}"#,
+        ),
         (
             "large_binary",
             r#"{"type":"binary","layout":"large_binary"}"#,

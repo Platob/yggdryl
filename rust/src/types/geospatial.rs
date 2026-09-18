@@ -13,16 +13,18 @@ use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, Value};
 pub(crate) mod casts {
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, BinaryArray, LargeStringArray, StringArray, StringViewArray};
+    use arrow_array::{
+        Array, ArrayRef, BinaryArray, LargeStringArray, StringArray, StringViewArray,
+    };
     use arrow_buffer::BooleanBuffer;
     use arrow_schema::DataType as ArrowDataType;
 
-    use crate::types::wkb;
     use crate::Field;
     use crate::arrow::{Error, Result};
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
-    use crate::types::cast::{downcast, internal_target_error};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{downcast, internal_target_error};
+    use crate::types::wkb;
 
     /// Validates every exposed, non-null payload of a Binary array as WKB on its
     /// way into a geospatial field, naming the field, the row, and the byte
@@ -97,7 +99,9 @@ pub(crate) mod casts {
             }
         }
         Ok(match expected {
-            ArrowDataType::Utf8 => Arc::new(rendered.into_iter().collect::<StringArray>()) as ArrayRef,
+            ArrowDataType::Utf8 => {
+                Arc::new(rendered.into_iter().collect::<StringArray>()) as ArrayRef
+            }
             ArrowDataType::LargeUtf8 => {
                 Arc::new(rendered.into_iter().collect::<LargeStringArray>()) as ArrayRef
             }
@@ -385,9 +389,6 @@ impl DataType {
 // ------------------------------------------------------------------------
 // Geometry and geography field markers.
 // ------------------------------------------------------------------------
-
-
-
 
 // ------------------------------------------------------------------------
 // Geospatial datatype grammar.

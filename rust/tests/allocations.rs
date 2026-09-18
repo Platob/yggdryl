@@ -29,11 +29,10 @@ use std::sync::Arc;
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType,
-    UncheckedFieldScalar, Uuid,
-};
 use yggdryl::types::FieldValue as _;
+use yggdryl::types::{
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType, UncheckedFieldScalar, Uuid,
+};
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
     FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
@@ -348,6 +347,11 @@ const VENUE: &str = "venue";
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
 /// ones are what every hit lands on.
+///
+/// They are tagged from 1100 rather than from 1000 so that no generated tag
+/// is one this crate types: a message lifts a typed tag onto a holder
+/// instead of leaving it among the entries, which is a different cost from
+/// what a pair adds, and the probes below measure the latter.
 fn fix_registry(extra: usize) -> FixRegistry {
     let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .expect("a struct item")
@@ -383,7 +387,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a static alias");
     let generated = (0..extra).map(|index| {
         let mut field = DataType::Int64.nullable_field(format!("Generated{index:04}"));
-        let tag = i32::try_from(1_000 + index).expect("a small tag");
+        let tag = i32::try_from(1_100 + index).expect("a small tag");
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
             .as_fix_mut()
@@ -597,8 +601,8 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
         free("the settled identity", || {
             let held = black_box(&message);
             black_box((
-                held.event().get_unix(),
-                held.event().get_hashcode(),
+                held.event().get_currunix(),
+                held.event().get_currhashcode(),
                 held.event().get_curruuid(),
                 held.event().get_crosscode(),
             ));
@@ -1569,7 +1573,7 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
 fn fix_pairs_line(pairs: usize) -> Vec<u8> {
     let mut line = b"35=D".to_vec();
     for index in 0..pairs.saturating_sub(1) {
-        line.extend_from_slice(format!("|{}={index}", 1_000 + index).as_bytes());
+        line.extend_from_slice(format!("|{}={index}", 1_100 + index).as_bytes());
     }
     line.push(b'|');
     line
@@ -1588,7 +1592,7 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// A caller who decoded the line already owns the page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
 /// takes it: one fewer at each, which is the page's own vector.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 76), (16, 101), (64, 162)];
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 59), (16, 84), (64, 145)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1638,7 +1642,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (76, 85)), (16, (101, 146)), (64, (162, 351))];
+    [(4, (59, 68)), (16, (84, 129)), (64, (145, 334))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1731,7 +1735,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// packed value would have been scanned into is not among these.
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 152), (16, 220)];
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 135), (16, 203)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1765,7 +1769,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 75), (16, 100), (64, 161)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 58), (16, 83), (64, 144)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {

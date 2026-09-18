@@ -83,8 +83,8 @@ fn a_datatype_payload_reads_back_the_datatype_it_came_from() {
 /// replaced them: a payload narrows out of the datatype it belongs to, refuses
 /// every other one, and widens back to exactly what it came from.
 pub fn assert_typed_marker<D: DataTypeValue>(dtype: DataType) {
-    let payload = D::from_dtype(&dtype)
-        .unwrap_or_else(|| panic!("{dtype} should narrow to {}", D::FAMILY));
+    let payload =
+        D::from_dtype(&dtype).unwrap_or_else(|| panic!("{dtype} should narrow to {}", D::FAMILY));
     assert_eq!(
         payload.clone().into_dtype(),
         dtype,

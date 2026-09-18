@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::UuidType;
+use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -123,10 +123,7 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
         (DataType::decimal64(12, 2).unwrap(), DataTypeId::Decimal64),
         (DataType::large_utf8(), DataTypeId::LargeString),
         (DataType::utf8_view(), DataTypeId::StringView),
-        (
-            DataType::fixed_binary(3).unwrap(),
-            DataTypeId::FixedBinary,
-        ),
+        (DataType::fixed_binary(3).unwrap(), DataTypeId::FixedBinary),
         (DataType::large_binary(), DataTypeId::LargeBinary),
         (DataType::binary_view(), DataTypeId::BinaryView),
         (DataType::ascii(), DataTypeId::String),

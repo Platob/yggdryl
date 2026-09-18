@@ -2,7 +2,9 @@
   {
     "name": "allocgrosstradeamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +16,9 @@
   {
     "name": "lastqtychanged",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -360,7 +364,9 @@
   {
     "name": "risklimitcheckamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -455,7 +461,9 @@
   {
     "name": "risklimitapprovedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1181,7 +1189,9 @@
   {
     "name": "legmidpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1371,7 +1381,9 @@
   {
     "name": "legtotaltradeqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1383,7 +1395,9 @@
   {
     "name": "leglastmultipliedqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1395,7 +1409,9 @@
   {
     "name": "legtotalgrosstradeamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1407,7 +1423,9 @@
   {
     "name": "legtotaltrademultipliedqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1489,7 +1507,9 @@
   {
     "name": "settlforwardpoints",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1525,7 +1545,9 @@
   {
     "name": "totaltradeqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1538,39 +1560,45 @@
   {
     "name": "lastmultipliedqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
       "description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
       "display": "LastMultipliedQty",
-      "fix:derivation": "lastqty * contractmultiplier",
+      "fix:derivation": "try_cast(lastqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))",
       "fix:tag": "2368"
     }
   },
   {
     "name": "totalgrosstradeamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
       "description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
       "display": "TotalGrossTradeAmt",
-      "fix:derivation": "lastpx * totaltradeqty",
+      "fix:derivation": "try_cast(lastpx as decimal128(38,9)) * try_cast(totaltradeqty as decimal128(38,9))",
       "fix:tag": "2369"
     }
   },
   {
     "name": "totaltrademultipliedqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
       "description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
       "display": "TotalTradeMultipliedQty",
-      "fix:derivation": "totaltradeqty * contractmultiplier",
+      "fix:derivation": "try_cast(totaltradeqty as decimal128(38,9)) * try_cast(contractmultiplier as decimal128(38,9))",
       "fix:tag": "2370"
     }
   },
@@ -4531,7 +4559,9 @@
   {
     "name": "limitutilizationamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -4543,7 +4573,9 @@
   {
     "name": "limitamt",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

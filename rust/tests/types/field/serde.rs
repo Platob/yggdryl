@@ -85,9 +85,7 @@ fn shapes() -> Vec<Field> {
         )
         .unwrap()
         .nullable_field("runs"),
-        DataType::fixed_binary(16)
-            .unwrap()
-            .nullable_field("uuid"),
+        DataType::fixed_binary(16).unwrap().nullable_field("uuid"),
         DataType::from_str("binary(64)")
             .unwrap()
             .nullable_field("blob"),

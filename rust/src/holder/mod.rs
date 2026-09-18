@@ -303,7 +303,6 @@ impl Holder {
     /// an error.
     #[must_use]
     pub fn into_media(self) -> Self {
-
         {
             let base = self.media_type().base().clone();
             self.into_media_base(&base)
@@ -390,10 +389,7 @@ impl Holder {
             codec => self.into_coded_with(codec, crate::Level::DEFAULT),
         };
 
-
-        {
-            coded.into_media_base(media_type.base())
-        }
+        { coded.into_media_base(media_type.base()) }
     }
 
     /// Retain the record implementation one base representation names.

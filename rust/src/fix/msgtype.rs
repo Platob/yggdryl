@@ -175,23 +175,29 @@ impl MsgType {
     ///     Arc::clone(&registry), field, Scalar::from_sequence([Scalar::from("O-1")]),
     /// )?;
     /// let values: Vec<_> = registry.msgtype("D")?.identifier_values(&message)
-    ///     .map(|(field, value)| (field.name(), value.as_str())).collect();
-    /// assert_eq!(values, [("clordid", Some("O-1"))]);
+    ///     .map(|(field, value)| (field.name().to_owned(), value.as_str().map(str::to_owned)))
+    ///     .collect();
+    /// assert_eq!(values, [("clordid".to_owned(), Some("O-1".to_owned()))]);
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
     pub fn identifier_values<'a>(
         &'a self,
         message: &'a FixMsg,
-    ) -> impl Iterator<Item = (&'a Field, &'a Scalar)> {
+    ) -> impl Iterator<Item = (&'a Field, Scalar)> {
         self.identifiers.iter().filter_map(move |(position, tag)| {
             let field = &self.field.fields()[*position];
-            let index = message
+            // The row is read first, because several fields may share a tag
+            // and the member's own name is what tells them apart; an
+            // identifier the message lifted out of its row - `ClOrdID(11)`,
+            // `OrderID(37)` and the rest are held typed - answers under its
+            // tag instead, which is why the value is the message's to hand
+            // over rather than the row's to lend.
+            let value = message
                 .as_field()
                 .index_of(field.name())
-                .or_else(|| tag.and_then(|tag| message.unique_index_of_tag(tag)))?;
-            let value = message
-                .as_value()
-                .get(index)
+                .or_else(|| tag.and_then(|tag| message.unique_index_of_tag(tag)))
+                .and_then(|index| message.as_value().get(index).cloned())
+                .or_else(|| tag.and_then(|tag| message.get_by_tag(tag)))
                 .filter(|value| !value.is_null())?;
             Some((field, value))
         })
@@ -212,7 +218,7 @@ impl MsgType {
             // carries the bytes, and every identifier that does spell text
             // still reaches the map.
             .filter_map(|(field, value)| {
-                let held = DataType::utf8().scalar(value.clone()).ok()?;
+                let held = DataType::utf8().scalar(value).ok()?;
                 Some((Scalar::from(field.name()), held))
             })
             .collect();

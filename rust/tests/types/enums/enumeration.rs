@@ -3,8 +3,8 @@
 use std::mem::size_of;
 
 use yggdryl::{
-    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, Vocabulary, IOKind, IOMode, Scalar, TimeUnit,
-    UnionMode,
+    Codec, DataTypeId, DataTypeKind, EdgeAlgorithm, IOKind, IOMode, Scalar, TimeUnit, UnionMode,
+    Vocabulary,
 };
 
 #[test]

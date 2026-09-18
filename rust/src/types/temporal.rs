@@ -1,6 +1,9 @@
 //! Calendar, clock, duration, and interval datatypes.
 
-pub use scalars::{ Date32, Date64, DateTime64, Duration32, Duration64, Interval, TemporalFamily, TemporalValue, Time32, Time64, };
+pub use scalars::{
+    Date32, Date64, DateTime64, Duration32, Duration64, Interval, TemporalFamily, TemporalValue,
+    Time32, Time64,
+};
 pub(crate) use scalars::{validate_date64, validate_time};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
@@ -24,8 +27,8 @@ pub(crate) mod casts {
     use crate::arrow::{Error, Result};
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::types::cast::arrow_cast_exposed;
-    use crate::types::cast::text::ingest_text_values;
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::text::ingest_text_values;
     use crate::{DataType, Field, Scalar};
 
     /// Whether a source Arrow type holds temporals with a classic spelling.
@@ -361,14 +364,6 @@ pub(crate) fn validate_duration_unit(kind: &'static str, unit: TimeUnit) -> Resu
 
 define_field_types!(Date32Type, Date32);
 define_field_types!(Date64Type, Date64);
-
-
-
-
-
-
-
-
 
 // The classic ISO 8601 spellings of the temporals, beside the temporals they
 // spell. Crate-private: the structured-text codecs and the scalar renderer are
@@ -1406,7 +1401,8 @@ mod iso_tests {
         );
 
         // The offset recovers the instant; the bracket recovers the name.
-        let (count, unit, zone) = parse_timestamp("1970-01-01T05:30:00+05:30[Asia/Kolkata]").unwrap();
+        let (count, unit, zone) =
+            parse_timestamp("1970-01-01T05:30:00+05:30[Asia/Kolkata]").unwrap();
         assert_eq!((count, unit), (0, TimeUnit::Second));
         assert_eq!(zone, kolkata);
 
@@ -1838,12 +1834,12 @@ impl Parser<'_> {
 pub(crate) mod scalars {
     use std::fmt;
 
-    use serde::{Deserialize, Serialize};
-    use smol_str::{SmolStr, format_smolstr};
     use crate::types::arithmetic::{Arithmetic, invalid_binary};
     use crate::types::decimal::exact_value_parts;
     use crate::types::value::{ValidationFailure, expected};
     use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, Value, i256};
+    use serde::{Deserialize, Serialize};
+    use smol_str::{SmolStr, format_smolstr};
 
     /// Operations shared by every temporal representation.
     pub trait TemporalValue: crate::Value {
@@ -1935,8 +1931,10 @@ pub(crate) mod scalars {
     temporal_leaf!(
         Time32,
         i32,
-        |unit: TimeUnit, timezone: Timezone| matches!(unit, TimeUnit::Second | TimeUnit::Millisecond)
-            && timezone.is_naive(),
+        |unit: TimeUnit, timezone: Timezone| matches!(
+            unit,
+            TimeUnit::Second | TimeUnit::Millisecond
+        ) && timezone.is_naive(),
         "Time32 requires second or millisecond units and the NAIVE timezone"
     );
     temporal_leaf!(
@@ -2471,7 +2469,11 @@ pub(crate) mod scalars {
                     Self::time64(count, *unit, Timezone::NAIVE)
                 }
                 DataType::DateTime64 { unit, timezone } if timezone.is_naive() => {
-                    let count = restated(crate::types::temporal::parse_datetime(text)?, *unit, "datetime64")?;
+                    let count = restated(
+                        crate::types::temporal::parse_datetime(text)?,
+                        *unit,
+                        "datetime64",
+                    )?;
                     Self::datetime64(count, *unit, Timezone::NAIVE)
                 }
                 DataType::DateTime64 { unit, timezone } => {
@@ -2480,11 +2482,19 @@ pub(crate) mod scalars {
                     Self::datetime64(count, *unit, *timezone)
                 }
                 DataType::Duration32(unit) => {
-                    let count = restated(crate::types::temporal::parse_duration(text)?, *unit, "duration32")?;
+                    let count = restated(
+                        crate::types::temporal::parse_duration(text)?,
+                        *unit,
+                        "duration32",
+                    )?;
                     Self::duration32(narrow_i32(count, "duration32")?, *unit)
                 }
                 DataType::Duration64(unit) => {
-                    let count = restated(crate::types::temporal::parse_duration(text)?, *unit, "duration64")?;
+                    let count = restated(
+                        crate::types::temporal::parse_duration(text)?,
+                        *unit,
+                        "duration64",
+                    )?;
                     Self::duration64(count, *unit)
                 }
                 other => Err(invalid(format!("{other} holds no temporal text"))),
@@ -2507,16 +2517,26 @@ pub(crate) mod scalars {
                 Self::Date64(value) => i32::try_from(value.count().div_euclid(86_400_000))
                     .ok()
                     .and_then(crate::types::temporal::format_date),
-                Self::Time32(value) => crate::types::temporal::format_time(i64::from(value.count()), value.unit()),
-                Self::Time64(value) => crate::types::temporal::format_time(value.count(), value.unit()),
+                Self::Time32(value) => {
+                    crate::types::temporal::format_time(i64::from(value.count()), value.unit())
+                }
+                Self::Time64(value) => {
+                    crate::types::temporal::format_time(value.count(), value.unit())
+                }
                 Self::DateTime64(value) if value.timezone().is_naive() => {
                     crate::types::temporal::format_datetime(value.count(), value.unit())
                 }
-                Self::DateTime64(value) => {
-                    crate::types::temporal::format_timestamp(value.count(), value.unit(), &value.timezone())
+                Self::DateTime64(value) => crate::types::temporal::format_timestamp(
+                    value.count(),
+                    value.unit(),
+                    &value.timezone(),
+                ),
+                Self::Duration32(value) => {
+                    crate::types::temporal::format_duration(i64::from(value.count()), value.unit())
                 }
-                Self::Duration32(value) => crate::types::temporal::format_duration(i64::from(value.count()), value.unit()),
-                Self::Duration64(value) => crate::types::temporal::format_duration(value.count(), value.unit()),
+                Self::Duration64(value) => {
+                    crate::types::temporal::format_duration(value.count(), value.unit())
+                }
                 _ => None,
             }
         }
@@ -2567,7 +2587,11 @@ pub(crate) mod scalars {
     }
 
     /// Restate a parsed count in the unit its datatype declares, when exact.
-    fn restated((count, source): (i64, TimeUnit), unit: TimeUnit, kind: &'static str) -> Result<i64> {
+    fn restated(
+        (count, source): (i64, TimeUnit),
+        unit: TimeUnit,
+        kind: &'static str,
+    ) -> Result<i64> {
         if source == unit {
             return Ok(count);
         }
@@ -2578,7 +2602,8 @@ pub(crate) mod scalars {
                 .then(|| i64::try_from(nanoseconds / divisor).ok())
                 .flatten()
         };
-        restate(i128::from(count)).ok_or_else(|| invalid(format!("{kind} count is no exact {unit}")))
+        restate(i128::from(count))
+            .ok_or_else(|| invalid(format!("{kind} count is no exact {unit}")))
     }
 
     fn narrow_i32(count: i64, kind: &'static str) -> Result<i32> {
@@ -2736,7 +2761,11 @@ pub(crate) mod scalars {
                 DataType::duration64(unit)
                     .map_err(|error| invalid_binary(operation, left, right, error.to_string()))
             }
-            (TemporalFamily::Duration, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub) => {
+            (
+                TemporalFamily::Duration,
+                TemporalFamily::Duration,
+                Arithmetic::Add | Arithmetic::Sub,
+            ) => {
                 let unit = finer_unit(left_parts.unit, right_parts.unit);
                 let wide = matches!(left_parts.dtype, DataType::Duration64(_))
                     || matches!(right_parts.dtype, DataType::Duration64(_));
@@ -2789,10 +2818,12 @@ pub(crate) mod scalars {
                 "temporal multiplication, division, and remainder are undefined",
             ));
         }
-        let left_parts = temporal_value_parts(left)
-            .ok_or_else(|| invalid_binary(operation, left, right, "left operand is not temporal"))?;
-        let right_parts = temporal_value_parts(right)
-            .ok_or_else(|| invalid_binary(operation, left, right, "right operand is not temporal"))?;
+        let left_parts = temporal_value_parts(left).ok_or_else(|| {
+            invalid_binary(operation, left, right, "left operand is not temporal")
+        })?;
+        let right_parts = temporal_value_parts(right).ok_or_else(|| {
+            invalid_binary(operation, left, right, "right operand is not temporal")
+        })?;
         let (target_family, unit) = temporal_target(target).ok_or_else(|| {
             invalid_binary(
                 operation,
@@ -2832,14 +2863,14 @@ pub(crate) mod scalars {
                     temporal_at(right, unit, operation, left)?,
                 )
             }
-            (TemporalFamily::Duration, TemporalFamily::Duration, Arithmetic::Add | Arithmetic::Sub)
-                if target_family == TemporalFamily::Duration =>
-            {
-                (
-                    temporal_at(left, unit, operation, right)?,
-                    temporal_at(right, unit, operation, left)?,
-                )
-            }
+            (
+                TemporalFamily::Duration,
+                TemporalFamily::Duration,
+                Arithmetic::Add | Arithmetic::Sub,
+            ) if target_family == TemporalFamily::Duration => (
+                temporal_at(left, unit, operation, right)?,
+                temporal_at(right, unit, operation, left)?,
+            ),
             _ => {
                 return Err(invalid_binary(
                     operation,
@@ -2883,7 +2914,8 @@ pub(crate) mod scalars {
         {
             (left, right, true)
         } else if left.is_integer()
-            && temporal_value_parts(right).is_some_and(|parts| parts.family == TemporalFamily::Duration)
+            && temporal_value_parts(right)
+                .is_some_and(|parts| parts.family == TemporalFamily::Duration)
         {
             (right, left, false)
         } else {
@@ -3111,11 +3143,9 @@ mod arrow {
     pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
         match value {
             ArrowDataType::Timestamp(unit, timezone) => {
-                let timezone = timezone
-                    .as_ref()
-                    .map_or(Ok(Timezone::NAIVE), |value| {
-                        Timezone::from_smol_str(SmolStr::from(Arc::clone(value)))
-                    })?;
+                let timezone = timezone.as_ref().map_or(Ok(Timezone::NAIVE), |value| {
+                    Timezone::from_smol_str(SmolStr::from(Arc::clone(value)))
+                })?;
                 DataType::datetime64(TimeUnit::from_arrow_time(*unit), timezone)
             }
             ArrowDataType::Date32 => Ok(DataType::Date32),

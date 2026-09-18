@@ -157,7 +157,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["body", "unix", "creatunix", "prevunix", "expirunix"].windows(2) {
+    for pair in ["body", "currunix", "creatunix", "prevunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert_eq!(names.last(), Some(&"fixentries"));
@@ -169,8 +169,8 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         55,
         54,
         60, // the instrument, the side and the clock
-        yggdryl::PX_TAG_NAME.0,
-        yggdryl::QTY_TAG_NAME.0, // the price and the quantity, the event's own
+        44,
+        38, // the price and the quantity, FIX's own fields
         132,
         133,
         134,
@@ -179,8 +179,8 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         454,
         768, // the groups
         10,  // the trailer
-        yggdryl::HASHCODE_TAG_NAME.0,
-        yggdryl::UNIX_TAG_NAME.0,
+        yggdryl::CURRHASHCODE_TAG_NAME.0,
+        yggdryl::CURRUNIX_TAG_NAME.0,
         yggdryl::CREATUNIX_TAG_NAME.0, // the digest and the clocks
         yggdryl::MSGSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
@@ -224,7 +224,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
     // The content code's storage is the `uint64` it is, not a string.
-    let digest = tag_column(&batch, yggdryl::HASHCODE_TAG_NAME.0);
+    let digest = tag_column(&batch, yggdryl::CURRHASHCODE_TAG_NAME.0);
     assert_eq!(digest.data_type(), &arrow_schema::DataType::UInt64);
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch
@@ -351,8 +351,10 @@ fn messages_to_batches_close_on_the_arrival_records_raw_bytes() {
     assert_eq!(one[0].num_rows(), 200);
 
     // A bound of about ten lines of pairs cuts the stream into batches of
-    // about ten, and every row survives the cut.
-    let bounded = codec.clone().with_batch_byte_size(10 * 115);
+    // about ten, and every row survives the cut. A line is measured by the
+    // record it arrived as, which is smaller than it was: the frame and the
+    // fields a message lifts are held rather than recorded.
+    let bounded = codec.clone().with_batch_byte_size(10 * 46);
     let many = batches(
         bounded
             .arrow_reader(schema.clone(), codec.parse_lines(lines.clone()))
@@ -717,12 +719,12 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
             // is one - is filled on the message and simply has no column to
             // appear in. The row is a projection of the message, not the whole
             // of it.
-            None => assert_eq!(held, Scalar::from(420.0_f64), "tag {tag}"),
+            None => assert_eq!(held, super::decimal("420"), "tag {tag}"),
         }
     }
-    assert_eq!(first_tag_value(&filled, 151), Scalar::from(60.0_f64));
+    assert_eq!(first_tag_value(&filled, 151), super::decimal("60"));
     // One fill, so the average is that fill's price.
-    assert_eq!(first_tag_value(&filled, 6), Scalar::from(10.5_f64));
+    assert_eq!(first_tag_value(&filled, 6), super::decimal("10.5"));
     // The record is the message read as a tree, so the row's arrival record
     // is what the line read emits.
     assert_eq!(
@@ -937,6 +939,79 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
         matches!(refused, yggdryl::Error::InvalidRecord { .. }),
         "{refused}"
     );
+}
+
+/// A capture's own cells follow the message, not the row's position.
+///
+/// The walk answers messages in their own order, which a capture's lines are
+/// routinely not in, and no message holds anything about the reading it
+/// arrived through. So the door has to carry each row's own cells beside the
+/// message it made and state them again where that message lands: pairing by
+/// position would hand row two's `body` to row one's message.
+#[test]
+fn a_walk_keeps_each_rows_own_cells_with_its_own_message() {
+    let codec = codec();
+    // Three messages of one order, written to the log in the reverse of the
+    // order they happened in - which is what makes the walk reorder them.
+    let lines = [
+        "line-2 8=FIX.4.4|35=8|11=WALK-1|37=O1|17=E2|150=F|39=2|55=AAPL|52=20260102-10:15:32.000|10=0|",
+        "line-1 8=FIX.4.4|35=8|11=WALK-1|37=O1|17=E1|150=0|39=0|55=AAPL|52=20260102-10:15:31.000|10=0|",
+        "line-0 8=FIX.4.4|35=D|11=WALK-1|55=AAPL|54=1|38=100|52=20260102-10:15:30.000|10=0|",
+    ];
+    let parsed = codec
+        .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
+        .unwrap();
+    let schema = parsed.schema();
+    let held = batches(parsed);
+    assert_eq!(row_count(&held), 3);
+
+    // The reader stated the body of each line in the row it made: the parse
+    // door is the one door that can, because the message holds none of it.
+    let body_of = |batch: &RecordBatch, row: usize| {
+        let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
+        let columns = rows.as_sequence().expect("rows")[row].clone();
+        let columns = columns.as_sequence().expect("columns").to_vec();
+        let at = batch.schema().index_of("body").expect("a body column");
+        let exec = batch.schema().index_of("execid").expect("an execid column");
+        let ordtype = batch
+            .schema()
+            .index_of("clordid")
+            .expect("a clordid column");
+        (
+            String::from_utf8_lossy(columns[at].as_bytes().expect("bytes")).into_owned(),
+            columns[exec].as_str().map(ToOwned::to_owned),
+            columns[ordtype].as_str().map(ToOwned::to_owned),
+        )
+    };
+    let read: Vec<_> = (0..3).map(|row| body_of(&held[0], row)).collect();
+    assert!(read[0].0.starts_with("line-2"), "{:?}", read[0]);
+
+    // Walked, the rows come back in the order the messages happened in - and
+    // each still carries the line it was read from.
+    let walked = codec
+        .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(schema.clone(), held.clone()))
+        .unwrap();
+    assert_eq!(walked.schema(), schema, "the same schema in and out");
+    let after = batches(walked);
+    assert_eq!(row_count(&after), 3);
+    let after: Vec<_> = (0..3).map(|row| body_of(&after[0], row)).collect();
+    assert_eq!(
+        after.iter().map(|held| held.0.clone()).collect::<Vec<_>>(),
+        vec![
+            "line-0 ".to_owned() + lines[2].trim_start_matches("line-0 "),
+            "line-1 ".to_owned() + lines[1].trim_start_matches("line-1 "),
+            "line-2 ".to_owned() + lines[0].trim_start_matches("line-2 "),
+        ],
+        "the walk reordered the rows",
+    );
+    // And the line each row holds is the line its own message came off: the
+    // order's row carries no ExecID, and the two reports carry their own.
+    assert_eq!(after[0].1, None, "the order states no ExecID");
+    assert_eq!(after[1].1.as_deref(), Some("E1"));
+    assert_eq!(after[2].1.as_deref(), Some("E2"));
+    for held in &after {
+        assert_eq!(held.2.as_deref(), Some("WALK-1"));
+    }
 }
 
 #[test]
@@ -1351,7 +1426,7 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
         [Some("FIX.4.2"), None],
     ));
     assert!(old.as_field().index_of("lastqty").is_none());
-    assert_eq!(old.by_tag(32).unwrap().as_f64(), Some(100.0));
+    assert_eq!(old.by_tag(32).unwrap(), super::decimal("100"));
 
     // A capture absent, unmatched or empty is silence, never an instruction
     // and never an error.

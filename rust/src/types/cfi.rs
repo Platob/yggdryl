@@ -659,7 +659,6 @@ pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
 pub(crate) const CFI_WIDTH: usize = 6;
 
 impl DataType {
-
     /// Creates ISO 10962's six-character classification code.
     ///
     /// ```
@@ -677,7 +676,6 @@ impl DataType {
 
 // /// A CFI-typed field: ISO 10962's instrument classification.
 define_field_types!(CfiType, Cfi);
-
 
 /// One ISO 10962 category and the groups it contains.
 pub struct CfiCategory {

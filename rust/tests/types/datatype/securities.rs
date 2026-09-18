@@ -10,11 +10,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::types::{Cusip, CusipField, Sedol, SedolField};
 use yggdryl::types::FieldValue as _;
-use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Term,
-};
+use yggdryl::types::{Cusip, CusipField, Sedol, SedolField};
+use yggdryl::{ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Term};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)

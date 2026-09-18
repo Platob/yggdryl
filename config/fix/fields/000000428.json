@@ -84,7 +84,9 @@
   {
     "name": "underlyingdividendfloatingratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1132,7 +1134,9 @@
   {
     "name": "underlyingdividendpaymentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1156,7 +1160,9 @@
   {
     "name": "underlyingdividendaccruedinterest",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1254,7 +1260,9 @@
   {
     "name": "underlyingdividendperiodstrikeprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1685,7 +1693,9 @@
   {
     "name": "underlyingmakewholeamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1721,7 +1731,9 @@
   {
     "name": "underlyingmakewholerecallspread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1810,7 +1822,9 @@
   {
     "name": "underlyingpaymentstreamcompoundingspread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

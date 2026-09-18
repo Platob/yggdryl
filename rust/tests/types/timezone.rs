@@ -9,8 +9,7 @@ use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::DataType;
 use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Timezone,
-    TimezoneField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Timezone, TimezoneField,
 };
 
 fn zone(text: &str) -> Scalar {

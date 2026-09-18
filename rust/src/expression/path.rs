@@ -38,8 +38,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::typing::{common_type, unwrap_dictionary};
 use super::{Literal, Term};
-use crate::{DataType, Error, Field, Result, Scalar};
 use crate::types::sequence::SequenceType;
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What a parse failure names itself as.
 pub(crate) const TARGET: &str = "field path";

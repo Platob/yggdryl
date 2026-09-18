@@ -2833,7 +2833,9 @@
   {
     "name": "allocgroupsubqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2845,7 +2847,9 @@
   {
     "name": "allocgroupsubqtyoffset",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2857,7 +2861,9 @@
   {
     "name": "allocgroupremainingsubqty",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3186,7 +3192,9 @@
   {
     "name": "underlyingbidpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3198,7 +3206,9 @@
   {
     "name": "underlyingofferpx",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

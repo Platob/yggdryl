@@ -41,8 +41,8 @@ use super::msg::FixMsg;
 use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
 use crate::expression::Term;
-use crate::{DataType, Field, Plan, Result, Scalar};
 use crate::types::sequence::SequenceType;
+use crate::{DataType, Field, Plan, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///

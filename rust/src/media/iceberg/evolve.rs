@@ -52,8 +52,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::TableMetadata;
 use crate::text::elide_to;
-use crate::{DataType, Error, Field, Result};
 use crate::types::DecimalType;
+use crate::{DataType, Error, Field, Result};
 
 /// How many bytes of a caller-supplied path an error message shows.
 const PATH_LIMIT: usize = 64;
@@ -111,7 +111,9 @@ const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
         DataType::Decimal(DecimalType::Decimal32 { precision, scale })
         | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => Some((*precision, *scale)),
+        | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+            Some((*precision, *scale))
+        }
         _ => None,
     }
 }

@@ -11,10 +11,10 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::cast::ArrowCastPlan;
+use crate::types::enums::EnumType;
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
-use crate::types::enums::EnumType;
 
 pub(crate) mod rows;
 mod scalars;

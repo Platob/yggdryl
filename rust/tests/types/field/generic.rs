@@ -192,7 +192,10 @@ fn borrowed_and_consuming_arrow_paths_are_lossless() {
     let shared = field.clone().into_arrow_field_ref().unwrap();
     let imported = Field::from_arrow_field_ref(Arc::clone(&shared)).unwrap();
     assert_eq!(imported, field);
-    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_field_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &shared,
+        &imported.into_arrow_field_ref().unwrap()
+    ));
 }
 
 #[test]

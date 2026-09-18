@@ -10,11 +10,10 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::types::FieldValue as _;
+use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar,
-    StringEnum,
+    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
 };
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -750,7 +749,8 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
         // And it crosses Arrow as the text it is, extension name and all, so
         // a column round-trips without becoming anonymous text.
         let field = Field::new(name, dtype.clone(), true);
-        let recovered = Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
+        let recovered =
+            Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field);
     }
 

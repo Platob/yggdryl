@@ -21,10 +21,18 @@ use std::str::FromStr;
 
 use smol_str::SmolStr;
 
-use crate::expression::{Function, Term};
-use crate::metadata::{HTTP_ACCEPT_ENCODING_KEY, HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY, HTTP_CACHE_CONTROL_KEY, HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY, HTTP_CONTENT_LANGUAGE_KEY, HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY, HTTP_CONTENT_RANGE_KEY, HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY, HTTP_LAST_MODIFIED_KEY, HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, PropertyIter, ProtocolMetadata, for_each_well_known_protocol, parse_content_length, property_key, property_name, protocol_metadata_prefix};
-use crate::{Charset, Error, MediaType, Metadata, MimeType, Result, Scheme, Url};
 use super::Field;
+use crate::expression::{Function, Term};
+use crate::metadata::{
+    HTTP_ACCEPT_ENCODING_KEY, HTTP_ACCEPT_KEY, HTTP_ACCEPT_LANGUAGE_KEY, HTTP_ACCEPT_RANGES_KEY,
+    HTTP_CACHE_CONTROL_KEY, HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY,
+    HTTP_CONTENT_LANGUAGE_KEY, HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY,
+    HTTP_CONTENT_RANGE_KEY, HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY,
+    HTTP_LAST_MODIFIED_KEY, HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, PropertyIter,
+    ProtocolMetadata, for_each_well_known_protocol, parse_content_length, property_key,
+    property_name, protocol_metadata_prefix,
+};
+use crate::{Charset, Error, MediaType, Metadata, MimeType, Result, Scheme, Url};
 
 // ------------------------------------------------------------------------
 // The `http:` vocabulary, on the field views that own it.

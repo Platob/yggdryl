@@ -27,8 +27,8 @@ use smol_str::SmolStr;
 use super::path::write_segments;
 use super::selector::{Projection, Selector};
 use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
-use crate::{DataType, Scalar};
 use crate::types::code_scalars;
+use crate::{DataType, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]

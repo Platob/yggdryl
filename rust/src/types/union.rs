@@ -7,13 +7,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::types::structure::cmp_fields;
 use crate::types::dtype::invalid;
+use crate::types::structure::cmp_fields;
+use crate::{DataType, Field, Result, UnionMode};
 use smol_str::format_smolstr;
-use crate::{
-    DataType, Field, Result, UnionMode,
-
-};
 
 /// Union members paired with their non-negative Arrow type IDs.
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
@@ -167,7 +164,6 @@ impl<'de> Deserialize<'de> for UnionFields {
 }
 
 impl DataType {
-
     /// Creates a union after validating field names and type IDs.
     pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>
     where
@@ -266,10 +262,10 @@ pub(crate) fn validate_union_values(values: &[(i8, Field)], validate_children: b
 mod arrow {
     use std::sync::Arc;
 
+    use arrow_schema::ffi::Flags;
     use arrow_schema::{
         DataType as ArrowDataType, UnionFields as ArrowUnionFields, UnionMode as ArrowUnionMode,
     };
-    use arrow_schema::ffi::Flags;
 
     use super::UnionFields;
     use crate::types::family::ArrowFfiParts;

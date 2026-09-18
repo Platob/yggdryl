@@ -106,7 +106,9 @@
   {
     "name": "underlyingstreamcommoditysettlperiodnotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -658,7 +660,9 @@
   {
     "name": "underlyingstreamcommoditysettlperiodprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1879,7 +1883,9 @@
   {
     "name": "underlyingstreamtotalnotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2512,7 +2518,9 @@
   {
     "name": "underlyingadditionaltermbondparvalue",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2524,7 +2532,9 @@
   {
     "name": "underlyingadditionaltermbondcurrenttotalissuedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2910,7 +2920,9 @@
   {
     "name": "underlyingcashsettlquoteamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2934,7 +2946,9 @@
   {
     "name": "underlyingcashsettlminimumquoteamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2970,7 +2984,9 @@
   {
     "name": "underlyingcashsettlamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3192,7 +3208,9 @@
   {
     "name": "underlyingprotectiontermnotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

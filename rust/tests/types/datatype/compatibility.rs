@@ -1,9 +1,9 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
-use yggdryl::types::SequenceType;
 use yggdryl::types::DecimalType;
+use yggdryl::types::SequenceType;
+use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
@@ -19,7 +19,10 @@ fn arrow_is_a_cache_preserving_validated_noop() {
     let compatible = field.clone().into_scheme_compat(&Scheme::ARROW).unwrap();
 
     assert_eq!(compatible, field);
-    assert!(Arc::ptr_eq(&cached, &compatible.into_arrow_field_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &compatible.into_arrow_field_ref().unwrap()
+    ));
 }
 
 #[test]

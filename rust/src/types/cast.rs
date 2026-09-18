@@ -51,19 +51,29 @@ use crate::arrow::{Error, Result};
 use crate::path::{Path, Segment};
 use crate::types::budget::MaterializationBudget;
 use crate::types::bytes::casts::{bridges_through_binary, ingest_bytes_array};
+use crate::types::cast::columns::{
+    cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct, default_array,
+    exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null,
+    is_reconcilable_nested, list_child, union_mode_matches,
+};
 use crate::types::cast::text::{holds_text, ingest_text_values};
 use crate::types::decimal::casts::holds_decimal;
+use crate::types::enums::EnumType;
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
-use crate::types::cast::columns::{cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct, default_array, exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null, is_reconcilable_nested, list_child, union_mode_matches};
+use crate::types::sequence::SequenceType;
 use crate::types::string::casts::{StringSource, ingest_code_array, ingest_string_array};
 use crate::types::string::{is_text_storage, needs_extension};
-use crate::types::temporal::casts::{holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text};
+use crate::types::temporal::casts::{
+    holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
+};
 use crate::types::uuid::casts::ingest_uuid_array;
 use crate::types::version::casts::{ingest_version_array, is_text_layout};
-use crate::types::{BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal, recognized_arrow_extension};
+use crate::types::{
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
+    recognized_arrow_extension,
+};
 use crate::{DataType, Field, Scalar};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 
 /// Exact and preflight record-batch boundaries.
 mod batch {
@@ -140,10 +150,12 @@ mod kernel {
     use crate::arrow::{Error, Result};
     use crate::types::budget::{
         MaterializationBudget, SourceSelection, reserve_cast_output_payload,
-        reserve_new_dictionary_vocabularies, reserve_selected_source_take, reserve_source_selection,
-        reserve_vec_bytes,
+        reserve_new_dictionary_vocabularies, reserve_selected_source_take,
+        reserve_source_selection, reserve_vec_bytes,
     };
-    use crate::types::cast::columns::{align_nested_dictionaries, contains_dictionary, default_array};
+    use crate::types::cast::columns::{
+        align_nested_dictionaries, contains_dictionary, default_array,
+    };
     use crate::{DataType, Field};
 
     fn arrow_cast(array: &ArrayRef, expected: &ArrowDataType, safe: bool) -> Result<ArrayRef> {
@@ -788,8 +800,8 @@ pub(crate) mod text {
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
-    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::{DataType, Field, Scalar};
 
     /// One text cell read into the value a datatype declares.
@@ -805,7 +817,9 @@ pub(crate) mod text {
     /// tail encodes them, so a dictionary column reads like a plain one.
     pub(crate) fn encoded_value_of(target: &DataType) -> &DataType {
         match target {
-            DataType::Enum(EnumType::Dictionary(dictionary)) => encoded_value_of(dictionary.value()),
+            DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                encoded_value_of(dictionary.value())
+            }
             DataType::RunEndEncoded(encoded) => encoded_value_of(encoded.values().dtype()),
             other => other,
         }
@@ -921,8 +935,8 @@ pub(crate) mod text {
 mod typed {
     use arrow_array::{Array, ArrayRef, Scalar};
 
-    use crate::types::FieldValue as _;
     use crate::arrow::{Error, Result};
+    use crate::types::FieldValue as _;
     use crate::types::cast::ArrowCastOptions;
 
     /// The Arrow array a field's values materialize into.
@@ -944,7 +958,10 @@ mod typed {
     }
 
     /// Narrow one cast array, naming both sides when the narrowing fails.
-    fn downcast_owned<A: Array + Clone + 'static>(array: ArrayRef, expected: &'static str) -> Result<A> {
+    fn downcast_owned<A: Array + Clone + 'static>(
+        array: ArrayRef,
+        expected: &'static str,
+    ) -> Result<A> {
         array.as_any().downcast_ref::<A>().cloned().ok_or_else(|| {
             Error::IncompatibleSchema(format!(
                 "expected a cast to produce an Arrow {expected} array, got {}",
@@ -980,10 +997,7 @@ mod typed {
     }
 
     typed_array!(crate::types::NullType, arrow_array::NullArray);
-    typed_array!(
-        crate::types::BooleanType,
-        arrow_array::BooleanArray
-    );
+    typed_array!(crate::types::BooleanType, arrow_array::BooleanArray);
     typed_array!(crate::types::integer::Int8Type, arrow_array::Int8Array);
     typed_array!(crate::types::integer::Int16Type, arrow_array::Int16Array);
     typed_array!(crate::types::integer::Int32Type, arrow_array::Int32Array);
@@ -1019,16 +1033,10 @@ mod typed {
     typed_array!(crate::types::IsinType, arrow_array::StringArray);
     typed_array!(crate::types::CusipType, arrow_array::StringArray);
     typed_array!(crate::types::SedolType, arrow_array::StringArray);
-    typed_array!(
-        crate::types::BloombergType,
-        arrow_array::StringArray
-    );
+    typed_array!(crate::types::BloombergType, arrow_array::StringArray);
     typed_array!(crate::types::SideType, arrow_array::StringArray);
     typed_array!(crate::types::StateType, arrow_array::StringArray);
-    typed_array!(
-        crate::types::TimeInForceType,
-        arrow_array::StringArray
-    );
+    typed_array!(crate::types::TimeInForceType, arrow_array::StringArray);
     // A UUID stores as the fixed binary of its sixteen bytes.
     typed_array!(
         crate::types::uuid::UuidType,
@@ -1044,14 +1052,8 @@ mod typed {
     // A variant's storage is the canonical struct of two required binaries, and a
     // geospatial value is its WKB payload, so their physical arrays are fixed.
     typed_array!(crate::types::VariantType, arrow_array::StructArray);
-    typed_array!(
-        crate::types::GeometryType,
-        arrow_array::BinaryArray
-    );
-    typed_array!(
-        crate::types::GeographyType,
-        arrow_array::BinaryArray
-    );
+    typed_array!(crate::types::GeometryType, arrow_array::BinaryArray);
+    typed_array!(crate::types::GeographyType, arrow_array::BinaryArray);
 
     // A unit decides the physical width of a temporal value, a key type decides
     // the physical width of a dictionary index, a string's layout and charset
@@ -1080,7 +1082,11 @@ mod typed {
         ///
         /// Returns an error for an unsupported cast, a value that cannot satisfy
         /// the field, or a default that cannot be materialized.
-        pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<D::Array> {
+        pub fn cast_arrow_array(
+            &self,
+            array: ArrayRef,
+            options: ArrowCastOptions,
+        ) -> Result<D::Array> {
             D::downcast_array(self.to_field().cast_arrow_array(array, options)?)
         }
 
@@ -1104,7 +1110,6 @@ mod typed {
             Ok(Scalar::new(self.cast_arrow_array(array, options)?))
         }
     }
-
 }
 
 /// Casts one Arrow array to a datatype, with no field around it.
@@ -1523,7 +1528,10 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            DataType::Uuid(_) => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid(_))),
+            DataType::Uuid(_) => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Uuid(_))
+            ),
             DataType::Version => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
@@ -1912,8 +1920,10 @@ impl ArrayCastPlan {
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (DataType::Sequence(SequenceType::FixedSizeList(_, size)), ArrowDataType::FixedSizeList(_, source)) =
-                    (dtype, source_type)
+                if let (
+                    DataType::Sequence(SequenceType::FixedSizeList(_, size)),
+                    ArrowDataType::FixedSizeList(_, source),
+                ) = (dtype, source_type)
                 {
                     if size != source {
                         return Err(Error::Unsupported {
@@ -2013,7 +2023,11 @@ impl ArrayCastPlan {
                 DataType::RunEndEncoded(encoded),
                 ArrowDataType::RunEndEncoded(source_runs, source_values),
             ) if source_runs.data_type()
-                == encoded.run_ends().clone().into_arrow_field_ref()?.data_type() =>
+                == encoded
+                    .run_ends()
+                    .clone()
+                    .into_arrow_field_ref()?
+                    .data_type() =>
             {
                 ArrayCastKind::RunEndEncoded {
                     source_run_type: source_runs.data_type().clone(),
@@ -2726,14 +2740,14 @@ pub(crate) fn internal_target_error(kind: &'static str) -> Error {
 /// Arrow columns for the layouts that carry children, and it lives beside the
 /// rest of the cast code rather than beside the datatypes it inspects.
 pub(crate) mod columns {
-    
+
     use std::cmp::Ordering;
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
 
     use arrow_array::types::{
-        ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type,
-        UInt16Type, UInt32Type, UInt64Type,
+        ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType,
+        UInt8Type, UInt16Type, UInt32Type, UInt64Type,
     };
     use arrow_array::{
         Array, ArrayRef, BooleanArray, Decimal256Array, DictionaryArray, FixedSizeListArray,
@@ -2760,11 +2774,11 @@ pub(crate) mod columns {
     use crate::types::decimal::casts::DecimalText;
     use crate::{DataType, Field, Scalar, UnionMode};
 
-    use crate::types::sequence::SequenceType;
     use crate::types::DecimalType;
-        use crate::types::enums::EnumType;
+    use crate::types::enums::EnumType;
+    use crate::types::sequence::SequenceType;
     mod dictionary {
-        
+
         use super::*;
 
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
@@ -2774,7 +2788,9 @@ pub(crate) mod columns {
                 | DataType::Sequence(SequenceType::ListView(field))
                 | DataType::Sequence(SequenceType::FixedSizeList(field, _))
                 | DataType::Sequence(SequenceType::LargeList(field))
-                | DataType::Sequence(SequenceType::LargeListView(field)) => contains_dictionary(field.dtype()),
+                | DataType::Sequence(SequenceType::LargeListView(field)) => {
+                    contains_dictionary(field.dtype())
+                }
                 DataType::Structure(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
@@ -2850,7 +2866,8 @@ pub(crate) mod columns {
                 DataType::Structure(fields) => {
                     let left_struct = downcast::<StructArray>(left.as_ref())?;
                     let right_struct = downcast::<StructArray>(right.as_ref())?;
-                    let left_child_exposure = visible_array_exposure(left.as_ref(), left_exposure, budget)?;
+                    let left_child_exposure =
+                        visible_array_exposure(left.as_ref(), left_exposure, budget)?;
                     let right_child_exposure =
                         visible_array_exposure(right.as_ref(), right_exposure, budget)?;
                     let mut left_children =
@@ -3025,19 +3042,21 @@ pub(crate) mod columns {
                 DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
-                    let width = usize::try_from(*size)
-                        .map_err(|_| Error::IncompatibleSchema("fixed-list size is negative".to_owned()))?;
+                    let width = usize::try_from(*size).map_err(|_| {
+                        Error::IncompatibleSchema("fixed-list size is negative".to_owned())
+                    })?;
                     let left_child_exposure = range_exposure(
                         left_list.values().len(),
                         left_list.len(),
                         left_exposure,
                         |row| left_list.is_valid(row),
                         |row| {
-                            let start = usize::try_from(left_list.value_offset(row)).map_err(|_| {
-                                Error::IncompatibleSchema(
-                                    "fixed-list offset is negative or exceeds usize".to_owned(),
-                                )
-                            })?;
+                            let start =
+                                usize::try_from(left_list.value_offset(row)).map_err(|_| {
+                                    Error::IncompatibleSchema(
+                                        "fixed-list offset is negative or exceeds usize".to_owned(),
+                                    )
+                                })?;
                             Ok((start, start + width))
                         },
                         budget,
@@ -3048,11 +3067,12 @@ pub(crate) mod columns {
                         right_exposure,
                         |row| right_list.is_valid(row),
                         |row| {
-                            let start = usize::try_from(right_list.value_offset(row)).map_err(|_| {
-                                Error::IncompatibleSchema(
-                                    "fixed-list offset is negative or exceeds usize".to_owned(),
-                                )
-                            })?;
+                            let start =
+                                usize::try_from(right_list.value_offset(row)).map_err(|_| {
+                                    Error::IncompatibleSchema(
+                                        "fixed-list offset is negative or exceeds usize".to_owned(),
+                                    )
+                                })?;
                             Ok((start, start + width))
                         },
                         budget,
@@ -3129,7 +3149,8 @@ pub(crate) mod columns {
                             left_union.len(),
                             left_exposure,
                             |row| {
-                                (left_union.type_id(row) == type_id).then(|| left_union.value_offset(row))
+                                (left_union.type_id(row) == type_id)
+                                    .then(|| left_union.value_offset(row))
                             },
                             budget,
                         )?;
@@ -3138,7 +3159,8 @@ pub(crate) mod columns {
                             right_union.len(),
                             right_exposure,
                             |row| {
-                                (right_union.type_id(row) == type_id).then(|| right_union.value_offset(row))
+                                (right_union.type_id(row) == type_id)
+                                    .then(|| right_union.value_offset(row))
                             },
                             budget,
                         )?;
@@ -3194,8 +3216,16 @@ pub(crate) mod columns {
                                 None,
                             ));
                             Ok((
-                                replace_array_children(left, vec![left_run_ends, left_values], budget)?,
-                                replace_array_children(right, vec![right_run_ends, right_values], budget)?,
+                                replace_array_children(
+                                    left,
+                                    vec![left_run_ends, left_values],
+                                    budget,
+                                )?,
+                                replace_array_children(
+                                    right,
+                                    vec![right_run_ends, right_values],
+                                    budget,
+                                )?,
                             ))
                         }};
                     }
@@ -3286,7 +3316,8 @@ pub(crate) mod columns {
             exposure: Option<&BooleanBuffer>,
             budget: &mut MaterializationBudget,
         ) -> Result<Vec<usize>> {
-            let mut used = scratch_vec::<usize>(budget, source.len(), "dictionary alignment live values")?;
+            let mut used =
+                scratch_vec::<usize>(budget, source.len(), "dictionary alignment live values")?;
             for row in 0..source.len() {
                 if is_exposed(exposure, row) && source.keys().is_valid(row) {
                     let index = source.keys().value(row).as_usize();
@@ -3331,7 +3362,8 @@ pub(crate) mod columns {
                         .binary_search_by_key(&old, |(candidate, _)| *candidate)
                         .map_err(|_| {
                             Error::IncompatibleSchema(
-                                "live dictionary key is absent from its vocabulary remap".to_owned(),
+                                "live dictionary key is absent from its vocabulary remap"
+                                    .to_owned(),
                             )
                         })?;
                     let key = K::Native::try_from(mappings[position].1).map_err(|_| {
@@ -3405,8 +3437,10 @@ pub(crate) mod columns {
             let left_used = dictionary_live_indices(left_source, left_exposure, budget)?;
             let right_used = dictionary_live_indices(right_source, right_exposure, budget)?;
             let value_type = dictionary.value();
-            let compare_left = make_yggdryl_key_comparator(value_type, left_source.values(), budget)?;
-            let compare_right = make_yggdryl_key_comparator(value_type, right_source.values(), budget)?;
+            let compare_left =
+                make_yggdryl_key_comparator(value_type, left_source.values(), budget)?;
+            let compare_right =
+                make_yggdryl_key_comparator(value_type, right_source.values(), budget)?;
             let compare_cross = make_yggdryl_comparator(
                 value_type,
                 left_source.values(),
@@ -3419,15 +3453,16 @@ pub(crate) mod columns {
             // vocabulary. Compare only reachable entries: a transparent wrapper may
             // have a tiny physical representation but an arbitrarily long hidden
             // logical vocabulary.
-            let mut right_to_left =
-                scratch_vec::<(usize, usize)>(budget, right_used.len(), "dictionary right-to-left remap")?;
+            let mut right_to_left = scratch_vec::<(usize, usize)>(
+                budget,
+                right_used.len(),
+                "dictionary right-to-left remap",
+            )?;
             if right_used.len() <= HASHED_NAME_INDEX_THRESHOLD {
                 for right_index in &right_used {
-                    let Some(left_index) = left_used
-                        .iter()
-                        .copied()
-                        .find(|left_index| compare_cross(*left_index, *right_index) == Ordering::Equal)
-                    else {
+                    let Some(left_index) = left_used.iter().copied().find(|left_index| {
+                        compare_cross(*left_index, *right_index) == Ordering::Equal
+                    }) else {
                         right_to_left.clear();
                         break;
                     };
@@ -3447,15 +3482,16 @@ pub(crate) mod columns {
                 return Ok((Arc::clone(left), right));
             }
 
-            let mut left_to_right =
-                scratch_vec::<(usize, usize)>(budget, left_used.len(), "dictionary left-to-right remap")?;
+            let mut left_to_right = scratch_vec::<(usize, usize)>(
+                budget,
+                left_used.len(),
+                "dictionary left-to-right remap",
+            )?;
             if left_used.len() <= HASHED_NAME_INDEX_THRESHOLD {
                 for left_index in &left_used {
-                    let Some(right_index) = right_used
-                        .iter()
-                        .copied()
-                        .find(|right_index| compare_cross(*left_index, *right_index) == Ordering::Equal)
-                    else {
+                    let Some(right_index) = right_used.iter().copied().find(|right_index| {
+                        compare_cross(*left_index, *right_index) == Ordering::Equal
+                    }) else {
                         left_to_right.clear();
                         break;
                     };
@@ -3483,7 +3519,13 @@ pub(crate) mod columns {
             candidates.extend(left_used.iter().copied().map(DictionaryCandidate::Left));
             candidates.extend(right_used.iter().copied().map(DictionaryCandidate::Right));
             candidates.sort_unstable_by(|left, right| {
-                compare_dictionary_candidates(*left, *right, &compare_left, &compare_right, &compare_cross)
+                compare_dictionary_candidates(
+                    *left,
+                    *right,
+                    &compare_left,
+                    &compare_right,
+                    &compare_cross,
+                )
             });
 
             let mut representatives = scratch_vec::<DictionaryCandidate>(
@@ -3491,10 +3533,16 @@ pub(crate) mod columns {
                 candidates.len(),
                 "dictionary semantic representatives",
             )?;
-            let mut left_groups =
-                scratch_vec::<(usize, usize)>(budget, left_used.len(), "dictionary left compact remap")?;
-            let mut right_groups =
-                scratch_vec::<(usize, usize)>(budget, right_used.len(), "dictionary right compact remap")?;
+            let mut left_groups = scratch_vec::<(usize, usize)>(
+                budget,
+                left_used.len(),
+                "dictionary left compact remap",
+            )?;
+            let mut right_groups = scratch_vec::<(usize, usize)>(
+                budget,
+                right_used.len(),
+                "dictionary right compact remap",
+            )?;
             for candidate in candidates {
                 let group = if representatives.last().is_some_and(|prior| {
                     compare_dictionary_candidates(
@@ -3562,10 +3610,18 @@ pub(crate) mod columns {
             left_groups.sort_unstable_by_key(|(old, _)| *old);
             right_groups.sort_unstable_by_key(|(old, _)| *old);
 
-            let left_values =
-                take_dictionary_candidates(left_source.values(), value_type, &left_selected, budget)?;
-            let right_values =
-                take_dictionary_candidates(right_source.values(), value_type, &right_selected, budget)?;
+            let left_values = take_dictionary_candidates(
+                left_source.values(),
+                value_type,
+                &left_selected,
+                budget,
+            )?;
+            let right_values = take_dictionary_candidates(
+                right_source.values(),
+                value_type,
+                &right_selected,
+                budget,
+            )?;
             let value_field = Field::new("dictionary", value_type.clone(), true);
             let (left_values, right_values) = align_nested_dictionaries(
                 &value_field,
@@ -3605,7 +3661,7 @@ pub(crate) mod columns {
         }
     }
     mod plans {
-        
+
         use super::*;
 
         impl ArrayCastPlan {
@@ -3630,8 +3686,8 @@ pub(crate) mod columns {
                                 child_exposure.as_ref(),
                                 budget,
                             )?;
-                            unchanged &=
-                                output.len() == source_column.len() && Arc::ptr_eq(&output, source_column);
+                            unchanged &= output.len() == source_column.len()
+                                && Arc::ptr_eq(&output, source_column);
                             output
                         }
                         StructColumnPlan::Missing(field) => {
@@ -3681,7 +3737,9 @@ pub(crate) mod columns {
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
-                        if self.source_type == self.expected && Arc::ptr_eq(&values, source.values()) {
+                        if self.source_type == self.expected
+                            && Arc::ptr_eq(&values, source.values())
+                        {
                             return Ok(array);
                         }
                         Arc::new(ListArray::try_new(
@@ -3710,7 +3768,9 @@ pub(crate) mod columns {
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
-                        if self.source_type == self.expected && Arc::ptr_eq(&values, source.values()) {
+                        if self.source_type == self.expected
+                            && Arc::ptr_eq(&values, source.values())
+                        {
                             return Ok(array);
                         }
                         Arc::new(LargeListArray::try_new(
@@ -3741,7 +3801,9 @@ pub(crate) mod columns {
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
-                        if self.source_type == self.expected && Arc::ptr_eq(&values, source.values()) {
+                        if self.source_type == self.expected
+                            && Arc::ptr_eq(&values, source.values())
+                        {
                             return Ok(array);
                         }
                         Arc::new(ListViewArray::try_new(
@@ -3759,7 +3821,9 @@ pub(crate) mod columns {
                             source.len(),
                             exposure,
                             |row| source.is_valid(row),
-                            |row| offset_size(source.value_offsets()[row], source.value_sizes()[row]),
+                            |row| {
+                                offset_size(source.value_offsets()[row], source.value_sizes()[row])
+                            },
                             budget,
                         )?;
                         let values = child.cast_exposed(
@@ -3768,7 +3832,9 @@ pub(crate) mod columns {
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
-                        if self.source_type == self.expected && Arc::ptr_eq(&values, source.values()) {
+                        if self.source_type == self.expected
+                            && Arc::ptr_eq(&values, source.values())
+                        {
                             return Ok(array);
                         }
                         Arc::new(LargeListViewArray::try_new(
@@ -3795,7 +3861,9 @@ pub(crate) mod columns {
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
-                        if self.source_type == self.expected && Arc::ptr_eq(&values, source.values()) {
+                        if self.source_type == self.expected
+                            && Arc::ptr_eq(&values, source.values())
+                        {
                             return Ok(array);
                         }
                         Arc::new(FixedSizeListArray::try_new_with_length(
@@ -3823,7 +3891,8 @@ pub(crate) mod columns {
                 let source = downcast::<MapArray>(&array)?;
                 validate_map_invariants(source_map, source, exposure, budget)?;
                 if self.source_type == self.expected
-                    && !(0..source.len()).any(|row| is_exposed(exposure, row) && source.is_valid(row))
+                    && !(0..source.len())
+                        .any(|row| is_exposed(exposure, row) && source.is_valid(row))
                 {
                     return Ok(array);
                 }
@@ -3839,9 +3908,13 @@ pub(crate) mod columns {
                     budget,
                 )?;
                 let source_entries = Arc::new(source.entries().clone()) as ArrayRef;
-                let entries =
-                    entries.cast_exposed(Arc::clone(&source_entries), entry_exposure.as_ref(), budget)?;
-                let unchanged = self.source_type == self.expected && Arc::ptr_eq(&entries, &source_entries);
+                let entries = entries.cast_exposed(
+                    Arc::clone(&source_entries),
+                    entry_exposure.as_ref(),
+                    budget,
+                )?;
+                let unchanged =
+                    self.source_type == self.expected && Arc::ptr_eq(&entries, &source_entries);
                 let output = if unchanged {
                     array
                 } else {
@@ -3903,7 +3976,8 @@ pub(crate) mod columns {
                 budget.add_bitmap(1)?;
             }
             if contains_dictionary(field.dtype()) {
-                budget.add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
+                budget
+                    .add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
             } else {
                 budget.add_repeated_default(field.dtype(), default_count)?;
             }
@@ -3962,7 +4036,8 @@ pub(crate) mod columns {
             // the operation-wide aggregate for following columns.
             budget.restore(phase);
             if contains_dictionary(field.dtype()) {
-                budget.add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
+                budget
+                    .add_repeated_default_without_dictionary_values(field.dtype(), default_count)?;
             } else {
                 budget.add_repeated_default(field.dtype(), default_count)?;
             }
@@ -3973,7 +4048,12 @@ pub(crate) mod columns {
                 budget,
             )?;
             if contains_dictionary(field.dtype()) {
-                reserve_new_dictionary_vocabularies(&output, &source_for_retention, field.dtype(), budget)?;
+                reserve_new_dictionary_vocabularies(
+                    &output,
+                    &source_for_retention,
+                    field.dtype(),
+                    budget,
+                )?;
             }
             Ok(output)
         }
@@ -4044,7 +4124,8 @@ pub(crate) mod columns {
             // dictionary vocabularies are not part of the logical output and may be
             // arbitrarily wider than the key capacity or materialization budget.
             let values = source.values();
-            let mut used = scratch_vec::<usize>(budget, source.len(), "dictionary live-value indices")?;
+            let mut used =
+                scratch_vec::<usize>(budget, source.len(), "dictionary live-value indices")?;
             for index in 0..source.len() {
                 if is_exposed(exposure, index) && logical.is_null(index) {
                     continue;
@@ -4175,7 +4256,8 @@ pub(crate) mod columns {
                         .binary_search_by_key(&old, |(candidate, _)| *candidate)
                         .map_err(|_| {
                             Error::IncompatibleSchema(
-                                "dictionary live key was not present in its compact mapping".to_owned(),
+                                "dictionary live key was not present in its compact mapping"
+                                    .to_owned(),
                             )
                         })?;
                     let key = K::Native::try_from(mappings[position].1).map_err(|_| {
@@ -4227,7 +4309,10 @@ pub(crate) mod columns {
             Ok(output)
         }
 
-        pub(crate) fn array_children_unchanged(array: &ArrayRef, children: &[ArrayRef]) -> Result<bool> {
+        pub(crate) fn array_children_unchanged(
+            array: &ArrayRef,
+            children: &[ArrayRef],
+        ) -> Result<bool> {
             let unchanged = match array.data_type() {
                 ArrowDataType::Struct(_) => {
                     let source = downcast::<StructArray>(array.as_ref())?;
@@ -4334,7 +4419,8 @@ pub(crate) mod columns {
             array: ArrayRef,
             budget: &mut MaterializationBudget,
         ) -> Result<ArrayRef> {
-            if field.is_nullable() || exposed_logical_null_count(array.as_ref(), field.dtype(), None)? == 0
+            if field.is_nullable()
+                || exposed_logical_null_count(array.as_ref(), field.dtype(), None)? == 0
             {
                 Ok(array)
             } else {
@@ -4395,7 +4481,8 @@ pub(crate) mod columns {
                         budget.add_array(&DataType::UInt32, len)?;
                     }
                     let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder = crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder =
+                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
                     repeat_scalar(&placeholder, len)?
                 }
                 (_, 0) => {
@@ -4407,14 +4494,24 @@ pub(crate) mod columns {
                 }
                 _ => {
                     let exposure = exposure.ok_or_else(|| {
-                        Error::IncompatibleSchema("mixed missing-field exposure requires a mask".to_owned())
+                        Error::IncompatibleSchema(
+                            "mixed missing-field exposure requires a mask".to_owned(),
+                        )
                     })?;
                     let default = field.default_arrow_array()?;
                     let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder = crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder =
+                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
                     let mask = BooleanArray::new(exposure.clone(), None);
                     let (default, placeholder) = if contains_dictionary(field.dtype()) {
-                        align_nested_dictionaries(field, &default, &placeholder, None, None, budget)?
+                        align_nested_dictionaries(
+                            field,
+                            &default,
+                            &placeholder,
+                            None,
+                            None,
+                            budget,
+                        )?
                     } else {
                         (default, placeholder)
                     };
@@ -4473,7 +4570,8 @@ pub(crate) mod columns {
                 Error::IncompatibleSchema("dictionary key cannot represent zero".to_owned())
             })?;
             let values = dictionary.value().default_arrow_array()?;
-            let mut keys = arrow_array::builder::PrimitiveBuilder::<K>::with_capacity(exposure.len());
+            let mut keys =
+                arrow_array::builder::PrimitiveBuilder::<K>::with_capacity(exposure.len());
             for index in 0..exposure.len() {
                 if exposure.value(index) {
                     keys.append_value(zero);
@@ -4481,7 +4579,8 @@ pub(crate) mod columns {
                     keys.append_null();
                 }
             }
-            let output = Arc::new(DictionaryArray::<K>::try_new(keys.finish(), values)?) as ArrayRef;
+            let output =
+                Arc::new(DictionaryArray::<K>::try_new(keys.finish(), values)?) as ArrayRef;
             budget.restore(phase);
             budget.add_array_layout(field.dtype(), exposure.len())?;
             budget.add_repeated_default(dictionary.value(), 1)?;
@@ -4701,7 +4800,9 @@ pub(crate) mod columns {
             | DataType::Sequence(SequenceType::ListView(child))
             | DataType::Sequence(SequenceType::FixedSizeList(child, _))
             | DataType::Sequence(SequenceType::LargeList(child))
-            | DataType::Sequence(SequenceType::LargeListView(child)) => requires_yggdryl_key_comparator(child.dtype()),
+            | DataType::Sequence(SequenceType::LargeListView(child)) => {
+                requires_yggdryl_key_comparator(child.dtype())
+            }
             DataType::Structure(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
@@ -4713,7 +4814,10 @@ pub(crate) mod columns {
     pub(crate) fn has_derived_logical_nulls(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::Null | DataType::Enum(EnumType::Dictionary(_)) | DataType::Union(..) | DataType::RunEndEncoded(_)
+            DataType::Null
+                | DataType::Enum(EnumType::Dictionary(_))
+                | DataType::Union(..)
+                | DataType::RunEndEncoded(_)
         )
     }
 
@@ -4885,7 +4989,8 @@ pub(crate) mod columns {
                     make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
                 Box::new(move |left, right| {
                     let left = left_offsets[left].as_usize()..left_offsets[left + 1].as_usize();
-                    let right = right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
+                    let right =
+                        right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
                     for (left, right) in left.clone().zip(right.clone()) {
                         let ordering = child_compare(left, right);
                         if ordering != Ordering::Equal {
@@ -4906,7 +5011,8 @@ pub(crate) mod columns {
                     make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
                 Box::new(move |left, right| {
                     let left = left_offsets[left].as_usize()..left_offsets[left + 1].as_usize();
-                    let right = right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
+                    let right =
+                        right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
                     for (left, right) in left.clone().zip(right.clone()) {
                         let ordering = child_compare(left, right);
                         if ordering != Ordering::Equal {
@@ -4967,8 +5073,10 @@ pub(crate) mod columns {
                 })
             }
             DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
-                let left_values = Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
-                let right_values = Arc::clone(downcast::<FixedSizeListArray>(right.as_ref())?.values());
+                let left_values =
+                    Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
+                let right_values =
+                    Arc::clone(downcast::<FixedSizeListArray>(right.as_ref())?.values());
                 let child_compare =
                     make_yggdryl_comparator(child.dtype(), &left_values, &right_values, budget)?;
                 let size = usize::try_from(*size).map_err(|_| {
@@ -5020,7 +5128,8 @@ pub(crate) mod columns {
                 )?;
                 Box::new(move |left, right| {
                     let left = left_offsets[left].as_usize()..left_offsets[left + 1].as_usize();
-                    let right = right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
+                    let right =
+                        right_offsets[right].as_usize()..right_offsets[right + 1].as_usize();
                     for (left, right) in left.clone().zip(right.clone()) {
                         let ordering = entry_compare(left, right);
                         if ordering != Ordering::Equal {
@@ -5096,9 +5205,15 @@ pub(crate) mod columns {
             }
             DataType::RunEndEncoded(encoded) => {
                 return match encoded.run_ends().dtype() {
-                    DataType::Int16 => run_key_comparator::<Int16Type>(left, right, encoded, budget),
-                    DataType::Int32 => run_key_comparator::<Int32Type>(left, right, encoded, budget),
-                    DataType::Int64 => run_key_comparator::<Int64Type>(left, right, encoded, budget),
+                    DataType::Int16 => {
+                        run_key_comparator::<Int16Type>(left, right, encoded, budget)
+                    }
+                    DataType::Int32 => {
+                        run_key_comparator::<Int32Type>(left, right, encoded, budget)
+                    }
+                    DataType::Int64 => {
+                        run_key_comparator::<Int64Type>(left, right, encoded, budget)
+                    }
                     _ => Err(Error::IncompatibleSchema(
                         "map key run-end type is invalid".to_owned(),
                     )),
@@ -5154,8 +5269,11 @@ pub(crate) mod columns {
                     },
                     budget,
                 )?;
-                let values =
-                    values.cast_exposed(Arc::clone(source_values), value_exposure.as_ref(), budget)?;
+                let values = values.cast_exposed(
+                    Arc::clone(source_values),
+                    value_exposure.as_ref(),
+                    budget,
+                )?;
                 if array.data_type() == expected && Arc::ptr_eq(&values, source_values) {
                     return Ok(array);
                 }
@@ -5223,7 +5341,8 @@ pub(crate) mod columns {
                 |row| (source.type_id(row) == *type_id).then(|| source.value_offset(row)),
                 budget,
             )?;
-            let child = plan.cast_exposed(Arc::clone(source_child), child_exposure.as_ref(), budget)?;
+            let child =
+                plan.cast_exposed(Arc::clone(source_child), child_exposure.as_ref(), budget)?;
             unchanged &= Arc::ptr_eq(&child, source_child);
             children.push(child);
         }
@@ -5306,8 +5425,11 @@ pub(crate) mod columns {
                 let source = downcast::<$array>(&array)?;
                 let source_values = source.values();
                 let value_exposure = run_value_exposure(source, exposure, budget)?;
-                let values =
-                    values.cast_exposed(Arc::clone(source_values), value_exposure.as_ref(), budget)?;
+                let values = values.cast_exposed(
+                    Arc::clone(source_values),
+                    value_exposure.as_ref(),
+                    budget,
+                )?;
                 if array.data_type() == expected && Arc::ptr_eq(&values, source_values) {
                     return Ok(array);
                 }
@@ -5351,7 +5473,9 @@ pub(crate) mod columns {
             | DataType::Sequence(SequenceType::ListView(field))
             | DataType::Sequence(SequenceType::FixedSizeList(field, _))
             | DataType::Sequence(SequenceType::LargeList(field))
-            | DataType::Sequence(SequenceType::LargeListView(field)) => contains_struct(field.dtype()),
+            | DataType::Sequence(SequenceType::LargeListView(field)) => {
+                contains_struct(field.dtype())
+            }
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
@@ -5417,7 +5541,11 @@ pub(crate) mod columns {
         )
     }
 
-    pub(crate) fn logical_null_at(array: &dyn Array, dtype: &DataType, index: usize) -> Result<bool> {
+    pub(crate) fn logical_null_at(
+        array: &dyn Array,
+        dtype: &DataType,
+        index: usize,
+    ) -> Result<bool> {
         if index >= array.len() {
             return Err(Error::IncompatibleSchema(
                 "logical-null index exceeds its Arrow array".to_owned(),
@@ -5427,13 +5555,27 @@ pub(crate) mod columns {
             DataType::Null => Ok(true),
             DataType::Enum(EnumType::Dictionary(dictionary)) => match dictionary.key() {
                 DataType::Int8 => dictionary_logical_null_at::<Int8Type>(array, dictionary, index),
-                DataType::Int16 => dictionary_logical_null_at::<Int16Type>(array, dictionary, index),
-                DataType::Int32 => dictionary_logical_null_at::<Int32Type>(array, dictionary, index),
-                DataType::Int64 => dictionary_logical_null_at::<Int64Type>(array, dictionary, index),
-                DataType::UInt8 => dictionary_logical_null_at::<UInt8Type>(array, dictionary, index),
-                DataType::UInt16 => dictionary_logical_null_at::<UInt16Type>(array, dictionary, index),
-                DataType::UInt32 => dictionary_logical_null_at::<UInt32Type>(array, dictionary, index),
-                DataType::UInt64 => dictionary_logical_null_at::<UInt64Type>(array, dictionary, index),
+                DataType::Int16 => {
+                    dictionary_logical_null_at::<Int16Type>(array, dictionary, index)
+                }
+                DataType::Int32 => {
+                    dictionary_logical_null_at::<Int32Type>(array, dictionary, index)
+                }
+                DataType::Int64 => {
+                    dictionary_logical_null_at::<Int64Type>(array, dictionary, index)
+                }
+                DataType::UInt8 => {
+                    dictionary_logical_null_at::<UInt8Type>(array, dictionary, index)
+                }
+                DataType::UInt16 => {
+                    dictionary_logical_null_at::<UInt16Type>(array, dictionary, index)
+                }
+                DataType::UInt32 => {
+                    dictionary_logical_null_at::<UInt32Type>(array, dictionary, index)
+                }
+                DataType::UInt64 => {
+                    dictionary_logical_null_at::<UInt64Type>(array, dictionary, index)
+                }
                 key => Err(Error::Unsupported {
                     kind: key.name(),
                     reason: format!(

@@ -36,9 +36,9 @@ use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
+use crate::types::sequence::SequenceType;
 use crate::types::{Side, State};
 use crate::{DataType, Error, Field, Result, Scalar, Version};
-use crate::types::sequence::SequenceType;
 
 /// What a key resolved to, before any field is built.
 enum Located<'key> {
@@ -1928,7 +1928,8 @@ impl Slot {
             // An unlabeled value cannot type as a component. Preserve its
             // raw entry and occurrence position; the typed occurrence is null.
             let mut item = match self.field.dtype() {
-                DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
+                DataType::Sequence(SequenceType::List(item))
+                | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
                 _ => DataType::from_fields([])?.required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);

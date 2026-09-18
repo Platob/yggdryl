@@ -1,6 +1,6 @@
 [
   {
-    "name": "unix",
+    "name": "currunix",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -9,7 +9,7 @@
     "nullable": false,
     "metadata": {
       "description": "When the message happened: the settled instant, UTC.",
-      "display": "Unix",
+      "display": "CurrUnix",
       "fix:tag": "65003",
       "fix:transient": "false"
     }
@@ -39,54 +39,14 @@
     }
   },
   {
-    "name": "isincode",
-    "dtype": {
-      "type": "isin"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN.",
-      "display": "ISINCode",
-      "fix:derivation": "coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin))",
-      "fix:tag": "65013"
-    }
-  },
-  {
-    "name": "miccode",
-    "dtype": {
-      "type": "mic"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt.",
-      "display": "MICCode",
-      "fix:derivation": "coalesce(securityexchange, exdestination, lastmkt)",
-      "fix:tag": "65014"
-    }
-  },
-  {
-    "name": "state",
-    "dtype": {
-      "type": "state"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary.",
-      "display": "State",
-      "fix:derivation": "coalesce(ordstatus, exectype)",
-      "fix:tag": "65015",
-      "fix:transient": "false"
-    }
-  },
-  {
-    "name": "hashcode",
+    "name": "currhashcode",
     "dtype": {
       "type": "uint64"
     },
     "nullable": false,
     "metadata": {
       "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-      "display": "HashCode",
+      "display": "CurrHashCode",
       "fix:tag": "65017",
       "fix:transient": "false"
     }
@@ -197,55 +157,13 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The instant the capture recorded this line: the line's own text timestamp, else SendingTime.",
+      "description": "The instant the capture recorded this line, as whoever read the line states it; null where nobody did.",
       "display": "RecordedAt",
-      "fix:derivation": "sendingtime",
       "fix:names": [
         "mtime"
       ],
       "fix:tag": "65028",
       "fix:transient": "false"
-    }
-  },
-  {
-    "name": "expirunix",
-    "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, else ExpireDate, else the instrument's MaturityDate.",
-      "display": "ExpirUnix",
-      "fix:derivation": "coalesce(expiretime, validuntiltime, expiredate, maturitydate)",
-      "fix:tag": "65029"
-    }
-  },
-  {
-    "name": "bidcurrency",
-    "dtype": {
-      "type": "currency"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The currency the bid lane is quoted in: the message's own Currency, else SettlCurrency.",
-      "display": "BidCurrency",
-      "fix:derivation": "coalesce(currency, settlcurrency)",
-      "fix:tag": "65030"
-    }
-  },
-  {
-    "name": "askcurrency",
-    "dtype": {
-      "type": "currency"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The currency the ask lane is quoted in: the message's own Currency, else SettlCurrency.",
-      "display": "AskCurrency",
-      "fix:derivation": "coalesce(currency, settlcurrency)",
-      "fix:tag": "65031"
     }
   },
   {
@@ -258,45 +176,6 @@
       "description": "The session instance a bridge handled a line on, as its own row header brackets it - never what the message states about itself.",
       "display": "MsgSessionId",
       "fix:tag": "65032"
-    }
-  },
-  {
-    "name": "bloombergcode",
-    "dtype": {
-      "type": "bloomberg"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The instrument's Bloomberg identifier: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg.",
-      "display": "BloombergCode",
-      "fix:derivation": "coalesce(case when securityidsource = 'A' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'A'][0].securityaltid as bloomberg), case when securityidsource = 'S' then try_cast(securityid as bloomberg) end, try_cast(secaltidgrp[securityaltidsource = 'S'][0].securityaltid as bloomberg))",
-      "fix:tag": "65033"
-    }
-  },
-  {
-    "name": "cusipcode",
-    "dtype": {
-      "type": "cusip"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The instrument's CUSIP: the message's own, else a SecurityID or SecurityAltID whose source is CUSIP.",
-      "display": "CUSIPCode",
-      "fix:derivation": "coalesce(case when securityidsource = '1' then try_cast(securityid as cusip) end, try_cast(secaltidgrp[securityaltidsource = '1'][0].securityaltid as cusip))",
-      "fix:tag": "65034"
-    }
-  },
-  {
-    "name": "sedolcode",
-    "dtype": {
-      "type": "sedol"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The instrument's SEDOL: the message's own, else a SecurityID or SecurityAltID whose source is SEDOL.",
-      "display": "SEDOLCode",
-      "fix:derivation": "coalesce(case when securityidsource = '2' then try_cast(securityid as sedol) end, try_cast(secaltidgrp[securityaltidsource = '2'][0].securityaltid as sedol))",
-      "fix:tag": "65035"
     }
   },
   {
@@ -360,71 +239,6 @@
     }
   },
   {
-    "name": "px",
-    "dtype": {
-      "type": "decimal128",
-      "precision": 38,
-      "scale": 18
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The price the message is about: Price, else LastPx, else AvgPx, else the price its own side's lane quotes.",
-      "display": "Px",
-      "fix:tag": "65043"
-    }
-  },
-  {
-    "name": "qty",
-    "dtype": {
-      "type": "decimal128",
-      "precision": 38,
-      "scale": 18
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The quantity the message is about: OrderQty, else LastQty, else CumQty, else LeavesQty, else the size its own side's lane quotes.",
-      "display": "Qty",
-      "fix:tag": "65044"
-    }
-  },
-  {
-    "name": "unit",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The unit the quantity is counted in: UnitOfMeasure.",
-      "display": "Unit",
-      "fix:derivation": "unitofmeasure",
-      "fix:tag": "65045"
-    }
-  },
-  {
-    "name": "bidunit",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The unit the bid lane's size is counted in, where the lane states it.",
-      "display": "BidUnit",
-      "fix:tag": "65046"
-    }
-  },
-  {
-    "name": "askunit",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The unit the ask lane's size is counted in, where the lane states it.",
-      "display": "AskUnit",
-      "fix:tag": "65047"
-    }
-  },
-  {
     "name": "crosscode",
     "dtype": {
       "type": "string"
@@ -435,61 +249,6 @@
       "display": "CrossCode",
       "fix:tag": "65048",
       "fix:transient": "false"
-    }
-  },
-  {
-    "name": "prevpx",
-    "dtype": {
-      "type": "decimal128",
-      "precision": 38,
-      "scale": 18
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The price stated before this message: PrevClosePx where the message states one, else the price its predecessor in the chain stated.",
-      "display": "PrevPx",
-      "fix:derivation": "prevclosepx",
-      "fix:tag": "65051"
-    }
-  },
-  {
-    "name": "prevqty",
-    "dtype": {
-      "type": "decimal128",
-      "precision": 38,
-      "scale": 18
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The quantity the message's predecessor in the chain stated.",
-      "display": "PrevQty",
-      "fix:tag": "65052"
-    }
-  },
-  {
-    "name": "tradable",
-    "dtype": {
-      "type": "boolean"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "Whether the instrument could be traded when the message was sent: SecurityTradingStatus, else TradSesStatus, else SecurityStatus; null where none of them says.",
-      "display": "Tradable",
-      "fix:derivation": "coalesce(case when securitytradingstatus in (3, 17) then true when securitytradingstatus in (1, 2, 4, 18, 19, 21) then false end, case when tradsesstatus in (2) then true when tradsesstatus in (1, 3, 4, 5, 7) then false end, case when securitystatus in ('1', '3') then true when securitystatus in ('2', '4', '5', '6', '9', '11') then false end)",
-      "fix:tag": "65053"
-    }
-  },
-  {
-    "name": "symbolticker",
-    "dtype": {
-      "type": "string"
-    },
-    "nullable": true,
-    "metadata": {
-      "description": "The ticker the instrument is known by: what Symbol settles on, null where the message names none.",
-      "display": "SymbolTicker",
-      "fix:derivation": "case when symbol <> '[N/A]' and symbol <> '[N/A' then symbol end",
-      "fix:tag": "65054"
     }
   }
 ]

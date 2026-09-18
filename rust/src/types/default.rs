@@ -8,9 +8,9 @@ use crate::types::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 
 const MAX_DEFAULT_NODES: usize = 1_000_000;
 const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
@@ -350,9 +350,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),
-        D::Sequence(SequenceType::List(_)) | D::Sequence(SequenceType::ListView(_)) | D::Sequence(SequenceType::LargeList(_)) | D::Sequence(SequenceType::LargeListView(_)) => {
-            scalar(DefaultPlan::EmptySequence, false)
-        }
+        D::Sequence(SequenceType::List(_))
+        | D::Sequence(SequenceType::ListView(_))
+        | D::Sequence(SequenceType::LargeList(_))
+        | D::Sequence(SequenceType::LargeListView(_)) => scalar(DefaultPlan::EmptySequence, false),
         D::Sequence(SequenceType::FixedSizeList(field, length)) => {
             let length = usize::try_from(*length)
                 .map_err(|_| fatal_error(path, "fixed-size-list length is negative"))?;
@@ -411,9 +412,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             path.pop();
             value
         }
-        D::Decimal(DecimalType::Decimal32 { .. }) | D::Decimal(DecimalType::Decimal64 { .. }) | D::Decimal(DecimalType::Decimal128 { .. }) => {
-            scalar(DefaultPlan::Decimal, false)
-        }
+        D::Decimal(DecimalType::Decimal32 { .. })
+        | D::Decimal(DecimalType::Decimal64 { .. })
+        | D::Decimal(DecimalType::Decimal128 { .. }) => scalar(DefaultPlan::Decimal, false),
         D::Decimal(DecimalType::Decimal256 { .. }) => scalar(DefaultPlan::Decimal256, false),
         // The variant's present zero value is the variant null: a variant can
         // hold null as a first-class value, so `Scalar::Null` here is a value,
@@ -803,7 +804,9 @@ pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool 
         DataType::RunEndEncoded(encoded) => {
             value_is_logically_null(encoded.values().dtype(), value)
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => value_is_logically_null(dictionary.value(), value),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            value_is_logically_null(dictionary.value(), value)
+        }
         _ => false,
     }
 }

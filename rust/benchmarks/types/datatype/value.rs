@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Vocabulary,
-    Timezone, i256,
+    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Timezone,
+    Vocabulary, i256,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {

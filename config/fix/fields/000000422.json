@@ -400,7 +400,9 @@
   {
     "name": "dividendfloatingratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -1509,7 +1511,9 @@
   {
     "name": "dividendperiodstrikeprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

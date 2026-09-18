@@ -1,5 +1,5 @@
-use yggdryl::{DataType, Error};
 use yggdryl::types::DecimalType;
+use yggdryl::{DataType, Error};
 
 #[test]
 fn decimal_selects_the_smallest_arrow_representation() {

@@ -96,16 +96,16 @@ fn unresolved_arrivals_keep_their_keys_order_and_dynamic_columns() {
     let codec = super::fixed_codec(super::committed_registry());
     let wire = b"35=D|999999=one|0999999=two|OwnThing=three|0=zero|2147483648=wide|55=SYNTH|10=0|";
     let message = codec.sole_line(wire).unwrap();
-    // The type is the header's, never an entry, and so is the `TimeInForce`
-    // the dictionary derives for an order: the entries are the content row
-    // alone.
+    // The type and the checksum are the frame's, never entries: the entries
+    // are the content row alone, the day order the dictionary derives for
+    // an order among them.
     assert_eq!(
         message
             .entries()
             .iter()
             .map(FixEntry::tag)
             .collect::<Vec<_>>(),
-        [0, 0, 0, 0, 0, 55, 10]
+        [0, 0, 0, 0, 0, 55, 59]
     );
     // An unresolved key is an entry under its own spelling, folded as every
     // name is, and a child of the row under it.
@@ -133,7 +133,7 @@ fn unresolved_arrivals_keep_their_keys_order_and_dynamic_columns() {
     );
     assert_eq!(
         message.into_bytes(b'|'),
-        b"8=FIX.4.4|35=D|59=0|999999=one|0999999=two|ownthing=three|0=zero|2147483648=wide|55=SYNTH|10=0|"
+        b"8=FIX.4.4|35=D|999999=one|0999999=two|ownthing=three|0=zero|2147483648=wide|55=SYNTH|59=0|10=0|"
     );
     let entry = FixEntry::new(0, "999999", Some("one".into()));
     assert_eq!(entry, message.entries()[0]);
@@ -336,5 +336,5 @@ fn a_header_tag_is_the_headers_fact_and_stays_out_of_the_content_code() {
     assert_eq!(read("8").header().msgseqnum(), Some(8));
     assert!(!read("7").entries().iter().any(|entry| entry.tag() == 34));
     assert_eq!(read("7").into_bytes(b'|'), b"8=FIX.4.4|34=7|11=A|");
-    assert_ne!(read("7").get_hashcode(), read("8").get_hashcode());
+    assert_ne!(read("7").get_currhashcode(), read("8").get_currhashcode());
 }

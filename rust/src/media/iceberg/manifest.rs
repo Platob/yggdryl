@@ -3302,7 +3302,9 @@ mod official_read_tests {
         let token = 0x0db3_e2a8_9d1d_42b9_aa7b_74eb_e558_dcebu128
             .to_be_bytes()
             .to_vec();
-        let expected = DataType::uuid().scalar(Scalar::from(token.clone())).unwrap();
+        let expected = DataType::uuid()
+            .scalar(Scalar::from(token.clone()))
+            .unwrap();
         let input = ManifestEntry::added(
             41,
             DataFile {

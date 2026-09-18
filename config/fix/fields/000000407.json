@@ -274,7 +274,9 @@
   {
     "name": "underlyingpaymentstubfixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -402,7 +404,9 @@
   {
     "name": "underlyingpaymentstubindexratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -686,7 +690,9 @@
   {
     "name": "underlyingpaymentstubindex2ratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2358,7 +2364,9 @@
   {
     "name": "paymentstreamfixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2382,7 +2390,9 @@
   {
     "name": "paymentstreamfuturevaluenotional",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2511,7 +2521,9 @@
   {
     "name": "paymentstreamratespread",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

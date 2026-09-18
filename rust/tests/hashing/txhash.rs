@@ -635,10 +635,7 @@ fn a_value_projects_to_a_datetime_and_a_fixed_byte_scalar() {
     );
     let scalar = value.into_scalar();
     assert_eq!(scalar.as_bytes(), Some(&*value.into_bytes()));
-    assert_eq!(
-        scalar.dtype().unwrap(),
-        DataType::fixed_binary(16).unwrap()
-    );
+    assert_eq!(scalar.dtype().unwrap(), DataType::fixed_binary(16).unwrap());
     assert_eq!(
         TxHash::from_scalar(DEFAULT_UNIT, DigestAlgorithm::Xxh3, &scalar).unwrap(),
         value

@@ -38,7 +38,7 @@ use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text_line::{PyTextLine, core_path_from_value};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
-use crate::uri::{PyUrl, core_url_from_value};
+use crate::uri::core_url_from_value;
 use crate::value_error;
 
 /// Read one dictionary file through whatever Python named it with.
@@ -1215,12 +1215,6 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
 /// documents it needs - the schema, the value, and the dictionary's fields.
 type MsgPickle = (Py<PyAny>, (String, String, String));
 
-/// The tags a message holds typed beside the crate's own: the standard
-/// header, the event's own FIX tags, and `Text(58)`.
-const TYPED_TAGS: [i32; 16] = [
-    8, 35, 49, 56, 34, 52, 43, 385, 15, 54, 461, 132, 133, 134, 135, 58,
-];
-
 /// A FIX message: a typed market event with a content row, against the
 /// registry that types it.
 ///
@@ -1284,7 +1278,10 @@ impl PyFixMsg {
         let registry = self.inner.registry();
         let mut fields = Vec::new();
         let mut values = Vec::new();
-        let tags = TYPED_TAGS
+        // The core publishes what a message holds typed, so this walk never
+        // keeps a list of its own: a tag lifted or retired there would
+        // otherwise drop out of a pickle without a word.
+        let tags = yggdryl::FIX_TYPED_TAGS
             .into_iter()
             .chain(yggdryl::CRATE_TAG_MIN..yggdryl::CRATE_TAG_MAX);
         for tag in tags {
@@ -1318,11 +1315,11 @@ impl PyFixMsg {
     /// `value` is anything the `Scalar` boundary reads - a native `Scalar`, a
     /// mapping of names, a sequence in the root's own order - and is
     /// validated and canonicalized against `field` by the core. A child
-    /// stating a typed fact - a header tag, a crate column, one of the
-    /// event's own tags, `Text(58)` - fills the holder that owns it and
-    /// leaves the row. The clocks settle: `SendingTime` is the stated one,
+    /// stating a typed fact - a header or trailer tag, a crate column, one
+    /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
+    /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `unix` is the stated one, else `TransactTime`, else
+    /// one; the instant `currunix` is the stated one, else `TransactTime`, else
     /// `SendingTime`; the creation is the stated one, else
     /// `OrigSendingTime`, else the instant. The identity is then derived:
     /// the cross code from the first stated of `OrderID`, `ClOrdID`,
@@ -1351,7 +1348,11 @@ impl PyFixMsg {
     /// columns fill the holders, the content is rebuilt from the
     /// `fixentries` column - so `into_bytes` re-emits the line the row was
     /// read from, and a row without that column has no content - and a
-    /// column no tag names, a capture's own, stays a child of that name.
+    /// capture's own column is read past - the two the crate tags,
+    /// `sourceurl` and `recordedat`, and every column no tag and no counter
+    /// names - so nothing on the message holds one; a column whose name
+    /// holds a `.` is a bridge's own statement and lands in the metadata.
+    /// They stay the row's, and whoever writes rows back restates them.
     /// Nothing is parsed again and no clock is read: a row carries the
     /// instant, the creation and the identities its message settled, and a
     /// row that does not fit the schema is a located `ValueError`.
@@ -1421,11 +1422,11 @@ impl PyFixMsg {
 
     /// The value a tag names, or `None`.
     ///
-    /// A tag the typed holders own - a header tag, a crate column, one of
-    /// the event's own tags, `Text(58)` - answers the fact the holder
-    /// states, typed as its column is: `by_tag(35)` is the type as text,
-    /// `by_tag(52)` the sending clock as a nanosecond UTC `datetime64`,
-    /// `by_tag(54)` the side as its explicit value, a crate identity a
+    /// A tag the typed holders own - a header or trailer tag, a crate
+    /// column, one of the FIX fields a message lifts, `Text(58)` - answers
+    /// the fact the holder states, typed as its column is: `by_tag(35)` is
+    /// the type as text, `by_tag(52)` the sending clock as a nanosecond UTC
+    /// `datetime64`, `by_tag(44)` an exact price, a crate identity a
     /// `uuid`. Any other tag reaches the row: the canonical holder of the
     /// tag answers first, then the child named as the dictionary names the
     /// tag, then the child named by the tag's decimal spelling.
@@ -1504,9 +1505,13 @@ impl PyFixMsg {
     /// resolves to.
     ///
     /// `key` is a tag or a name, resolved as a lookup resolves one through
-    /// the dictionary. A key reaching a typed fact - a header tag, a crate
-    /// column, one of the event's own tags - records it on the holder that
-    /// owns it, and `None` clears it. Any other key lands in the row: a
+    /// the dictionary. A key reaching a typed fact - a header or trailer
+    /// tag, a crate column, one of the FIX fields a message lifts - records
+    /// it on the holder that owns it, and `None` clears it. A key reaching one of the capture's
+    /// own columns - `sourceurl` (65026), `recordedat` (65028), by tag or by
+    /// name - is a located `ValueError`: a message holds no fact for one,
+    /// and a row child would put it on the wire. Any other key lands in
+    /// the row: a
     /// known field types the value through the core's value contract, `None`
     /// is stored as a stated null, an existing child is replaced where it
     /// stands and an absent one appended, a name the dictionary does not
@@ -1642,7 +1647,12 @@ impl PyFixMsg {
         }
     }
 
-    /// What the capture said about the line, typed and held still.
+    /// What the line said about the capture it was written for, typed and
+    /// held still: the plugin a bridge logged it under, the message context
+    /// and the session instance.
+    ///
+    /// Not where the line was read from and not when it was recorded: those
+    /// are the reader's statements, held nowhere on a message.
     fn capture(&self) -> PyFixCapture {
         PyFixCapture {
             inner: self.inner.capture().clone(),
@@ -1693,8 +1703,8 @@ impl PyFixMsg {
     /// The code the message's content digests to: the XXH3-64 of what the
     /// event states and the named FIX content behind it.
     #[getter]
-    fn hashcode(&self) -> u64 {
-        self.inner.get_hashcode()
+    fn currhashcode(&self) -> u64 {
+        self.inner.get_currhashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where the message names none.
@@ -1706,8 +1716,8 @@ impl PyFixMsg {
     /// When the message happened: nanoseconds since the Unix epoch, UTC -
     /// the stated instant, else `TransactTime`, else `SendingTime`.
     #[getter]
-    fn unix(&self) -> i64 {
-        self.inner.get_unix()
+    fn currunix(&self) -> i64 {
+        self.inner.get_currunix()
     }
 
     /// The state the order is in, as the `state` code it is.
@@ -1839,6 +1849,46 @@ impl PyFixMsg {
         self.inner.get_symbolticker()
     }
 
+    /// The instrument's ISIN, read off `SecurityID(48)` under its source or
+    /// the `SecurityAltID` group; `None` where no check digit closes one.
+    #[getter]
+    fn isincode(&self) -> Option<PyScalar> {
+        self.inner.get_isincode().map(code_scalar)
+    }
+
+    /// The instrument's CUSIP, read the same way; `None` where none closes.
+    #[getter]
+    fn cusipcode(&self) -> Option<PyScalar> {
+        self.inner.get_cusipcode().map(code_scalar)
+    }
+
+    /// The instrument's SEDOL, read the same way; `None` where none closes.
+    #[getter]
+    fn sedolcode(&self) -> Option<PyScalar> {
+        self.inner.get_sedolcode().map(code_scalar)
+    }
+
+    /// The instrument's Bloomberg identifier, read the same way; `None`
+    /// where the message names none.
+    #[getter]
+    fn bloombergcode(&self) -> Option<PyScalar> {
+        self.inner.get_bloombergcode().map(code_scalar)
+    }
+
+    /// The instrument's classification, read off `CFICode(461)` and what
+    /// the message says about the security; `None` where nothing does.
+    #[getter]
+    fn cficode(&self) -> Option<PyScalar> {
+        self.inner.get_cficode().map(code_scalar)
+    }
+
+    /// The market, read off `SecurityExchange(207)`, `ExDestination(100)`
+    /// or `LastMkt(30)`, the first that names an ISO 10383 MIC.
+    #[getter]
+    fn miccode(&self) -> Option<PyScalar> {
+        self.inner.get_miccode().map(code_scalar)
+    }
+
     /// What the message states, as a tree: `(tag, name, value, entries)`.
     ///
     /// One tuple per row child that states a value, in the row's order,
@@ -1865,9 +1915,10 @@ impl PyFixMsg {
     /// fact from its holder and the rest from the row, so a message that
     /// carried nothing at a column answers null there rather than shifting
     /// its neighbours, which is what makes two rows of one capture
-    /// comparable at all. A column no tag or group counter names is the
-    /// capture's: it takes the child of that name where the message has one
-    /// and is null otherwise. The `fixentries` list closes the row with the
+    /// comparable at all. The capture's own columns answer null - the two
+    /// the crate tags, `sourceurl` and `recordedat`, and every column no tag
+    /// and no counter names - because a message holds no fact for any of
+    /// them; the capture readers state them on the row instead. The `fixentries` list closes the row with the
     /// whole content, counted by `nofixentries`. A value a column will not
     /// hold is that column's null; a column that cannot be null keeps the
     /// refusal as a `ValueError`.
@@ -2210,10 +2261,18 @@ impl PyFixCodec {
     /// by position. The line's `timestamp` is capture context and stamps
     /// nothing: `SendingTime` is the message's own, else a `SendingTime`
     /// capture, else the codec's `default_sending_time`, else UTC now, and
-    /// the instant `unix` is `TransactTime`, else that `SendingTime`.
+    /// the instant `currunix` is `TransactTime`, else that `SendingTime`.
     ///
     /// A `pluginid` capture fills the crate's `pluginid` field and selects
     /// nothing: the dictionary is one namespace.
+    ///
+    /// Nothing else the line holds is communicated: not the object it names,
+    /// not its media type, not its place in that object, not the body as a
+    /// value - and a capture named for one of the capture's own columns
+    /// (`sourceurl`, `recordedat`, or the `mtime` that aliases it) fills
+    /// nothing either. The answer is the message the line's bytes parsed to
+    /// and no more; where a line came from is the reader's to state, on the
+    /// row, which is what `parse_text_arrow_reader` does.
     ///
     /// A `direction` capture is named so it cannot silently fill a field of
     /// that name, and is not otherwise read: only `parse_text_arrow_reader`
@@ -2254,6 +2313,14 @@ impl PyFixCodec {
     /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the raw bytes of the payload column
     /// against `batch_byte_size`.
+    ///
+    /// The capture's own columns fill nothing: the carried ones, and the two
+    /// the crate tags - a `sourceurl` column and a `recordedat` one - are
+    /// read off the source row and written straight into the row this
+    /// answers, because where a line was read from is this reader's
+    /// statement and never the message's. This is the one door that can
+    /// state them, and it is why they survive a parse without a message
+    /// holding one.
     fn parse_text_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -2267,11 +2334,17 @@ impl PyFixCodec {
     ///
     /// `lifecycle` over batches: each row is a message through
     /// `FixMsg.from_row`, the messages are walked as `lifecycle` walks
-    /// them, and each is written back through `FixMsg.into_row` under the
-    /// **same** schema, so a carried column returns to its place and the
-    /// arrival record is untouched. Nothing is parsed again, and batches
-    /// close on the raw bytes of each message's arrival record against
-    /// `batch_byte_size`.
+    /// them, and each is written back under the **same** schema, so a
+    /// carried column returns to its place and the arrival record is
+    /// untouched. Nothing is parsed again, and batches close on the raw
+    /// bytes of each message's arrival record against `batch_byte_size`.
+    ///
+    /// A carried column returns to its place because the door keeps it, not
+    /// because the message does: a message holds nothing about the reading
+    /// it arrived through, so each row's own cells travel beside the message
+    /// it made and are stated again where that message lands. The pairing is
+    /// by message and never by position - a walk answers messages in their
+    /// own order, which a capture's lines are routinely not in.
     fn lifecycle_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -2288,6 +2361,11 @@ impl PyFixCodec {
     /// `parse_text_arrow_reader` wrote comes back as the messages that made
     /// it without a parse. One half of what the Arrow twins compose;
     /// `arrow_reader` is the other.
+    ///
+    /// The capture's own columns are not carried: a message holds none of
+    /// them, so `arrow_reader(schema, messages(reader))` answers them null
+    /// where `lifecycle_arrow_reader(reader)` keeps them. A stage that has
+    /// to keep them runs as one pass instead.
     fn messages(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let source = batch_reader_from_value(source)?;
         Ok(PyFixMessages::over(self.inner.messages(source)))
@@ -2360,7 +2438,9 @@ impl PyFixCodec {
     /// The Arrow twin of `format_messages`, and the last stage of the
     /// pipeline a capture runs. The schema is answered before a row is read,
     /// from the source's carried columns and `field`, and the capture's own
-    /// columns still lead the row. A source carrying no arrival record is a
+    /// columns still lead the row - restated from the source batch, not
+    /// asked of the message, which holds none of them. A source carrying no
+    /// arrival record is a
     /// projection already and is cast batch by batch instead of read back as
     /// messages.
     fn format_arrow_reader<'py>(
@@ -2463,7 +2543,7 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// `nofixentries` that counts it. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`,
-/// and is what fills it. `beginstring`, `unix`, `creatunix`, `hashcode`,
+/// and is what fills it. `beginstring`, `currunix`, `creatunix`, `currhashcode`,
 /// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
 /// because every message settles them; a tag the dictionary does not hold
 /// is skipped rather than invented.
@@ -2486,7 +2566,14 @@ pub(crate) fn fix_schema(
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
-/// and the row fills it from what the capture stated.
+/// and the row fills it from what the capture stated - except the two the
+/// crate tags, `sourceurl` and `recordedat`, which no message holds and
+/// which whoever read the row states straight onto it.
+///
+/// A carried column is nullable whatever the capture declared it: a capture's
+/// own column is the *reading's* statement and no message holds one, so a
+/// pass that has no source row in hand writes null there rather than
+/// refusing per row. The one-pass readers state every one of them.
 #[pyfunction]
 #[pyo3(name = "fix_schema_carrying", signature = (carrier, read))]
 pub(crate) fn fix_schema_carrying(
@@ -2509,20 +2596,16 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `unix`, `creatunix`, `expirunix`, `prevunix`,
-/// `snapunix`, the `recordedat` a capture stamped - its identities -
-/// `hashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`,
-/// `parentuuids`, the `crosscode` they derive from - the facts a row
-/// derives from what the message said - the instrument's `isincode`,
-/// `cusipcode`, `sedolcode`, `bloombergcode`, its `miccode` and the order's
-/// `state`, its `px`, `qty` and `unit`, the two lanes' currencies and
-/// units, its `seqnum` - what a bridge's own log states about a line - the
-/// `pluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl` a line
-/// was read from, the `nofixentries` that counts its content, and the two
-/// Map groups `identifiers` and `metadata`. Every registry holds these
-/// definitions from construction beside the seeded `SendingTime` and
-/// `TransactTime`; a store writes them like every other and reads a stored
-/// copy past.
+/// The event's clocks - `currunix`, `creatunix`, `prevunix`, `snapunix`, the
+/// `recordedat` a capture stamped - its identities - `currhashcode`,
+/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the
+/// `crosscode` they derive from, its `seqnum` - what a bridge's own log
+/// states about a line - the `pluginid`, the `msgctxid`, the
+/// `msgsessionid` - the `sourceurl` a line was read from, the
+/// `nofixentries` that counts its content, and the two Map groups
+/// `identifiers` and `metadata`. Twenty in all, and every one a fact no
+/// dictionary publishes: what a message says about its *market* is FIX's
+/// own field, and the graph traits answer it off those.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -2691,6 +2774,26 @@ impl PyFixHeader {
         self.inner.msgdirection()
     }
 
+    /// `SignatureLength(93)`: how many bytes the signature runs to, or
+    /// `None` where the frame carried none.
+    #[getter]
+    fn signaturelength(&self) -> Option<i32> {
+        self.inner.signaturelength()
+    }
+
+    /// `Signature(89)`: the bytes the frame was signed with, or `None`.
+    #[getter]
+    fn signature(&self) -> Option<&[u8]> {
+        self.inner.signature()
+    }
+
+    /// `CheckSum(10)`: the frame's own checksum as the wire spelled it, or
+    /// `None`. Always the last pair of a frame, and the last the wire emits.
+    #[getter]
+    fn checksum(&self) -> Option<&str> {
+        self.inner.checksum()
+    }
+
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return py.NotImplemented();
@@ -2737,16 +2840,21 @@ impl PyFixHeader {
     }
 }
 
-/// What a capture states about the line a message was read from, typed
+/// What the line itself said about the capture it was written for, typed
 /// and held still.
 ///
-/// Facts about the capture and not about the message: where the line was
-/// read from, when the capture recorded it, and what a bridge's own row
-/// header says about the line it wrote - the plugin, the message context
-/// and the session instance. None of them is FIX and none is content, so
-/// nothing here reaches the code the message digests to. A copy at the
-/// moment it was asked for; immutable, so it compares and hashes by its
-/// facts.
+/// What a bridge's own row header states about the line it wrote - the
+/// plugin, the message context and the session instance - read off the
+/// line's own bytes like every other fact a message holds. None of it is
+/// FIX and none is content, so nothing here reaches the code the message
+/// digests to.
+///
+/// What the *reader* said about the line is not here and is held nowhere on
+/// a message: the object it was read from and the instant it was recorded
+/// are the capture's own columns, stated on the row by whoever read it.
+///
+/// A copy at the moment it was asked for; immutable, so it compares and
+/// hashes by its facts.
 #[pyclass(
     name = "FixCapture",
     module = "yggdryl._native",
@@ -2760,19 +2868,6 @@ pub(crate) struct PyFixCapture {
 
 #[pymethods]
 impl PyFixCapture {
-    /// The object the line was read from, where the capture named it.
-    #[getter]
-    fn sourceurl(&self) -> Option<PyUrl> {
-        self.inner.sourceurl().cloned().map(PyUrl::from_core)
-    }
-
-    /// When the capture recorded the line: nanoseconds since the Unix
-    /// epoch, UTC, or `None`.
-    #[getter]
-    fn recordedat(&self) -> Option<i64> {
-        self.inner.recordedat()
-    }
-
     /// The plugin that logged the line, as a bridge names it, or `None`.
     #[getter]
     fn pluginid(&self) -> Option<&str> {
@@ -2804,8 +2899,6 @@ impl PyFixCapture {
     fn __hash__(&self) -> isize {
         let mut state = std::hash::DefaultHasher::new();
         (
-            self.inner.sourceurl().map(ToString::to_string),
-            self.inner.recordedat(),
             self.inner.pluginid(),
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
@@ -2815,10 +2908,8 @@ impl PyFixCapture {
     }
 
     fn __repr__(&self) -> String {
-        let sourceurl = self.inner.sourceurl().map(ToString::to_string);
         format!(
-            "FixCapture({}, {}, {})",
-            repr_text(sourceurl.as_deref()),
+            "FixCapture({}, {})",
             repr_text(self.inner.pluginid()),
             repr_text(self.inner.msgsessionid())
         )
@@ -2879,8 +2970,8 @@ impl PyMarketEventData {
 
     /// The code the facts digest to.
     #[getter]
-    fn hashcode(&self) -> u64 {
-        self.inner.get_hashcode()
+    fn currhashcode(&self) -> u64 {
+        self.inner.get_currhashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where none is named.
@@ -2908,8 +2999,8 @@ impl PyMarketEventData {
 
     /// When the event happened: nanoseconds since the Unix epoch, UTC.
     #[getter]
-    fn unix(&self) -> i64 {
-        self.inner.get_unix()
+    fn currunix(&self) -> i64 {
+        self.inner.get_currunix()
     }
 
     /// The state the order is in, as the `state` code it is.
@@ -3090,14 +3181,14 @@ impl PyMarketEventData {
 
     /// Hashes by the code the facts digest to, which equal facts share.
     fn __hash__(&self) -> isize {
-        crate::python_hash(self.inner.get_hashcode())
+        crate::python_hash(self.inner.get_currhashcode())
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketEventData({}, unix={}, state={:?}, crosscode={:?})",
+            "MarketEventData({}, currunix={}, state={:?}, crosscode={:?})",
             self.inner.get_curruuid(),
-            self.inner.get_unix(),
+            self.inner.get_currunix(),
             self.inner.get_state().as_str(),
             self.inner.get_crosscode()
         )

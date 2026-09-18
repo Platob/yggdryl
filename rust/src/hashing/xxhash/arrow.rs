@@ -51,10 +51,10 @@ use super::scalar::{
     write_signed, write_string, write_temporal, write_unsigned,
 };
 use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
-use crate::types::FieldValue as _;
 use crate::types::DecimalType;
+use crate::types::FieldValue as _;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -1096,9 +1096,7 @@ fn feed_cell(
         DataType::Bytes(parameters) => write_binary(
             digester,
             match parameters {
-                BytesType::FixedBinary(_) => {
-                    downcast::<FixedSizeBinaryArray>(array)?.value(index)
-                }
+                BytesType::FixedBinary(_) => downcast::<FixedSizeBinaryArray>(array)?.value(index),
                 BytesType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
                 BytesType::BinaryView | BytesType::LargeBinaryView => {
                     downcast::<BinaryViewArray>(array)?.value(index)

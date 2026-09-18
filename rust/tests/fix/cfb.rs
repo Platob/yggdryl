@@ -9,8 +9,8 @@ use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
 use yggdryl::types::SequenceType;
+use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -703,7 +703,9 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         );
         assert!(registry.get_field_by_counter(counter).is_some());
     }
-    let DataType::Sequence(SequenceType::List(item)) = roots[0].get_field("vendorentries").unwrap().dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) =
+        roots[0].get_field("vendorentries").unwrap().dtype()
+    else {
         panic!("a list group");
     };
     assert_eq!(branches(item), ["venue"]);
@@ -1523,7 +1525,7 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         "{message}"
     );
     assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::utf8());
-    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
+    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::DECIMAL);
 
     assert_eq!(seeded, before, "a refused fold writes nothing");
 }

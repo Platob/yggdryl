@@ -202,4 +202,3 @@ pub(crate) const SIDE_WIDTH: usize = 8;
 
 // /// A side-typed field: FIX's side of a trade.
 define_field_types!(SideType, Side);
-

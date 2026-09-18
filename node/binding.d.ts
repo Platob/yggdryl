@@ -3195,6 +3195,11 @@ export interface Fix {
    * `senderSessionId` for that reason, so the value reaches the FIX column
    * rather than leading the row - never over a reading the message stated
    * itself - and its `pluginid` capture reaches the crate's own column.
+   *
+   * Each carried column is nullable whatever the capture declared it: a
+   * capture's own column is the reading's statement and no message holds
+   * one, so a pass with no source row in hand writes null there instead of
+   * refusing per row.
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /**
@@ -3208,7 +3213,10 @@ export interface Fix {
    * venue publishes: the event's instants, the identities, the cross code
    * and the sequence, the `identifiers` and `metadata` Map groups, the
    * state, the price, the quantity, the units and the lane currencies, the
-   * instrument codes, what a bridge's capture states, and the `nofixentries`
+   * instrument codes, what a bridge's capture states - `msgctxid`,
+   * `pluginid`, `msgsessionid` - the capture's own columns `sourceurl` and
+   * `recordedat`, which whoever read the line states on the row and no
+   * message holds, and the `nofixentries`
    * counting the content record. Every registry holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks.

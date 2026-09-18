@@ -67,10 +67,7 @@ pub(crate) fn coupled_holder_algorithm(field: &Field) -> Option<DigestAlgorithm>
 /// The width a holder's fixed byte storage declares, `None` for any other
 /// storage: a UUID or a code is fixed bytes with another identity.
 fn coupled_holder_width(field: &Field) -> Option<u32> {
-    field
-        .dtype()
-        .bytes_parameters()
-        .and_then(BytesType::fixed)
+    field.dtype().bytes_parameters().and_then(BytesType::fixed)
 }
 
 impl DigestField<'_> {

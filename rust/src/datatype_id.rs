@@ -432,9 +432,7 @@ impl DataTypeId {
             | Self::LargeBinary
             | Self::BinaryView
             | Self::LargeBinaryView
-            | Self::SizedBinary => {
-                DataTypeKind::Bytes
-            }
+            | Self::SizedBinary => DataTypeKind::Bytes,
             Self::String
             | Self::FixedString
             | Self::StringView

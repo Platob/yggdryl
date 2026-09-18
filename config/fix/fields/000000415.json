@@ -1443,7 +1443,9 @@
   {
     "name": "legpaymentschedulesettlperiodprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2605,7 +2607,9 @@
   {
     "name": "legpaymentstreamflatrateamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2629,7 +2633,9 @@
   {
     "name": "legstreammaximumpaymentamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -2653,7 +2659,9 @@
   {
     "name": "legstreammaximumtransactionamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3171,7 +3179,9 @@
   {
     "name": "legpaymentstreamtotalfixedamount",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3195,7 +3205,9 @@
   {
     "name": "legpaymentstreamcontractprice",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3301,7 +3313,9 @@
   {
     "name": "legpaymentstreamrateindexlevel",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {
@@ -3841,7 +3855,9 @@
   {
     "name": "legpaymentstreamreferencelevel",
     "dtype": {
-      "type": "float64"
+      "type": "decimal128",
+      "precision": 38,
+      "scale": 18
     },
     "nullable": true,
     "metadata": {

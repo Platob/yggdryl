@@ -265,8 +265,8 @@ mod arrow {
     use arrow_schema::Field as ArrowField;
 
     use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
-    use crate::types::cast::ArrowCastOptions;
     use crate::types::FieldValue as _;
+    use crate::types::cast::ArrowCastOptions;
     use crate::types::protocol::TransformField;
     use crate::{Error, Field, Result};
 

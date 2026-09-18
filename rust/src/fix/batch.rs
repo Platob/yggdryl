@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `unix`, `creatunix`, `hashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
+//! | identity | `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -101,7 +101,17 @@ impl FixCodec {
     /// among them - filling that field where the line left it unsaid. Where each
     /// column sits and which field it fills is decided once from the schema,
     /// so no row copies the codec or asks the dictionary a question the row
-    /// before it asked. A line the reader
+    /// before it asked.
+    ///
+    /// [The capture's own columns](FixMsg::from_row) fill nothing: the
+    /// carried ones, and the two the crate tags - a `sourceurl` column and a
+    /// `recordedat` one - are read off the source row and written straight
+    /// into the row this answers, each at its own column, because where a
+    /// line was read from is this reader's statement and never the message's.
+    /// This is the one door that can state them, and it is why they survive
+    /// a parse without a message holding one.
+    ///
+    /// A line the reader
     /// cannot classify yields no message; malformed-body recovery still obeys
     /// the mandatory field contract. A bulk configuration document is one row per
     /// configuration it named and no row where it named none, each repeating
@@ -132,7 +142,7 @@ impl FixCodec {
         // once here, from the schema, rather than per row.
         let kept = super::schema::carried(&carrier, &read);
         let field = super::fix_schema_carrying(&carrier, &read)?;
-        let columns = Columns::resolve(&carrier, self.payload_column(), kept, self)?;
+        let columns = Columns::resolve(&carrier, self.payload_column(), &kept, self, &field)?;
         let rows = Rows {
             source,
             columns,
@@ -140,17 +150,17 @@ impl FixCodec {
             held: None,
         };
         // A bulk configuration document expands into one row per
-        // configuration, each repeating its source row's carried columns and
+        // configuration, each repeating its source row's own cells and
         // the first carrying the row's whole charge.
         let rows = rows.flat_map(|held| {
-            let (messages, front, charge) = match held {
+            let (messages, restated, charge) = match held {
                 Ok(held) => held,
                 Err(error) => (FixMessages::from_result(Err(error)), Vec::new(), 0),
             };
             messages.enumerate().map(move |(index, message)| {
                 message.map(|message| {
                     let charge = if index == 0 { charge } else { 0 };
-                    (message, front.clone(), charge)
+                    (message, restated.clone(), charge)
                 })
             })
         });
@@ -164,9 +174,9 @@ impl FixCodec {
         let mut carried = Carried::default();
         let rows = rows.map(move |held| match held {
             Err(error) => Closing(Err(error), false),
-            Ok((message, front, charge)) => {
+            Ok((message, restated, charge)) => {
                 let closes = closes(&mut carried, charge, target, row_target);
-                let row = row_of(&message, &schema, &plan, front);
+                let row = row_of(&message, &schema, &plan, restated);
                 Closing(row, closes)
             }
         });
@@ -184,20 +194,56 @@ impl FixCodec {
     /// holds through [`FixMsg::from_row`] - any schema that constructor
     /// accepts, the fixed row carrying a capture's columns or not - the
     /// messages are walked as [`Self::lifecycle`] walks them, and each is
-    /// written back through [`FixMsg::into_row`] under the **same** schema,
-    /// so a carried column returns to its place. Nothing is parsed again,
-    /// and the arrival record is carried through untouched. Batches close on
-    /// the raw bytes of each message's arrival record, against
-    /// [`Self::with_batch_byte_size`].
+    /// written back under the **same** schema, so a carried column returns
+    /// to its place. Nothing is parsed again, and the arrival record is
+    /// carried through untouched. Batches close on the raw bytes of each
+    /// message's arrival record, against [`Self::with_batch_byte_size`].
+    ///
+    /// # A row's own cells stay with the message, not with the position
+    ///
+    /// A walk answers messages in their own order, which is not the order
+    /// the rows arrived in, and a message holds nothing about the reading it
+    /// arrived through - so [the capture's own columns](FixMsg::from_row)
+    /// would be left behind by that permutation if they were paired by
+    /// position. They are not. The rows are read, put in the walk's order
+    /// here, each beside the cells of the row it came out of, and walked
+    /// [streamed](Self::lifecycle): one answer per message, in the order
+    /// they were handed over, so the `body` a row was cut from and the
+    /// `sourceurl` it names still belong to the message that came out of
+    /// that line. A refused message type never enters the walk, exactly as
+    /// in [`Self::lifecycle`], and it takes its cells with it.
     ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the source's schema does not
-    /// make a root field; a row that is not a FIX row and the source
-    /// reader's own failure are error batches.
+    /// make a root field or a column plan; a row that is not a FIX row and
+    /// the source reader's own failure are error batches.
     pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         let schema = Self::row_field(source.schema().as_ref())?;
-        self.arrow_reader(schema, self.lifecycle(self.messages(source)))
+        // The schema in is the schema out, so every capture column is stated
+        // back at the column it was read from.
+        let restating = capture_restating(&schema, &schema, self.registry())?;
+        let mut failures: Vec<Error> = Vec::new();
+        let mut held: Vec<(FixMsg, Vec<(usize, Scalar)>)> = Vec::new();
+        for read in self.messages_restating(source, restating) {
+            match read {
+                Ok(pair) => held.push(pair),
+                Err(error) => failures.push(error),
+            }
+        }
+        // What the walk itself would refuse, refused here instead, so a
+        // message and its row's cells leave together.
+        held.retain(|(message, _)| self.reads_msgtype(message.header().msgtype()));
+        // The walk's own order, stably, which is what lets it stream below.
+        held.sort_by(|left, right| crate::graph::iterator::order(&left.0, &right.0));
+        let (messages, cells): (Vec<FixMsg>, Vec<Vec<(usize, Scalar)>>) = held.into_iter().unzip();
+        let mut cells: std::collections::VecDeque<Vec<(usize, Scalar)>> = cells.into();
+        let walked = FixCodec::lifecycle_sorted(messages.into_iter().map(Ok))
+            .map(move |held| held.map(|message| (message, cells.pop_front().unwrap_or_default())));
+        // A failure has no row to be written into, so it is yielded ahead of
+        // the walk - where a collected walk has always put one.
+        let rows = failures.into_iter().map(Err).chain(walked);
+        self.arrow_reader_restating(schema, rows)
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -220,7 +266,19 @@ impl FixCodec {
         &self,
         source: BatchReader,
     ) -> impl Iterator<Item = Result<FixMsg>> + Send + use<> {
-        Messages::over(Arc::clone(self.registry()), source)
+        Messages::over(Arc::clone(self.registry()), source, Vec::new())
+            .map(|held| held.map(|(message, _)| message))
+    }
+
+    /// [`Self::messages`], each message beside the capture's own cells of
+    /// the row it came out of.
+    ///
+    /// `restating` is what [`capture_restating`] read off the two schemas:
+    /// which of the source's columns are the capture's, and where each is
+    /// stated in the rows the caller writes. A message holds none of them,
+    /// so this is how a door that reads rows and writes rows keeps them.
+    fn messages_restating(&self, source: BatchReader, restating: Vec<(usize, usize)>) -> Messages {
+        Messages::over(Arc::clone(self.registry()), source, restating)
     }
 
     /// A stream of messages as a stream of batches of FIX rows under `schema`.
@@ -271,6 +329,43 @@ impl FixCodec {
                     Closing(row, closes)
                 }
             });
+        Ok(canonical_closing_reader(&root, rows)?)
+    }
+
+    /// [`Self::arrow_reader`] over messages that arrive beside the
+    /// capture's own cells, each cell stated at its own column.
+    ///
+    /// The door for a pass that reads rows and writes rows: a message holds
+    /// nothing about the reading it arrived through, so what the row said
+    /// for itself comes back from the row rather than from the message.
+    /// Rows are charged exactly as [`Self::arrow_reader`] charges them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when `schema` does not make a
+    /// column plan, and the Arrow layer's when it does not make an Arrow
+    /// schema.
+    fn arrow_reader_restating<I>(&self, schema: Field, rows: I) -> Result<BatchReader>
+    where
+        I: IntoIterator<Item = Result<(FixMsg, Vec<(usize, Scalar)>)>>,
+        I::IntoIter: Send + 'static,
+    {
+        let root = schema.clone();
+        let plan = super::schema::column_plan(&schema, self.registry())?;
+        let target = self.batch_byte_size();
+        let row_target = self.batch_row_size();
+        let mut carried = Carried::default();
+        let rows = rows.into_iter().fuse().map(move |held| match held {
+            Err(error) => Closing(Err(error), false),
+            Ok((message, restated)) => {
+                let wire = (!message.entries().is_empty()).then(|| wire_size(message.entries()));
+                let row = row_of(&message, &schema, &plan, restated);
+                let charge =
+                    wire.unwrap_or_else(|| row.as_ref().map_or(ROW_OVERHEAD, appended_bytes));
+                let closes = closes(&mut carried, charge, target, row_target);
+                Closing(row, closes)
+            }
+        });
         Ok(canonical_closing_reader(&root, rows)?)
     }
 
@@ -371,7 +466,9 @@ impl FixCodec {
         // The capture's own columns lead the formatted row exactly as they
         // lead the parsed one: where a line was read from is what a monitor
         // orders and joins on, and a format is a reading of the message, not
-        // a reason to lose the frame around it.
+        // a reason to lose the frame around it. This pass is one row out per
+        // row in, in order, so each row's own cells are carried straight
+        // across.
         let target = super::fix_schema_carrying(&read, field)?;
         // A source holding the record can answer every column of every
         // target, so it is read as messages and filled. One that does not is
@@ -383,8 +480,13 @@ impl FixCodec {
                 crate::ArrowCastOptions::new(),
             )?);
         }
-        let messages = self.messages(source);
-        self.arrow_reader(target, messages)
+        // The capture's own columns are the source row's statement about
+        // its line, and this pass keeps the row it read: they are carried
+        // over from the batch rather than asked of the message, which holds
+        // none of them.
+        let restating = capture_restating(&read, &target, self.registry())?;
+        let rows = self.messages_restating(source, restating);
+        self.arrow_reader_restating(target, rows)
     }
 
     /// Writes a stream of batches of FIX rows back to the wire, streamed.
@@ -472,6 +574,70 @@ fn wire_size(entries: &[FixEntry]) -> u64 {
     })
 }
 
+/// Where a row schema's own capture columns sit.
+///
+/// [The capture's own columns](FixMsg::from_row): the two the crate tags,
+/// `sourceurl` and `recordedat`, and every column no tag and no counter
+/// names - the body a line was cut from, its place in the object, its media
+/// type, what a bound dropped. A namespaced key is not one of them: that is
+/// a bridge's own statement, which the message keeps in its metadata.
+fn capture_columns(schema: &Field, plan: &super::schema::Columns) -> Vec<usize> {
+    schema
+        .fields()
+        .iter()
+        .zip(plan.iter())
+        .enumerate()
+        .filter(|(_, (column, planned))| match planned.tag {
+            Some(tag) => super::identity::is_capture_tag(tag),
+            None => {
+                planned.counter.is_none()
+                    && column.name() != FIXENTRIES_COLUMN
+                    && !column.name().contains('.')
+            }
+        })
+        .map(|(at, _)| at)
+        .collect()
+}
+
+/// Each of `source`'s capture columns as the column it is read from beside
+/// the column it is stated at in `target`, ascending by target.
+///
+/// The one reading both row-to-row doors take, so the cells a row stated
+/// land where the rows they write hold them: a carried column leads the
+/// target in the order it was kept, and a tagged one lands at the column
+/// the target gives its tag. A column `target` has no place for is dropped,
+/// because a row cannot state what it has no column for.
+///
+/// # Errors
+///
+/// Returns the schema grammar's refusal when `source` does not make a
+/// column plan.
+fn capture_restating(
+    source: &Field,
+    target: &Field,
+    registry: &FixRegistry,
+) -> Result<Vec<(usize, usize)>> {
+    let plan = super::schema::column_plan(source, registry)?;
+    let mut restating: Vec<(usize, usize)> = Vec::new();
+    for at in capture_columns(source, &plan) {
+        let column = &source.fields()[at];
+        let placed = match plan[at].tag {
+            Some(tag) => super::fix_column_of(target, tag),
+            None => target
+                .fields()
+                .iter()
+                .position(|held| crate::types::folds_equal(held.name(), column.name())),
+        };
+        if let Some(placed) = placed {
+            restating.push((at, placed));
+        }
+    }
+    // One column is stated once, by the leftmost source that reaches it.
+    restating.sort_by_key(|(_, at)| *at);
+    restating.dedup_by_key(|(_, at)| *at);
+    Ok(restating)
+}
+
 /// Whether a column of `dtype` carries a payload the codec can read: text or
 /// bytes in any layout, a dictionary or run-end encoding of one included.
 fn carries_payload(dtype: &DataType) -> bool {
@@ -515,16 +681,17 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
 
 /// One message as the fixed row its columns are read from.
 ///
-/// `front` is the capture's own columns, already in schema order, and it leads
-/// the row. Expanded messages repeat this same source-row prefix.
+/// `restated` is the capture's own cells, each beside the column it is
+/// stated at and in ascending order. Expanded messages repeat the same
+/// source row's cells.
 fn row_of(
     message: &FixMsg,
     schema: &Field,
     plan: &super::schema::Columns,
-    front: Vec<Scalar>,
+    restated: Vec<(usize, Scalar)>,
 ) -> Result<Scalar> {
     // Capture values land before the field contract runs.
-    let held = message.row_values(schema, plan, front)?;
+    let held = message.row_values(schema, plan, restated)?;
     Ok(Scalar::from_sequence(held))
 }
 
@@ -652,7 +819,15 @@ struct Columns {
     /// nothing the dictionary knows is never read per row for it, and the
     /// dictionary is never probed per row for one it does know.
     fills: Vec<(usize, Field, i32)>,
-    kept: Vec<usize>,
+    /// The capture's own cells, each as the source column it is read from
+    /// beside the target column it is stated at, in ascending target order.
+    ///
+    /// Both kinds at once: the carried columns, which lead the row in the
+    /// order they were kept, and the two the crate tags - `sourceurl`,
+    /// `recordedat` - wherever the fixed columns put them. No message holds
+    /// any of them, so this is the whole of what says where a row's line
+    /// came from and when it was written down.
+    restated: Vec<(usize, usize)>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
 }
@@ -662,7 +837,13 @@ impl Columns {
     ///
     /// Returns [`Error::InvalidRecord`] when `carrier` has no column named
     /// `payload`, or that column holds neither text nor bytes.
-    fn resolve(carrier: &Field, payload: &str, kept: Vec<usize>, codec: &FixCodec) -> Result<Self> {
+    fn resolve(
+        carrier: &Field,
+        payload: &str,
+        kept: &[usize],
+        codec: &FixCodec,
+        target: &Field,
+    ) -> Result<Self> {
         let fields = carrier.fields();
         let named = |wanted: &str| {
             fields
@@ -670,21 +851,53 @@ impl Columns {
                 .position(|held| crate::types::folds_equal(held.name(), wanted))
         };
         let payload_at = payload_column_of(carrier, payload, named(payload))?;
+        let reached = |held: &Field| codec.fill_target(held.name()).map(|(_, tag)| tag);
         let fills = fields
             .iter()
             .enumerate()
             .filter(|(_, held)| !is_parameter(held.name(), payload))
             .filter_map(|(at, held)| {
                 let (field, tag) = codec.fill_target(held.name())?;
-                Some((at, field, tag))
+                // The capture's own column fills no field: it is the
+                // reader's statement about the line, and it is stated on
+                // the row below rather than on the message.
+                (!super::identity::is_capture_tag(tag)).then_some((at, field, tag))
             })
             .collect();
+        // The carried columns lead the row, in the order they were kept; the
+        // tagged ones land at the column the fixed schema gives their tag.
+        let mut restated: Vec<(usize, usize)> = kept
+            .iter()
+            .enumerate()
+            .map(|(at, source)| (*source, at))
+            .collect();
+        for (source, held) in fields.iter().enumerate() {
+            // The payload column is the payload whatever it is called, as it
+            // is for a fill: a codec reading its frames out of a column
+            // named `sourceurl` states no source object.
+            if is_parameter(held.name(), payload) {
+                continue;
+            }
+            let Some(tag) = reached(held).filter(|tag| super::identity::is_capture_tag(*tag))
+            else {
+                continue;
+            };
+            if let Some(at) = super::fix_column_of(target, tag) {
+                restated.push((source, at));
+            }
+        }
+        // One column is stated once, by the leftmost source that reaches it:
+        // `mtime` and `recordedat` both answer tag 65028, and a row cannot
+        // hold one column twice. Stably, so which one wins is the schema's
+        // order and never the sort's.
+        restated.sort_by_key(|(_, at)| *at);
+        restated.dedup_by_key(|(_, at)| *at);
         Ok(Self {
             payload: payload_at,
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
             fills,
-            kept,
+            restated,
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         })
     }
@@ -709,11 +922,11 @@ struct Rows {
 
 impl Rows {
     /// One row of one batch as the messages it carries and the capture's
-    /// own columns carried in front of it.
+    /// own cells, each beside the column it is stated at.
     ///
     /// An ordinary line is one message; a bulk configuration document is one
-    /// per configuration, and the row's carried columns lead each of them.
-    fn row(&self, batch: &RecordBatch, row: usize) -> Result<(FixMessages, Vec<Scalar>)> {
+    /// per configuration, and the row's own cells are stated on each of them.
+    fn row(&self, batch: &RecordBatch, row: usize) -> Result<(FixMessages, Vec<(usize, Scalar)>)> {
         let cell = |at: usize| {
             value_from_array(&self.columns.dtypes[at], batch.column(at).as_ref(), row)
                 .map_err(Error::from)
@@ -761,15 +974,16 @@ impl Rows {
             direction_pin: self.codec.direction(),
         };
         let messages = self.codec.parse_bytes_with(extras, &payload);
-        // By position: the columns kept were decided from the schema, and a
-        // row of that schema arrives in that order.
-        let front = self
+        // By position: which columns are the capture's and where each one
+        // lands were decided from the schema, and a row of that schema
+        // arrives in that order.
+        let restated = self
             .columns
-            .kept
+            .restated
             .iter()
-            .map(|at| cell(*at))
+            .map(|(source, at)| cell(*source).map(|value| (*at, value)))
             .collect::<Result<Vec<_>>>()?;
-        Ok((messages, front))
+        Ok((messages, restated))
     }
 
     /// The raw bytes each row of one batch is charged: the payload column's
@@ -783,7 +997,7 @@ impl Rows {
 }
 
 impl Iterator for Rows {
-    type Item = Result<(FixMessages, Vec<Scalar>, u64)>;
+    type Item = Result<(FixMessages, Vec<(usize, Scalar)>, u64)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -799,7 +1013,7 @@ impl Iterator for Rows {
                 let (batch, ..) = self.held.as_ref()?;
                 return Some(
                     self.row(batch, row)
-                        .map(|(messages, front)| (messages, front, charge)),
+                        .map(|(messages, restated)| (messages, restated, charge)),
                 );
             }
             // The batch is spent, or none is held yet: the next one is pulled
@@ -830,16 +1044,26 @@ impl Iterator for Rows {
     }
 }
 
-/// The messages a stream of batches of FIX rows holds, read a batch at a time.
+/// The messages a stream of batches of FIX rows holds, each beside the
+/// capture's own cells of the row it came out of, read a batch at a time.
 ///
 /// One batch is held as the Struct array it is and read row by row into the
 /// row value the schema declares, which [`FixMsg::from_row`] makes a message
 /// of. The schema is read once, off the source; a schema that does not make
 /// a root is the one item the stream yields.
+///
+/// A message holds nothing about the reading it arrived through, so the
+/// cells a row states for itself - where its line was read from, when it
+/// was recorded, the body it was cut from, its place in the object - are
+/// picked out of the row value that is already in hand and handed over
+/// beside the message. Whoever writes the rows back states them again.
 struct Messages {
     registry: Arc<FixRegistry>,
     source: BatchReader,
     schema: Field,
+    /// Each of the capture's own columns as the source column it is read
+    /// from beside the target column it is stated at, ascending by target.
+    restating: Vec<(usize, usize)>,
     /// The refusal the source's schema earned, yielded once.
     pending: Option<Error>,
     /// The batch being read, beside the row the next pull reads.
@@ -848,7 +1072,11 @@ struct Messages {
 }
 
 impl Messages {
-    fn over(registry: Arc<FixRegistry>, source: BatchReader) -> Self {
+    fn over(
+        registry: Arc<FixRegistry>,
+        source: BatchReader,
+        restating: Vec<(usize, usize)>,
+    ) -> Self {
         let (schema, pending) = match FixCodec::row_field(source.schema().as_ref()) {
             Ok(schema) => (schema, None),
             Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
@@ -857,15 +1085,29 @@ impl Messages {
             registry,
             source,
             schema,
+            restating,
             pending,
             held: None,
             done: false,
         }
     }
+
+    /// The capture's own cells one row states, each at the column it is
+    /// stated back at; nothing where this stream carries none.
+    fn cells(&self, row: &Scalar) -> Vec<(usize, Scalar)> {
+        if self.restating.is_empty() {
+            return Vec::new();
+        }
+        let held = row.as_sequence().unwrap_or_default();
+        self.restating
+            .iter()
+            .filter_map(|(source, at)| held.get(*source).map(|value| (*at, value.clone())))
+            .collect()
+    }
 }
 
 impl Iterator for Messages {
-    type Item = Result<FixMsg>;
+    type Item = Result<(FixMsg, Vec<(usize, Scalar)>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(error) = self.pending.take() {
@@ -883,7 +1125,10 @@ impl Iterator for Messages {
                     let read = value_from_array(self.schema.dtype(), batch, row)
                         .map_err(Error::from)
                         .and_then(|row| {
-                            FixMsg::from_row(Arc::clone(&self.registry), &self.schema, &row)
+                            let cells = self.cells(&row);
+                            let message =
+                                FixMsg::from_row(Arc::clone(&self.registry), &self.schema, &row)?;
+                            Ok((message, cells))
                         });
                     if read.is_err() {
                         self.done = true;

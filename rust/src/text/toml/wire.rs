@@ -4,9 +4,9 @@ use std::io::Write;
 
 use base64::Engine as _;
 
+use crate::types::code_scalars;
 use crate::types::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, TimeUnit, Timezone};
-use crate::types::code_scalars;
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;

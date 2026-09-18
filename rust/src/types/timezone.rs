@@ -66,8 +66,8 @@ pub(crate) mod casts {
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::MaterializationBudget;
-    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::{DataType, Field, Timezone};
 
     /// Parse and canonicalize every exposed text cell into time zone Utf8 storage.
@@ -119,7 +119,6 @@ pub(crate) mod casts {
 // ------------------------------------------------------------------------
 
 define_field_types!(TimezoneType, Timezone);
-
 
 // ------------------------------------------------------------------------
 // The registry of time zones this build knows the rules for.
@@ -1305,7 +1304,7 @@ pub(crate) const TIMEZONE_EXTENSION_NAME: &str = "yggdryl.timezone";
 /// database, not against this implementation - a test that only agrees with
 /// the code it tests would pass on a wrong table.
 mod tests {
-    use super::{Timezone};
+    use super::Timezone;
 
     /// Parse a zone or fail the test with the reason.
     fn zone(value: &str) -> Timezone {
@@ -1337,7 +1336,10 @@ mod tests {
 
         #[test]
         fn zones_are_sorted_so_the_binary_search_is_valid() {
-            let names: Vec<&str> = crate::types::timezone::ZONES.iter().map(|zone| zone.name).collect();
+            let names: Vec<&str> = crate::types::timezone::ZONES
+                .iter()
+                .map(|zone| zone.name)
+                .collect();
             let mut sorted = names.clone();
             sorted.sort_unstable();
 
@@ -1346,7 +1348,10 @@ mod tests {
 
         #[test]
         fn aliases_are_sorted_and_never_shadow_a_real_zone() {
-            let names: Vec<&str> = crate::types::timezone::ALIASES.iter().map(|(from, _)| *from).collect();
+            let names: Vec<&str> = crate::types::timezone::ALIASES
+                .iter()
+                .map(|(from, _)| *from)
+                .collect();
             let mut sorted = names.clone();
             sorted.sort_unstable();
             assert_eq!(names, sorted, "the alias table must be sorted by alias");

@@ -10,19 +10,17 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::FIELD_PARTITION_KEY;
 
-use crate::types::family::DataTypeValue;
-use crate::types::sequence::SequenceType;
-use std::collections::{BTreeMap, HashSet};
-use crate::types::family::{Children, NestedValue};
-use crate::types::scalar::Value;
-use crate::types::invalid;
 use crate::Scalar;
 use crate::types::enums::EnumType;
-use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Field, Result, };
+use crate::types::family::DataTypeValue;
+use crate::types::family::{Children, NestedValue};
+use crate::types::invalid;
+use crate::types::scalar::Value;
+use crate::types::sequence::SequenceType;
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result};
+use std::collections::{BTreeMap, HashSet};
 
 impl DataType {
-
     /// Creates a struct after rejecting duplicate field names.
     pub fn from_fields<I>(fields: I) -> Result<Self>
     where
@@ -41,8 +39,7 @@ impl DataType {
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
-            Self::Sequence(_)
-            | Self::Mapping(_) => 1,
+            Self::Sequence(_) | Self::Mapping(_) => 1,
             Self::Structure(structure) => structure.len(),
             Self::Union(fields, _) => fields.len(),
             Self::RunEndEncoded(_) => 2,
@@ -79,9 +76,14 @@ impl DataType {
                 let field = sequence.item();
                 (field.name() == name).then_some(field)
             }
-            Self::Structure(structure) => structure.as_fields().iter().find(|field| field.name() == name),
+            Self::Structure(structure) => structure
+                .as_fields()
+                .iter()
+                .find(|field| field.name() == name),
             Self::Union(fields, _) => fields.get_by_name(name).map(|(_, field)| field),
-            Self::Mapping(mapping) => (mapping.entries().name() == name).then_some(mapping.entries()),
+            Self::Mapping(mapping) => {
+                (mapping.entries().name() == name).then_some(mapping.entries())
+            }
             Self::RunEndEncoded(encoded) => {
                 if encoded.run_ends.name() == name {
                     Some(&encoded.run_ends)
@@ -765,7 +767,9 @@ impl DataType {
         Ok(match self {
             Self::Sequence(SequenceType::List(_)) => Self::list(next()),
             Self::Sequence(SequenceType::ListView(_)) => Self::list_view(next()),
-            Self::Sequence(SequenceType::FixedSizeList(_, length)) => Self::fixed_size_list(next(), *length)?,
+            Self::Sequence(SequenceType::FixedSizeList(_, length)) => {
+                Self::fixed_size_list(next(), *length)?
+            }
             Self::Sequence(SequenceType::LargeList(_)) => Self::large_list(next()),
             Self::Sequence(SequenceType::LargeListView(_)) => Self::large_list_view(next()),
             Self::Structure(_) => Self::from_fields(children)?,
@@ -1395,8 +1399,6 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
-
-
 // ------------------------------------------------------------------------
 // The structure family: named children, and the two-child leaf beside them.
 // ------------------------------------------------------------------------
@@ -1636,7 +1638,6 @@ impl From<Struct2Type> for StructureType {
     }
 }
 
-
 impl<'a> From<&'a str> for FieldKey<'a> {
     fn from(path: &'a str) -> Self {
         Self::Path(path)
@@ -1693,13 +1694,19 @@ pub(crate) fn exploded(child: &Field) -> Field {
         | DataType::Sequence(SequenceType::ListView(item))
         | DataType::Sequence(SequenceType::FixedSizeList(item, _))
         | DataType::Sequence(SequenceType::LargeList(item))
-        | DataType::Sequence(SequenceType::LargeListView(item)) => Some((item.dtype().clone(), item.is_nullable())),
-        DataType::Mapping(map) => Some((map.entries().dtype().clone(), map.entries().is_nullable())),
+        | DataType::Sequence(SequenceType::LargeListView(item)) => {
+            Some((item.dtype().clone(), item.is_nullable()))
+        }
+        DataType::Mapping(map) => {
+            Some((map.entries().dtype().clone(), map.entries().is_nullable()))
+        }
         DataType::RunEndEncoded(encoded) => Some((
             encoded.values().dtype().clone(),
             encoded.values().is_nullable(),
         )),
-        DataType::Enum(EnumType::Dictionary(dictionary)) => Some((dictionary.value().clone(), false)),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            Some((dictionary.value().clone(), false))
+        }
         _ => None,
     };
     match held {
@@ -1751,8 +1758,6 @@ pub(crate) fn cmp_field_slices(left: &[Field], right: &[Field]) -> Ordering {
 pub(crate) fn cmp_fields(left: &Field, right: &Field) -> Ordering {
     left.cmp(right)
 }
-
-
 
 pub(crate) fn validate_fields(fields: &[Field], kind: &'static str) -> Result<()> {
     reject_duplicate_field_names(fields, kind)?;
@@ -1859,7 +1864,9 @@ impl Value for Record {
 // ------------------------------------------------------------------------
 
 mod arrow {
-    use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef, Fields as ArrowFields};
+    use arrow_schema::{
+        DataType as ArrowDataType, FieldRef as ArrowFieldRef, Fields as ArrowFields,
+    };
 
     use super::{Fields, StructureType};
     use crate::types::family::ArrowFfiParts;
@@ -1943,10 +1950,7 @@ mod arrow {
     ///
     /// Returns an error when a child cannot be imported or the children do not
     /// form a valid child list.
-    pub(crate) fn from_arrow_fields_at_depth(
-        fields: &ArrowFields,
-        depth: usize,
-    ) -> Result<Fields> {
+    pub(crate) fn from_arrow_fields_at_depth(fields: &ArrowFields, depth: usize) -> Result<Fields> {
         let fields = fields
             .iter()
             .cloned()
@@ -1955,4 +1959,3 @@ mod arrow {
         Fields::from_imported_fields(fields)
     }
 }
-

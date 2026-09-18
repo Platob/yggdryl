@@ -22,16 +22,14 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::types::family::DataTypeValue;
-use crate::types::structure::StructureType;
 use crate::types::family::Children;
+use crate::types::family::DataTypeValue;
 use crate::types::family::NestedValue;
-use crate::types::structure::cmp_fields;
-use crate::types::scalar::Value;
 use crate::types::invalid;
-use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar,
-};
+use crate::types::scalar::Value;
+use crate::types::structure::StructureType;
+use crate::types::structure::cmp_fields;
+use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar};
 
 // ------------------------------------------------------------------------
 // Datatype side: the family and its one leaf.
@@ -261,9 +259,7 @@ fn pair_entries(mut entries: Field) -> Result<Field> {
         _ => {
             return Err(Error::InvalidDataType {
                 kind: "map",
-                reason: SmolStr::new_static(
-                    "entries field must hold a key and a value",
-                ),
+                reason: SmolStr::new_static("entries field must hold a key and a value"),
             });
         }
     };
@@ -445,7 +441,6 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     Ok(())
 }
 
-
 // ------------------------------------------------------------------------
 // Arrow projection: a map, and whether its keys are sorted within a row.
 // ------------------------------------------------------------------------
@@ -544,7 +539,10 @@ mod arrow {
             keys_sorted: bool,
             depth: usize,
         ) -> Result<DataType> {
-            DataType::map(Field::from_arrow_field_ref_at_depth(entries, depth)?, keys_sorted)
+            DataType::map(
+                Field::from_arrow_field_ref_at_depth(entries, depth)?,
+                keys_sorted,
+            )
         }
     }
 }

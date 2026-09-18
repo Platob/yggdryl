@@ -13,13 +13,13 @@ use yggdryl::types::cast::ArrowCastOptions;
 fn bits() -> ArrowCastOptions {
     ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
 }
+use yggdryl::types::FieldValue as _;
 use yggdryl::types::{
-    DateTime64Field, GeometryField, Int32Field, Int64Field, StringField, StructureField, UInt32Field,
-    UInt64Field, VariantField,
+    DateTime64Field, GeometryField, Int32Field, Int64Field, StringField, StructureField,
+    UInt32Field, UInt64Field, VariantField,
 };
 use yggdryl::{DataType, EdgeAlgorithm, Field};
 use yggdryl::{TimeUnit, Timezone};
-use yggdryl::types::FieldValue as _;
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
@@ -578,8 +578,8 @@ mod layouts {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
 
     use yggdryl::DataType;
-    use yggdryl::types::cast::ArrowCastOptions;
     use yggdryl::types::DataTypeValue as _;
+    use yggdryl::types::cast::ArrowCastOptions;
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()

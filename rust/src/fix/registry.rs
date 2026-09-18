@@ -22,8 +22,8 @@ use smol_str::format_smolstr;
 use super::{FixId, FixKey};
 use crate::hashing::xxhash::Xxh64;
 use crate::types::folds_equal;
-use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result};
 use crate::types::sequence::SequenceType;
+use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
@@ -80,7 +80,9 @@ pub(super) fn descend<'field>(
     let Some((head, rest)) = segments.split_first() else {
         return Some(field);
     };
-    if let crate::DataType::Sequence(SequenceType::List(item)) | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype() {
+    if let crate::DataType::Sequence(SequenceType::List(item))
+    | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype()
+    {
         // A group's occurrence is transparent in a schema: every one of them
         // has the field the item declares, so an index states which
         // occurrence a caller means without changing which field that is.
@@ -121,7 +123,9 @@ fn segment_name(segment: &FieldSegment) -> Option<&str> {
 /// struct already carries, so matching the occurrence would shadow every one
 /// of them silently.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
-    if let crate::DataType::Sequence(SequenceType::List(item)) | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype() {
+    if let crate::DataType::Sequence(SequenceType::List(item))
+    | crate::DataType::Sequence(SequenceType::LargeList(item)) = field.dtype()
+    {
         return folded_child(item, name);
     }
     field

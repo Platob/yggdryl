@@ -25,8 +25,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::types::FieldValue as _;
 use yggdryl::{
-    ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType,
-    MimeType, Scalar, TimeUnit, Timezone, Url,
+    ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
+    Scalar, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a

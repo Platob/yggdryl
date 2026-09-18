@@ -350,9 +350,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),
         DataType::Sequence(
-            SequenceType::List(item)
-            | SequenceType::LargeList(item)
-            | SequenceType::ListView(item),
+            SequenceType::List(item) | SequenceType::LargeList(item) | SequenceType::ListView(item),
         ) => {
             let mut object = vec![(Scalar::from("type"), Scalar::from("list"))];
             if let Some(id) = item.parquet_field_id()? {

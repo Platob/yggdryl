@@ -19,8 +19,8 @@ use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Result, Scalar};
 use super::Field;
+use crate::{DataType, Error, Result, Scalar};
 
 /// The row view: one Struct [`Field`] and one [`FieldScalar`] per child.
 mod record {
@@ -248,7 +248,8 @@ mod record {
             }
             let mut values = Vec::with_capacity(field.field_len());
             for (child, column) in field.fields().iter().zip(batch.columns()) {
-                let value = crate::arrow::value::value_from_array(child.dtype(), column.as_ref(), row)?;
+                let value =
+                    crate::arrow::value::value_from_array(child.dtype(), column.as_ref(), row)?;
                 values.push(FieldScalar::new(child, value)?);
             }
             Ok(Self { field, values })
@@ -399,9 +400,9 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
+    use crate::types::DecimalType;
     use crate::types::{BytesType, StringLayout, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
-    use crate::types::DecimalType;
 
     /// The name every shared field carries - the name an inferred scalar field
     /// carries too, so a value typed either way is the same column.
@@ -564,7 +565,8 @@ mod shared {
         if table.len() >= INTERN_LIMIT {
             return None;
         }
-        let field: &'static Field = Box::leak(Box::new(Field::new(SHARED_NAME, dtype.clone(), true)));
+        let field: &'static Field =
+            Box::leak(Box::new(Field::new(SHARED_NAME, dtype.clone(), true)));
         table.insert(dtype.clone(), field);
         Some(field)
     }

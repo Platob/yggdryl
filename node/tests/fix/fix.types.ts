@@ -161,9 +161,9 @@ const metadata: Record<string, string> = message.metadata
 const curruuid: string = message.curruuid
 const crossuuid: string = message.crossuuid
 const crosscode: string = message.crosscode
-const hashcode: bigint = message.hashcode
+const currhashcode: bigint = message.currhashcode
 const crosshashcode: bigint = message.crosshashcode
-const unix: bigint = message.unix
+const currunix: bigint = message.currunix
 const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
@@ -174,7 +174,7 @@ const qty: string = message.qty
 const side: string = message.side
 const currency: string = message.currency
 // And the same facts on the event, with the instants and the lanes.
-const eventUnix: bigint = event.unix
+const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creatunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
@@ -191,8 +191,6 @@ const msgseqnum: number | null = header.msgseqnum
 const sendingtime: bigint = header.sendingtime
 const possdupflag: boolean | null = header.possdupflag
 const msgdirection: string | null = header.msgdirection
-const sourceurl: string | null = capture.sourceurl
-const recordedat: bigint | null = capture.recordedat
 const pluginid: string | null = capture.pluginid
 const msgctxid: string | null = capture.msgctxid
 const msgsessionid: string | null = capture.msgsessionid
@@ -208,9 +206,9 @@ void metadata
 void curruuid
 void crossuuid
 void crosscode
-void hashcode
+void currhashcode
 void crosshashcode
-void unix
+void currunix
 void state
 void seqnum
 void prevuuid
@@ -220,7 +218,7 @@ void px
 void qty
 void side
 void currency
-void eventUnix
+void eventCurrunix
 void eventCreated
 void eventPrevUnix
 void eventSnap
@@ -237,8 +235,6 @@ void msgseqnum
 void sendingtime
 void possdupflag
 void msgdirection
-void sourceurl
-void recordedat
 void pluginid
 void msgctxid
 void msgsessionid

@@ -22,13 +22,13 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::Scalar;
 use crate::types::dtype::validate_non_negative;
 use crate::types::family::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
-use serde::{Deserialize, Serialize};
 use crate::types::family::{Children, NestedValue};
 use crate::types::scalar::Value;
-use crate::Scalar;
+use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
+use serde::{Deserialize, Serialize};
 
 /// The sequence family's datatype payload.
 ///
@@ -215,9 +215,6 @@ impl DataType {
     }
 }
 
-
-
-
 /// One ordered sequence of scalar children.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -256,8 +253,6 @@ impl NestedValue for Sequence {
         Children::Sequence(self.as_slice().iter())
     }
 }
-
-
 
 impl Value for Sequence {
     fn dtype(&self) -> Result<DataType> {
@@ -336,7 +331,9 @@ mod arrow {
                     validate_non_negative("FixedSizeList", "length", length)?;
                     ArrowDataType::FixedSizeList(arrow_field_ref_from_shared(item)?, length)
                 }
-                Self::LargeList(item) => ArrowDataType::LargeList(arrow_field_ref_from_shared(item)?),
+                Self::LargeList(item) => {
+                    ArrowDataType::LargeList(arrow_field_ref_from_shared(item)?)
+                }
                 Self::LargeListView(item) => {
                     ArrowDataType::LargeListView(arrow_field_ref_from_shared(item)?)
                 }
@@ -374,10 +371,9 @@ mod arrow {
             depth: usize,
         ) -> Result<DataType> {
             match value {
-                ArrowDataType::List(item) => Ok(DataType::list(Field::from_arrow_field_ref_at_depth(
-                    Arc::clone(item),
-                    depth,
-                )?)),
+                ArrowDataType::List(item) => Ok(DataType::list(
+                    Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
+                )),
                 ArrowDataType::ListView(item) => Ok(DataType::list_view(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                 )),
@@ -408,15 +404,16 @@ mod arrow {
             depth: usize,
         ) -> Result<DataType> {
             match value {
-                ArrowDataType::List(item) => {
-                    Ok(DataType::list(Field::from_arrow_field_ref_at_depth(item, depth)?))
-                }
+                ArrowDataType::List(item) => Ok(DataType::list(
+                    Field::from_arrow_field_ref_at_depth(item, depth)?,
+                )),
                 ArrowDataType::ListView(item) => Ok(DataType::list_view(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),
-                ArrowDataType::FixedSizeList(item, length) => {
-                    DataType::fixed_size_list(Field::from_arrow_field_ref_at_depth(item, depth)?, length)
-                }
+                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_list(
+                    Field::from_arrow_field_ref_at_depth(item, depth)?,
+                    length,
+                ),
                 ArrowDataType::LargeList(item) => Ok(DataType::large_list(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),

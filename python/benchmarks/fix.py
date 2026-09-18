@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import decimal
 import io
 import pickle
 import gc
@@ -50,7 +51,7 @@ MESSAGE = FixMsg(
     ORDER,
     {
         "symbol": "AAPL",
-        "orderqty": 100.0,
+        "orderqty": decimal.Decimal("100"),
         "nopartyids": 1,
         "parties": [
             {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}

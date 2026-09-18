@@ -9,10 +9,9 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
-    CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
-    StringLayout, StringType, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
-    uuid_parse,
+    BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
+    ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringType,
+    TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -41,9 +40,9 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
-use crate::types::sequence::SequenceType;
-use crate::types::enums::EnumType;
 use crate::types::DecimalType;
+use crate::types::enums::EnumType;
+use crate::types::sequence::SequenceType;
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -230,10 +229,18 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Sequence(SequenceType::List(child)) => list_array::<i32>(child, values, ListKind::List)?,
-        DataType::Sequence(SequenceType::ListView(child)) => list_view_array::<i32>(child, values, ListKind::ListView)?,
-        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => fixed_size_list_array(child, *size, values)?,
-        DataType::Sequence(SequenceType::LargeList(child)) => list_array::<i64>(child, values, ListKind::LargeList)?,
+        DataType::Sequence(SequenceType::List(child)) => {
+            list_array::<i32>(child, values, ListKind::List)?
+        }
+        DataType::Sequence(SequenceType::ListView(child)) => {
+            list_view_array::<i32>(child, values, ListKind::ListView)?
+        }
+        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+            fixed_size_list_array(child, *size, values)?
+        }
+        DataType::Sequence(SequenceType::LargeList(child)) => {
+            list_array::<i64>(child, values, ListKind::LargeList)?
+        }
         DataType::Sequence(SequenceType::LargeListView(child)) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
@@ -451,9 +458,10 @@ pub(crate) fn value_from_array(
         }
         DataType::Currency => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Currency(crate::types::Currency::new(
-                code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?)
+            Scalar::Currency(crate::types::Currency::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?)
         }
         DataType::Mic => {
             let text = downcast::<StringArray>(array)?;
@@ -492,9 +500,10 @@ pub(crate) fn value_from_array(
         }
         DataType::Bloomberg => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Bloomberg(crate::types::Bloomberg::new(
-                code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?)
+            Scalar::Bloomberg(crate::types::Bloomberg::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?)
         }
         DataType::Side => {
             let text = downcast::<StringArray>(array)?;
@@ -512,9 +521,10 @@ pub(crate) fn value_from_array(
         }
         DataType::TimeInForce => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::TimeInForce(crate::types::TimeInForce::new(
-                code_cell_text(dtype, text.value(index).as_bytes())?,
-            )?)
+            Scalar::TimeInForce(crate::types::TimeInForce::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?)
         }
         DataType::Sequence(SequenceType::List(child)) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
@@ -588,7 +598,9 @@ pub(crate) fn value_from_array(
             )?;
             Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload])
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_value(dictionary, array, index)?,
+        DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            dictionary_value(dictionary, array, index)?
+        }
         DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
             Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))

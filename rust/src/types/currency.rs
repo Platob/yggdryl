@@ -42,7 +42,6 @@ pub(crate) const CURRENCY_EXTENSION_NAME: &str = "yggdryl.currency";
 pub(crate) const CURRENCY_WIDTH: usize = 3;
 
 impl DataType {
-
     /// Creates ISO 4217's three-letter currency code.
     ///
     /// ```
@@ -60,4 +59,3 @@ impl DataType {
 
 // /// A currency-typed field: ISO 4217.
 define_field_types!(CurrencyType, Currency);
-

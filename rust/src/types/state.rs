@@ -249,4 +249,3 @@ pub(crate) const STATE_WIDTH: usize = 10;
 
 // /// A field declared as a thing's state.
 define_field_types!(StateType, State);
-

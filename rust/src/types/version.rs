@@ -27,8 +27,8 @@ pub(crate) mod casts {
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::MaterializationBudget;
-    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::{DataType, Field, Version};
 
     /// Parse and canonicalize every exposed text cell into version Utf8 storage.
@@ -248,7 +248,12 @@ mod value {
     ///
     /// Major and minor stay strict because they are what a version is ordered by
     /// first: a byte that is not a digit there is a refusal, not a fallback.
-    fn component(bytes: &[u8], start: usize, maximum: u32, what: &'static str) -> Result<(u32, usize)> {
+    fn component(
+        bytes: &[u8],
+        start: usize,
+        maximum: u32,
+        what: &'static str,
+    ) -> Result<(u32, usize)> {
         let mut position = start;
         let mut value = 0_u32;
         while let Some(byte @ b'0'..=b'9') = bytes.get(position).copied() {

@@ -1,7 +1,7 @@
 use yggdryl::types::BytesType;
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
-use yggdryl::types::SequenceType;
 use yggdryl::types::DecimalType;
+use yggdryl::types::SequenceType;
+use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);

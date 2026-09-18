@@ -32,8 +32,8 @@ pub(crate) mod casts {
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::MaterializationBudget;
-    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::{arrow_cast_exposed, downcast};
     use crate::{DataType, Field, Url};
 
     /// Parse and canonicalize every exposed text cell into URL Utf8 storage.
@@ -85,7 +85,6 @@ pub(crate) mod casts {
 // ------------------------------------------------------------------------
 
 define_field_types!(UrlType, Url);
-
 
 // ------------------------------------------------------------------------
 // [`Url`] as a scalar value.

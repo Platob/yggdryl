@@ -8,8 +8,8 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringAr
 
 use yggdryl::media::RecordOptions;
 use yggdryl::media::partition::{partitioned_reader, with_partitions, without_partitions};
-use yggdryl::{ArrowCastOptions, DataType, Field, IOBase};
 use yggdryl::types::FieldValue as _;
+use yggdryl::{ArrowCastOptions, DataType, Field, IOBase};
 
 fn schema() -> Field {
     DataType::from_fields([

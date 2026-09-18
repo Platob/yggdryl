@@ -35,15 +35,17 @@ a dictionary and the message roots its grammar bindings describe.
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
-``hashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``unix``,
+``currhashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``currunix``,
 ``state``, ``seqnum``, the lifecycle's ``creatunix``, ``expirunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``, the market's ``px``, ``qty``,
 ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL, Bloomberg, CFI and
 MIC codes and the bid and ask lanes); :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``);
-:meth:`FixMsg.capture`, what the capture said about the line (``sourceurl``,
-``recordedat``, ``pluginid``, ``msgctxid``, ``msgsessionid``); the free
+:meth:`FixMsg.capture`, what the line's own bridge row header said about
+the capture it was written for (``pluginid``, ``msgctxid``,
+``msgsessionid``) - never what a *reader* said about the line, which is
+held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
@@ -78,7 +80,7 @@ fields to their latest aliases, runs the dictionary's ``fix:derivation``
 rules, fills the identifiers the message component declares and an order's
 lanes, and settles the identity: ``SendingTime`` is the message's own, else
 the carrier's, else the codec's ``default_sending_time``, else UTC now
-read once, and the instant ``unix`` is the stated one, else
+read once, and the instant ``currunix`` is the stated one, else
 ``TransactTime``, else ``SendingTime``. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
@@ -113,8 +115,8 @@ folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;
 the tag stays on each column's ``fix:tag``. One ``fixentries`` list closes
 the row with the whole content under the ``nofixentries`` that counts it,
-where an unresolved key has tag 0; ``beginstring``, ``unix``, ``creatunix``,
-``hashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
+where an unresolved key has tag 0; ``beginstring``, ``currunix``, ``creatunix``,
+``currhashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
 non-null columns. :func:`fix_schema_carrying` puts a capture's own columns in
 front of them, dropping a capture column whose folded name a FIX column
 already takes. :meth:`FixMsg.into_row` fills that row and

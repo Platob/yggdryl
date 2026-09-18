@@ -247,15 +247,13 @@ impl Expression {
             Self::Selector(selector) => selector.apply_records(schema, records),
             Self::Filter(filter) => filter.apply_records(schema, records),
             Self::Plan(_) | Self::Sequence(_) => {
-                {
-                    let (schema, rows) = schema_of(schema, records)?;
-                    let reader = Records {
-                        field: schema,
-                        rows,
-                    }
-                    .into_arrow_reader()?;
-                    Records::from_arrow_reader(self.apply_arrow_reader(reader)?)
+                let (schema, rows) = schema_of(schema, records)?;
+                let reader = Records {
+                    field: schema,
+                    rows,
                 }
+                .into_arrow_reader()?;
+                Records::from_arrow_reader(self.apply_arrow_reader(reader)?)
             }
         }
     }

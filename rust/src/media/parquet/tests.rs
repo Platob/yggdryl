@@ -25,10 +25,10 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
 use super::Parquet;
-use crate::{ArrowCastOptions};
+use crate::ArrowCastOptions;
+use crate::types::FieldValue as _;
 use crate::{DataType, Field};
 use crate::{IOBase, IOMedia};
-use crate::types::FieldValue as _;
 
 /// One little-endian ISO WKB point.
 fn wkb_point(x: f64, y: f64) -> Vec<u8> {

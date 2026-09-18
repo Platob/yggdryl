@@ -6,26 +6,26 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::decimal::DecimalType;
-use crate::types::uuid::UuidType;
 use crate::types::enums::EnumType;
-use crate::types::structure::StructureType;
 use crate::types::mapping::MappingType;
-use crate::types::sequence::SequenceType;
 use crate::types::runend::RunEndEncodedType;
+use crate::types::sequence::SequenceType;
+use crate::types::structure::StructureType;
 use crate::types::union::UnionFields;
+use crate::types::uuid::UuidType;
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
 
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
-use crate::types::structure::cmp_fields;
+use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use crate::types::enums::validate_dictionary_key;
-use crate::types::structure::validate_fields;
 use crate::types::mapping::validate_map_entries;
 use crate::types::runend::validate_run_ends;
-use crate::types::union::validate_union_fields;
-use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
-use std::ops::Index;
+use crate::types::structure::cmp_fields;
+use crate::types::structure::validate_fields;
 use crate::types::typed::define_field_types;
+use crate::types::union::validate_union_fields;
+use std::ops::Index;
 /// An allocation-conscious logical datatype with complete Arrow 59.2 parity.
 ///
 /// Scalar variants are inline. Nested children use `Arc`, so cloning a
@@ -509,9 +509,18 @@ impl Ord for DataType {
             (D::Interval(left), D::Interval(right)) => left.cmp(right),
             (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
             (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-            | (D::Sequence(SequenceType::ListView(left)), D::Sequence(SequenceType::ListView(right)))
-            | (D::Sequence(SequenceType::LargeList(left)), D::Sequence(SequenceType::LargeList(right)))
-            | (D::Sequence(SequenceType::LargeListView(left)), D::Sequence(SequenceType::LargeListView(right))) => cmp_fields(left, right),
+            | (
+                D::Sequence(SequenceType::ListView(left)),
+                D::Sequence(SequenceType::ListView(right)),
+            )
+            | (
+                D::Sequence(SequenceType::LargeList(left)),
+                D::Sequence(SequenceType::LargeList(right)),
+            )
+            | (
+                D::Sequence(SequenceType::LargeListView(left)),
+                D::Sequence(SequenceType::LargeListView(right)),
+            ) => cmp_fields(left, right),
             (
                 D::Sequence(SequenceType::FixedSizeList(left_field, left_size)),
                 D::Sequence(SequenceType::FixedSizeList(right_field, right_size)),
@@ -520,7 +529,9 @@ impl Ord for DataType {
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
                 .cmp(right_mode)
                 .then_with(|| left_fields.cmp(right_fields)),
-            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => left.cmp(right),
+            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
+                left.cmp(right)
+            }
             (
                 D::Decimal(DecimalType::Decimal32 {
                     precision: left_precision,
@@ -685,7 +696,6 @@ impl DataType {
     pub const fn variant() -> Self {
         Self::Variant
     }
-
 }
 
 /// Subscripting a datatype reaches a nested **child**, never metadata.
@@ -745,19 +755,10 @@ impl Index<usize> for DataType {
     }
 }
 
-
-
 // The variant lives with the nested family: it is the self-describing
 // sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
 // as dense-union sugar), and its Arrow storage is a struct of two binaries.
 define_field_types!(VariantType, Variant);
-
-
-
-
-
-
-
 
 // ------------------------------------------------------------------------
 // Arrow projection and import: this enum names the family and nothing else.
@@ -768,9 +769,11 @@ mod arrow {
     use smol_str::format_smolstr;
 
     use super::{DataType, VariantType, invalid};
+    use crate::types::DecimalType;
     use crate::types::boolean::{BooleanType, NullType};
     use crate::types::enums::EnumType;
     use crate::types::geospatial::geospatial_arrow_storage;
+    use crate::types::mapping::MappingType;
     use crate::types::media_type::MediaTypeType;
     use crate::types::mime_type::MimeTypeType;
     use crate::types::runend::RunEndEncodedType;
@@ -782,9 +785,7 @@ mod arrow {
     use crate::types::uuid::UuidType;
     use crate::types::version::VersionType;
     use crate::types::{bytes, code, decimal, floating, integer, string, temporal};
-    use crate::types::mapping::MappingType;
     use crate::{Error, Field, Result};
-    use crate::types::DecimalType;
 
     impl DataType {
         /// Projects this datatype as the Arrow storage its family lays out.
@@ -808,7 +809,13 @@ mod arrow {
             Ok(match self {
                 R::Null => NullType::arrow_storage(),
                 R::Boolean => BooleanType::arrow_storage(),
-                R::Int8 | R::Int16 | R::Int32 | R::Int64 | R::UInt8 | R::UInt16 | R::UInt32
+                R::Int8
+                | R::Int16
+                | R::Int32
+                | R::Int64
+                | R::UInt8
+                | R::UInt16
+                | R::UInt32
                 | R::UInt64 => integer::arrow_storage(self)?,
                 R::Float16 | R::Float32 | R::Float64 => floating::arrow_storage(self)?,
                 R::DateTime64 { .. }
@@ -911,7 +918,13 @@ mod arrow {
             use ArrowDataType as A;
             match value {
                 A::Null | A::Boolean => crate::types::boolean::from_arrow_storage(value),
-                A::Int8 | A::Int16 | A::Int32 | A::Int64 | A::UInt8 | A::UInt16 | A::UInt32
+                A::Int8
+                | A::Int16
+                | A::Int32
+                | A::Int64
+                | A::UInt8
+                | A::UInt16
+                | A::UInt32
                 | A::UInt64 => integer::from_arrow_storage(value),
                 A::Float16 | A::Float32 | A::Float64 => floating::from_arrow_storage(value),
                 A::Timestamp(..)
@@ -932,9 +945,7 @@ mod arrow {
                 | A::ListView(_)
                 | A::FixedSizeList(..)
                 | A::LargeList(_)
-                | A::LargeListView(_) => {
-                    SequenceType::from_arrow_storage_at_depth(value, children)
-                }
+                | A::LargeListView(_) => SequenceType::from_arrow_storage_at_depth(value, children),
                 A::Struct(fields) => StructureType::from_arrow_storage_at_depth(fields, children),
                 A::Union(fields, mode) => {
                     UnionFields::from_arrow_storage_at_depth(fields, *mode, children)
@@ -1036,9 +1047,8 @@ mod arrow {
                     return with_extension(schema, name, &document);
                 }
             };
-            let schema =
-                FFI_ArrowSchema::try_new(&parts.format, parts.children, parts.dictionary)
-                    .and_then(|schema| schema.with_flags(parts.flags))?;
+            let schema = FFI_ArrowSchema::try_new(&parts.format, parts.children, parts.dictionary)
+                .and_then(|schema| schema.with_flags(parts.flags))?;
             // A dictionary-encoded extension is still that extension, and the C
             // schema is the field that says so: the entries the plain
             // projection writes above ride here for the encoded shape too.
@@ -1139,9 +1149,7 @@ mod arrow {
         /// allocating an Arrow copy.
         pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
             match self {
-                Self::Sequence(sequence) => {
-                    sequence.item().arrow_import_is_projection_equivalent()
-                }
+                Self::Sequence(sequence) => sequence.item().arrow_import_is_projection_equivalent(),
                 Self::Structure(fields) => fields
                     .iter()
                     .all(Field::arrow_import_is_projection_equivalent),
@@ -1171,7 +1179,10 @@ mod arrow {
         schema
             .with_metadata([
                 (arrow_schema::extension::EXTENSION_TYPE_NAME_KEY, name),
-                (arrow_schema::extension::EXTENSION_TYPE_METADATA_KEY, document),
+                (
+                    arrow_schema::extension::EXTENSION_TYPE_METADATA_KEY,
+                    document,
+                ),
             ])
             .map_err(Error::from)
     }

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::types::BytesType;
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 use yggdryl::types::SequenceType;
 use yggdryl::types::UuidType;
+use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
     match error {
@@ -269,7 +269,11 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
         // The documented exception: an Arrow datatype is storage, because it
         // has no metadata to name an extension with.
         let storage = dtype.clone().into_arrow_datatype().unwrap();
-        assert_ne!(DataType::from_arrow_datatype(&storage).unwrap(), dtype, "{dtype}");
+        assert_ne!(
+            DataType::from_arrow_datatype(&storage).unwrap(),
+            dtype,
+            "{dtype}"
+        );
     }
 }
 

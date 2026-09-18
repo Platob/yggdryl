@@ -112,10 +112,10 @@ use crate::arrow::BatchReader;
 use crate::expression::Projection;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
+use crate::types::FieldValue as _;
 use crate::types::cast::ArrowCastOptions;
 use crate::{DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, Term};
 use crate::{IOBase, IOMedia};
-use crate::types::FieldValue as _;
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";

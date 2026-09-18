@@ -20,8 +20,7 @@ fn the_bytes_marker_covers_every_layout_and_bound() {
 
     // The family is parameterized, so the field takes its datatype through
     // `try_new`, and a datatype from another family is refused by name.
-    let digest =
-        BytesField::try_new("digest", DataType::fixed_binary(32).unwrap(), false).unwrap();
+    let digest = BytesField::try_new("digest", DataType::fixed_binary(32).unwrap(), false).unwrap();
     assert_eq!(digest.dtype(), &DataType::fixed_binary(32).unwrap());
     assert!(BytesField::try_new("digest", DataType::utf8(), false).is_err());
     assert!(BytesField::try_new("digest", DataType::Uuid(UuidType::Uuid), false).is_err());
@@ -36,8 +35,7 @@ fn the_bytes_marker_covers_every_layout_and_bound() {
 
 #[test]
 fn a_fixed_value_is_exactly_its_width() {
-    let field =
-        BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), false).unwrap();
+    let field = BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), false).unwrap();
     let field_field = field.to_field();
     let held = FieldScalar::new(&field_field, vec![1_u8, 2, 3, 4]).unwrap();
     assert_eq!(held.as_bytes(), Some(&[1_u8, 2, 3, 4][..]));
@@ -152,8 +150,7 @@ fn a_bounded_column_checks_each_cell_on_the_way_in() {
 
 #[test]
 fn a_fixed_column_is_its_own_storage() {
-    let field =
-        BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), true).unwrap();
+    let field = BytesField::try_new("digest", DataType::fixed_binary(4).unwrap(), true).unwrap();
     let source: ArrayRef = Arc::new(
         FixedSizeBinaryArray::try_from_sparse_iter_with_size(
             [Some(&b"abcd"[..]), None].into_iter(),

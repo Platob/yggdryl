@@ -199,7 +199,6 @@ pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
 pub(crate) const ISIN_WIDTH: usize = 12;
 
 impl DataType {
-
     /// Creates ISO 6166's twelve-character securities identification number.
     ///
     /// ```
@@ -217,4 +216,3 @@ impl DataType {
 
 // /// An ISIN-typed field: ISO 6166's securities identification number.
 define_field_types!(IsinType, Isin);
-

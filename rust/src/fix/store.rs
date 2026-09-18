@@ -11,8 +11,8 @@ use smol_str::format_smolstr;
 use super::FixRegistry;
 use crate::holder::Holder;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
 use crate::types::sequence::SequenceType;
+use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
 
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 3] = [
@@ -241,14 +241,17 @@ impl Resolver<'_> {
                 }
                 Some(DataType::from_fields(resolved)?)
             }
-            DataType::Sequence(SequenceType::List(item)) | DataType::Sequence(SequenceType::LargeList(item)) => {
+            DataType::Sequence(SequenceType::List(item))
+            | DataType::Sequence(SequenceType::LargeList(item)) => {
                 let (item, child_height) = self.occurrence(item, depth + 1)?;
                 height = child_height + 1;
-                Some(if matches!(field.dtype(), DataType::Sequence(SequenceType::List(_))) {
-                    DataType::list(item)
-                } else {
-                    DataType::large_list(item)
-                })
+                Some(
+                    if matches!(field.dtype(), DataType::Sequence(SequenceType::List(_))) {
+                        DataType::list(item)
+                    } else {
+                        DataType::large_list(item)
+                    },
+                )
             }
             DataType::Mapping(map) => {
                 let mut entries = map.entries().clone();
@@ -310,7 +313,9 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| compact(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::Sequence(SequenceType::List(item)) => Some(DataType::list(compact(item.as_ref().clone(), false)?)),
+        DataType::Sequence(SequenceType::List(item)) => {
+            Some(DataType::list(compact(item.as_ref().clone(), false)?))
+        }
         DataType::Sequence(SequenceType::LargeList(item)) => {
             Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
         }

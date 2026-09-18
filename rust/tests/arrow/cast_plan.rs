@@ -12,8 +12,8 @@ use super::root;
 use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, cast_reader};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 use yggdryl::types::FieldValue as _;
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
 fn stored() -> SchemaRef {
     Arc::new(Schema::new(vec![
@@ -331,7 +331,10 @@ fn the_four_cast_doors_are_the_same_cast_at_four_widths() {
     let ids = child
         .cast_arrow_array(Arc::clone(&column), ArrowCastOptions::new())
         .unwrap();
-    assert_eq!(ids.as_ref(), &Int64Array::from(vec![7]) as &dyn arrow_array::Array);
+    assert_eq!(
+        ids.as_ref(),
+        &Int64Array::from(vec![7]) as &dyn arrow_array::Array
+    );
     let scalar = child
         .cast_arrow_scalar(Arc::clone(&column), ArrowCastOptions::new())
         .unwrap();

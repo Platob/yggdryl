@@ -249,5 +249,3 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
-
-
