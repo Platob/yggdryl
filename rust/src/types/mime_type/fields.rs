@@ -3,7 +3,7 @@
 use crate::TypedField;
 use crate::types::typed::define_field_types;
 
-define_field_types!(MimeTypeType, "mimetype", crate::DataType::MimeType);
+define_field_types!(MimeTypeType, MimeType, crate::DataType::MimeType);
 
 /// A MIME-type-typed field.
 pub type MimeTypeField = TypedField<MimeTypeType>;

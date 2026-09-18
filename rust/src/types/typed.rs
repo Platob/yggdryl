@@ -1005,9 +1005,38 @@ impl fmt::Debug for UncheckedFieldScalar<'_> {
 }
 
 macro_rules! define_field_types {
+    // The ordinary form: the marker stands for one identifier's variant, so it
+    // takes the identifier and reads the name off it. `DataTypeId::as_str` is
+    // where a datatype's name lives; writing it again here would be a second
+    // copy that nothing keeps in step.
+    ($(#[$meta:meta])* $marker:ident, $variant:ident, $pattern:pat $(,)?) => {
+        $(#[$meta])*
+        #[doc = concat!(
+            "Compile-time marker for [`DataTypeId::",
+            stringify!($variant),
+            "`](crate::DataTypeId::",
+            stringify!($variant),
+            ") fields."
+        )]
+        #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $marker;
+
+        impl $crate::types::typed::sealed::Sealed for $marker {}
+
+        impl $crate::types::typed::FieldType for $marker {
+            const NAME: &'static str = $crate::DataTypeId::$variant.as_str();
+
+            fn matches(dtype: &crate::DataType) -> bool {
+                matches!(dtype, $pattern)
+            }
+        }
+    };
+    // A marker that stands for a whole family has no single identifier to read
+    // a name off - `BytesType` matches all four byte layouts, whose identifiers
+    // are spelled `binary`, not `bytes` - so the family's own name is written.
     ($(#[$meta:meta])* $marker:ident, $name:literal, $pattern:pat $(,)?) => {
         $(#[$meta])*
-        #[doc = concat!("Compile-time marker for `", $name, "` fields.")]
+        #[doc = concat!("Compile-time marker for every `", $name, "` field.")]
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
 

@@ -162,3 +162,36 @@ fn the_extension_typed_markers_narrow_their_exact_variants() {
     .unwrap();
     assert_eq!(geography.dtype().name(), "geography");
 }
+
+#[test]
+fn a_marker_reads_its_name_off_the_identifier_it_stands_for() {
+    // `FieldType::NAME` used to be a literal written beside each marker - a
+    // second copy of `DataTypeId::as_str` for fifty-five of the fifty-seven,
+    // which nothing kept in step. It now comes from the identifier, so the two
+    // cannot disagree. These pin the answers that a reader actually sees in a
+    // `TypedField` Debug line and in `try_as_typed`'s refusal.
+    assert_eq!(<integer::Int8Type as FieldType>::NAME, "int8");
+    assert_eq!(<integer::UInt64Type as FieldType>::NAME, "uint64");
+    assert_eq!(<decimal::Decimal256Type as FieldType>::NAME, "decimal256");
+    assert_eq!(
+        <yggdryl::types::temporal::DateTime64Type as FieldType>::NAME,
+        "datetime64"
+    );
+
+    // The two family markers are the exception, and they are why the macro has
+    // a second form: each matches every layout of one family, so no single
+    // identifier names it. `BytesType` covers the four byte layouts, whose
+    // identifiers are spelled `binary`, `fixed_size_binary`, `large_binary`
+    // and `binary_view` - never `bytes`.
+    assert_eq!(<yggdryl::types::BytesType as FieldType>::NAME, "bytes");
+    assert!(<yggdryl::types::BytesType as FieldType>::matches(
+        &DataType::binary()
+    ));
+    assert!(<yggdryl::types::BytesType as FieldType>::matches(
+        &DataType::large_binary()
+    ));
+    assert_eq!(<yggdryl::types::StringType as FieldType>::NAME, "string");
+    assert!(<yggdryl::types::StringType as FieldType>::matches(
+        &DataType::large_utf8()
+    ));
+}

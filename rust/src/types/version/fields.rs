@@ -3,7 +3,7 @@
 use crate::TypedField;
 use crate::types::typed::define_field_types;
 
-define_field_types!(VersionType, "version", crate::DataType::Version);
+define_field_types!(VersionType, Version, crate::DataType::Version);
 
 /// A version-typed field.
 pub type VersionField = TypedField<VersionType>;

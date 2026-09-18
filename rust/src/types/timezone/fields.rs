@@ -3,7 +3,7 @@
 use crate::TypedField;
 use crate::types::typed::define_field_types;
 
-define_field_types!(TimezoneType, "timezone", crate::DataType::Timezone);
+define_field_types!(TimezoneType, Timezone, crate::DataType::Timezone);
 
 /// A time-zone-typed field.
 pub type TimezoneField = TypedField<TimezoneType>;

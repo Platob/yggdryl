@@ -7,22 +7,22 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 use crate::types::typed::define_field_types;
 use crate::{Field, Result, StringEnum, TypedField};
 
-define_field_types!(StringType, "string", crate::DataType::String(_));
+define_field_types!(StringType, String, crate::DataType::String(_));
 
 /// A string-typed field, whichever layout, charset and bound it declares.
 pub type StringField = TypedField<StringType>;
 
-define_field_types!(CountryType, "country", crate::DataType::Country);
-define_field_types!(CurrencyType, "currency", crate::DataType::Currency);
-define_field_types!(MicType, "mic", crate::DataType::Mic);
-define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
-define_field_types!(IsinType, "isin", crate::DataType::Isin);
-define_field_types!(CusipType, "cusip", crate::DataType::Cusip);
-define_field_types!(SedolType, "sedol", crate::DataType::Sedol);
-define_field_types!(BloombergType, "bloomberg", crate::DataType::Bloomberg);
-define_field_types!(SideType, "side", crate::DataType::Side);
-define_field_types!(StateType, "state", crate::DataType::State);
-define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
+define_field_types!(CountryType, Country, crate::DataType::Country);
+define_field_types!(CurrencyType, Currency, crate::DataType::Currency);
+define_field_types!(MicType, Mic, crate::DataType::Mic);
+define_field_types!(CfiType, Cfi, crate::DataType::Cfi);
+define_field_types!(IsinType, Isin, crate::DataType::Isin);
+define_field_types!(CusipType, Cusip, crate::DataType::Cusip);
+define_field_types!(SedolType, Sedol, crate::DataType::Sedol);
+define_field_types!(BloombergType, Bloomberg, crate::DataType::Bloomberg);
+define_field_types!(SideType, Side, crate::DataType::Side);
+define_field_types!(StateType, State, crate::DataType::State);
+define_field_types!(TimeInForceType, TimeInForce, crate::DataType::TimeInForce);
 
 /// A country-typed field: ISO 3166-1 alpha-2.
 pub type CountryField = TypedField<CountryType>;

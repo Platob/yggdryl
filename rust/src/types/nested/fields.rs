@@ -969,34 +969,34 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
-define_field_types!(ListType, "list", crate::DataType::List(_));
-define_field_types!(ListViewType, "list_view", crate::DataType::ListView(_));
+define_field_types!(ListType, List, crate::DataType::List(_));
+define_field_types!(ListViewType, ListView, crate::DataType::ListView(_));
 define_field_types!(
     FixedSizeListType,
-    "fixed_size_list",
+    FixedSizeList,
     crate::DataType::FixedSizeList(..)
 );
-define_field_types!(LargeListType, "large_list", crate::DataType::LargeList(_));
+define_field_types!(LargeListType, LargeList, crate::DataType::LargeList(_));
 define_field_types!(
     LargeListViewType,
-    "large_list_view",
+    LargeListView,
     crate::DataType::LargeListView(_)
 );
-define_field_types!(StructType, "struct", crate::DataType::Struct(_));
-define_field_types!(UnionType, "union", crate::DataType::Union(..));
+define_field_types!(StructType, Struct, crate::DataType::Struct(_));
+define_field_types!(UnionType, Union, crate::DataType::Union(..));
 // The variant lives with the nested family: it is the self-describing
 // sibling of the union whose grammar it shares (`variant` bare, `variant(...)`
 // as dense-union sugar), and its Arrow storage is a struct of two binaries.
-define_field_types!(VariantType, "variant", crate::DataType::Variant);
+define_field_types!(VariantType, Variant, crate::DataType::Variant);
 define_field_types!(
     DictionaryTypeMarker,
-    "dictionary",
+    Dictionary,
     crate::DataType::Dictionary(_)
 );
-define_field_types!(MapTypeMarker, "map", crate::DataType::Map(_));
+define_field_types!(MapTypeMarker, Map, crate::DataType::Map(_));
 define_field_types!(
     RunEndEncodedTypeMarker,
-    "run_end_encoded",
+    RunEndEncoded,
     crate::DataType::RunEndEncoded(_)
 );
 
