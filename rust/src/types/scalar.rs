@@ -41,30 +41,20 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone,
-    i256,
-};
-
+use crate::{DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256};
 use super::boolean::Boolean;
 use super::bytes::Bytes;
-use super::decimal as decimal;
-use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
+use super::decimal::{Decimal128, Decimal256, Decimal32, Decimal64};
 use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
-use super::integer::{compare_integer_parts, integer_parts};
-use super::integer::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
+use super::integer::{Int128, Int16, Int32, Int64, Int8, UInt128, UInt16, UInt32, UInt64, UInt8, compare_integer_parts, integer_parts};
 use super::nested::{Children, Mapping, Record, Sequence};
 use super::string::Str;
-use super::{
-    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
-};
 use super::temporal::scalars::temporal_key;
-use super::temporal::{
-    Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64,
-};
+use super::temporal::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 use super::uuid::Uuid;
 use super::version::Version;
+use super::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal as decimal};
 
 /// One concrete scalar representation.
 ///
@@ -119,8 +109,6 @@ macro_rules! text_scalar_value {
         }
     };
 }
-
-pub(crate) use text_scalar_value;
 
 /// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]
@@ -375,7 +363,7 @@ impl Serialize for Scalar {
             Self::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
-            Self::Date32(value) => match super::temporal::iso::format_date(value.count()) {
+            Self::Date32(value) => match super::temporal::format_date(value.count()) {
                 Some(spelled) if value.unit() == TimeUnit::Day && value.timezone().is_naive() => {
                     tagged(serializer, "date32", &spelled)
                 }
@@ -391,7 +379,7 @@ impl Serialize for Scalar {
                 &Triple(&value.count(), &value.unit(), &value.timezone()),
             ),
             Self::Time32(value) => {
-                match super::temporal::iso::format_time(i64::from(value.count()), value.unit()) {
+                match super::temporal::format_time(i64::from(value.count()), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time32", &spelled)
                     }
@@ -403,7 +391,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Time64(value) => {
-                match super::temporal::iso::format_time(value.count(), value.unit()) {
+                match super::temporal::format_time(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time64", &spelled)
                     }
@@ -416,9 +404,9 @@ impl Serialize for Scalar {
             }
             Self::DateTime64(value) => {
                 let spelled = if value.timezone().is_naive() {
-                    super::temporal::iso::format_datetime(value.count(), value.unit())
+                    super::temporal::format_datetime(value.count(), value.unit())
                 } else {
-                    super::temporal::iso::format_timestamp(
+                    super::temporal::format_timestamp(
                         value.count(),
                         value.unit(),
                         &value.timezone(),
@@ -434,7 +422,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Duration32(value) => {
-                match super::temporal::iso::format_duration(i64::from(value.count()), value.unit())
+                match super::temporal::format_duration(i64::from(value.count()), value.unit())
                 {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration32", &spelled)
@@ -447,7 +435,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Duration64(value) => {
-                match super::temporal::iso::format_duration(value.count(), value.unit()) {
+                match super::temporal::format_duration(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration64", &spelled)
                     }
@@ -679,7 +667,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::date32_in(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::Date32(Temporal32::Iso(spelled)) => {
-                super::temporal::iso::parse_date(&spelled)
+                super::temporal::parse_date(&spelled)
                     .map(Self::date32)
                     .map_err(D::Error::custom)
             }
@@ -687,7 +675,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::date64_in(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::Date64(Temporal64::Iso(spelled)) => {
-                super::temporal::iso::parse_date(&spelled)
+                super::temporal::parse_date(&spelled)
                     .map(|days| Self::date64(i64::from(days) * 86_400_000))
                     .map_err(D::Error::custom)
             }
@@ -695,7 +683,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::time32(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::Time32(Temporal32::Iso(spelled)) => {
-                super::temporal::iso::parse_time(&spelled)
+                super::temporal::parse_time(&spelled)
                     .and_then(|(count, unit)| {
                         i32::try_from(count)
                             .map(|count| (count, unit))
@@ -713,7 +701,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::time64(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::Time64(Temporal64::Iso(spelled)) => {
-                super::temporal::iso::parse_time(&spelled)
+                super::temporal::parse_time(&spelled)
                     .and_then(|(count, unit)| Self::time64(count, unit, Timezone::NAIVE))
                     .map_err(D::Error::custom)
             }
@@ -721,10 +709,10 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::datetime64(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::DateTime64(Temporal64::Iso(spelled)) => {
-                super::temporal::iso::parse_timestamp(&spelled)
+                super::temporal::parse_timestamp(&spelled)
                     .and_then(|(count, unit, zone)| Self::datetime64(count, unit, zone))
                     .or_else(|_| {
-                        super::temporal::iso::parse_datetime(&spelled).and_then(|(count, unit)| {
+                        super::temporal::parse_datetime(&spelled).and_then(|(count, unit)| {
                             Self::datetime64(count, unit, Timezone::NAIVE)
                         })
                     })
@@ -737,7 +725,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::duration32(count, unit).map_err(D::Error::custom)
             }
             StructuralWire::Duration32(Temporal32::Iso(spelled)) => {
-                super::temporal::iso::parse_duration(&spelled)
+                super::temporal::parse_duration(&spelled)
                     .and_then(|(count, unit)| {
                         i32::try_from(count)
                             .map(|count| (count, unit))
@@ -758,7 +746,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::duration64(count, unit).map_err(D::Error::custom)
             }
             StructuralWire::Duration64(Temporal64::Iso(spelled)) => {
-                super::temporal::iso::parse_duration(&spelled)
+                super::temporal::parse_duration(&spelled)
                     .and_then(|(count, unit)| Self::duration64(count, unit))
                     .map_err(D::Error::custom)
             }
@@ -1038,8 +1026,6 @@ macro_rules! code_scalars {
             | $crate::Scalar::Bloomberg(_)
     };
 }
-
-pub(crate) use code_scalars;
 
 /// The reading the eleven registered codes order and hash by.
 ///
@@ -1866,9 +1852,6 @@ fn duplicate_key_error(index: usize) -> Error {
     }
 }
 
-#[cfg(test)]
-#[path = "scalar/tests.rs"]
-mod tests;
 
 #[cfg(feature = "arrow")]
 impl Scalar {
@@ -1904,5 +1887,219 @@ impl Scalar {
             Self::Arrow(value) => Some(value),
             _ => None,
         }
+    }
+}
+
+pub(crate) use code_scalars;
+pub(crate) use text_scalar_value;
+
+#[cfg(test)]
+/// The scalar invariants an integration test cannot reach.
+///
+/// Everything a caller can observe lives in `tests/types/scalar.rs`. These two
+/// pin crate-private readers: the sign-and-magnitude reader every width
+/// compares through, and the rank sweep that decides how two kinds sort.
+mod tests {
+    use crate::{Scalar, TimeUnit, Timezone, i256};
+
+    #[test]
+    fn the_integer_sign_and_magnitude_reader_answers_every_width() {
+        use super::super::integer::{compare_integer_parts, integer_parts};
+        use std::cmp::Ordering;
+
+        let cases = [
+            (Scalar::from(-7_i8), Some((true, 7))),
+            (Scalar::from(-7_i16), Some((true, 7))),
+            (Scalar::from(-7_i32), Some((true, 7))),
+            (Scalar::from(-7_i64), Some((true, 7))),
+            (
+                Scalar::from(i128::MIN),
+                Some((true, i128::MIN.unsigned_abs())),
+            ),
+            (Scalar::from(7_u8), Some((false, 7))),
+            (Scalar::from(7_u16), Some((false, 7))),
+            (Scalar::from(7_u32), Some((false, 7))),
+            (Scalar::from(7_u64), Some((false, 7))),
+            (Scalar::from(u128::MAX), Some((false, u128::MAX))),
+            (Scalar::from(0_i32), Some((false, 0))),
+            (Scalar::from(7.0), None),
+            (Scalar::d128(7, 0), None),
+            (Scalar::Null, None),
+        ];
+        for (value, expected) in &cases {
+            assert_eq!(integer_parts(value), *expected, "{value:?}");
+        }
+
+        assert_eq!(compare_integer_parts((true, 1), (false, 0)), Ordering::Less);
+        assert_eq!(compare_integer_parts((true, 2), (true, 1)), Ordering::Less);
+        assert_eq!(
+            compare_integer_parts((false, 2), (false, 1)),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_integer_parts((false, 7), (false, 7)),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn the_value_rank_sweep_is_unchanged() {
+        use crate::types::Side;
+
+        let point =
+            crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap();
+        // One value of every variant, in declaration order, with the rank it has
+        // always had. The rank is wire-visible: it orders dictionary values.
+        let values = [
+            (Scalar::Null, 0),
+            (Scalar::from(true), 1),
+            (Scalar::from(1_i8), 2),
+            (Scalar::from(1_i16), 2),
+            (Scalar::from(1_i32), 2),
+            (Scalar::from(1_i64), 2),
+            (Scalar::from(1_u8), 2),
+            (Scalar::from(1_u16), 2),
+            (Scalar::from(1_u32), 2),
+            (Scalar::from(1_u64), 2),
+            (Scalar::from(1_i128), 2),
+            (Scalar::from(1_u128), 2),
+            (Scalar::from(half::f16::from_f32(1.0)), 3),
+            (Scalar::from(1.0_f32), 3),
+            (Scalar::from(1.0_f64), 3),
+            (Scalar::Decimal32(crate::types::Decimal32::new(1, 0)), 4),
+            (Scalar::Decimal64(crate::types::Decimal64::new(1, 0)), 4),
+            (Scalar::d128(1, 0), 4),
+            (Scalar::d256(i256::from_i128(1), 0), 4),
+            (Scalar::date32(1), 7),
+            (Scalar::date64(86_400_000), 7),
+            (
+                Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                8,
+            ),
+            (
+                Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+                8,
+            ),
+            (
+                Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+                9,
+            ),
+            (Scalar::duration32(1, TimeUnit::Second).unwrap(), 10),
+            (Scalar::duration64(1, TimeUnit::Second).unwrap(), 10),
+            (
+                Scalar::Interval(crate::types::Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap()),
+                16,
+            ),
+            (Scalar::from("a"), 5),
+            (Scalar::from(Side::new("1").unwrap()), 18),
+            (
+                Scalar::Uuid(
+                    crate::types::uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000")
+                        .unwrap(),
+                ),
+                17,
+            ),
+            (Scalar::from(crate::Version::new(1, 2, 3)), 19),
+            (
+                Scalar::from(crate::Url::from_str("https://example.com/a").unwrap()),
+                20,
+            ),
+            // A vocabulary member is its name, so it ranks with the text it is.
+            (Scalar::from(TimeUnit::Second), 5),
+            (Scalar::from(b"a".as_slice()), 6),
+            (Scalar::Geometry(point), 14),
+            (Scalar::from_sequence([]), 11),
+            (Scalar::from_mapping([]).unwrap(), 12),
+            (
+                Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+                13,
+            ),
+        ];
+        assert_eq!(values.len(), 38);
+        for (value, rank) in &values {
+            assert_eq!(super::value_rank(value), *rank, "{value:?}");
+        }
+
+        // Sorting any arrangement lays the kinds out in rank order.
+        let mut sorted = values
+            .iter()
+            .rev()
+            .map(|(value, _)| value.clone())
+            .collect::<Vec<_>>();
+        sorted.sort();
+        let mut expected = values.iter().map(|(_, rank)| *rank).collect::<Vec<_>>();
+        expected.sort_unstable();
+        assert_eq!(
+            sorted.iter().map(super::value_rank).collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    /// Deterministic hashes built over `Hash` keep the bytes the retired width
+    /// enums fed, pinned at the values the two-level representation produced.
+    #[test]
+    fn hash_derived_stable_hashes_keep_their_pre_flattening_values() {
+        use crate::types::temporal::Interval;
+        let interval = Interval::new(1, 2, 3_000_000, crate::TimeUnit::MonthDayNano).unwrap();
+        for (name, value, expected) in [
+            (
+                "sequence",
+                Scalar::from_sequence([Scalar::from(1_i32), Scalar::from("a")]),
+                2_351_796_681_665_035_878_u64,
+            ),
+            (
+                "mapping",
+                Scalar::from_mapping([(Scalar::from("k"), Scalar::from(2_i64))]).unwrap(),
+                17_364_630_997_768_761_460,
+            ),
+            (
+                "record",
+                Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
+                12_407_753_854_889_480_402,
+            ),
+            (
+                "interval",
+                Scalar::Interval(interval),
+                196_150_670_316_405_394,
+            ),
+            ("i32", Scalar::from(7_i32), 13_767_510_565_555_144_141),
+            ("f32", Scalar::from(1.5_f32), 6_394_485_071_238_434_244),
+            ("d128", Scalar::d128(1250, 2), 9_433_506_932_114_274_648),
+        ] {
+            assert_eq!(crate::hashing::stable_hash_of(&value), expected, "{name}");
+        }
+    }
+
+    /// The leaf's own spelling is reachable without a per-width table.
+    ///
+    /// `leaf_display` is crate-private - it is what the typed renderer walks
+    /// through - so what it answers per width is pinned here.
+    #[test]
+    fn a_width_variant_borrows_the_leaf_display_it_holds() {
+        use std::sync::Arc;
+
+        use crate::types::{decimal, integer, nested};
+
+        let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
+        assert_eq!(decimal.leaf_display().unwrap().to_string(), "12.50");
+        assert_eq!(
+            Scalar::Int32(integer::Int32::new(7))
+                .leaf_display()
+                .unwrap()
+                .to_string(),
+            "7"
+        );
+        let held = nested::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+        assert_eq!(
+            Scalar::Sequence(held.clone())
+                .leaf_display()
+                .unwrap()
+                .to_string(),
+            held.to_string()
+        );
+        // A value whose spelling is the caller's to choose answers nothing.
+        assert!(Scalar::from("12.50").leaf_display().is_none());
+        assert!(Scalar::from(true).leaf_display().is_none());
+        assert!(Scalar::Null.leaf_display().is_none());
     }
 }

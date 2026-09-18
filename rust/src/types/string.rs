@@ -852,92 +852,6 @@ fn ascii_values_refusal(values: &DataType) -> Error {
     }
 }
 
-/// The code readers an integration test cannot reach.
-///
-/// `code_text`, `code_cell_text` and `code_for_extension` are crate-private:
-/// they are the doors every registered code goes through, and a caller sees
-/// only the datatype they answer for. The rest of the suite lives in
-/// `tests/types/datatype/coded.rs`.
-#[cfg(test)]
-mod tests {
-    use crate::types::code::{code_cell_text, code_for_extension, code_text};
-    use crate::DataType;
-
-    #[test]
-    fn every_code_names_itself_and_its_width() {
-        for (name, dtype, width) in DataType::CODES {
-            assert_eq!(dtype.code_name(), Some(*name));
-            assert_eq!(dtype.code_width(), Some(*width));
-            assert_eq!(dtype.id().code_width(), Some(*width));
-            // The width is a maximum, so no code claims a fixed layout.
-            assert_eq!(dtype.fixed_byte_width(), None);
-            assert_eq!(dtype.to_string(), *name);
-            assert_eq!(DataType::from_str(name).unwrap(), *dtype);
-            assert!(dtype.is_code());
-            assert!(!dtype.is_string());
-        }
-        assert!(!DataType::fixed_ascii(3).unwrap().is_code());
-        assert_eq!(DataType::fixed_ascii(3).unwrap().code_width(), None);
-    }
-
-    #[test]
-    fn only_a_registered_name_is_a_code() {
-        assert_eq!(
-            code_for_extension("yggdryl.currency"),
-            Some(DataType::Currency)
-        );
-        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
-        assert_eq!(code_for_extension("yggdryl.cusip"), Some(DataType::Cusip));
-        assert_eq!(code_for_extension("yggdryl.sedol"), Some(DataType::Sedol));
-        assert_eq!(code_for_extension("yggdryl.ascii"), None);
-        assert_eq!(code_for_extension("arrow.uuid"), None);
-    }
-
-    #[test]
-    fn a_code_packs_at_the_width_its_standard_fixes() {
-        // The packing pads; the column does not. Both codes and fixed ASCII
-        // widths answer, and nothing else does.
-        assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
-            0x0055_5344
-        );
-        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
-        assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
-        assert_eq!(
-            DataType::fixed_ascii(4)
-                .unwrap()
-                .ascii_packed(b"USD")
-                .unwrap(),
-            0x5553_4400
-        );
-        assert!(DataType::Currency.ascii_packed(b"EURO").is_err());
-        assert!(DataType::utf8().ascii_packed(b"USD").is_err());
-    }
-
-    #[test]
-    fn a_code_holds_ascii_text_up_to_its_width() {
-        assert_eq!(code_text::<3>(b"USD").unwrap(), "USD");
-        assert_eq!(code_text::<3>(b"US\0").unwrap(), "US");
-        assert_eq!(code_text::<6>(b"ESVUFR").unwrap(), "ESVUFR");
-        let refused = code_text::<3>(b"EURO").unwrap_err().to_string();
-        assert!(refused.contains("at most 3 bytes"), "{refused}");
-    }
-
-    #[test]
-    fn a_cell_is_validated_at_the_code_width() {
-        assert_eq!(code_cell_text(&DataType::Currency, b"USD").unwrap(), "USD");
-        assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
-        assert_eq!(code_cell_text(&DataType::Cfi, b"ESVUFR").unwrap(), "ESVUFR");
-        let refused = code_cell_text(&DataType::Country, b"USD")
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("at most 2 bytes"), "{refused}");
-        let wrong = code_cell_text(&DataType::fixed_ascii(3).unwrap(), b"USD")
-            .unwrap_err()
-            .to_string();
-        assert!(wrong.contains("registered codes"), "{wrong}");
-    }
-}
 
 // ------------------------------------------------------------------------
 // Named member dictionaries for string fields.
@@ -3356,5 +3270,92 @@ impl<'de> Deserialize<'de> for StringLayout {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
         Self::from_str(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+/// The code readers an integration test cannot reach.
+///
+/// `code_text`, `code_cell_text` and `code_for_extension` are crate-private:
+/// they are the doors every registered code goes through, and a caller sees
+/// only the datatype they answer for. The rest of the suite lives in
+/// `tests/types/datatype/coded.rs`.
+#[cfg(test)]
+mod tests {
+    use crate::types::code::{code_cell_text, code_for_extension, code_text};
+    use crate::DataType;
+
+    #[test]
+    fn every_code_names_itself_and_its_width() {
+        for (name, dtype, width) in DataType::CODES {
+            assert_eq!(dtype.code_name(), Some(*name));
+            assert_eq!(dtype.code_width(), Some(*width));
+            assert_eq!(dtype.id().code_width(), Some(*width));
+            // The width is a maximum, so no code claims a fixed layout.
+            assert_eq!(dtype.fixed_byte_width(), None);
+            assert_eq!(dtype.to_string(), *name);
+            assert_eq!(DataType::from_str(name).unwrap(), *dtype);
+            assert!(dtype.is_code());
+            assert!(!dtype.is_string());
+        }
+        assert!(!DataType::fixed_ascii(3).unwrap().is_code());
+        assert_eq!(DataType::fixed_ascii(3).unwrap().code_width(), None);
+    }
+
+    #[test]
+    fn only_a_registered_name_is_a_code() {
+        assert_eq!(
+            code_for_extension("yggdryl.currency"),
+            Some(DataType::Currency)
+        );
+        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
+        assert_eq!(code_for_extension("yggdryl.cusip"), Some(DataType::Cusip));
+        assert_eq!(code_for_extension("yggdryl.sedol"), Some(DataType::Sedol));
+        assert_eq!(code_for_extension("yggdryl.ascii"), None);
+        assert_eq!(code_for_extension("arrow.uuid"), None);
+    }
+
+    #[test]
+    fn a_code_packs_at_the_width_its_standard_fixes() {
+        // The packing pads; the column does not. Both codes and fixed ASCII
+        // widths answer, and nothing else does.
+        assert_eq!(
+            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            0x0055_5344
+        );
+        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
+        assert_eq!(
+            DataType::fixed_ascii(4)
+                .unwrap()
+                .ascii_packed(b"USD")
+                .unwrap(),
+            0x5553_4400
+        );
+        assert!(DataType::Currency.ascii_packed(b"EURO").is_err());
+        assert!(DataType::utf8().ascii_packed(b"USD").is_err());
+    }
+
+    #[test]
+    fn a_code_holds_ascii_text_up_to_its_width() {
+        assert_eq!(code_text::<3>(b"USD").unwrap(), "USD");
+        assert_eq!(code_text::<3>(b"US\0").unwrap(), "US");
+        assert_eq!(code_text::<6>(b"ESVUFR").unwrap(), "ESVUFR");
+        let refused = code_text::<3>(b"EURO").unwrap_err().to_string();
+        assert!(refused.contains("at most 3 bytes"), "{refused}");
+    }
+
+    #[test]
+    fn a_cell_is_validated_at_the_code_width() {
+        assert_eq!(code_cell_text(&DataType::Currency, b"USD").unwrap(), "USD");
+        assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
+        assert_eq!(code_cell_text(&DataType::Cfi, b"ESVUFR").unwrap(), "ESVUFR");
+        let refused = code_cell_text(&DataType::Country, b"USD")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 2 bytes"), "{refused}");
+        let wrong = code_cell_text(&DataType::fixed_ascii(3).unwrap(), b"USD")
+            .unwrap_err()
+            .to_string();
+        assert!(wrong.contains("registered codes"), "{wrong}");
     }
 }

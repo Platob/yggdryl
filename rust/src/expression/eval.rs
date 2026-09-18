@@ -750,7 +750,7 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
-    use crate::types::temporal::iso;
+    use crate::types::temporal as iso;
 
     let text = match value {
         Scalar::Date32(date) => iso::format_date(date.count()),

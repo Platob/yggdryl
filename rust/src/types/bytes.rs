@@ -1577,118 +1577,6 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     }
 }
 
-/// The inline threshold an integration test cannot reach.
-///
-/// `INLINE_BYTES` is crate-private: it is the byte count below which a
-/// `Bytes` stores its payload in the value rather than behind an `Arc`, so
-/// the boundary has to be crossed from inside. Everything a caller can
-/// observe lives in `tests/types/bytes.rs`.
-#[cfg(test)]
-mod tests {
-    use super::{Bytes, INLINE_BYTES};
-    use crate::types::{BytesLayout, BytesParameters};
-    use crate::{DataType, Scalar};
-
-    #[test]
-    fn a_short_payload_is_inline_and_a_long_one_is_shared() {
-        let short = Bytes::new(vec![7_u8; INLINE_BYTES]);
-        assert!(short.is_inline());
-        let long = Bytes::new(vec![7_u8; INLINE_BYTES + 1]);
-        assert!(!long.is_inline());
-        assert_eq!(long.len(), INLINE_BYTES + 1);
-        assert!(!Bytes::new_static(b"held").is_inline());
-        assert_eq!(Bytes::default(), b"");
-        assert_eq!(std::mem::size_of::<Bytes>(), 40);
-    }
-
-    #[test]
-    fn equality_order_and_hash_read_the_payload_only() {
-        use std::collections::HashSet;
-
-        let plain = Bytes::new(b"abc");
-        let large = Bytes::new(b"abc")
-            .try_with_parameters(BytesParameters::new(BytesLayout::LargeBinary))
-            .unwrap();
-        assert_eq!(plain, large);
-        assert_eq!(HashSet::from([plain.clone(), large.clone()]).len(), 1);
-        assert_ne!(plain.parameters(), large.parameters());
-        assert!(Bytes::new(b"b") > Bytes::new(b"a"));
-        assert_eq!(format!("{large:?}"), "0x616263 as large_binary");
-        assert_eq!(format!("{plain:?}"), "0x616263");
-    }
-
-    #[test]
-    fn restating_checks_but_never_carries_a_maximum() {
-        let bounded = BytesParameters::new(BytesLayout::Binary)
-            .try_with_bound(4)
-            .unwrap();
-        let value = Bytes::new(b"abcd").try_with_parameters(bounded).unwrap();
-        assert_eq!(value.parameters(), BytesParameters::default());
-        assert_eq!(value.dtype().unwrap(), DataType::binary());
-        let refused = Bytes::new(b"abcde")
-            .try_with_parameters(bounded)
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("at most 4 bytes"), "{refused}");
-    }
-
-    #[test]
-    fn a_fixed_layout_takes_exactly_its_width() {
-        let fixed = BytesParameters::new(BytesLayout::FixedSizeBinary)
-            .try_with_bound(4)
-            .unwrap();
-        let value = Bytes::new(b"abcd").try_with_parameters(fixed).unwrap();
-        assert_eq!(value.fixed(), Some(4));
-        assert_eq!(
-            value.dtype().unwrap(),
-            DataType::fixed_size_binary(4).unwrap()
-        );
-        assert!(Bytes::new(b"abc").try_with_parameters(fixed).is_err());
-        assert!(Bytes::new(b"abcde").try_with_parameters(fixed).is_err());
-        assert!(
-            Bytes::new(b"x")
-                .try_with_parameters(BytesParameters::new(BytesLayout::FixedSizeBinary))
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn serde_writes_the_payload_alone_unless_the_value_declares_more() {
-        let plain = Bytes::new(b"ab");
-        assert_eq!(serde_json::to_string(&plain).unwrap(), "[97,98]");
-        assert_eq!(serde_json::from_str::<Bytes>("[97,98]").unwrap(), plain);
-        let fixed = Bytes::new(b"ab")
-            .try_with_parameters(
-                BytesParameters::new(BytesLayout::FixedSizeBinary)
-                    .try_with_bound(2)
-                    .unwrap(),
-            )
-            .unwrap();
-        let document = serde_json::to_string(&fixed).unwrap();
-        assert_eq!(
-            document,
-            r#"{"layout":"fixed_size_binary","fixed":2,"bytes":[97,98]}"#
-        );
-        let back = serde_json::from_str::<Bytes>(&document).unwrap();
-        assert_eq!(back.parameters(), fixed.parameters());
-        assert_eq!(back, fixed);
-    }
-
-    #[test]
-    fn a_byte_scalar_names_its_own_datatype() {
-        assert_eq!(
-            Scalar::from(vec![1_u8]).dtype().unwrap(),
-            DataType::binary()
-        );
-        let view = Bytes::new(b"x")
-            .try_with_parameters(BytesParameters::new(BytesLayout::BinaryView))
-            .unwrap();
-        assert_eq!(
-            Scalar::Bytes(view).dtype().unwrap(),
-            DataType::binary_view()
-        );
-    }
-}
 
 /// One of the four ways this crate lays bytes out - Arrow's four.
 ///
@@ -1808,5 +1696,118 @@ impl<'de> Deserialize<'de> for BytesLayout {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
         Self::from_str(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+/// The inline threshold an integration test cannot reach.
+///
+/// `INLINE_BYTES` is crate-private: it is the byte count below which a
+/// `Bytes` stores its payload in the value rather than behind an `Arc`, so
+/// the boundary has to be crossed from inside. Everything a caller can
+/// observe lives in `tests/types/bytes.rs`.
+#[cfg(test)]
+mod tests {
+    use super::{Bytes, INLINE_BYTES};
+    use crate::types::{BytesLayout, BytesParameters};
+    use crate::{DataType, Scalar};
+
+    #[test]
+    fn a_short_payload_is_inline_and_a_long_one_is_shared() {
+        let short = Bytes::new(vec![7_u8; INLINE_BYTES]);
+        assert!(short.is_inline());
+        let long = Bytes::new(vec![7_u8; INLINE_BYTES + 1]);
+        assert!(!long.is_inline());
+        assert_eq!(long.len(), INLINE_BYTES + 1);
+        assert!(!Bytes::new_static(b"held").is_inline());
+        assert_eq!(Bytes::default(), b"");
+        assert_eq!(std::mem::size_of::<Bytes>(), 40);
+    }
+
+    #[test]
+    fn equality_order_and_hash_read_the_payload_only() {
+        use std::collections::HashSet;
+
+        let plain = Bytes::new(b"abc");
+        let large = Bytes::new(b"abc")
+            .try_with_parameters(BytesParameters::new(BytesLayout::LargeBinary))
+            .unwrap();
+        assert_eq!(plain, large);
+        assert_eq!(HashSet::from([plain.clone(), large.clone()]).len(), 1);
+        assert_ne!(plain.parameters(), large.parameters());
+        assert!(Bytes::new(b"b") > Bytes::new(b"a"));
+        assert_eq!(format!("{large:?}"), "0x616263 as large_binary");
+        assert_eq!(format!("{plain:?}"), "0x616263");
+    }
+
+    #[test]
+    fn restating_checks_but_never_carries_a_maximum() {
+        let bounded = BytesParameters::new(BytesLayout::Binary)
+            .try_with_bound(4)
+            .unwrap();
+        let value = Bytes::new(b"abcd").try_with_parameters(bounded).unwrap();
+        assert_eq!(value.parameters(), BytesParameters::default());
+        assert_eq!(value.dtype().unwrap(), DataType::binary());
+        let refused = Bytes::new(b"abcde")
+            .try_with_parameters(bounded)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+    }
+
+    #[test]
+    fn a_fixed_layout_takes_exactly_its_width() {
+        let fixed = BytesParameters::new(BytesLayout::FixedSizeBinary)
+            .try_with_bound(4)
+            .unwrap();
+        let value = Bytes::new(b"abcd").try_with_parameters(fixed).unwrap();
+        assert_eq!(value.fixed(), Some(4));
+        assert_eq!(
+            value.dtype().unwrap(),
+            DataType::fixed_size_binary(4).unwrap()
+        );
+        assert!(Bytes::new(b"abc").try_with_parameters(fixed).is_err());
+        assert!(Bytes::new(b"abcde").try_with_parameters(fixed).is_err());
+        assert!(
+            Bytes::new(b"x")
+                .try_with_parameters(BytesParameters::new(BytesLayout::FixedSizeBinary))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn serde_writes_the_payload_alone_unless_the_value_declares_more() {
+        let plain = Bytes::new(b"ab");
+        assert_eq!(serde_json::to_string(&plain).unwrap(), "[97,98]");
+        assert_eq!(serde_json::from_str::<Bytes>("[97,98]").unwrap(), plain);
+        let fixed = Bytes::new(b"ab")
+            .try_with_parameters(
+                BytesParameters::new(BytesLayout::FixedSizeBinary)
+                    .try_with_bound(2)
+                    .unwrap(),
+            )
+            .unwrap();
+        let document = serde_json::to_string(&fixed).unwrap();
+        assert_eq!(
+            document,
+            r#"{"layout":"fixed_size_binary","fixed":2,"bytes":[97,98]}"#
+        );
+        let back = serde_json::from_str::<Bytes>(&document).unwrap();
+        assert_eq!(back.parameters(), fixed.parameters());
+        assert_eq!(back, fixed);
+    }
+
+    #[test]
+    fn a_byte_scalar_names_its_own_datatype() {
+        assert_eq!(
+            Scalar::from(vec![1_u8]).dtype().unwrap(),
+            DataType::binary()
+        );
+        let view = Bytes::new(b"x")
+            .try_with_parameters(BytesParameters::new(BytesLayout::BinaryView))
+            .unwrap();
+        assert_eq!(
+            Scalar::Bytes(view).dtype().unwrap(),
+            DataType::binary_view()
+        );
     }
 }

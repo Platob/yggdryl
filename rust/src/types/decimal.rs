@@ -1597,7 +1597,6 @@ impl Scalar {
 }
 
 #[cfg(test)]
-#[path = "scalars/tests.rs"]
 mod tests {
     mod reading {
         use crate::{DataType, Scalar};

@@ -104,7 +104,7 @@ pub use string::*;
 pub(crate) use code::{code_refusal, code_text};
 pub(crate) use code::{code_cell_text, code_for_extension};
 pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding};
-pub use temporal::scalars::TemporalFamily;
+pub use temporal::TemporalFamily;
 pub use temporal::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneField, TimezoneType};

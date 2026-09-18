@@ -2853,7 +2853,7 @@ pub fn from_arrow(value: &ArrowDataType) -> Result<Self>
   pub fn into_arrow(self) -> Result<ArrowDataType>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::arrow::field  [rust/src/types/arrow/field.rs]
+### yggdryl::types::arrow::field  [rust/src/types/arrow.rs]
 pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Self>
   pub fn from_arrow(value: &ArrowField) -> Result<Self>
   pub fn from_arrow_ref(value: FieldRef) -> Result<Self>
@@ -2932,7 +2932,7 @@ pub trait ArrowCast
   fn cast_arrow_batch(&self, batch: RecordBatch, options: ArrowCastOptions) -> Result<RecordBatch>
   fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<ArrowScalar<ArrayRef>>
 
-### yggdryl::types::cast::options  [rust/src/types/cast/options.rs]
+### yggdryl::types::cast::options  [rust/src/types/cast.rs]
 pub enum Nullability
   pub const ALL: [Self; 2]
   pub fn from_str(value: &str) -> Result<Self>
@@ -2952,7 +2952,7 @@ pub struct ArrowCastOptions
   pub const fn nullability(self) -> Nullability
   pub const fn representation(self) -> Representation
 
-### yggdryl::types::cast::plan  [rust/src/types/cast/plan.rs]
+### yggdryl::types::cast::plan  [rust/src/types/cast.rs]
 pub struct ArrowCastPlan
   pub fn compile(source: &Schema, target: &Field, options: ArrowCastOptions) -> Result<Self>
   pub const fn as_field(&self) -> &Field
@@ -3334,10 +3334,10 @@ pub const PARSE_RECURSION_LIMIT: usize = 64;
 ### yggdryl::types::regex  [rust/src/types/regex.rs]
 pub fn from_regex(pattern: &str, autotype: bool) -> Result<Self>
 
-### yggdryl::types::parser::field  [rust/src/types/parser/field.rs]
+### yggdryl::types::parser::field  [rust/src/types/parser.rs]
 pub fn from_str(value: &str) -> Result<Self>
 
-### yggdryl::types::protocol::http  [rust/src/types/protocol/http.rs]
+### yggdryl::types::protocol  [rust/src/types/protocol.rs]
 impl<'field> HttpField<'field>
   pub fn accept(&self) -> Option<&'field str>
   pub fn accept_encoding(&self) -> Option<&'field str>
@@ -3400,8 +3400,6 @@ impl<'field> HttpField<'field>
   pub fn remove_range(&mut self) -> Option<String>
   pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_vary(&mut self) -> Option<String>
-
-### yggdryl::types::protocol::python  [rust/src/types/protocol/python.rs]
 pub enum PythonKind
   pub const ALL: [Self; 8]
   pub const fn as_str(self) -> &'static str
@@ -3436,8 +3434,6 @@ pub enum PythonKind
   pub fn set_qualname(&mut self, value: &str) -> Result<()>
   pub fn set_kind(&mut self, value: PythonKind) -> Result<()>
   pub fn remove_class(&mut self) -> Option<PythonMetadata>
-
-### yggdryl::types::protocol  [rust/src/types/protocol/mod.rs]
 pub struct ProtocolField<'field>
   pub const fn as_field(&self) -> &'field Field
   pub fn as_properties(&self) -> ProtocolMetadata<'field>
@@ -3594,11 +3590,11 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
 pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::types::serde::field  [rust/src/types/serde/field.rs]
+### yggdryl::types::serde::field  [rust/src/types/serde.rs]
 pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::types::temporal  [rust/src/types/temporal/scalars.rs]
+### yggdryl::types::temporal  [rust/src/types/temporal.rs]
 pub enum TemporalFamily
   pub const fn as_str(self) -> &'static str
   pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
@@ -3631,8 +3627,6 @@ pub enum TemporalFamily
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
-
-### yggdryl::types::temporal  [rust/src/types/temporal/scalars.rs]
 pub enum TemporalFamily
   pub const fn as_str(self) -> &'static str
   pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
@@ -4013,7 +4007,7 @@ pub struct UncheckedFieldScalar<'a>
   pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_decimal: the field's reading of the held value
   pub fn into_value(self) -> Scalar
 
-### yggdryl::types::typed::record  [rust/src/types/typed/record.rs]
+### yggdryl::types::typed::record  [rust/src/types/typed.rs]
 pub struct FieldRecord<'a>
   pub fn new(field: &'a Field, row: impl Into<Scalar>) -> Result<Self>
   pub fn from_arrow_batch( field: &'a Field, batch: &arrow_array::RecordBatch, row: usize, ) -> crate::arrow::Result<Self>
@@ -4033,7 +4027,7 @@ pub struct FieldRecord<'a>
   impl Index<usize> for FieldRecord<'a>  // and Index<&str>
   impl From<FieldRecord<'_>> for Scalar
 
-### yggdryl::types::typed::shared  [rust/src/types/typed/shared.rs]
+### yggdryl::types::typed::shared  [rust/src/types/typed.rs]
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
