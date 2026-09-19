@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::types::FieldValue as _;
+use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {

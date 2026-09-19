@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use yggdryl::graph::Element;
-use yggdryl::hashing::xxhash::xxh128;
+use yggdryl::xxhash::xxh128;
 use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar};
 
 fn tagged(name: &str, tag: i32) -> Field {

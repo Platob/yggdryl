@@ -20,9 +20,9 @@ use std::sync::{Arc, OnceLock};
 use smol_str::format_smolstr;
 
 use super::{FixId, FixKey};
-use crate::hashing::xxhash::Xxh64;
-use crate::types::folds_equal;
-use crate::types::sequence::SequenceType;
+use crate::folds_equal;
+use crate::sequence::SequenceType;
+use crate::xxhash::Xxh64;
 use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;

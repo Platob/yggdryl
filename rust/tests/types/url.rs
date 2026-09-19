@@ -5,9 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use yggdryl::DataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::DataType;
-use yggdryl::types::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url, UrlField,
 };

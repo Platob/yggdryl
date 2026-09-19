@@ -2,7 +2,7 @@
 
 mod mapped {
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     fn path(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -102,7 +102,7 @@ mod mapped {
         // the ancestry is repaired once, and the same open is retried once.
         let mut root = Folder::temporary().unwrap().path().unwrap();
         root.push(format!("yggdryl-ancestry-{}", std::process::id()));
-        yggdryl::holder::local::Folder::new(&root)
+        yggdryl::local::Folder::new(&root)
             .expect("a local folder")
             .remove(true)
             .expect("a removable folder");
@@ -119,7 +119,7 @@ mod mapped {
             b"rows"
         );
 
-        yggdryl::holder::local::Folder::new(&root)
+        yggdryl::local::Folder::new(&root)
             .expect("a local folder")
             .remove(true)
             .expect("a removable folder");
@@ -197,7 +197,7 @@ mod mapped {
 mod hierarchy {
     use yggdryl::IOBase;
     use yggdryl::holder::Holder;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -358,7 +358,7 @@ mod hierarchy {
 mod generic_path {
     use yggdryl::IOBase;
     use yggdryl::holder::Holder;
-    use yggdryl::holder::local::{Folder, Path};
+    use yggdryl::local::{Folder, Path};
     use yggdryl::{IOKind, MediaType, MimeType};
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -529,7 +529,7 @@ mod generic_path {
 
 /// The three roles are what a backend implements; `local` is the reference.
 mod roles {
-    use yggdryl::holder::local::{File, Folder, Path};
+    use yggdryl::local::{File, Folder, Path};
     use yggdryl::{IOBase, IOFile, IOFolder, IOPath};
     use yggdryl::{IOKind, MimeType};
 
@@ -620,7 +620,7 @@ mod roles {
 /// A listing skips private names unless a caller asks for them.
 mod privacy {
     use yggdryl::holder::Holder;
-    use yggdryl::holder::local::{Folder, Path};
+    use yggdryl::local::{Folder, Path};
     use yggdryl::{IOBase, IOKind, MimeType, Url};
 
     fn root(label: &str) -> std::path::PathBuf {
@@ -735,7 +735,7 @@ mod privacy {
 /// A pattern is a location, so listing one expands it.
 mod globbing {
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{Folder, Path};
+    use yggdryl::local::{Folder, Path};
     use yggdryl::{IOKind, Url};
 
     /// Build a small lake: two years, two months each, one part per month.

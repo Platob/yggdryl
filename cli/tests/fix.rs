@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixCode, FixDirection, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);

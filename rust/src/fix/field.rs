@@ -17,7 +17,7 @@ use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::expression::Term;
-use crate::types::folds_equal;
+use crate::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result};
 
 /// The dictionaries that contributed this field, folded and sorted; absent

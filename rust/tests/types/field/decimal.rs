@@ -1,7 +1,7 @@
 //! The decimal family's field: one marker over every backing width.
 
-use yggdryl::types::{DataTypeValue, DecimalField, DecimalType};
 use yggdryl::{DataType, DataTypeId, Scalar};
+use yggdryl::{DataTypeValue, DecimalField, DecimalType};
 
 use super::typed::assert_typed_marker;
 

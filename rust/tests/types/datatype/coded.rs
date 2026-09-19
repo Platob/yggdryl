@@ -9,12 +9,12 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
 };
+use yggdryl::{CfiField, CountryField, CurrencyField, MicField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
@@ -597,7 +597,7 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
 
 #[test]
 fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
-    use yggdryl::types::State;
+    use yggdryl::State;
 
     // The stored bytes, sorted by nothing but ASCII. This is the whole claim:
     // whatever sorts the column - a Parquet row group's bounds, an external
@@ -683,7 +683,7 @@ fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
 
 #[test]
 fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
-    use yggdryl::types::State;
+    use yggdryl::State;
 
     // One value, four vocabularies: the wire code an ExecutionReport carries,
     // the specification's name for it, the word a scheduler uses, and the
@@ -857,7 +857,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
 
 #[test]
 fn a_code_merges_to_the_better_statement() {
-    use yggdryl::types::{Cfi, CodeValue, Currency, Isin, Mic, Side, State};
+    use yggdryl::{Cfi, CodeValue, Currency, Isin, Mic, Side, State};
 
     // A classification fills what it left unknown from the other, and stands
     // as it is beside another instrument's.

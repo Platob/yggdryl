@@ -12,10 +12,8 @@ pub(super) fn hash_of<T: std::hash::Hash>(value: &T) -> u64 {
 }
 
 use yggdryl::holder::Buffer;
-use yggdryl::media::text::{
-    LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines,
-};
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
+use yggdryl::text::{LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines};
 use yggdryl::{Codec, DataType, Field, Timezone};
 use yggdryl::{IOBase as _, IOMedia as _};
 
@@ -123,9 +121,9 @@ fn assert_text_buffer(_: &Text<Buffer>) {}
 #[test]
 fn a_read_fits_the_alignment_an_object_allocator_gives() {
     assert!(
-        align_of::<yggdryl::media::text::TextLines>() <= 16,
+        align_of::<yggdryl::text::TextLines>() <= 16,
         "a text read asks to be aligned to {} bytes, and an object allocator gives 16",
-        align_of::<yggdryl::media::text::TextLines>()
+        align_of::<yggdryl::text::TextLines>()
     );
 }
 
@@ -311,7 +309,7 @@ fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
 
 #[test]
 fn url_column_is_rendered_from_the_handlers_real_url() {
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     let mut path = Folder::temporary().unwrap().path().unwrap();
     path.push(format!("yggdryl-text-url-{}.log", std::process::id()));
@@ -825,7 +823,7 @@ fn gzip_and_zstd_framing_decode_the_same_logical_records() {
 
 #[test]
 fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
-    use yggdryl::holder::local::File;
+    use yggdryl::local::File;
 
     let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(10);
     let record_options: RecordOptions = options.clone().into();
@@ -897,7 +895,7 @@ fn framing_requires_a_rowheader_before_any_source_read() {
 
 #[test]
 fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let mut root = Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-framed-folder-{}", std::process::id()));
@@ -1219,9 +1217,9 @@ mod fetching {
 
     use std::any::Any;
     use std::sync::{Arc, Mutex};
-    use yggdryl::media::text::{Text, TextOptions};
+    use yggdryl::text::{Text, TextOptions};
 
-    use yggdryl::holder::fs::{
+    use yggdryl::fs::{
         BoundLocation, ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem,
         MemoryFileSystem, OutputMetadata, RandomAccessReader,
     };
@@ -1380,7 +1378,7 @@ mod fetching {
             .with_framing(true)
     }
 
-    fn located(name: &str, bytes: &[u8]) -> (yggdryl::holder::fs::File, Arc<Counting>) {
+    fn located(name: &str, bytes: &[u8]) -> (yggdryl::fs::File, Arc<Counting>) {
         let filesystem = Arc::new(Counting {
             inner: MemoryFileSystem::new(),
             reads: Arc::new(Mutex::new(Vec::new())),
@@ -1394,7 +1392,7 @@ mod fetching {
             .unwrap();
         let bound =
             BoundLocation::new(Arc::clone(&filesystem) as Arc<dyn FileSystem>, name, None).unwrap();
-        let mut handle = yggdryl::holder::fs::File::new(bound);
+        let mut handle = yggdryl::fs::File::new(bound);
         handle.set_media_type(
             Url::from_str(&format!("file:///{name}"))
                 .unwrap()
@@ -1562,7 +1560,7 @@ fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
 #[test]
 fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
     use arrow_array::TimestampNanosecondArray;
-    use yggdryl::holder::local::File;
+    use yggdryl::local::File;
 
     let directory = std::env::temp_dir().join("yggdryl_text_mtime");
     std::fs::create_dir_all(&directory).unwrap();
@@ -1634,7 +1632,7 @@ mod values {
     use super::hash_of;
     use std::sync::Arc;
 
-    use yggdryl::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
+    use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine};
     use yggdryl::{FieldPath, FieldSegment};
 
     fn page(bytes: &[u8]) -> Arc<Vec<u8>> {
@@ -1917,7 +1915,7 @@ mod values {
     /// Every pair a body declares, rendered as the line wrote it.
     fn read(body: &[u8]) -> Vec<String> {
         let body = TextBytes::from_bytes(body).expect("a body");
-        yggdryl::media::text::TextEntries::from_bytes(&body)
+        yggdryl::text::TextEntries::from_bytes(&body)
             .as_ref()
             .map(TextEntries::as_slice)
             .unwrap_or_default()
@@ -1928,7 +1926,7 @@ mod values {
 
     fn tree(body: &[u8]) -> TextEntries {
         let body = TextBytes::from_bytes(body).expect("a body");
-        yggdryl::media::text::TextEntries::from_bytes(&body).expect("the line states pairs")
+        yggdryl::text::TextEntries::from_bytes(&body).expect("the line states pairs")
     }
 
     #[test]
@@ -1990,7 +1988,7 @@ mod values {
     fn a_value_a_frame_bounded_is_still_a_range_of_the_page_it_came_from() {
         let page = page(b"8=FIX.4.4|58=a value with spaces|10=0|");
         let body = TextBytes::from_whole_page(Arc::clone(&page)).expect("the whole page");
-        let entries = yggdryl::media::text::TextEntries::from_bytes(&body).expect("pairs");
+        let entries = yggdryl::text::TextEntries::from_bytes(&body).expect("pairs");
         let held = &entries.as_slice()[1];
         assert_eq!(held.value(), "a value with spaces");
         assert!(
@@ -2106,14 +2104,14 @@ mod values {
 mod decoding {
 
     use arrow_array::{Array as _, StringArray};
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::text::TextOptions;
 
     use yggdryl::FieldPath;
-    use yggdryl::media::text::{into_arrow_batch, read_text_lines};
+    use yggdryl::text::{into_arrow_batch, read_text_lines};
 
     use super::named;
 
-    fn lines(source: &[u8], options: &TextOptions) -> Vec<yggdryl::media::text::TextLine> {
+    fn lines(source: &[u8], options: &TextOptions) -> Vec<yggdryl::text::TextLine> {
         read_text_lines(&named("app.log", source), options)
             .expect("the configuration is settled")
             .map(|line| line.expect("a line decodes"))
@@ -2340,8 +2338,8 @@ mod decoding {
     #[test]
     fn an_empty_object_answers_its_columns_and_no_rows() {
         let options = TextOptions::new();
-        let batch = into_arrow_batch(Vec::<yggdryl::media::text::TextLine>::new(), &options)
-            .expect("a batch");
+        let batch =
+            into_arrow_batch(Vec::<yggdryl::text::TextLine>::new(), &options).expect("a batch");
         assert_eq!(batch.num_rows(), 0);
         assert!(batch.column_by_name("body").is_some());
     }
@@ -2359,13 +2357,13 @@ mod decoding {
 mod intake {
 
     use yggdryl::FieldPath;
-    use yggdryl::media::text::TextOptions;
-    use yggdryl::media::text::{from_arrow_batch, from_arrow_reader};
-    use yggdryl::media::text::{into_arrow_batch, read_text_lines};
+    use yggdryl::text::TextOptions;
+    use yggdryl::text::{from_arrow_batch, from_arrow_reader};
+    use yggdryl::text::{into_arrow_batch, read_text_lines};
 
     use super::named;
 
-    fn decode(source: &[u8], options: &TextOptions) -> Vec<yggdryl::media::text::TextLine> {
+    fn decode(source: &[u8], options: &TextOptions) -> Vec<yggdryl::text::TextLine> {
         read_text_lines(&named("app.log", source), options)
             .expect("a settled configuration")
             .map(|line| line.expect("a line"))
@@ -2454,7 +2452,7 @@ mod intake {
         let mut options = TextOptions::new();
         options.batch_row_size = Some(1);
         let lines = decode(b"a\nb\nc\n", &options);
-        let reader = yggdryl::media::text::into_arrow_reader(
+        let reader = yggdryl::text::into_arrow_reader(
             lines.into_iter().map(Ok).collect::<Vec<_>>(),
             &options,
         )

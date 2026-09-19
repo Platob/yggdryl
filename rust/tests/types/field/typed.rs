@@ -3,8 +3,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl::types::{DataTypeValue, FieldValue, Int64Field, Int64Type, StringField, StringType};
 use yggdryl::{DataType, Field};
+use yggdryl::{DataTypeValue, FieldValue, Int64Field, Int64Type, StringField, StringType};
 
 fn stable_hash<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();

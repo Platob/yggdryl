@@ -32,7 +32,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixRegistry, IOBase, FieldPath};
 
     let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
@@ -247,7 +247,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");

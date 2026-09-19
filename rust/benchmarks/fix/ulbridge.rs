@@ -23,7 +23,7 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::Event;
 use yggdryl::holder::Buffer;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
 
 use super::seed;

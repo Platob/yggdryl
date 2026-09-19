@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOBase;
-use yggdryl::holder::fs::{FileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::fs::{FileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, Field, Url};
 
@@ -80,7 +80,7 @@ pub(crate) fn memory() -> Arc<MemoryFileSystem> {
 
 /// One local filesystem mapping, and the temporary root it works under.
 pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
-    let mut root = yggdryl::holder::local::Folder::temporary()
+    let mut root = yggdryl::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");

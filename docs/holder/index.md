@@ -41,7 +41,7 @@ Construction records a location without probing it, and the enum answers the who
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::holder::{Buffer, Holder};
     use yggdryl::{IOBase, IOKind};
 
@@ -170,7 +170,7 @@ Nothing this build reads declares JSON, so that name composes to the location it
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let root = Holder::folder(Folder::temporary()?.path()?)?;
     assert!(root.is_container());
@@ -214,7 +214,7 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     ```rust
     use yggdryl::IOBase;
     use yggdryl::{IOKind, MimeType};
-    use yggdryl::holder::local;
+    use yggdryl::local;
 
     let temporary = local::Folder::temporary()?.path()?;
     let path = temporary.join("yggdryl-docs-io-folder");

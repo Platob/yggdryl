@@ -17,13 +17,13 @@ use criterion::{BatchSize, Criterion, Throughput};
 use smol_str::SmolStr;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
-use yggdryl::media::iceberg::{
+use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
     ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
+use yggdryl::local::Folder;
 use yggdryl::media::partition::partition_text;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
@@ -33,7 +33,7 @@ use crate::bench_profile;
 /// `holder` benchmark: one fixture, so the counts printed here are the counts
 /// pinned in `holder::object::tests::accounting`.
 #[cfg(feature = "object")]
-#[path = "../../src/holder/object/tests/server.rs"]
+#[path = "../../src/object/tests/server.rs"]
 mod server;
 
 /// Distinct venue values the planning tables partition on.
@@ -265,14 +265,14 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
         .into_json()
         .expect("the synthetic metadata projects to JSON");
     let text = String::from_utf8(
-        yggdryl::text::json::into_bytes(&document).expect("the synthetic document encodes"),
+        yggdryl::json::into_bytes(&document).expect("the synthetic document encodes"),
     )
     .expect("the encoded document is UTF-8");
 
     // Proven once outside the timer: the text really carries the shape the
     // benchmark claims to parse.
     let parsed =
-        TableMetadata::from_json(&yggdryl::text::json::from_utf8(&text).expect("the text parses"))
+        TableMetadata::from_json(&yggdryl::json::from_utf8(&text).expect("the text parses"))
             .expect("the document reads back");
     assert_eq!(parsed.snapshots().len(), 100);
     assert_eq!(parsed.schemas().len(), 3);
@@ -281,7 +281,7 @@ fn metadata_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Bytes(text.len() as u64));
     group.bench_function("parse_json", |bencher| {
         bencher.iter(|| {
-            let value = yggdryl::text::json::from_utf8(black_box(text.as_str()))
+            let value = yggdryl::json::from_utf8(black_box(text.as_str()))
                 .expect("the serialized document parses");
             TableMetadata::from_json(&value).expect("the parsed document reads")
         });
@@ -979,7 +979,7 @@ fn read_benchmarks(criterion: &mut Criterion) {
 /// jittered backoff - which is exactly what is being measured.
 ///
 /// One mutex serializes the append calls themselves. The local backend is a
-/// memory mapping, and `yggdryl::holder::local` documents the consequence: two
+/// memory mapping, and `yggdryl::local` documents the consequence: two
 /// writers truncating one mapped file at the same instant can raise SIGBUS,
 /// which no retry can catch. The gate stands in for the atomic PUT an object
 /// store gives every writer, while the *handles* still race optimistically -
@@ -1064,11 +1064,11 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
 fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     use std::any::Any;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use yggdryl::holder::fs::{
+    use yggdryl::fs::{
         ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
         OutputMetadata, RandomAccessReader,
     };
-    use yggdryl::media::iceberg::Catalog;
+    use yggdryl::iceberg::Catalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
@@ -1186,7 +1186,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     };
     let counted = || {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = yggdryl::holder::fs::Folder::from_path(
+        let warehouse = yggdryl::fs::Folder::from_path(
             Arc::clone(&filesystem) as Arc<dyn FileSystem>,
             "warehouse",
             None,
@@ -1294,15 +1294,11 @@ mod s3 {
     use arrow_array::RecordBatch;
     use criterion::{BatchSize, Criterion, Throughput};
     use yggdryl::arrow::BatchReader;
-    use yggdryl::holder::local::Folder as LocalFolder;
-    use yggdryl::holder::object::{
-        Credentials, File, Folder, ObjectOptions, file_with, folder_with,
-    };
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::local::Folder as LocalFolder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::iceberg::{
-        FormatVersion, PartitionSpec, Table, Transform, assign_field_ids,
-    };
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::object::{Credentials, File, Folder, ObjectOptions, file_with, folder_with};
+    use yggdryl::text::TextOptions;
     use yggdryl::{
         DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
         fix_schema, fix_schema_carrying,
@@ -1590,22 +1586,27 @@ mod s3 {
             }
             column
         });
+        // The FIX clocks and hashes are unsigned 64-bit counts, which Iceberg
+        // has no column for: the schema takes the lossless widening the
+        // compatibility walk names before the table numbers it.
         let mut schema = Field::from_parts(
             carried.name(),
             DataType::from_fields(columns).expect("the columns are distinct"),
             carried.is_nullable(),
             carried.metadata_iter(),
         )
-        .expect("the schema rebuilds");
+        .expect("the schema rebuilds")
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .expect("the schema widens for Iceberg");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
         // There is no `timepartition` column: how a layout is cut is the
         // target's, so the table takes an `hour` transform over the
-        // `updatedat` the row already carries rather than a materialized copy
+        // `currunix` the row already carries rather than a materialized copy
         // of that instant.
         let mut spec =
-            PartitionSpec::identity(1, &schema, &["updatedat"]).expect("updatedat is a column");
+            PartitionSpec::identity(1, &schema, &["currunix"]).expect("currunix is a column");
         spec.fields[0].transform = Transform::Hour;
-        spec.fields[0].name = "updatedat_hour".into();
+        spec.fields[0].name = "currunix_hour".into();
         let fix_table = |label: &str| {
             Table::create(
                 folder(&store, &next(label)),

@@ -30,7 +30,7 @@ pub(crate) fn append_arrow_reader_default(
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::media::iceberg::located(handle)? {
+        if let Some(mut table) = crate::iceberg::located(handle)? {
             return table.append_arrow_reader(batches, options);
         }
         return append_arrow_reader_folder(handle, batches, options, commit_row_size);
@@ -74,7 +74,7 @@ pub(crate) fn merge_arrow_reader_default(
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::media::iceberg::located(handle)? {
+        if let Some(mut table) = crate::iceberg::located(handle)? {
             return table.merge_arrow_reader(batches, options);
         }
         return merge_arrow_reader_folder(handle, batches, options, commit_row_size);
@@ -139,7 +139,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::media::iceberg::located(handle)? {
+        if let Some(mut table) = crate::iceberg::located(handle)? {
             table.overwrite_arrow_reader(batches, options)?;
             return Ok(None);
         }
@@ -387,7 +387,7 @@ enum ArrowWriteTarget {
     },
     #[cfg(feature = "iceberg")]
     Iceberg {
-        located: Box<crate::media::iceberg::Located>,
+        located: Box<crate::iceberg::Located>,
         stored: crate::Field,
     },
 }
@@ -632,7 +632,7 @@ impl ArrowWriteSession {
         }
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(located) = crate::media::iceberg::located(handle)? {
+            if let Some(located) = crate::iceberg::located(handle)? {
                 let stored = located.stored_field()?;
                 self.target = Some(ArrowWriteTarget::Iceberg {
                     located: Box::new(located),
@@ -908,13 +908,13 @@ pub(crate) fn leaf_reader(
     let declared = options.field();
     let declared = declared.as_ref();
     let reader = match options {
-        RecordOptions::Ipc(ipc) => crate::media::ipc::read_batch_reader(handle, declared, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::ipc::read_batch_reader(handle, declared, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::media::parquet::read_batch_reader(handle, declared, parquet)?
+            crate::parquet::read_batch_reader(handle, declared, parquet)?
         }
-        RecordOptions::Avro(avro) => crate::media::avro::read_batch_reader(handle, declared, avro)?,
-        RecordOptions::Text(text) => crate::media::text::arrow::read_arrow_reader(handle, text)?,
+        RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
+        RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
     };
     match declared {
         // A declared root is applied, not merely cast: a `partition:` or
@@ -939,11 +939,11 @@ pub(crate) fn leaf_row_size(
     options: &RecordOptions,
 ) -> Result<u64> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::media::ipc::row_size(handle, ipc),
+        RecordOptions::Ipc(ipc) => crate::ipc::row_size(handle, ipc),
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => crate::media::parquet::row_size(handle, parquet),
-        RecordOptions::Avro(avro) => crate::media::avro::row_size(handle, avro),
-        RecordOptions::Text(text) => crate::media::text::arrow::row_size(handle, text),
+        RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
+        RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
+        RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
     }
 }
 
@@ -962,10 +962,10 @@ pub(crate) fn leaf_field(
         return Ok(field.clone());
     }
     match options {
-        RecordOptions::Ipc(ipc) => Ok(crate::media::ipc::read_field(handle, ipc)?),
+        RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
         #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => Ok(crate::media::parquet::read_field(handle, parquet)?),
-        RecordOptions::Avro(avro) => Ok(crate::media::avro::read_field(handle, avro)?),
+        RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
+        RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
     }
 }
@@ -981,16 +981,14 @@ pub(crate) fn leaf_writer(
     options: &RecordOptions,
 ) -> Result<()> {
     match options {
-        RecordOptions::Ipc(ipc) => crate::media::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
+        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
         #[cfg(feature = "parquet")]
         RecordOptions::Parquet(parquet) => {
-            crate::media::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
+            crate::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
         }
-        RecordOptions::Avro(avro) => {
-            crate::media::avro::overwrite_arrow_reader(handle, batches, avro)?
-        }
+        RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
         RecordOptions::Text(text) => {
-            crate::media::text::arrow::write_arrow_reader(handle, batches, text)?;
+            crate::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
     }
     Ok(())
@@ -1077,7 +1075,7 @@ fn append_leaf(
     // Text lines append natively: rows render after the current last line,
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
-        return crate::media::text::arrow::append_arrow_reader(handle, incoming, text);
+        return crate::text::arrow::append_arrow_reader(handle, incoming, text);
     }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)

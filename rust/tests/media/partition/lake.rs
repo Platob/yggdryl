@@ -12,10 +12,7 @@ use yggdryl::media::IORecordOptions;
 
 /// Build an empty `lake/` under the temp directory and hold it as a folder.
 fn lake(label: &str) -> (PathBuf, Holder) {
-    let mut root = yggdryl::holder::local::Folder::temporary()
-        .unwrap()
-        .path()
-        .unwrap();
+    let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-lake-{label}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();

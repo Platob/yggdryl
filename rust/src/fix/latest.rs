@@ -41,7 +41,7 @@ use super::msg::FixMsg;
 use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
 use crate::expression::Term;
-use crate::types::sequence::SequenceType;
+use crate::sequence::SequenceType;
 use crate::{DataType, Field, Plan, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
@@ -165,9 +165,9 @@ impl Level {
             is_group(child) && child.field().as_fix().counter().ok().flatten() == Some(counter)
         });
         by_counter.or_else(|| {
-            self.children.iter().position(|child| {
-                is_group(child) && crate::types::folds_equal(child.field().name(), name)
-            })
+            self.children
+                .iter()
+                .position(|child| is_group(child) && crate::folds_equal(child.field().name(), name))
         })
     }
 

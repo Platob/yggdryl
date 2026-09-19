@@ -7,7 +7,7 @@ use std::iter::FusedIterator;
 use std::vec;
 
 use super::{Element, Event};
-use crate::types::Uuid;
+use crate::Uuid;
 
 /// The elements a walk reads, in the order it reads them.
 #[derive(Debug)]
@@ -23,7 +23,7 @@ enum Source<E, I> {
 /// follows and yields it enriched.
 ///
 /// The walk keeps the elements still alive - in a live
-/// [`State`](crate::types::State), and not
+/// [`State`](crate::State), and not
 /// past their expiration - under the identity every incarnation of one
 /// thing shares: the cross element, which is the element's own identity
 /// where it states no cross code. An element arriving under an identity a
@@ -72,7 +72,7 @@ enum Source<E, I> {
 ///
 /// ```
 /// use yggdryl::graph::{Element, EventIterator, Event, MarketEventData};
-/// use yggdryl::types::State;
+/// use yggdryl::State;
 ///
 /// // One order's life as three events sharing its cross code, plus one
 /// // event of another order: a market event orders by instant and follows

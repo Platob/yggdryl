@@ -33,7 +33,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
 
 use super::seed;
@@ -399,7 +399,7 @@ pub fn line_benchmarks(criterion: &mut Criterion) {
         let page = TextBytes::from_bytes(body).expect("a page");
         group.bench_function(format!("{shape}/scan"), |bencher| {
             bencher.iter(|| {
-                yggdryl::media::text::TextEntries::from_bytes_direct(black_box(&page))
+                yggdryl::text::TextEntries::from_bytes_direct(black_box(&page))
                     .map_or(0, |held| held.len())
             });
         });

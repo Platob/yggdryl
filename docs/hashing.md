@@ -1,12 +1,12 @@
 # Hashing
 
-`yggdryl::hashing` is the one digest owner: `hashing::xxhash` digests bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XXH3-128, and `hashing::txhash` couples a UTC instant with one of those digests into one sortable value.
+`yggdryl::xxhash` digests bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XXH3-128, and `yggdryl::txhash` couples a UTC instant with one of those digests into one sortable value; `hashing/` holds only the stable-hash adapters the two share.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Owner | `hashing` holds the two implementation modules and no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
+| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
 | `xxhash` owns | `xxh32`, `xxh64`, `xxh3`, `xxh128` and their `_with_seed` forms (the XXH3 pair also `_with_secret` and `_with_seed_and_secret`), `digest`, `SECRET_MINIMUM_LENGTH`, the `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states, `reader` / `writer`, `Hashed<H>`, `arrow::row_digests` / `column_digests`, and the value methods `as_value_bytes`, `write_bytes`, `digest`, `stable_hash` |
 | `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `digest:time` / `digest:unit` on a holder |
 | Algorithms | `DigestAlgorithm::ALL`: `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`; `width()` 4, 8, 8, 16 bytes; XXH3-64 is the default and what every `stable_hash` answers |
@@ -40,7 +40,7 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash;
+    use yggdryl::xxhash;
     use yggdryl::{Digest, DigestAlgorithm};
 
     assert_eq!(xxhash::xxh32(b"abc"), 0x32d1_53ff);
@@ -129,7 +129,7 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 
     ```rust
     use yggdryl::DigestAlgorithm;
-    use yggdryl::hashing::xxhash::{Xxh3, xxh3};
+    use yggdryl::xxhash::{Xxh3, xxh3};
 
     let payload = b"AAPL,187.23";
     for split in [1, 4, payload.len()] {
@@ -208,7 +208,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3};
+    use yggdryl::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3};
     use yggdryl::{DigestAlgorithm, Error};
 
     assert!(!DigestAlgorithm::Xxh64.is_secretable());
@@ -279,7 +279,7 @@ Digest an `IOBase` handle's bytes without reading them whole.
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash;
+    use yggdryl::xxhash;
     use yggdryl::holder::Buffer;
     use yggdryl::{DigestAlgorithm, IOBase};
 
@@ -357,8 +357,8 @@ Rust only: `DigestReader`, `DigestWriter`, and `Hashed<H>` build on `Read`, `Wri
 ```rust
 use std::io::{Read, Write};
 
-use yggdryl::coding::gzip::Gzip;
-use yggdryl::hashing::xxhash::{self, Hashed};
+use yggdryl::gzip::Gzip;
+use yggdryl::xxhash::{self, Hashed};
 use yggdryl::holder::Buffer;
 use yggdryl::{DigestAlgorithm, IOBase};
 
@@ -414,7 +414,7 @@ assert_eq!(
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash::{self, Xxh3};
+    use yggdryl::xxhash::{self, Xxh3};
     use yggdryl::{DigestAlgorithm, Scalar};
 
     let symbol = Scalar::from("AAPL");
@@ -530,8 +530,8 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     use arrow_array::types::UInt64Type;
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use arrow_schema::Schema;
-    use yggdryl::hashing::xxhash::Xxh3;
-    use yggdryl::hashing::xxhash::arrow::row_digests;
+    use yggdryl::xxhash::Xxh3;
+    use yggdryl::xxhash::arrow::row_digests;
     use yggdryl::{DataType, DigestAlgorithm, Field, Scalar};
 
     let symbol = Field::new("symbol", DataType::utf8(), false);
@@ -676,8 +676,8 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::{self, TxHash};
-    use yggdryl::hashing::xxhash;
+    use yggdryl::txhash::{self, TxHash};
+    use yggdryl::xxhash;
     use yggdryl::{DigestAlgorithm, Scalar, TimeUnit, Timezone};
 
     let instant = 1_700_000_000_000_000; // 2023-11-14T22:13:20Z in microseconds
@@ -778,7 +778,7 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::{self, TxHash};
+    use yggdryl::txhash::{self, TxHash};
     use yggdryl::{Digest, DigestAlgorithm, Error, TimeUnit};
 
     let one = Digest::new(DigestAlgorithm::Xxh64, 1);
@@ -893,7 +893,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash;
+    use yggdryl::txhash;
     use yggdryl::{Scalar, TimeUnit, Timezone};
 
     let unit = TimeUnit::Microsecond;
@@ -967,8 +967,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::TxHasher;
-    use yggdryl::hashing::xxhash::{self, Xxh3};
+    use yggdryl::txhash::TxHasher;
+    use yggdryl::xxhash::{self, Xxh3};
     use yggdryl::{DigestAlgorithm, Scalar, TimeUnit};
 
     let seconds = TxHasher::new_in(TimeUnit::Second, DigestAlgorithm::Xxh64)?.with_seed(7);
@@ -1051,8 +1051,8 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
         TimestampNanosecondArray, TimestampSecondArray,
     };
     use arrow_schema::{DataType, Field, Schema};
-    use yggdryl::hashing::txhash;
-    use yggdryl::hashing::xxhash::arrow::row_digests;
+    use yggdryl::txhash;
+    use yggdryl::xxhash::arrow::row_digests;
     use yggdryl::{DigestAlgorithm, TimeUnit};
 
     let (unit, algorithm) = (TimeUnit::Microsecond, DigestAlgorithm::Xxh3);
@@ -1136,7 +1136,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
     use arrow_array::{Array as _, RecordBatch, StringArray, TimestampMicrosecondArray};
     use arrow_schema::Schema;
-    use yggdryl::hashing::txhash::TxHash;
+    use yggdryl::txhash::TxHash;
     use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
     let event = Field::new("event", DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?, false);
@@ -1319,7 +1319,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib hashing::
+    cargo test --features "parquet iceberg" -p yggdryl --lib -- xxhash:: txhash:: hashing::
     cargo test --features "parquet iceberg" -p yggdryl --test allocations -- the_canonical_value_feed_allocates_nothing borrowed_value_bytes_allocate_nothing coupled_value_bytes_allocate_nothing reading_an_instant_out_of_a_value_allocates_nothing txhash_uuid_projection_allocates_nothing_at_any_corpus_size
     cargo test --features "parquet iceberg" -p yggdryl --test types -- stable_hash
     cargo bench -p yggdryl --bench hashing

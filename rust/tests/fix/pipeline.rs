@@ -23,7 +23,7 @@ use arrow_array::RecordBatch;
 use arrow_array::cast::AsArray;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::TextOptions;
+use yggdryl::text::TextOptions;
 use yggdryl::{
     FixCodec, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url, fix_schema,
     fix_schema_carrying,

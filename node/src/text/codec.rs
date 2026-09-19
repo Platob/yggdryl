@@ -20,14 +20,14 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::ArrowCastOptions;
-use yggdryl::text::{self, json, toml, yaml};
+use yggdryl::FieldValue as _;
+use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, DecimalValue, Field as CoreField, MapType as CoreMapType,
     TemporalValue, TimeUnit, Timezone, Vocabulary, i256,
 };
+use yggdryl::{json, text, toml, yaml};
 
 use crate::types::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};

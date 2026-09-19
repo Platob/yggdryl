@@ -1,5 +1,5 @@
-use yggdryl::types::{DateTimeType, DurationType, TimeType};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, TimeType};
 
 #[test]
 fn equals_can_ignore_only_metadata_recursively() {

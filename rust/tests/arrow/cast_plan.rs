@@ -11,8 +11,8 @@ use std::sync::Arc;
 use super::root;
 use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{BatchReader, cast_reader};
-use yggdryl::types::FieldValue as _;
 use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
 fn stored() -> SchemaRef {
@@ -294,8 +294,8 @@ fn the_four_cast_doors_are_the_same_cast_at_four_widths() {
     // `DataTypeValue` and `FieldValue` carry the cast, so every leaf answers
     // it and the root answers it the same way. What the four doors differ in
     // is only what they are handed: a value, an array, a batch, a stream.
+    use yggdryl::DataTypeValue as _;
     use yggdryl::arrow::batch_reader;
-    use yggdryl::types::DataTypeValue as _;
 
     let field = target();
 

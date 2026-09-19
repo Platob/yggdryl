@@ -147,7 +147,7 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
     use yggdryl::arrow;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::{self, IpcOptions};
+    use yggdryl::ipc::{self, IpcOptions};
     use yggdryl::{DataType, MimeType};
 
     let stored = DataType::from_fields([
@@ -259,7 +259,7 @@ The `field` argument is a column pushdown and nothing else: skipped columns are 
     use yggdryl::media::DEFAULT_ROOT_NAME;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::Ipc;
+    use yggdryl::ipc::Ipc;
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -350,7 +350,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::ipc::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_pushdown/ipc
     ```
 

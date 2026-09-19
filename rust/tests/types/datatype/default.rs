@@ -1,8 +1,8 @@
-use yggdryl::types::BytesType;
-use yggdryl::types::DecimalType;
-use yggdryl::types::SequenceType;
-use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
+use yggdryl::BytesType;
+use yggdryl::DecimalType;
+use yggdryl::SequenceType;
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);

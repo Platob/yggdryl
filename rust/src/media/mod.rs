@@ -45,22 +45,12 @@
 //! # }
 //! ```
 
-pub mod avro;
-#[cfg(feature = "iceberg")]
-pub mod iceberg;
-#[cfg(not(feature = "iceberg"))]
-#[path = "iceberg/types.rs"]
-pub mod iceberg;
 mod inference;
-pub mod ipc;
 mod magic;
 pub(crate) mod merge;
 mod options;
-#[cfg(feature = "parquet")]
-pub mod parquet;
 pub mod partition;
 pub(crate) mod structured;
-pub mod text;
 
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
@@ -73,7 +63,7 @@ pub use options::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions}
 use crate::IOBase;
 use crate::arrow::{Error, Result};
 use crate::holder::Holder;
-use crate::media::ipc::Ipc;
+use crate::ipc::Ipc;
 use crate::{Field, MimeType};
 
 /// A media implementation chosen by encoding.
@@ -86,11 +76,11 @@ pub enum Media {
     Ipc(Ipc<Holder>),
     /// An Apache Parquet file.
     #[cfg(feature = "parquet")]
-    Parquet(crate::media::parquet::Parquet<Holder>),
+    Parquet(crate::parquet::Parquet<Holder>),
     /// An Apache Avro object container.
-    Avro(crate::media::avro::Avro<Holder>),
+    Avro(crate::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
-    Text(crate::media::text::Text<Holder>),
+    Text(crate::text::Text<Holder>),
 }
 
 impl Media {
@@ -120,13 +110,13 @@ impl Media {
         }
         #[cfg(feature = "parquet")]
         if base == &MimeType::PARQUET {
-            return Ok(Self::Parquet(crate::media::parquet::Parquet::new(handle)));
+            return Ok(Self::Parquet(crate::parquet::Parquet::new(handle)));
         }
         if base == &MimeType::AVRO {
-            return Ok(Self::Avro(crate::media::avro::Avro::new(handle)));
+            return Ok(Self::Avro(crate::avro::Avro::new(handle)));
         }
         if base == &MimeType::PLAIN_TEXT {
-            return Ok(Self::Text(crate::media::text::Text::new(handle)));
+            return Ok(Self::Text(crate::text::Text::new(handle)));
         }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
@@ -147,17 +137,17 @@ impl Media {
     /// Hold a Parquet file over a handle.
     #[cfg(feature = "parquet")]
     pub fn parquet(handle: Holder) -> Self {
-        Self::Parquet(crate::media::parquet::Parquet::new(handle))
+        Self::Parquet(crate::parquet::Parquet::new(handle))
     }
 
     /// Hold an Avro object container over a handle.
     pub fn avro(handle: Holder) -> Self {
-        Self::Avro(crate::media::avro::Avro::new(handle))
+        Self::Avro(crate::avro::Avro::new(handle))
     }
 
     /// Hold plain-text record media over a handle.
     pub fn text(handle: Holder) -> Self {
-        Self::Text(crate::media::text::Text::new(handle))
+        Self::Text(crate::text::Text::new(handle))
     }
 
     /// Return this media with an explicit canonical schema.
@@ -175,7 +165,7 @@ impl Media {
     /// Borrow the byte handle this media reads and writes through.
     ///
     /// The companion of [`crate::coding::Coded::handle`] and
-    /// [`crate::media::text::Text::handle`]: one accessor that answers what a
+    /// [`crate::text::Text::handle`]: one accessor that answers what a
     /// record encoding is layered over, whichever encoding it is.
     pub const fn handle(&self) -> &Holder {
         match self {
@@ -190,7 +180,7 @@ impl Media {
     /// Consume this media and return the byte handle it read and wrote
     /// through.
     ///
-    /// The companion of [`crate::media::text::Text::into_handle`], so a caller
+    /// The companion of [`crate::text::Text::into_handle`], so a caller
     /// can descend one composed layer whichever encoding is on top.
     #[must_use]
     pub fn into_handle(self) -> Holder {
@@ -275,7 +265,7 @@ impl crate::IOMedia for Media {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> crate::Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> crate::Result<crate::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(self.as_media())
     }
 
@@ -283,7 +273,7 @@ impl crate::IOMedia for Media {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> crate::Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> crate::Result<crate::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
     }
 
@@ -405,7 +395,7 @@ impl IOBase for Media {
         self.as_io().url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_io().bound_location()
     }
 
@@ -477,20 +467,20 @@ impl From<Ipc<Holder>> for Media {
 }
 
 #[cfg(feature = "parquet")]
-impl From<crate::media::parquet::Parquet<Holder>> for Media {
-    fn from(value: crate::media::parquet::Parquet<Holder>) -> Self {
+impl From<crate::parquet::Parquet<Holder>> for Media {
+    fn from(value: crate::parquet::Parquet<Holder>) -> Self {
         Self::Parquet(value)
     }
 }
 
-impl From<crate::media::avro::Avro<Holder>> for Media {
-    fn from(value: crate::media::avro::Avro<Holder>) -> Self {
+impl From<crate::avro::Avro<Holder>> for Media {
+    fn from(value: crate::avro::Avro<Holder>) -> Self {
         Self::Avro(value)
     }
 }
 
-impl From<crate::media::text::Text<Holder>> for Media {
-    fn from(value: crate::media::text::Text<Holder>) -> Self {
+impl From<crate::text::Text<Holder>> for Media {
+    fn from(value: crate::text::Text<Holder>) -> Self {
         Self::Text(value)
     }
 }

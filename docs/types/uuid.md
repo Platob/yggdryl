@@ -60,7 +60,7 @@ Every spelling reads to the same bytes and writes back canonical.
 
     // The spelling goes into a caller's slot, so a writer that wants a
     // `&str` allocates nothing for it.
-    use yggdryl::types::Uuid;
+    use yggdryl::Uuid;
     let mut slot = [0_u8; Uuid::TEXT_LEN];
     assert_eq!(Uuid::new(packed).render(&mut slot), text);
     assert_eq!(Uuid::TEXT_LEN, 36);
@@ -142,7 +142,7 @@ Every spelling reads to the same bytes and writes back canonical.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::tests::uuid
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- uuid::
     ```
 
 === "Python"

@@ -1,8 +1,8 @@
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::enums::EnumType;
-use crate::types::sequence::SequenceType;
+use crate::enums::EnumType;
+use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.

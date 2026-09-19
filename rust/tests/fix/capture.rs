@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixRegistry, IOMedia, Scalar, Url};
 
 /// The committed dictionary.

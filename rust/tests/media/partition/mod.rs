@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
 
+use yggdryl::FieldValue as _;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::partition::{partitioned_reader, with_partitions, without_partitions};
-use yggdryl::types::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field, IOBase};
 
 fn schema() -> Field {

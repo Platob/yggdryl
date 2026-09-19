@@ -18,7 +18,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyType};
 
-use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::text::codec::PythonReader;
@@ -178,7 +178,7 @@ pub(crate) fn xxhash_digest(data: &Bound<'_, PyAny>, algorithm: &str) -> PyResul
 #[pyfunction]
 #[pyo3(name = "xxhash_secret_minimum_length")]
 pub(crate) const fn secret_minimum_length() -> usize {
-    yggdryl::hashing::xxhash::SECRET_MINIMUM_LENGTH
+    yggdryl::xxhash::SECRET_MINIMUM_LENGTH
 }
 
 /// One digest: the algorithm that produced it and the value it produced.
@@ -679,9 +679,8 @@ pub(crate) fn row_digests<'py>(
     algorithm: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
     let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
-    let digests =
-        yggdryl::hashing::xxhash::arrow::row_digests(&batch, algorithm_from_str(algorithm)?)
-            .map_err(value_error)?;
+    let digests = yggdryl::xxhash::arrow::row_digests(&batch, algorithm_from_str(algorithm)?)
+        .map_err(value_error)?;
     arrow_array_to_pyarrow(py, &digests, None)
 }
 
@@ -703,12 +702,9 @@ pub(crate) fn column_digests<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let values = arrow_array_from_pyarrow(array)?;
     let field = core_field_from_value(field)?;
-    let digests = yggdryl::hashing::xxhash::arrow::column_digests(
-        values,
-        &field,
-        algorithm_from_str(algorithm)?,
-    )
-    .map_err(value_error)?;
+    let digests =
+        yggdryl::xxhash::arrow::column_digests(values, &field, algorithm_from_str(algorithm)?)
+            .map_err(value_error)?;
     arrow_array_to_pyarrow(py, &digests, None)
 }
 

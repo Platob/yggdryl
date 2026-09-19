@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use criterion::{Criterion, Throughput};
-use yggdryl::types::FieldValue as _;
+use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field};
 
 /// Rows per batch: small on purpose, so the per-batch plan is what is timed.

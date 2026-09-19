@@ -1,9 +1,9 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
-use yggdryl::text::json;
+use yggdryl::DateTimeType;
+use yggdryl::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
-use yggdryl::types::DateTimeType;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Scalar, TimeUnit, Timezone, from_json_scalar,
     from_json_scalar_with_field, i256, into_json_scalar,

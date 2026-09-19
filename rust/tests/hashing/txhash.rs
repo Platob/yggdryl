@@ -1,8 +1,8 @@
-use yggdryl::hashing::txhash::{
+use yggdryl::txhash::{
     DEFAULT_UNIT, TxHash, TxHasher, UNIX_WIDTH, digest, dtype, restate_unix, txh3, txh32, txh64,
     txh128, unix_from_scalar, unix_now,
 };
-use yggdryl::hashing::xxhash::{self, Xxh3};
+use yggdryl::xxhash::{self, Xxh3};
 use yggdryl::{DataType, Digest, DigestAlgorithm, Error, Field, Scalar, TimeUnit, Timezone};
 
 const INSTANT: i64 = 1_700_000_000_000_000;
@@ -770,16 +770,16 @@ fn a_hasher_carries_unit_seed_and_secret() {
 
 #[test]
 fn every_state_becomes_the_dispatcher_it_names() {
-    let mut expected = yggdryl::hashing::xxhash::Xxh32::with_seed(9);
+    let mut expected = yggdryl::xxhash::Xxh32::with_seed(9);
     expected.write_bytes(b"abc");
     let dispatcher: yggdryl::Digester = expected.clone().into();
     assert_eq!(dispatcher.as_digest(), expected.as_digest());
     assert_eq!(
-        yggdryl::Digester::from(yggdryl::hashing::xxhash::Xxh64::new()).algorithm(),
+        yggdryl::Digester::from(yggdryl::xxhash::Xxh64::new()).algorithm(),
         DigestAlgorithm::Xxh64
     );
     assert_eq!(
-        yggdryl::Digester::from(yggdryl::hashing::xxhash::Xxh128::new()).algorithm(),
+        yggdryl::Digester::from(yggdryl::xxhash::Xxh128::new()).algorithm(),
         DigestAlgorithm::Xxh128
     );
 }

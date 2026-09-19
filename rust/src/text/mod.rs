@@ -3,17 +3,26 @@
 use std::borrow::Borrow;
 use std::io::{Read, Write};
 
+pub(crate) mod arrow;
+mod batch;
+mod bytes;
 mod codec;
 mod display;
+mod entry;
 mod format;
 mod formatting;
+mod handle;
 mod io;
-pub mod json;
+mod leading;
 mod limits;
+mod line;
 mod loading;
+mod options;
 mod placeholder;
+mod plan;
 pub(crate) mod position;
-pub mod toml;
+mod reader;
+mod sep;
 pub(crate) mod typed;
 /// Read one natural text value under one field, coerced and validated.
 ///
@@ -23,23 +32,31 @@ pub(crate) mod typed;
 /// document needs, then the value contract every reading goes through.
 pub(crate) use typed::with_field as prepare_text;
 pub(crate) mod wire;
-pub mod yaml;
 
-pub use crate::types::floating::{Float16, Float32, Float64};
-pub use crate::types::{Children, Scalar};
+pub use crate::floating::{Float16, Float32, Float64};
+pub use crate::{Children, Scalar};
+pub use arrow::{TextLines, read_text_lines};
+pub use batch::{from_arrow_batch, from_arrow_reader, into_arrow_batch, into_arrow_reader};
+pub use bytes::TextBytes;
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{elide_display, elide_to, expected_got};
+pub use entry::{TextEntries, TextEntry};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
+pub use handle::Text;
 pub use io::{
     Plan, from_io, from_io_all, from_io_all_with_limits, from_io_with, from_io_with_field,
     from_io_with_field_and_limits, from_io_with_limits, into_io, into_io_all,
     into_io_all_with_formatting, into_io_with_formatting, into_io_with_level,
 };
+pub use leading::LeadingFragment;
 pub use limits::Limits;
+pub use line::TextLine;
 pub use loading::Loading;
+pub use options::TextOptions;
 pub use placeholder::Placeholders;
+pub use sep::LineSep;
 
 use crate::{Error, Field, Result};
 
@@ -113,12 +130,12 @@ pub fn from_utf8(input: &str, format: Format) -> Result<Scalar> {
 /// Decode one value from UTF-8 with explicit limits.
 pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Scalar> {
     match format {
-        Format::Json => json::from_utf8_with_limits(input, limits),
+        Format::Json => crate::json::from_utf8_with_limits(input, limits),
         Format::JsonLines => {
-            json::from_lines_utf8_with_limits(input, limits).map(Scalar::from_sequence)
+            crate::json::from_lines_utf8_with_limits(input, limits).map(Scalar::from_sequence)
         }
-        Format::Yaml => yaml::from_utf8_with_limits(input, limits),
-        Format::Toml => toml::from_utf8_with_limits(input, limits),
+        Format::Yaml => crate::yaml::from_utf8_with_limits(input, limits),
+        Format::Toml => crate::toml::from_utf8_with_limits(input, limits),
     }
 }
 
@@ -151,12 +168,12 @@ pub fn from_bytes(input: &[u8], format: Format) -> Result<Scalar> {
 /// Decode one value from bytes with explicit limits.
 pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> Result<Scalar> {
     match format {
-        Format::Json => json::from_bytes_with_limits(input, limits),
+        Format::Json => crate::json::from_bytes_with_limits(input, limits),
         Format::JsonLines => {
-            json::from_lines_bytes_with_limits(input, limits).map(Scalar::from_sequence)
+            crate::json::from_lines_bytes_with_limits(input, limits).map(Scalar::from_sequence)
         }
-        Format::Yaml => yaml::from_bytes_with_limits(input, limits),
-        Format::Toml => toml::from_bytes_with_limits(input, limits),
+        Format::Yaml => crate::yaml::from_bytes_with_limits(input, limits),
+        Format::Toml => crate::toml::from_bytes_with_limits(input, limits),
     }
 }
 
@@ -193,12 +210,12 @@ pub fn from_reader_with_limits<R: Read>(
     limits: Limits,
 ) -> Result<Scalar> {
     match format {
-        Format::Json => json::from_reader_with_limits(reader, limits),
+        Format::Json => crate::json::from_reader_with_limits(reader, limits),
         Format::JsonLines => {
-            json::from_lines_reader_with_limits(reader, limits).map(Scalar::from_sequence)
+            crate::json::from_lines_reader_with_limits(reader, limits).map(Scalar::from_sequence)
         }
-        Format::Yaml => yaml::from_reader_with_limits(reader, limits),
-        Format::Toml => toml::from_reader_with_limits(reader, limits),
+        Format::Yaml => crate::yaml::from_reader_with_limits(reader, limits),
+        Format::Toml => crate::toml::from_reader_with_limits(reader, limits),
     }
 }
 
@@ -245,10 +262,10 @@ pub fn from_bytes_all_with_limits(
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
     match format {
-        Format::Json => json::from_bytes_all_with_limits(input, limits),
-        Format::JsonLines => json::from_lines_bytes_with_limits(input, limits),
-        Format::Yaml => yaml::from_bytes_all_with_limits(input, limits),
-        Format::Toml => toml::from_bytes_all_with_limits(input, limits),
+        Format::Json => crate::json::from_bytes_all_with_limits(input, limits),
+        Format::JsonLines => crate::json::from_lines_bytes_with_limits(input, limits),
+        Format::Yaml => crate::yaml::from_bytes_all_with_limits(input, limits),
+        Format::Toml => crate::toml::from_bytes_all_with_limits(input, limits),
     }
 }
 
@@ -283,10 +300,10 @@ pub fn from_utf8_all_with_limits(
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
     match format {
-        Format::Json => json::from_utf8_all_with_limits(input, limits),
-        Format::JsonLines => json::from_lines_utf8_with_limits(input, limits),
-        Format::Yaml => yaml::from_utf8_all_with_limits(input, limits),
-        Format::Toml => toml::from_utf8_all_with_limits(input, limits),
+        Format::Json => crate::json::from_utf8_all_with_limits(input, limits),
+        Format::JsonLines => crate::json::from_lines_utf8_with_limits(input, limits),
+        Format::Yaml => crate::yaml::from_utf8_all_with_limits(input, limits),
+        Format::Toml => crate::toml::from_utf8_all_with_limits(input, limits),
     }
 }
 
@@ -317,10 +334,10 @@ pub fn from_reader_all_with_limits<R: Read>(
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
     match format {
-        Format::Json => json::from_reader_all_with_limits(reader, limits),
-        Format::JsonLines => json::from_lines_reader_with_limits(reader, limits),
-        Format::Yaml => yaml::from_reader_all_with_limits(reader, limits),
-        Format::Toml => toml::from_reader_all_with_limits(reader, limits),
+        Format::Json => crate::json::from_reader_all_with_limits(reader, limits),
+        Format::JsonLines => crate::json::from_lines_reader_with_limits(reader, limits),
+        Format::Yaml => crate::yaml::from_reader_all_with_limits(reader, limits),
+        Format::Toml => crate::toml::from_reader_all_with_limits(reader, limits),
     }
 }
 
@@ -355,10 +372,10 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
     limits: Limits,
 ) -> ScalarIter<'a> {
     match format {
-        Format::Json => json::from_reader_iter_with_limits(reader, limits),
-        Format::JsonLines => json::from_lines_reader_iter_with_limits(reader, limits),
-        Format::Yaml => yaml::from_reader_iter_with_limits(reader, limits),
-        Format::Toml => toml::from_reader_iter_with_limits(reader, limits),
+        Format::Json => crate::json::from_reader_iter_with_limits(reader, limits),
+        Format::JsonLines => crate::json::from_lines_reader_iter_with_limits(reader, limits),
+        Format::Yaml => crate::yaml::from_reader_iter_with_limits(reader, limits),
+        Format::Toml => crate::toml::from_reader_iter_with_limits(reader, limits),
     }
 }
 
@@ -393,15 +410,17 @@ pub fn into_bytes_with_formatting(
     formatting: Formatting,
 ) -> Result<Vec<u8>> {
     match format {
-        Format::Json => json::into_bytes_with_formatting(value, formatting),
+        Format::Json => crate::json::into_bytes_with_formatting(value, formatting),
         Format::JsonLines => match value {
             Scalar::Sequence(values) => {
-                json::into_bytes_all_with_formatting(values.as_slice(), formatting)
+                crate::json::into_bytes_all_with_formatting(values.as_slice(), formatting)
             }
-            value => json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting),
+            value => {
+                crate::json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting)
+            }
         },
-        Format::Yaml => yaml::into_bytes_with_formatting(value, formatting),
-        Format::Toml => toml::into_bytes_with_formatting(value, formatting),
+        Format::Yaml => crate::yaml::into_bytes_with_formatting(value, formatting),
+        Format::Toml => crate::toml::into_bytes_with_formatting(value, formatting),
     }
 }
 
@@ -417,15 +436,17 @@ pub fn into_utf8_with_formatting(
     formatting: Formatting,
 ) -> Result<String> {
     match format {
-        Format::Json => json::into_utf8_with_formatting(value, formatting),
+        Format::Json => crate::json::into_utf8_with_formatting(value, formatting),
         Format::JsonLines => match value {
             Scalar::Sequence(values) => {
-                json::into_utf8_all_with_formatting(values.as_slice(), formatting)
+                crate::json::into_utf8_all_with_formatting(values.as_slice(), formatting)
             }
-            value => json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting),
+            value => {
+                crate::json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting)
+            }
         },
-        Format::Yaml => yaml::into_utf8_with_formatting(value, formatting),
-        Format::Toml => toml::into_utf8_with_formatting(value, formatting),
+        Format::Yaml => crate::yaml::into_utf8_with_formatting(value, formatting),
+        Format::Toml => crate::toml::into_utf8_with_formatting(value, formatting),
     }
 }
 
@@ -442,19 +463,21 @@ pub fn into_writer_with_formatting<W: Write>(
     formatting: Formatting,
 ) -> Result<()> {
     match format {
-        Format::Json => json::into_writer_with_formatting(value, writer, formatting),
+        Format::Json => crate::json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
-                json::into_writer_all_with_formatting(values.as_slice().iter(), writer, formatting)
-            }
-            value => json::into_writer_all_with_formatting(
+            Scalar::Sequence(values) => crate::json::into_writer_all_with_formatting(
+                values.as_slice().iter(),
+                writer,
+                formatting,
+            ),
+            value => crate::json::into_writer_all_with_formatting(
                 std::slice::from_ref(value),
                 writer,
                 formatting,
             ),
         },
-        Format::Yaml => yaml::into_writer_with_formatting(value, writer, formatting),
-        Format::Toml => toml::into_writer_with_formatting(value, writer, formatting),
+        Format::Yaml => crate::yaml::into_writer_with_formatting(value, writer, formatting),
+        Format::Toml => crate::toml::into_writer_with_formatting(value, writer, formatting),
     }
 }
 
@@ -518,10 +541,10 @@ where
 {
     match format {
         Format::Json | Format::JsonLines => {
-            json::into_writer_all_with_formatting(values, writer, formatting)
+            crate::json::into_writer_all_with_formatting(values, writer, formatting)
         }
-        Format::Yaml => yaml::into_writer_all_with_formatting(values, writer, formatting),
-        Format::Toml => toml::into_writer_all_with_formatting(values, writer, formatting),
+        Format::Yaml => crate::yaml::into_writer_all_with_formatting(values, writer, formatting),
+        Format::Toml => crate::toml::into_writer_all_with_formatting(values, writer, formatting),
     }
 }
 
@@ -583,7 +606,7 @@ fn infer_utf8_impl(input: &str, limits: Limits) -> Result<(Format, Scalar)> {
     match infer_utf8_decision(input, limits) {
         Inferred::Decoded(format, value) => Ok((format, value)),
         Inferred::Yaml => {
-            yaml::from_utf8_with_limits(input, limits).map(|value| (Format::Yaml, value))
+            crate::yaml::from_utf8_with_limits(input, limits).map(|value| (Format::Yaml, value))
         }
     }
 }
@@ -594,13 +617,13 @@ enum Inferred {
 }
 
 fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
-    if let Ok(value) = json::from_utf8_with_limits(input, limits) {
+    if let Ok(value) = crate::json::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Json, value);
     }
     if is_empty_or_comment_only(input.as_bytes()) {
         return Inferred::Yaml;
     }
-    if let Ok(value) = toml::from_utf8_with_limits(input, limits) {
+    if let Ok(value) = crate::toml::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Toml, value);
     }
     Inferred::Yaml

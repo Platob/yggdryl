@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::StringType;
+use yggdryl::StringType;
 use yggdryl::{Charset, DataType, Scalar, Str};
 
 use super::doors;

@@ -1,7 +1,7 @@
 //! The digest algorithms Yggdryl computes, and how to compute them.
 //!
 //! One [`DigestAlgorithm`] vocabulary names every algorithm the way [`Codec`]
-//! names every content coding, and [`crate::hashing::xxhash`] owns the four
+//! names every content coding, and [`crate::xxhash`] owns the four
 //! implementations behind it. A [`Digest`] is the answer: an algorithm plus a
 //! payload, canonical big-endian bytes, and one lowercase hex spelling that
 //! parses back to the same value.
@@ -32,7 +32,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{Error, Result, Scalar};
 
 /// One xxHash algorithm, and the only place a name selects an implementation.
@@ -146,7 +146,7 @@ impl DigestAlgorithm {
     /// `with_seed` and passes the exact width.
     ///
     /// ```
-    /// use yggdryl::{DigestAlgorithm, hashing::xxhash};
+    /// use yggdryl::{DigestAlgorithm, xxhash};
     ///
     /// let mut digester = DigestAlgorithm::Xxh32.digester_with_seed(0x1_0000_002a);
     /// digester.write_bytes(b"abc");
@@ -154,9 +154,7 @@ impl DigestAlgorithm {
     /// ```
     pub fn digester_with_seed(self, seed: u64) -> Digester {
         Digester(match self {
-            Self::Xxh32 => {
-                DigesterKind::Xxh32(Xxh32::with_seed(crate::hashing::xxhash::low_32(seed)))
-            }
+            Self::Xxh32 => DigesterKind::Xxh32(Xxh32::with_seed(crate::xxhash::low_32(seed))),
             Self::Xxh64 => DigesterKind::Xxh64(Xxh64::with_seed(seed)),
             Self::Xxh3 => DigesterKind::Xxh3(Xxh3::with_seed(seed)),
             Self::Xxh128 => DigesterKind::Xxh128(Xxh128::with_seed(seed)),
@@ -175,10 +173,10 @@ impl DigestAlgorithm {
     /// ```
     pub fn digest(self, input: &[u8]) -> Digest {
         match self {
-            Self::Xxh32 => Digest::new(self, u128::from(crate::hashing::xxhash::xxh32(input))),
-            Self::Xxh64 => Digest::new(self, u128::from(crate::hashing::xxhash::xxh64(input))),
-            Self::Xxh3 => Digest::new(self, u128::from(crate::hashing::xxhash::xxh3(input))),
-            Self::Xxh128 => Digest::new(self, crate::hashing::xxhash::xxh128(input)),
+            Self::Xxh32 => Digest::new(self, u128::from(crate::xxhash::xxh32(input))),
+            Self::Xxh64 => Digest::new(self, u128::from(crate::xxhash::xxh64(input))),
+            Self::Xxh3 => Digest::new(self, u128::from(crate::xxhash::xxh3(input))),
+            Self::Xxh128 => Digest::new(self, crate::xxhash::xxh128(input)),
         }
     }
 }
@@ -457,7 +455,7 @@ impl<'de> Deserialize<'de> for Digest {
 /// This is to [`DigestAlgorithm`] what [`crate::Encoder`] is to
 /// [`crate::Codec`]: the one place a runtime algorithm becomes a concrete
 /// implementation. A caller who knows the algorithm at compile time uses the
-/// concrete state in [`crate::hashing::xxhash`] instead and pays no dispatch.
+/// concrete state in [`crate::xxhash`] instead and pays no dispatch.
 #[derive(Clone, Debug)]
 pub struct Digester(DigesterKind);
 
@@ -558,7 +556,7 @@ impl Digester {
         batch: arrow_array::RecordBatch,
         force: bool,
     ) -> crate::arrow::Result<arrow_array::RecordBatch> {
-        crate::hashing::xxhash::arrow::apply_arrow_batch_with(self, root, batch, force)
+        crate::xxhash::arrow::apply_arrow_batch_with(self, root, batch, force)
     }
 }
 
@@ -585,7 +583,7 @@ impl std::hash::Hasher for Digester {
         digest
             .as_u64()
             .or_else(|| digest.as_u32().map(u64::from))
-            .unwrap_or_else(|| crate::hashing::xxhash::low_64(digest.payload))
+            .unwrap_or_else(|| crate::xxhash::low_64(digest.payload))
     }
 
     fn write(&mut self, bytes: &[u8]) {

@@ -29,7 +29,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, MarketElement};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -243,7 +243,7 @@ A bridge logs one message at every hop it passes, so a capture routinely holds t
     use std::sync::Arc;
 
     use yggdryl::graph::{Event, EventIterator};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, TimeUnit};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -289,7 +289,7 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

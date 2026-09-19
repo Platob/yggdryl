@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::build::RowStamp;
 use super::{FixCodec, FixMsg};
 use crate::Result;
-use crate::media::text::TextEntries;
+use crate::text::TextEntries;
 
 enum Source {
     Empty,

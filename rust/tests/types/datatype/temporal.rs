@@ -4,10 +4,10 @@
 use arrow_schema::{
     DataType as ArrowDataType, IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit,
 };
-use yggdryl::types::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
 use yggdryl::{
     DataType, DataTypeId, DataTypeKind, Error, Scalar, TemporalFamily, TimeUnit, Timezone,
 };
+use yggdryl::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
 
 /// The refusal a temporal leaf states: the kind names the width or the
 /// family, the reason what it would not carry. The constructor, the

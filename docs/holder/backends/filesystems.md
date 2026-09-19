@@ -1,6 +1,6 @@
 # Filesystems
 
-`yggdryl::holder::fs::FileSystem` is the one Arrow-compatible storage seam, and [`IOBase`](../index.md) is the one bound handle above it.
+`yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam, and [`IOBase`](../index.md) is the one bound handle above it.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Pass the filesystem and its opaque path separately.
     use std::sync::Arc;
 
     use yggdryl::IOBase;
-    use yggdryl::holder::fs::{
+    use yggdryl::fs::{
         File, FileSystem, Folder, MemoryFileSystem, OutputMetadata,
     };
 
@@ -371,7 +371,7 @@ Handler calls stay synchronous and on the JavaScript isolate that supplied the h
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::fs::
+    cargo test --features "parquet iceberg" -p yggdryl --lib fs::
     cargo bench --bench holder --features parquet -- fs_bytes
     cargo bench --bench holder --features parquet -- fs_record
     cargo bench --bench holder --features parquet -- fs_listing

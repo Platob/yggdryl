@@ -10,7 +10,7 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
-use yggdryl::holder::fs::{
+use yggdryl::fs::{
     ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata,
     RandomAccessReader, mask_uri,
 };

@@ -105,9 +105,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
         "DEFAULT_RECORD_BATCH_ROW_SIZE",
         yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE,
     )?;
-    module.add(
-        "AVRO_MAX_SCHEMA_DEPTH",
-        yggdryl::media::avro::MAX_SCHEMA_DEPTH,
-    )?;
+    module.add("AVRO_MAX_SCHEMA_DEPTH", yggdryl::avro::MAX_SCHEMA_DEPTH)?;
     Ok(())
 }

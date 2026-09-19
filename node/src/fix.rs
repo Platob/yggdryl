@@ -39,7 +39,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-use yggdryl::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol};
+use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
     FixCodec as CoreFixCodec, FixEntry, FixHeader, FixId as CoreFixId, FixKey,

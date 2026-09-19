@@ -26,7 +26,7 @@ A fixed prefix is descended, not listed and filtered.
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-lake");
     let _ = std::fs::remove_dir_all(&root);
@@ -209,7 +209,7 @@ Addressing the folder restores the columns its directories spell and routes each
     use yggdryl::holder::Holder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-partitioned");
@@ -350,7 +350,7 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
     use yggdryl::holder::Holder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-declared-layout");

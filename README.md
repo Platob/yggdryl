@@ -49,17 +49,24 @@ pushes to `main` publish the result to GitHub Pages.
 
 ```text
 rust/                    The core crate
-  src/*.rs               One shared trait, enum, or value per root file
-  src/types/             Datatypes, fields, scalars, and family behavior
-  src/holder/            Buffer, local/Arrow filesystems, and buffering
-  src/coding/            gzip, zlib/deflate, and Zstandard
-  src/charset/           UTF-8, UTF-16, ASCII, ISO 8859, Windows and DOS pages
-  src/media/             IPC, Parquet, Avro, text records, and Iceberg
-  src/text/              JSON, YAML, TOML, limits, and inference
-  src/{uri,arrow,expression,hashing,fix}/
+  src/*.rs               One type with its datatype, field and scalar, or
+                         one shared trait, enum or value, per root file
+  src/holder/            What every storage backend shares; local/, fs/,
+                         zip/ and object/ are one root folder each
+  src/coding/            What every codec shares; gzip.rs, zlib.rs and
+                         zstd.rs are one root file each
+  src/charset/           What every code page shares; utf8.rs, ascii.rs
+                         and cp1252.rs are one root file each
+  src/media/             What every medium shares; avro/, ipc/, parquet/
+                         and iceberg/ are one root folder each
+  src/text/              Plain text and what the structured codecs share;
+                         json/, toml/ and yaml/ are one root folder each
+  src/hashing/           The private stable-hash adapters; xxhash/ and
+                         txhash/ are one root folder each
+  src/{uri,arrow,expression,graph,fix}/
                          The remaining core layers
-  tests/                 Edge tests, categorized like the source
-  benchmarks/            Criterion targets, categorized like the source
+  tests/                 Edge tests, grouped by theme
+  benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension
   src/                   PyO3 views over the matching core domains
   yggdryl/               The Python package, including field classes and annotations

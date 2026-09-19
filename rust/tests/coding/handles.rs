@@ -382,12 +382,12 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     let encoded = Codec::Gzip.dump(&payload).unwrap();
 
     let (direct_source, direct_reads) = SharedReads::new(encoded.clone());
-    let direct = yggdryl::coding::gzip::Gzip::new(direct_source);
+    let direct = yggdryl::gzip::Gzip::new(direct_source);
     assert_eq!(direct.read_all_bytes().unwrap(), payload);
     let direct_reads = direct_reads.load(std::sync::atomic::Ordering::Relaxed);
 
     let (boxed_source, boxed_reads) = SharedReads::new(encoded);
-    let boxed_inner = yggdryl::coding::gzip::Gzip::new(boxed_source);
+    let boxed_inner = yggdryl::gzip::Gzip::new(boxed_source);
     let boxed: Box<dyn IOBase> = Box::new(boxed_inner);
     assert_eq!(boxed.read_all_bytes().unwrap(), payload);
     assert!(direct_reads > 0);
@@ -416,10 +416,10 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     )
     .unwrap();
     let mut plain = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    yggdryl::media::ipc::overwrite_arrow_reader(
+    yggdryl::ipc::overwrite_arrow_reader(
         &mut plain,
         yggdryl::arrow::batch_reader(schema, [batch]),
-        &yggdryl::media::ipc::IpcOptions::new(),
+        &yggdryl::ipc::IpcOptions::new(),
     )
     .unwrap();
 
@@ -559,7 +559,7 @@ mod dispatched {
 
         let inner = handle.into_handle().unwrap();
         let encoded = inner.read_all_bytes().unwrap();
-        assert_eq!(yggdryl::coding::gzip::load(&encoded).unwrap(), PAYLOAD);
+        assert_eq!(yggdryl::gzip::load(&encoded).unwrap(), PAYLOAD);
     }
 
     #[test]

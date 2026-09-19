@@ -1,7 +1,7 @@
 use yggdryl::IOBase;
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::{File, Folder, Path};
+use yggdryl::local::{File, Folder, Path};
 
 /// A temp root nothing else in this file uses.
 fn root(label: &str) -> std::path::PathBuf {
@@ -272,7 +272,7 @@ fn a_buffer_gives_its_allocation_back() {
 fn a_coding_handle_removes_the_encoded_resource() {
     let root = root("coded");
     let path = root.join("trades.csv.gz");
-    let mut coded = yggdryl::coding::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
+    let mut coded = yggdryl::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
     coded
         .write_all_bytes(b"symbol,price\n")
         .expect("a decoded write");
@@ -293,7 +293,7 @@ fn a_coding_handle_removes_the_encoded_resource() {
 #[test]
 fn a_media_handle_drops_its_cache_as_part_of_the_removal() {
     use yggdryl::arrow::batch_reader;
-    use yggdryl::media::ipc::Ipc;
+    use yggdryl::ipc::Ipc;
 
     let field = yggdryl::DataType::from_fields([yggdryl::DataType::Int64.required_field("id")])
         .expect("a struct root")

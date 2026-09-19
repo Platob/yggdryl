@@ -66,10 +66,7 @@ fn consumed() -> PyErr {
 ///
 /// `None` for anything else, so the local rebuild stays the default path.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
-    inner
-        .bound_location()
-        .cloned()
-        .map(yggdryl::holder::fs::located)
+    inner.bound_location().cloned().map(yggdryl::fs::located)
 }
 
 /// Hold the resource `url` names, on the store its scheme selects.
@@ -80,7 +77,7 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 /// touches nothing on either.
 pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::holder::object::located(&url.to_string())
+        return yggdryl::object::located(&url.to_string())
             .map_err(crate::holder::fs::storage_error);
     }
     Holder::local(url.clone().into_path().map_err(value_error)?)
@@ -90,7 +87,7 @@ pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
 /// Hold `url` as a container, on the store its scheme selects.
 pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::holder::object::folder(&url.to_string())
+        return yggdryl::object::folder(&url.to_string())
             .map(Holder::ObjectFolder)
             .map_err(crate::holder::fs::storage_error);
     }
@@ -102,7 +99,7 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
         .bound_location()
         .cloned()
-        .map(yggdryl::holder::fs::Folder::new)
+        .map(yggdryl::fs::Folder::new)
         .map(Holder::FsFolder)
 }
 
@@ -409,11 +406,11 @@ impl PyIOBase {
         path: String,
         uri: Option<String>,
     ) -> PyResult<Holder> {
-        let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+        let backend: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
             std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
-        let bound = yggdryl::holder::fs::BoundLocation::new(backend, path, uri)
+        let bound = yggdryl::fs::BoundLocation::new(backend, path, uri)
             .map_err(crate::holder::fs::storage_error)?;
-        Ok(yggdryl::holder::fs::located(bound))
+        Ok(yggdryl::fs::located(bound))
     }
 
     fn arrow_binding(&self, py: Python<'_>) -> Option<(Py<PyAny>, String)> {
@@ -449,7 +446,7 @@ impl PyIOBase {
             .call((cursor,), Some(&kwargs))
     }
 
-    fn bound(&self) -> PyResult<&yggdryl::holder::fs::BoundLocation> {
+    fn bound(&self) -> PyResult<&yggdryl::fs::BoundLocation> {
         self.inner()?
             .bound_location()
             .ok_or_else(|| PyValueError::new_err("this handle has no bound filesystem location"))
@@ -669,14 +666,12 @@ fn filesystem_uri_options(
 
 fn resolved_arrow_filesystem<'py>(
     py: Python<'py>,
-    filesystem: &yggdryl::holder::fs::ResolvedFileSystem,
+    filesystem: &yggdryl::fs::ResolvedFileSystem,
 ) -> PyResult<Bound<'py, PyAny>> {
     let module = py.import("pyarrow.fs")?;
     match filesystem {
-        yggdryl::holder::fs::ResolvedFileSystem::Local => {
-            module.getattr("LocalFileSystem")?.call0()
-        }
-        yggdryl::holder::fs::ResolvedFileSystem::S3(options) => {
+        yggdryl::fs::ResolvedFileSystem::Local => module.getattr("LocalFileSystem")?.call0(),
+        yggdryl::fs::ResolvedFileSystem::S3(options) => {
             let kwargs = PyDict::new(py);
             if let Some(value) = options.access_key() {
                 kwargs.set_item("access_key", value)?;
@@ -696,11 +691,11 @@ fn resolved_arrow_filesystem<'py>(
             kwargs.set_item("scheme", options.transport())?;
             kwargs.set_item("anonymous", options.anonymous())?;
             match options.addressing_style() {
-                yggdryl::holder::fs::S3AddressingStyle::Automatic => {}
-                yggdryl::holder::fs::S3AddressingStyle::Path => {
+                yggdryl::fs::S3AddressingStyle::Automatic => {}
+                yggdryl::fs::S3AddressingStyle::Path => {
                     kwargs.set_item("force_virtual_addressing", false)?;
                 }
-                yggdryl::holder::fs::S3AddressingStyle::Virtual => {
+                yggdryl::fs::S3AddressingStyle::Virtual => {
                     kwargs.set_item("force_virtual_addressing", true)?;
                 }
             }
@@ -849,9 +844,8 @@ impl PyIOBase {
     ) -> PyResult<Py<PyAny>> {
         let uri = crate::uri::path_string_from_value(uri)?;
         let options = filesystem_uri_options(options)?;
-        let resolved =
-            yggdryl::holder::fs::ResolvedFileSystemUri::from_uri(uri.clone(), options.as_ref())
-                .map_err(crate::holder::fs::storage_error)?;
+        let resolved = yggdryl::fs::ResolvedFileSystemUri::from_uri(uri.clone(), options.as_ref())
+            .map_err(crate::holder::fs::storage_error)?;
         let filesystem = resolved_arrow_filesystem(py, resolved.filesystem())?;
         let holder = Self::over_fs_parts(&filesystem, resolved.path().to_owned(), Some(uri))?;
         declared(py, holder)
@@ -1765,10 +1759,7 @@ impl PyIOBase {
             .filesystem()
             .create_dir(bound.path(), recursive)
             .map_err(crate::holder::fs::storage_error)?;
-        describe(
-            py,
-            Holder::FsFolder(yggdryl::holder::fs::Folder::new(bound)),
-        )
+        describe(py, Holder::FsFolder(yggdryl::fs::Folder::new(bound)))
     }
 
     /// Delete this empty directory itself.
@@ -1792,7 +1783,7 @@ impl PyIOBase {
 
     /// Delete all filesystem-root children while retaining its root.
     fn delete_root_dir_contents(&mut self) -> PyResult<()> {
-        yggdryl::holder::fs::Folder::new(self.bound()?.clone())
+        yggdryl::fs::Folder::new(self.bound()?.clone())
             .delete_root_dir_contents()
             .map_err(crate::holder::fs::storage_error)
     }
@@ -2341,7 +2332,7 @@ impl PyIOBase {
                 "read_text_lines expects plain-text record options",
             ));
         };
-        let lines = yggdryl::media::text::read_text_lines(self.inner()?, text.as_ref())
+        let lines = yggdryl::text::read_text_lines(self.inner()?, text.as_ref())
             .map_err(crate::holder::fs::storage_error)?;
         Ok(crate::text_line::PyTextLines::from_core(lines))
     }
@@ -3195,7 +3186,7 @@ pub(crate) struct PyIOCursor {
     handle: Py<PyIOBase>,
     position: std::sync::atomic::AtomicU64,
     closed: std::sync::atomic::AtomicBool,
-    reader: std::sync::Mutex<Option<Box<dyn yggdryl::holder::fs::RandomAccessReader>>>,
+    reader: std::sync::Mutex<Option<Box<dyn yggdryl::fs::RandomAccessReader>>>,
     close_failure: std::sync::Mutex<Option<crate::holder::fs::StickyFailure>>,
 }
 
@@ -3219,8 +3210,7 @@ impl PyIOCursor {
 
     fn reader(
         &self,
-    ) -> PyResult<std::sync::MutexGuard<'_, Option<Box<dyn yggdryl::holder::fs::RandomAccessReader>>>>
-    {
+    ) -> PyResult<std::sync::MutexGuard<'_, Option<Box<dyn yggdryl::fs::RandomAccessReader>>>> {
         self.reader
             .lock()
             .map_err(|_| PyValueError::new_err("cursor reader lock is poisoned"))
@@ -3620,7 +3610,7 @@ enum PyByteSource {
     },
     Cursor(Py<PyIOCursor>),
     Reader {
-        reader: Box<dyn yggdryl::holder::fs::RandomAccessReader>,
+        reader: Box<dyn yggdryl::fs::RandomAccessReader>,
         cursor: Option<Py<PyIOCursor>>,
     },
     Empty,

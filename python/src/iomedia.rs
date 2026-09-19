@@ -48,10 +48,10 @@ use pyo3::types::{
     PyType,
 };
 
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::BatchReader;
-use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::types::FieldValue as _;
+use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
@@ -1137,7 +1137,7 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 }
 
 /// Parse one text row terminator without losing arbitrary byte values.
-fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::media::text::LineSep> {
+fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::LineSep> {
     if let Ok(value) = value.extract::<&str>() {
         return value.parse().map_err(value_error);
     }
@@ -1156,7 +1156,7 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::media::tex
             "linesep must be str, bytes, bytearray, memoryview, or None",
         ));
     };
-    yggdryl::media::text::LineSep::new(bytes).map_err(value_error)
+    yggdryl::text::LineSep::new(bytes).map_err(value_error)
 }
 
 /// Read one required key from private `RecordOptions` pickle state.

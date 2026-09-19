@@ -8,18 +8,18 @@ use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::ArrowError;
 use parquet::basic::Compression;
 use yggdryl::holder::Buffer;
-use yggdryl::media::parquet::{Parquet, ParquetOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::parquet::{Parquet, ParquetOptions};
 use yggdryl::{DataType, Field, MediaType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 #[test]
 fn statistics_snapshots_have_total_value_traits() {
     fn assert_traits<T: Clone + Eq + Hash + Ord>() {}
-    assert_traits::<yggdryl::media::parquet::GeospatialStatistics>();
-    assert_traits::<yggdryl::media::parquet::ColumnStatistics>();
-    assert_traits::<yggdryl::media::parquet::RowGroupStatistics>();
-    assert_traits::<yggdryl::media::parquet::FileStatistics>();
+    assert_traits::<yggdryl::parquet::GeospatialStatistics>();
+    assert_traits::<yggdryl::parquet::ColumnStatistics>();
+    assert_traits::<yggdryl::parquet::RowGroupStatistics>();
+    assert_traits::<yggdryl::parquet::FileStatistics>();
     assert_traits::<ParquetOptions>();
 
     let mut gzip = ParquetOptions::new();
@@ -301,7 +301,7 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
     for operation in ["overwrite", "append", "merge"] {
         let pulls = Arc::new(AtomicUsize::new(0));
         let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
-        let mut options = RecordOptions::Ipc(yggdryl::media::ipc::IpcOptions::new());
+        let mut options = RecordOptions::Ipc(yggdryl::ipc::IpcOptions::new());
         if operation == "merge" {
             options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
         }
@@ -731,7 +731,7 @@ mod pushdown {
     use super::handle;
     use yggdryl::IOMedia;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, Field};
 
     /// Four columns, so a two-column read is a genuine subset.
@@ -896,8 +896,8 @@ mod limits {
 
     use super::{batch, handle, reader, root};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::{Parquet, ParquetOptions};
     use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{IOBase, IOMedia};
 
     /// The total rows a handle yields under `options`.

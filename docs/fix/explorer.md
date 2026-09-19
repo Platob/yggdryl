@@ -29,7 +29,7 @@ The live additions are the crate's 18 fields - `parentuuids` among them, a list 
 
     ```rust
     use yggdryl::{DataType, FixId, FixRegistry, CURRUNIX_TAG_NAME};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;

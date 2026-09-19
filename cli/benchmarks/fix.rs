@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, FixCategory, FixCode, FixRegistry};
 
 struct Fixture(PathBuf, PathBuf);

@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::types::Geometry;
+use yggdryl::Geometry;
 use yggdryl::{Scalar, TimeUnit, Timezone, i256};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.

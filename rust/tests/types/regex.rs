@@ -1,7 +1,7 @@
 //! Typing a regex: named captures become fields, with order, nullability and format types.
 
-use yggdryl::types::{DateTimeType, TimeType};
 use yggdryl::{DataType, Error, Field, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, TimeType};
 
 #[test]
 fn named_captures_keep_order_nullability_and_format_types() {

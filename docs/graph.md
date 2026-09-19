@@ -31,7 +31,7 @@
 use std::collections::BTreeMap;
 
 use yggdryl::graph::{Element, Event, EventIterator, MarketElement, MarketEvent, MarketEventData};
-use yggdryl::types::{Currency, Decimal, Side, State};
+use yggdryl::{Currency, Decimal, Side, State};
 
 // An order's life as events: each states its instant, the identifier the
 // venue gave the order - its cross code - and where it stands.

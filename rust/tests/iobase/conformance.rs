@@ -9,10 +9,7 @@ use std::sync::Arc;
 /// one per backend; `IOBase` is implemented for the box, so the byte half
 /// of the contract forwards unchanged.
 fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
-    let mut root = yggdryl::holder::local::Folder::temporary()
-        .unwrap()
-        .path()
-        .unwrap();
+    let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
     root.push(format!(
         "yggdryl-conformance-{label}-{}",
         std::process::id()
@@ -20,22 +17,22 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("a writable temporary root");
 
-    let memory = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
-    yggdryl::holder::fs::FileSystem::create_dir(memory.as_ref(), "bench", false)
+    let memory = Arc::new(yggdryl::fs::MemoryFileSystem::new());
+    yggdryl::fs::FileSystem::create_dir(memory.as_ref(), "bench", false)
         .expect("a writable memory root");
     vec![
         ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
         (
             "local::File",
             Box::new(
-                yggdryl::holder::local::File::create(root.join(format!("{label}.bin")))
+                yggdryl::local::File::create(root.join(format!("{label}.bin")))
                     .expect("a valid path"),
             ),
         ),
         (
             "fs::File",
             Box::new(
-                yggdryl::holder::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
+                yggdryl::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
                     .expect("a valid location"),
             ),
         ),
@@ -64,17 +61,14 @@ fn positional_backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
 
 /// Remove whatever the local backend left behind.
 fn cleanup(label: &str) {
-    let mut root = yggdryl::holder::local::Folder::temporary()
-        .unwrap()
-        .path()
-        .unwrap();
+    let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
     root.push(format!(
         "yggdryl-conformance-{label}-{}",
         std::process::id()
     ));
     // Teardown goes through the abstraction, not around it: a folder
     // handle already addresses this tree, and absence is a no-op success.
-    if let Ok(mut folder) = yggdryl::holder::local::Folder::new(&root) {
+    if let Ok(mut folder) = yggdryl::local::Folder::new(&root) {
         folder.remove(true).expect("a removable tree");
     }
 }
@@ -132,25 +126,20 @@ fn every_backend_reads_positionally_without_a_shared_cursor() {
 fn every_backend_reads_a_missing_resource_as_empty() {
     // The laziness contract: absence is emptiness on the read path, so a
     // caller probes a location without an existence check first.
-    let memory = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
-    let mut root = yggdryl::holder::local::Folder::temporary()
-        .unwrap()
-        .path()
-        .unwrap();
+    let memory = Arc::new(yggdryl::fs::MemoryFileSystem::new());
+    let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-conformance-absent-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
     let absent: Vec<(&str, Box<dyn IOBase>)> = vec![
         (
             "local::File",
-            Box::new(
-                yggdryl::holder::local::File::new(root.join("absent.bin")).expect("a valid path"),
-            ),
+            Box::new(yggdryl::local::File::new(root.join("absent.bin")).expect("a valid path")),
         ),
         (
             "fs::File",
             Box::new(
-                yggdryl::holder::fs::File::from_path(memory, "nowhere/absent.bin", None)
+                yggdryl::fs::File::from_path(memory, "nowhere/absent.bin", None)
                     .expect("a valid location"),
             ),
         ),
@@ -252,10 +241,10 @@ fn every_backend_appends_where_it_says_it_did() {
 
 #[test]
 fn arrow_filesystem_handles_reject_unavailable_random_mutation() {
-    let filesystem = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
-    yggdryl::holder::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
+    let filesystem = Arc::new(yggdryl::fs::MemoryFileSystem::new());
+    yggdryl::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
         .expect("a writable memory root");
-    let mut handle = yggdryl::holder::fs::File::from_path(filesystem, "bench/random.bin", None)
+    let mut handle = yggdryl::fs::File::from_path(filesystem, "bench/random.bin", None)
         .expect("a valid location");
     handle
         .write_all_bytes(b"value")

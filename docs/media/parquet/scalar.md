@@ -133,7 +133,7 @@ Only a whole file is a Parquet file, so an append or a merge reads the stored ro
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     ```
 

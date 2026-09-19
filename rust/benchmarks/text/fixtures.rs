@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
 
 pub(crate) fn nested(depth: usize) -> Scalar {

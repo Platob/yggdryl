@@ -1705,7 +1705,7 @@ fn number_literal(text: &str, position: usize) -> Result<Term> {
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
 /// second value parser - each family delegates to the one the codecs use.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
-    use crate::types::DecimalType;
+    use crate::DecimalType;
     use DataType as D;
 
     let fail = |expected: &str| {

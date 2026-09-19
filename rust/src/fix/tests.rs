@@ -8,8 +8,8 @@ use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
 use crate::fix::{FixCodes, FixReplacement, FixReplacements};
-use crate::holder::local::Folder;
-use crate::types::sequence::SequenceType;
+use crate::local::Folder;
+use crate::sequence::SequenceType;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
     FixRegistry, MimeType, Plan, Scalar, Version,
@@ -23,7 +23,7 @@ use crate::{
 /// float: `82.5` is a value a `f64` holds approximately and a decimal holds
 /// exactly.
 fn decimal(text: &str) -> Scalar {
-    Scalar::from(crate::types::Decimal::parse(text).expect("an exact number"))
+    Scalar::from(crate::Decimal::parse(text).expect("an exact number"))
 }
 
 fn fpath(spelling: &str) -> crate::FieldPath {
@@ -2725,7 +2725,7 @@ fn a_message_resolves_values_through_its_registry() {
     // By tag, through the registry's canonical name. `OrderQty` is the
     // quantity the event holds, so it answers exact whatever the row's own
     // column would have typed it as.
-    let hundred = Scalar::from(crate::types::Decimal::from_int(100));
+    let hundred = Scalar::from(crate::Decimal::from_int(100));
     assert_eq!(msg.by_tag(38).unwrap(), hundred);
     // By name, folded through the registry, and by alias.
     assert_eq!(msg.by_name("orderqty").unwrap(), hundred);
@@ -3002,8 +3002,8 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
     assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
     // And what the message is *about* is what the trait reads off them.
-    assert_eq!(held.get_px(), crate::types::Decimal::parse("82.5").unwrap());
-    assert_eq!(held.get_qty(), crate::types::Decimal::parse("300").unwrap());
+    assert_eq!(held.get_px(), crate::Decimal::parse("82.5").unwrap());
+    assert_eq!(held.get_qty(), crate::Decimal::parse("300").unwrap());
     // `Quantity(53)` is the newer spelling and its own slot: a line that
     // said `53=` holds it there, and `OrderQty` stays empty.
     assert!(held.get_by_tag(53).is_none());
@@ -3014,11 +3014,11 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     assert!(spelled.get_by_tag(38).is_none());
     assert_eq!(
         spelled.get_qty(),
-        crate::types::Decimal::parse("300").unwrap(),
+        crate::Decimal::parse("300").unwrap(),
         "and the quantity the message is about reads either spelling"
     );
     // The last trade is its own fact beside them, under FIX's own tag.
-    assert_eq!(held.get_lastpx(), crate::types::Decimal::parse("82.5").ok());
+    assert_eq!(held.get_lastpx(), crate::Decimal::parse("82.5").ok());
     // How long it stands, as the message spelled it: what `1` names is the
     // dictionary's to say.
     assert_eq!(held.get_tif(), Some("1"));
@@ -4618,7 +4618,7 @@ fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        crate::graph::MarketElement::get_isincode(&held).map(crate::types::Isin::as_str),
+        crate::graph::MarketElement::get_isincode(&held).map(crate::Isin::as_str),
         Some("US0378331005")
     );
 }

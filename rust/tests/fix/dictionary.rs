@@ -5,8 +5,8 @@
 
 use std::collections::BTreeSet;
 
-use yggdryl::holder::local::Folder;
-use yggdryl::types::SequenceType;
+use yggdryl::SequenceType;
+use yggdryl::local::Folder;
 use yggdryl::{
     DataType, DateTimeType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS,
     STANDARD_TRAILER_TAGS, Scalar, TimeType, TimeUnit, Timezone,

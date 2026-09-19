@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 use super::path::write_segments;
 use super::selector::{Projection, Selector};
 use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
-use crate::types::code_scalars;
+use crate::code_scalars;
 use crate::{DataType, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
@@ -495,7 +495,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::MimeType(held) => Some(SmolStr::new(held.as_str())),
         Scalar::MediaType(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => {
-            let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+            let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             Some(SmolStr::new(held.render(&mut slot)))
         }
         // A geometry literal spells its WKB the way a bytes literal does: the

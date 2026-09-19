@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{Field, FixCategory, FixRegistry, Result};
 
 use crate::style;

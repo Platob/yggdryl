@@ -416,7 +416,7 @@ pub(super) fn decode_text(
     quoted.push('"');
     quoted.push_str(body);
     quoted.push('"');
-    let decoded = crate::text::json::from_utf8(&quoted)?;
+    let decoded = crate::json::from_utf8(&quoted)?;
     decoded
         .as_str()
         .map(ToOwned::to_owned)
@@ -585,7 +585,7 @@ impl Writer {
             return Ok(());
         }
         self.text
-            .push_str(&crate::text::json::into_utf8(&Scalar::from(value))?);
+            .push_str(&crate::json::into_utf8(&Scalar::from(value))?);
         Ok(())
     }
 

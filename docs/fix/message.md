@@ -79,11 +79,11 @@
     // `OrderQty` is the quantity the message lifts, so it answers exact;
     // `Side(54)` is a row child, so it answers the code the row holds and
     // `get_side` reads the side off it.
-    let hundred = Scalar::from(yggdryl::types::Decimal::from_int(100));
+    let hundred = Scalar::from(yggdryl::Decimal::from_int(100));
     assert_eq!(msg.by_tag(35)?, Scalar::from("D"));
     assert_eq!(msg.by_tag(54)?, Scalar::from("1"));
     assert_eq!(msg.by_tag(38)?, hundred);
-    assert_eq!(msg.get_qty(), yggdryl::types::Decimal::from_int(100));
+    assert_eq!(msg.get_qty(), yggdryl::Decimal::from_int(100));
     assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is retained");
@@ -387,7 +387,7 @@ A written child keeps its position, so every reader already holding the row addr
     use std::sync::Arc;
 
     use yggdryl::graph::Element;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -615,7 +615,7 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Scalar, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

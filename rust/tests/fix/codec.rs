@@ -6,10 +6,10 @@ use super::path;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use yggdryl::SequenceType;
+use yggdryl::State;
 use yggdryl::graph::Event;
-use yggdryl::media::text::{TextBytes, TextLine};
-use yggdryl::types::SequenceType;
-use yggdryl::types::State;
+use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar};
 
 fn registry() -> Arc<FixRegistry> {

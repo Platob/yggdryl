@@ -131,7 +131,7 @@ mod scalars {
 }
 
 mod containers {
-    use yggdryl::types::SequenceType;
+    use yggdryl::SequenceType;
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]

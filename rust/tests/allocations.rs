@@ -26,13 +26,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::FieldValue as _;
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
-use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, UncheckedFieldScalar, Uuid,
-};
+use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::{Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, UncheckedFieldScalar, Uuid};
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
     FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
@@ -231,7 +229,7 @@ fn uuid_version_7_and_8_construction_allocate_nothing() {
 
 #[test]
 fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
-    use yggdryl::hashing::txhash::TxHash;
+    use yggdryl::txhash::TxHash;
     use yggdryl::{Digest, DigestAlgorithm};
 
     let values: Vec<_> = [DigestAlgorithm::Xxh64, DigestAlgorithm::Xxh3]
@@ -315,7 +313,7 @@ fn python_field(module: &str, extra: usize) -> Field {
 /// A field carrying Iceberg's whole column vocabulary plus `extra` keys.
 #[cfg(feature = "iceberg")]
 fn iceberg_field(extra: usize) -> Field {
-    use yggdryl::media::iceberg::Transform;
+    use yggdryl::iceberg::Transform;
 
     let mut field = DataType::Int64.required_field("id");
     let mut view = field.as_iceberg_mut();
@@ -980,7 +978,7 @@ fn the_canonical_value_feed_allocates_nothing() {
     // state is built outside the counted section: XXH3 keeps its secret on the
     // heap, and that is the algorithm's cost rather than the feed's.
     for (label, value) in feed_corpus() {
-        let mut sink = yggdryl::hashing::xxhash::Xxh3::new();
+        let mut sink = yggdryl::xxhash::Xxh3::new();
         free(&format!("feeding {label}"), || {
             value.write_bytes(black_box(&mut sink));
         });
@@ -1253,7 +1251,7 @@ fn coupled_value_bytes_allocate_nothing() {
     // the two out, reading them back, and restating the resolution copies
     // nothing to the heap. The one-shot XXH32 answer is inline too; XXH3
     // keeps its secret on the heap, which is the algorithm's cost.
-    use yggdryl::hashing::txhash::{self, TxHash};
+    use yggdryl::txhash::{self, TxHash};
     use yggdryl::{DigestAlgorithm, TimeUnit};
 
     let value = txhash::txh128(b"AAPL", 1_700_000_000_000_000);
@@ -1285,7 +1283,7 @@ fn coupled_value_bytes_allocate_nothing() {
 
 #[test]
 fn reading_an_instant_out_of_a_value_allocates_nothing() {
-    use yggdryl::hashing::txhash;
+    use yggdryl::txhash;
     use yggdryl::{Scalar, TimeUnit, Timezone};
 
     let integer = Scalar::from(1_700_000_000_000_000_i64);
@@ -1323,7 +1321,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
     // builds nothing; a column at another unit is one fresh buffer and the
     // handle that shares it, however many rows it holds.
     use arrow_array::{TimestampMicrosecondArray, TimestampSecondArray};
-    use yggdryl::{TimeUnit, hashing::txhash};
+    use yggdryl::{TimeUnit, txhash};
 
     for rows in [16_i64, 4_096] {
         let micros = TimestampMicrosecondArray::from_iter_values(0..rows).with_timezone("UTC");
@@ -1796,7 +1794,7 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
 #[test]
 fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     use arrow_array::RecordBatchIterator;
-    use yggdryl::media::text::{from_arrow_reader, into_arrow_batch};
+    use yggdryl::text::{from_arrow_reader, into_arrow_batch};
 
     let options = TextOptions::new();
     let mut first_cost = None;
@@ -2187,7 +2185,7 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
 #[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
     let mut registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
     let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
     gross

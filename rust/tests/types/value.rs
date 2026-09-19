@@ -1,7 +1,7 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
-use yggdryl::types::{DateTimeType, DurationType, TimeType};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -136,8 +136,8 @@ fn temporal_casts_preserve_family_and_timezone() {
 /// The spellings a value takes on the way into a datatype, and the ones it
 /// prints on the way out - the same readings a column takes and prints.
 mod readings {
-    use yggdryl::types::{Map, Mapping};
     use yggdryl::{DataType, Scalar};
+    use yggdryl::{Map, Mapping};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()

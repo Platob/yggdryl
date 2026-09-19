@@ -565,7 +565,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 === "Rust"
 
     ```rust
-    use yggdryl::types::{DateTimeField, DateTimeType, FieldValue as _, Int64Field, StringField, StringType};
+    use yggdryl::{DateTimeField, DateTimeType, FieldValue as _, Int64Field, StringField, StringType};
     use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
     let id = Int64Field::unit("id", false);
@@ -792,7 +792,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```rust
     use yggdryl::{DataType, Field};
-    use yggdryl::types::Scalar;
+    use yggdryl::Scalar;
 
     let field = Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")])?;
 
@@ -1000,8 +1000,8 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::generic field::nested field::serde field::comparison field::typed field::arrow field::integer field::floating field::decimal field::temporal field::binary field::scalar
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc types::arrow
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::field types::typed types::diff types::merge
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc -- Field::apply_arrow
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- field:: typed:: diff:: merge::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_field_clone|field_stable_hash|metadata_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'

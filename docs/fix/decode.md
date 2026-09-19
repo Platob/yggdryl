@@ -25,7 +25,7 @@ One frame, read against the dictionary. A line can carry more than one, and
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -107,7 +107,7 @@ a settled identity.
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -165,7 +165,7 @@ a line that stated no frame.
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

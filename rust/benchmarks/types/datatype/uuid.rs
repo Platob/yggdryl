@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::{Uuid, UuidType};
+use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field};
+use yggdryl::{Uuid, UuidType};
 
 use super::doors;
 

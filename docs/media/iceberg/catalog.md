@@ -27,8 +27,8 @@ A caller holding rows and a dotted name needs nothing else.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::Catalog;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::Catalog;
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
@@ -186,8 +186,8 @@ A nested namespace comes from its parent's own view.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::Catalog;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::Catalog;
+    use yggdryl::local::Folder;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-views");
     let _ = std::fs::remove_dir_all(&root);
@@ -320,13 +320,13 @@ use std::sync::Arc;
 
 use arrow_array::{Float32Array, Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::media::iceberg::Table;
-use yggdryl::holder::local::Folder;
+use yggdryl::iceberg::Table;
+use yggdryl::local::Folder;
 use yggdryl::DataType;
 
 let root = Folder::temporary()?.path()?.join("yggdryl-doc-nyc-taxis");
 let _ = std::fs::remove_dir_all(&root);
-let catalog = yggdryl::media::iceberg::Catalog::new(Folder::new(&root)?);
+let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
 
 // CREATE TABLE nyc.taxis (...) PARTITIONED BY (vendor_id)
 // The partition mark on the schema is the whole PARTITIONED BY clause.
@@ -409,7 +409,7 @@ assert_eq!(
 );
 
 // ALTER TABLE nyc.taxis ADD COLUMN fare_per_distance float
-let mut update = yggdryl::media::iceberg::SchemaUpdate::from_metadata(table.metadata())?;
+let mut update = yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata())?;
 update.add_column("", DataType::Float32.nullable_field("fare_per_distance"));
 let evolved = update.into_field()?;
 table.commit_metadata_changes(|metadata| {
@@ -454,7 +454,7 @@ let _ = std::fs::remove_dir_all(&root);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::catalog::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::catalog::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^catalog_resolve/'
     ```
 

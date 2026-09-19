@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use yggdryl::types::{DataType, Str, StringType};
 use yggdryl::{Charset, DataTypeId, DataTypeKind};
+use yggdryl::{DataType, Str, StringType};
 use yggdryl::{Error, Field, Scalar, Scheme};
 
 fn hash_of(value: &DataType) -> u64 {

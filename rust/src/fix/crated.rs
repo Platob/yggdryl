@@ -65,7 +65,7 @@
 
 use std::sync::LazyLock;
 
-use crate::types::UuidType;
+use crate::UuidType;
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -619,7 +619,7 @@ impl super::FixRegistry {
         field.as_fix_mut().set_codes(&codes)?;
         next.update(field)?;
         if next.get_msgtype(&value).is_none() {
-            let normalized = crate::types::normalized(codes[at].name());
+            let normalized = crate::normalized(codes[at].name());
             let canonical = if !normalized.is_empty()
                 && !matches!(normalized.as_str(), "." | "..")
                 && normalized

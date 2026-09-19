@@ -193,7 +193,7 @@ impl JsField {
         use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
         use arrow_ipc::writer::StreamWriter;
         use arrow_schema::Schema;
-        use yggdryl::types::FieldValue as _;
+        use yggdryl::FieldValue as _;
 
         use crate::text::codec::{arrow_batches, ensure_one_column};
 

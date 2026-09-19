@@ -6,7 +6,7 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::types::{BytesType as CoreBytesType, StringType as CoreStringType};
+use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType};
 use yggdryl::{
     DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,

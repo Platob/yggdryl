@@ -68,8 +68,8 @@ use std::sync::Arc;
 use quick_xml::events::Event;
 use smol_str::SmolStr;
 
-use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
 use crate::mime_type::line;
+use crate::text::{TextBytes, TextEntries, TextEntry, TextLine};
 use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
@@ -427,7 +427,7 @@ impl CaptureRole {
     /// something the message it holds says, so it fills no field here and
     /// is stated on the row by whoever read it.
     fn of(name: &str, codec: &FixCodec) -> Self {
-        let is = |known: &str| crate::types::folds_equal(known, name);
+        let is = |known: &str| crate::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
         }
@@ -671,12 +671,12 @@ impl FixCodec {
     /// line itself says: the body is the message, so a fact read out of it is
     /// already a field this codec fills from its tag.
     ///
-    /// [`TextOptions::capture_names`]: crate::media::text::TextOptions::capture_names
+    /// [`TextOptions::capture_names`]: crate::text::TextOptions::capture_names
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::media::text::{TextBytes, TextLine};
+    /// # use yggdryl::text::{TextBytes, TextLine};
     /// # use yggdryl::{FixCodec, FixRegistry, PLUGINID_TAG_NAME};
     /// let codec = FixCodec::new(Arc::new(FixRegistry::new())).with_capture_names(["pluginid"]);
     ///
@@ -793,7 +793,7 @@ impl FixCodec {
     /// # use std::sync::Arc;
     /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = Arc::new(FixRegistry::from_handle(&yggdryl::holder::local::Folder::new(root)?)?);
+    /// # let registry = Arc::new(FixRegistry::from_handle(&yggdryl::local::Folder::new(root)?)?);
     /// // Any spelling the dictionary resolves: `NewOrderSingle` is `35=D`.
     /// let orders = FixCodec::new(Arc::clone(&registry)).with_include_msgtypes(["NewOrderSingle"]);
     /// let lines = ["8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=8|37=O1|10=0|"];
@@ -875,8 +875,7 @@ impl FixCodec {
 
     /// One configured spelling as the code it names.
     fn resolve_msgtype(&self, spelling: &str) -> SmolStr {
-        if spelling.is_empty() || crate::types::folds_equal(spelling, super::build::UNKNOWN_MSGTYPE)
-        {
+        if spelling.is_empty() || crate::folds_equal(spelling, super::build::UNKNOWN_MSGTYPE) {
             return SmolStr::new_static(super::build::UNKNOWN_MSGTYPE);
         }
         self.registry.get_msgtype(spelling).map_or_else(
@@ -1816,7 +1815,7 @@ impl FixCodec {
         };
         let counter = group.as_fix().counter().ok().flatten();
         declared.iter().any(|field| {
-            crate::types::folds_equal(field.name(), group.name())
+            crate::folds_equal(field.name(), group.name())
                 || counter.is_some_and(|counter| {
                     field.as_fix().tag().ok().flatten() == Some(counter)
                         || field.as_fix().counter().ok().flatten() == Some(counter)
@@ -2242,8 +2241,7 @@ fn msgtype_of<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Opti
     for (key, value) in pairs {
         // The key folds the way every other key folds, so `MSG_TYPE` and
         // `Msg Type` name the type too.
-        let folded =
-            std::str::from_utf8(key).is_ok_and(|key| crate::types::folds_equal(key, "MsgType"));
+        let folded = std::str::from_utf8(key).is_ok_and(|key| crate::folds_equal(key, "MsgType"));
         if folded || key == b"35" {
             return Some(String::from_utf8_lossy(value).into_owned());
         }
@@ -2612,7 +2610,7 @@ fn declares(declared: &[Field], key: &[u8]) -> bool {
     let key = key.trim();
     let tag = super::field::parse_tag(key);
     declared.iter().any(|field| {
-        crate::types::folds_equal(field.name(), key)
+        crate::folds_equal(field.name(), key)
             || (tag.is_some() && field.as_fix().tag().ok().flatten() == tag)
     })
 }
@@ -2891,8 +2889,7 @@ mod msgtype_filter_tests {
     #[test]
     fn a_spelling_is_resolved_once_and_an_unknown_code_is_kept() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-        let registry =
-            FixRegistry::from_handle(&crate::holder::local::Folder::new(root).unwrap()).unwrap();
+        let registry = FixRegistry::from_handle(&crate::local::Folder::new(root).unwrap()).unwrap();
         let codec = FixCodec::new(Arc::new(registry)).with_include_msgtypes([
             "NewOrderSingle",
             "EXECUTIONREPORT",

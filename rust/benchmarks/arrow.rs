@@ -20,11 +20,11 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use yggdryl::DateTimeType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::types::DateTimeType;
-use yggdryl::types::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
     Scalar, TimeUnit, Timezone, Url,

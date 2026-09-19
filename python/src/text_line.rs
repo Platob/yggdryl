@@ -11,7 +11,7 @@ use pyo3::exceptions::{PyStopIteration, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
-use yggdryl::media::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines};
+use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines};
 use yggdryl::{FieldPath, FieldSegment};
 
 use crate::value_error;

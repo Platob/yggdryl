@@ -1035,10 +1035,10 @@ mod arrow {
     use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{BoundSelector, Selector};
+    use crate::FieldValue as _;
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
+    use crate::cast::ArrowCastOptions;
     use crate::expression::arrow::{collected, one_batch, struct_batch};
-    use crate::types::FieldValue as _;
-    use crate::types::cast::ArrowCastOptions;
     use crate::{Error, Result};
 
     impl Selector {

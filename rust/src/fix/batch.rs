@@ -67,7 +67,7 @@ use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixEntry, FixMessages, FixRegistry};
-use crate::types::enums::EnumType;
+use crate::enums::EnumType;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -402,7 +402,7 @@ impl FixCodec {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -626,7 +626,7 @@ fn capture_restating(
             None => target
                 .fields()
                 .iter()
-                .position(|held| crate::types::folds_equal(held.name(), column.name())),
+                .position(|held| crate::folds_equal(held.name(), column.name())),
         };
         if let Some(placed) = placed {
             restating.push((at, placed));
@@ -804,7 +804,7 @@ fn payload_bytes<'batch>(
 fn is_parameter(name: &str, payload: &str) -> bool {
     [payload, BEGINSTRING_COLUMN, DIRECTION_COLUMN]
         .iter()
-        .any(|held| crate::types::folds_equal(held, name))
+        .any(|held| crate::folds_equal(held, name))
 }
 
 struct Columns {
@@ -848,7 +848,7 @@ impl Columns {
         let named = |wanted: &str| {
             fields
                 .iter()
-                .position(|held| crate::types::folds_equal(held.name(), wanted))
+                .position(|held| crate::folds_equal(held.name(), wanted))
         };
         let payload_at = payload_column_of(carrier, payload, named(payload))?;
         let reached = |held: &Field| codec.fill_target(held.name()).map(|(_, tag)| tag);

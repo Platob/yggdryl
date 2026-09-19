@@ -25,8 +25,8 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
@@ -146,7 +146,7 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{assign_field_ids, last_column_id, schema_into_json};
+    use yggdryl::iceberg::{assign_field_ids, last_column_id, schema_into_json};
     use yggdryl::DataType;
 
     let leg = DataType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?;
@@ -234,8 +234,8 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-evolution");
@@ -374,9 +374,9 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{schema_from_json, schema_into_json};
+    use yggdryl::iceberg::{schema_from_json, schema_into_json};
     use yggdryl::{DataType};
-    use yggdryl::text::json;
+    use yggdryl::json;
 
     let document = json::from_utf8(
         r#"{"type":"struct","schema-id":0,"fields":[
@@ -477,7 +477,7 @@ Documents pass through the core [JSON](../json/index.md) codec as [`Scalar`](../
 `PrimitiveType` is the whole Iceberg type vocabulary, parsed from the spelling in table metadata JSON. `into_dtype` is total; `from_dtype` names the datatype it refuses instead of widening it, and `iceberg` is a [compatibility target](../../types/datatype.md) like `spark` and `polars`, so lossless widenings live in one walker. Rust only.
 
 ```rust
-use yggdryl::media::iceberg::PrimitiveType;
+use yggdryl::iceberg::PrimitiveType;
 use yggdryl::{DataType, Scheme, TimeUnit, Timezone};
 
 // Every Iceberg primitive name has exactly one physical datatype.
@@ -583,9 +583,9 @@ assert!(DataType::interval(TimeUnit::YearMonth)?.into_scheme_compat(&Scheme::ICE
 Rust only.
 
 ```rust
-use yggdryl::media::iceberg::{schema_from_json, schema_into_json};
+use yggdryl::iceberg::{schema_from_json, schema_into_json};
 use yggdryl::{DataType};
-use yggdryl::text::json;
+use yggdryl::json;
 
 let document = json::from_utf8(
     r#"{"type":"struct","schema-id":0,"fields":[
@@ -636,11 +636,11 @@ Rust only.
 ```rust
 use arrow_array::RecordBatch;
 use yggdryl::arrow;
-use yggdryl::media::iceberg::schema_from_json;
+use yggdryl::iceberg::schema_from_json;
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
-use yggdryl::text::json;
-use yggdryl::media::parquet::Parquet;
+use yggdryl::json;
+use yggdryl::parquet::Parquet;
 
 let document = json::from_utf8(
     r#"{"type":"struct","fields":[
@@ -694,11 +694,11 @@ assert!(!written.fields()[0].is_nullable());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::evolve::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::schema_documents
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::types
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::datatype_coverage
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::evolve::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::schema_documents
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::types
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::datatype_coverage
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
     cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     ```
 

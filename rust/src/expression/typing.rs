@@ -30,9 +30,9 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
-use crate::types::DecimalType;
-use crate::types::enums::EnumType;
-use crate::types::sequence::SequenceType;
+use crate::DecimalType;
+use crate::enums::EnumType;
+use crate::sequence::SequenceType;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
@@ -486,7 +486,7 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 /// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
     unwrap_dictionary(left)
-        .merge_exact(unwrap_dictionary(right), crate::types::Widening::Up)
+        .merge_exact(unwrap_dictionary(right), crate::Widening::Up)
         .ok()
 }
 

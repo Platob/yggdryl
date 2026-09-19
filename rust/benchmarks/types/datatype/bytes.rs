@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, BinaryArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::BytesType;
+use yggdryl::BytesType;
 use yggdryl::{Bytes, DataType, Scalar};
 
 use super::doors;

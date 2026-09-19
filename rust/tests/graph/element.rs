@@ -14,10 +14,8 @@ use std::hash::Hasher;
 use yggdryl::graph::{
     Element, Event, MarketElement, MarketElementData, MarketEvent, MarketEventData,
 };
-use yggdryl::hashing::xxhash::Xxh3;
-use yggdryl::types::{
-    Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid,
-};
+use yggdryl::xxhash::Xxh3;
+use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
 
 /// One report as a foreign caller would hold it: every fact the two traits
 /// name, an identity assigned rather than derived, and nothing the graph

@@ -12,10 +12,10 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
+use yggdryl::avro;
+use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::media::avro;
-use yggdryl::media::avro::AvroOptions;
 use yggdryl::{DataType, Url};
 
 /// Rows in the sweep fixture.

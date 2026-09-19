@@ -50,8 +50,8 @@ use super::{
     batch_from_value, batch_reader, batch_to_value, field_from_arrow_schema, scalar_array,
     scalar_value,
 };
+use crate::FieldValue as _;
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::types::FieldValue as _;
 use crate::{ArrowCastOptions, DataType, Field, Scalar};
 
 /// Which of Arrow's four payload shapes an [`ArrowScalar`] holds.

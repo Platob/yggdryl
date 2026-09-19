@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use criterion::Criterion;
 use yggdryl::IOBase;
 use yggdryl::Result;
-use yggdryl::holder::fs::{
+use yggdryl::fs::{
     ByteReader, ByteWriter, File as FsFile, FileInfo, FileInfos, FileSelector, FileSystem,
     LocalFileSystem, OutputMetadata, RandomAccessReader,
 };
@@ -320,7 +320,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new() -> Self {
-        let mut root = yggdryl::holder::local::Folder::temporary()
+        let mut root = yggdryl::local::Folder::temporary()
             .expect("the temporary directory")
             .path()
             .expect("a platform path");

@@ -10,11 +10,11 @@ use std::cell::Cell;
 use std::hash::Hash;
 use std::sync::Arc;
 
+use yggdryl::DateTimeType;
 use yggdryl::expression::{
     Attribute, Bound, Bounds, ColumnBounds, Cost, Expression, Filter, Literal, Projection,
     Residual, Selector, Term,
 };
-use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------

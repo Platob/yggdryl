@@ -10,7 +10,7 @@ use arrow_array::{
     TimestampNanosecondArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, DigestAlgorithm, Field, TimeUnit, Timezone};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
@@ -68,9 +68,9 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     let batch = buffered_batch();
     let instants = instants();
     let nanos = nano_instants();
-    let digests = yggdryl::hashing::xxhash::arrow::row_digests(&batch, DigestAlgorithm::Xxh3)
+    let digests = yggdryl::xxhash::arrow::row_digests(&batch, DigestAlgorithm::Xxh3)
         .expect("the batch digests");
-    let coupled = yggdryl::hashing::txhash::arrow::row_txhashes(
+    let coupled = yggdryl::txhash::arrow::row_txhashes(
         &batch,
         instants.as_ref(),
         TimeUnit::Microsecond,
@@ -82,13 +82,13 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("row_digests", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(black_box(&batch), DigestAlgorithm::Xxh3)
+            yggdryl::xxhash::arrow::row_digests(black_box(&batch), DigestAlgorithm::Xxh3)
                 .expect("the batch digests")
         });
     });
     group.bench_function("row_txhashes", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::row_txhashes(
+            yggdryl::txhash::arrow::row_txhashes(
                 black_box(&batch),
                 black_box(instants.as_ref()),
                 TimeUnit::Microsecond,
@@ -99,7 +99,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("row_txhashes_128", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::row_txhashes(
+            yggdryl::txhash::arrow::row_txhashes(
                 black_box(&batch),
                 black_box(instants.as_ref()),
                 TimeUnit::Microsecond,
@@ -112,7 +112,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     let symbols = Arc::clone(batch.column(1));
     group.bench_function("column_digests", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::column_digests(
+            yggdryl::xxhash::arrow::column_digests(
                 black_box(Arc::clone(&symbols)),
                 &symbol,
                 DigestAlgorithm::Xxh3,
@@ -122,7 +122,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("column_txhashes", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::column_txhashes(
+            yggdryl::txhash::arrow::column_txhashes(
                 black_box(instants.as_ref()),
                 black_box(Arc::clone(&symbols)),
                 &symbol,
@@ -134,25 +134,19 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("unix_array/same_unit", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::unix_array(
-                black_box(instants.as_ref()),
-                TimeUnit::Microsecond,
-            )
-            .expect("an instant column")
+            yggdryl::txhash::arrow::unix_array(black_box(instants.as_ref()), TimeUnit::Microsecond)
+                .expect("an instant column")
         });
     });
     group.bench_function("unix_array/floored", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::unix_array(
-                black_box(nanos.as_ref()),
-                TimeUnit::Microsecond,
-            )
-            .expect("an instant column")
+            yggdryl::txhash::arrow::unix_array(black_box(nanos.as_ref()), TimeUnit::Microsecond)
+                .expect("an instant column")
         });
     });
     group.bench_function("compose", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::compose(
+            yggdryl::txhash::arrow::compose(
                 black_box(instants.as_ref()),
                 black_box(digests.as_ref()),
                 TimeUnit::Microsecond,
@@ -163,7 +157,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("decompose", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::decompose(
+            yggdryl::txhash::arrow::decompose(
                 black_box(coupled.as_ref()),
                 TimeUnit::Microsecond,
                 DigestAlgorithm::Xxh3,

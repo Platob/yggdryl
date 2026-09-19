@@ -1,10 +1,10 @@
 //! One value naming every transparent content-coding handle.
 
 use crate::IOBase;
-use crate::coding::gzip::Gzip;
-use crate::coding::zlib::Zlib;
-use crate::coding::zstd::Zstd;
+use crate::gzip::Gzip;
 use crate::holder::Holder;
+use crate::zlib::Zlib;
+use crate::zstd::Zstd;
 use crate::{Error, Level, MediaType, Result, Url};
 
 /// A handle wrapped in the content coding its media type names.
@@ -234,7 +234,7 @@ impl crate::IOMedia for Coded {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(self.as_io())
     }
 
@@ -242,7 +242,7 @@ impl crate::IOMedia for Coded {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
     }
 }
@@ -289,7 +289,7 @@ impl IOBase for Coded {
         self.as_io().url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_io().bound_location()
     }
 

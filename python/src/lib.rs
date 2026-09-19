@@ -274,8 +274,8 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     listing.set_item("io_write_modes", IOMode::WRITE.map(IOMode::as_str).to_vec())?;
     listing.set_item(
         "leading_fragments",
-        yggdryl::media::text::LeadingFragment::ALL
-            .map(yggdryl::media::text::LeadingFragment::as_str)
+        yggdryl::text::LeadingFragment::ALL
+            .map(yggdryl::text::LeadingFragment::as_str)
             .to_vec(),
     )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
@@ -353,7 +353,7 @@ fn refresh_logging() {
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // Records travel under the Rust module path, so a core record from
-    // `yggdryl::media::iceberg::table` reaches `logging` as
+    // `yggdryl::iceberg::table` reaches `logging` as
     // `yggdryl.media.iceberg.table` and the package's own logger is its root.
     //
     // The bridge is global, so every crate in the build would otherwise reach

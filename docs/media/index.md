@@ -185,14 +185,14 @@ consumes the media and answers it.
 - Handle name not trustworthy -> `Media::open_as` takes an explicit `MimeType`.
 - Plain text -> `Media::Text`; any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md).
 - Python name with no implementation (`trades.csv`) -> nothing is composed and the handle stays a `Path`; only `Media::open` reports it.
-- `--lib media::tests` -> the enum's own module only; `media::ipc::tests` needs its own filter.
+- `--lib media::` -> the shared modules' own tests - magic, merge, options, partition; `ipc::tests`, `parquet::tests`, `avro::tests` and `iceberg::tests` each need their own filter.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib media::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/media_ipc
     ```
 

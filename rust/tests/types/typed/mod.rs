@@ -3,9 +3,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl::types::interval::Interval;
-use yggdryl::types::{DateTimeType, UncheckedFieldScalar};
+use yggdryl::interval::Interval;
 use yggdryl::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -326,7 +326,7 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
 }
 
 mod arrow {
-    use yggdryl::types::{DataType, Field, FieldScalar, Scalar};
+    use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
     #[test]
     fn a_pairing_round_trips_through_its_one_row_arrow_array() {

@@ -8,9 +8,9 @@ use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
 use yggdryl::Scalar;
+use yggdryl::avro;
 use yggdryl::holder::Buffer;
-use yggdryl::media::avro;
-use yggdryl::text::json;
+use yggdryl::json;
 
 /// Rows in the representative container.
 const ROWS: usize = 1_000;

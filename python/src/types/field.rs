@@ -10,8 +10,8 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
+use yggdryl::FieldValue as _;
 use yggdryl::expression::Function as CoreFunction;
-use yggdryl::types::FieldValue as _;
 use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
 
 use crate::enums::{

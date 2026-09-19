@@ -30,7 +30,7 @@ Read the footer of a file written with two row groups and one key/value entry.
     use yggdryl::arrow;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::{Parquet, ParquetOptions};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, MimeType, Scalar};
 
     let field = DataType::from_fields([
@@ -135,7 +135,7 @@ Projecting the root to Arrow before the write carries the ids into the file; rea
     use yggdryl::arrow;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
     let field = DataType::from_fields([
@@ -249,7 +249,7 @@ A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEO
     use yggdryl::arrow;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
     fn wkb_point(x: f64, y: f64) -> Vec<u8> {
@@ -386,7 +386,7 @@ use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
 use yggdryl::{IOBase, IOMedia};
 use yggdryl::holder::Buffer;
-use yggdryl::media::parquet::{self, Parquet, ParquetOptions};
+use yggdryl::parquet::{self, Parquet, ParquetOptions};
 use yggdryl::{DataType, MimeType};
 
 let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -436,7 +436,7 @@ assert!(!media.opened());
     use yggdryl::arrow;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
     let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -533,8 +533,8 @@ assert!(!media.opened());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests::geospatial
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests::geospatial
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/.*statistics'
     ```
 

@@ -6,7 +6,7 @@ Read and write Apache Parquet over any handle; the footer's contents and the sta
 
 | | |
 | --- | --- |
-| Owns | `yggdryl::media::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
+| Owns | `yggdryl::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
 | Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](../options.md) reports `application/vnd.apache.parquet` as not implemented |
 | Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by` supplies row-identity keys only |
 | Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
@@ -108,7 +108,7 @@ Parquet's own settings and the shared ones are flat fields of one value.
     use yggdryl::media::IORecordOptions;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::{Parquet, ParquetOptions};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, Level, MimeType};
 
     let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -273,7 +273,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::{Parquet, ParquetOptions};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{DataType, MimeType, Url};
 
     let field = DataType::from_fields([
@@ -438,7 +438,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/parquet/read_rows
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/parquet/(row_size|column_size|read_arrow_field)'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/parquet

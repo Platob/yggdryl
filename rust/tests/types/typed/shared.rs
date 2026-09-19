@@ -1,6 +1,6 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use yggdryl::types::{BytesType, StringLayout, StringType};
+use yggdryl::{BytesType, StringLayout, StringType};
 use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]

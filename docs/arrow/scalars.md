@@ -138,9 +138,8 @@ The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib arrow::value::
-    cargo test --features "parquet iceberg" -p yggdryl --lib types::typed::tests::arrow::
-    cargo test --features "parquet iceberg" -p yggdryl --test types value_bounds::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow -- scalars:: arrow_scalar::
+    cargo test --features "parquet iceberg" -p yggdryl --test types -- typed::arrow value_bounds::
     ```
 
 === "Python"

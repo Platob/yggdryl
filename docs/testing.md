@@ -35,9 +35,9 @@ Every check runs from the repository root, which owns the Cargo workspace.
 | Default features, schema-only core | Rust 1.85 |
 | `--features "parquet iceberg"`, both bindings | Rust 1.94 or newer |
 
-## By layer
+## By theme
 
-Integration targets are one file per layer under `rust/tests/`; unit tests sit beside the module they cover.
+Integration targets are one file per theme under `rust/tests/`; unit tests sit beside the module they cover.
 
 === "Rust"
 
@@ -50,16 +50,21 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     cargo test --features "parquet iceberg" -p yggdryl --test fix
     cargo test --features "parquet iceberg" -p yggdryl --test interop
     cargo test --features "parquet iceberg" -p yggdryl --test allocations
-    cargo test --features "parquet iceberg" -p yggdryl --lib types::
     cargo test --features "parquet iceberg" -p yggdryl --lib iobase::
     cargo test --features "parquet iceberg" -p yggdryl --lib holder::
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::
+    cargo test --features "parquet iceberg" -p yggdryl --test coding
     cargo test --features "parquet iceberg" -p yggdryl --lib charset::
     cargo test --features "parquet iceberg" -p yggdryl --test charset
     cargo test --features "parquet iceberg" -p yggdryl --lib media::
+    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::
+    cargo test --features "parquet iceberg" -p yggdryl --lib avro::
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::
     cargo test --features "parquet iceberg" -p yggdryl --lib text::
+    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
     cargo test --features "parquet iceberg" -p yggdryl --lib expression::
-    cargo test --features "parquet iceberg" -p yggdryl --lib hashing::
+    cargo test --features "parquet iceberg" -p yggdryl --lib xxhash::
+    cargo test --features "parquet iceberg" -p yggdryl --lib txhash::
     ```
 
 === "Python"
@@ -113,7 +118,7 @@ python scripts/check_gcs_interop.py
 python scripts/check_iceberg_interop.py
 python scripts/setup_spark_interop.py
 python -m pytest python/tests -m spark_interop
-AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib media::avro::tests::fuzz_lite
+AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib avro::tests::fuzz_lite
 ```
 
 | Script | Exchanges |

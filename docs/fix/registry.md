@@ -685,7 +685,7 @@ used still reaches the value.
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -730,7 +730,7 @@ metadata documents remain on the field and round-trip through both bindings.
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::FixRegistry;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -806,7 +806,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     use std::sync::Arc;
 
     use yggdryl::fix::FixReplacement;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Plan};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -948,7 +948,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
     use std::sync::Arc;
 
     use yggdryl::expression::Term;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1021,7 +1021,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
 ### The derivations the dictionary carries
 
-The generator writes the specification's tables - FIX 4.4's Appendix D for an order's life, 4.2's Appendix O for what a foreign exchange trade settles on, Appendix 6-D for the CFI each security type names, and the code sets' own facts - onto 29 fields as one term each, from `DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, every name the term reads validated at generation against the dictionary (a field or a group of it; the crate owns no derived column). `SecurityType(167)`, `PutOrCall(201)` and `CFICode(461)` are rendered from the Appendix 6-D tables the generator holds, `Product(460)` from the groups the dictionary's own `SecurityType` code set files each value under, and `CountryOfIssue(470)` from the crate's own registry of ISO 3166 codes, `StringEnum::COUNTRIES`, which the generator reads off `rust/src/types/string/registries.rs` rather than copying: the `country` datatype validates width alone, so the 249 assigned codes are the derivation's `in (...)`, and the one list they come from is the registry's. The texts below are the stored texts, exactly.
+The generator writes the specification's tables - FIX 4.4's Appendix D for an order's life, 4.2's Appendix O for what a foreign exchange trade settles on, Appendix 6-D for the CFI each security type names, and the code sets' own facts - onto 29 fields as one term each, from `DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, every name the term reads validated at generation against the dictionary (a field or a group of it; the crate owns no derived column). `SecurityType(167)`, `PutOrCall(201)` and `CFICode(461)` are rendered from the Appendix 6-D tables the generator holds, `Product(460)` from the groups the dictionary's own `SecurityType` code set files each value under, and `CountryOfIssue(470)` from the crate's own registry of ISO 3166 codes, `StringEnum::COUNTRIES`, which the generator reads off `rust/src/string.rs` rather than copying: the `country` datatype validates width alone, so the 249 assigned codes are the derivation's `in (...)`, and the one list they come from is the registry's. The texts below are the stored texts, exactly.
 
 Six of them state a scale. Every FIX quantity, price, price offset and
 amount is `decimal128(38, 18)`, and the grammar types a product at the sum

@@ -3,8 +3,8 @@
 use super::path as fpath;
 
 use std::path::PathBuf;
-use yggdryl::holder::local::Folder;
-use yggdryl::types::SequenceType;
+use yggdryl::SequenceType;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
 
 fn scratch(label: &str) -> PathBuf {
@@ -1047,7 +1047,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     for bytes in [
         b"not json".to_vec(),
         b"{}".to_vec(),
-        yggdryl::text::json::into_bytes(&Scalar::from_sequence([tagged(
+        yggdryl::json::into_bytes(&Scalar::from_sequence([tagged(
             "Misplaced",
             150,
             DataType::utf8(),
@@ -1072,8 +1072,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     // its own name.
     let field = tagged("Misplaced", 5001, DataType::utf8());
     let bytes =
-        yggdryl::text::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()]))
-            .unwrap();
+        yggdryl::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()])).unwrap();
     folder
         .child_by_path("fields/000000049.json")
         .unwrap()
@@ -1510,7 +1509,7 @@ fn duplicate_persisted_field_declarations_are_refused() {
     let root = scratch("duplicates");
     let folder = Folder::new(&root).unwrap();
     let field = tagged("Symbol", 55, DataType::utf8());
-    let bytes = yggdryl::text::json::into_bytes(&Scalar::from_sequence([
+    let bytes = yggdryl::json::into_bytes(&Scalar::from_sequence([
         field.clone().into_value(),
         field.into_value(),
     ]))
@@ -2013,7 +2012,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     std::fs::write(&path, source.into_json().unwrap()).unwrap();
 
     let mut registry = FixRegistry::new();
-    let file = yggdryl::holder::local::File::new(&path).unwrap();
+    let file = yggdryl::local::File::new(&path).unwrap();
     let (added, merged) = registry.add_json_file(&file).unwrap();
     assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
@@ -2029,7 +2028,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     let before = registry.stable_hash();
     std::fs::write(&path, br#"{"fields":[],"components":[],"groups":"no"}"#).unwrap();
     let error = registry
-        .add_json_file(&yggdryl::holder::local::File::new(&path).unwrap())
+        .add_json_file(&yggdryl::local::File::new(&path).unwrap())
         .expect_err("a category that is not an array");
     assert!(error.to_string().contains("venue.json"), "{error}");
     assert_eq!(registry.stable_hash(), before);

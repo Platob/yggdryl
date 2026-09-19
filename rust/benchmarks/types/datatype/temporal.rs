@@ -10,8 +10,8 @@ use arrow_array::{ArrayRef, StringArray};
 use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
-use yggdryl::types::{DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 use yggdryl::{DataType, DateTimeType, Scalar, TemporalValue as _, TimeUnit, Timezone};
+use yggdryl::{DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 
 use super::doors;
 

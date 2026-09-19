@@ -194,8 +194,9 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => crate::types::Decimal::from_scalar(value)
-            .map(|held| smol_str::format_smolstr!("{held}")),
+        | Scalar::Decimal256(_) => {
+            crate::Decimal::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
+        }
         // Every other number and duration writes its leaf's own canonical text.
         other => other
             .leaf_display()
@@ -222,7 +223,7 @@ const fn nanos_per(unit: crate::TimeUnit) -> Option<i64> {
 
 /// One day since the epoch as FIX spells it: `YYYYMMDD`.
 fn fix_date(days: i64) -> SmolStr {
-    let (year, month, day) = crate::types::timezone::civil_from_days(days);
+    let (year, month, day) = crate::timezone::civil_from_days(days);
     smol_str::format_smolstr!("{year:04}{month:02}{day:02}")
 }
 

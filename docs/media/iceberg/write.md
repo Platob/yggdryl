@@ -29,9 +29,9 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
 
     ```rust
     use yggdryl::media::IORecordOptions;
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -189,9 +189,9 @@ Rust only.
 
 ```rust
 use yggdryl::media::IORecordOptions;
-use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
 use yggdryl::{IOBase, IOMedia};
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType, MimeType};
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -275,8 +275,8 @@ A merge joins on the identity partition columns first and the caller's key after
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType, Selector};
 
     let mut schema = DataType::from_fields([
@@ -435,11 +435,11 @@ Rust only; the bindings read the table's sort orders off its metadata as every o
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
-use yggdryl::media::iceberg::{
+use yggdryl::iceberg::{
     FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, Transform,
     assign_field_ids,
 };
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType};
 
 let mut schema = DataType::from_fields([
@@ -510,8 +510,8 @@ The partition groups of one commit are independent - each writes its own files u
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     let mut schema = DataType::from_fields([
@@ -639,10 +639,10 @@ The option resolves like every other: the explicit value, then the table propert
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::{
+    use yggdryl::iceberg::{
         FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
     };
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     let mut schema = DataType::from_fields([
@@ -778,8 +778,8 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::media::iceberg::{Catalog, FormatVersion};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{Catalog, FormatVersion};
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-compaction");
@@ -811,7 +811,7 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
     assert_eq!(table.scan(None)?.map(|batch| batch.map(|b| b.num_rows())).sum::<Result<usize, _>>()?, 5);
 
     // Nothing to do is a no-op that commits nothing.
-    assert_eq!(table.compact()?, yggdryl::media::iceberg::Compaction::default());
+    assert_eq!(table.compact()?, yggdryl::iceberg::Compaction::default());
 
     let _ = std::fs::remove_dir_all(&warehouse);
     ```
@@ -906,10 +906,10 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{
+    use yggdryl::iceberg::{
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-options");
@@ -1042,8 +1042,8 @@ The JavaScript constructor takes an object naming any of the eleven fields, and 
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::media::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table};
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, MimeType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-data-format");
@@ -1176,8 +1176,8 @@ Rust only.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-concurrency");
@@ -1243,8 +1243,8 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-branching");
@@ -1428,7 +1428,7 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 - After a `CommitConflict` -> the in-memory state is restored; re-plan against the table as it now is.
 - The check-then-write pair is not atomic -> on plain storage a writer landing between them goes undetected.
 - Retries shrink that window but cannot close it; storage that serializes writers (an object store's atomic PUT, a catalog's swap) closes it.
-- [`yggdryl::holder::local`](../../holder/backends/local.md) memory mapping -> does not close it; two processes truncating one mapped file at the same instant is its documented SIGBUS hazard.
+- [`yggdryl::local`](../../holder/backends/local.md) memory mapping -> does not close it; two processes truncating one mapped file at the same instant is its documented SIGBUS hazard.
 - A failed commit -> no visible change; at worst orphan data files no snapshot names.
 - A branch fast-forward -> only along its own ancestry; the target must reach the branch's head by parent ids.
 - Removing a ref -> removes the name only; the snapshots stay retained.
@@ -1445,11 +1445,11 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::handles
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::concurrency_and_compaction
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::data_mime_type
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::line_projection
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::handles
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::concurrency_and_compaction
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::data_mime_type
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::line_projection
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
     cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^compact/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^merge/'

@@ -1,4 +1,4 @@
-use yggdryl::types::{DataType, StringEnum};
+use yggdryl::{DataType, StringEnum};
 
 #[test]
 fn the_member_name_rule_is_applied_once_per_value() {

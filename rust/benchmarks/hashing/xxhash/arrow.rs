@@ -174,20 +174,14 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("buffer_path", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&buffered),
-                DigestAlgorithm::Xxh3,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh3)
+                .expect("the batch digests")
         });
     });
     group.bench_function("scalar_fallback", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&fallback),
-                DigestAlgorithm::Xxh3,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&fallback), DigestAlgorithm::Xxh3)
+                .expect("the batch digests")
         });
     });
     group.bench_function("materialized_rows", |bencher| {
@@ -203,11 +197,8 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("buffer_path_128", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&buffered),
-                DigestAlgorithm::Xxh128,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh128)
+                .expect("the batch digests")
         });
     });
     group.finish();
@@ -216,7 +207,7 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
 /// Fill insertion, conditional recomputation, preservation, and force paths.
 pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
-    use yggdryl::hashing::xxhash::Xxh3;
+    use yggdryl::xxhash::Xxh3;
 
     let (root, missing, defaults, populated) = holder_fixtures(false);
     let (signed_root, signed_missing, _, _) = holder_fixtures(true);

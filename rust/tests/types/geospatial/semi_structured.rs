@@ -1,4 +1,4 @@
-use yggdryl::types::{DataType, GeospatialParameters};
+use yggdryl::{DataType, GeospatialParameters};
 use yggdryl::{DataTypeId, DataTypeKind, EdgeAlgorithm};
 use yggdryl::{Field, Scalar};
 
@@ -180,7 +180,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     assert!(matches!(default, Scalar::Geometry(_)), "{default:?}");
     let bytes = default.as_wkb().expect("a WKB payload");
     assert_eq!(
-        yggdryl::types::wkb::into_wkt(bytes).unwrap(),
+        yggdryl::wkb::into_wkt(bytes).unwrap(),
         "POINT EMPTY",
         "the default is POINT EMPTY"
     );

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixRegistry};
 
 /// Large-dictionary size: reportable in release, quick to smoke-test in debug.

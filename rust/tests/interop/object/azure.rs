@@ -12,7 +12,7 @@
 //! `YGGDRYL_AZURE_ENDPOINT` is what turns the suite on; without it every test
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
-use yggdryl::holder::object::{AzureOptions, ObjectOptions, Provider};
+use yggdryl::object::{AzureOptions, ObjectOptions, Provider};
 use yggdryl::{IOBase, IOFolder, IOKind};
 
 /// The container both sides exchange through.
@@ -34,13 +34,13 @@ fn endpoint() -> Option<String> {
 /// the environment names another.
 fn account() -> String {
     std::env::var("AZURE_STORAGE_ACCOUNT_NAME")
-        .unwrap_or_else(|_| yggdryl::holder::object::azure::DEVELOPMENT_ACCOUNT.to_owned())
+        .unwrap_or_else(|_| yggdryl::object::azure::DEVELOPMENT_ACCOUNT.to_owned())
 }
 
 /// The shared key it is signed with.
 fn key() -> String {
     std::env::var("AZURE_STORAGE_ACCOUNT_KEY")
-        .unwrap_or_else(|_| yggdryl::holder::object::azure::DEVELOPMENT_KEY.to_owned())
+        .unwrap_or_else(|_| yggdryl::object::azure::DEVELOPMENT_KEY.to_owned())
 }
 
 /// Options addressing that endpoint with the key the driver set.
@@ -56,14 +56,14 @@ fn options() -> ObjectOptions {
 }
 
 /// The blob `key` names in the exchange container.
-fn blob(key: &str) -> yggdryl::holder::object::File {
-    yggdryl::holder::object::file_at_with(Provider::Azure, CONTAINER, key, options())
+fn blob(key: &str) -> yggdryl::object::File {
+    yggdryl::object::file_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a blob handle")
 }
 
 /// The prefix `key` names in the exchange container.
-fn prefix(key: &str) -> yggdryl::holder::object::Folder {
-    yggdryl::holder::object::folder_at_with(Provider::Azure, CONTAINER, key, options())
+fn prefix(key: &str) -> yggdryl::object::Folder {
+    yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, key, options())
         .expect("a prefix handle")
 }
 
@@ -74,8 +74,8 @@ fn skipped(what: &str) -> bool {
 }
 
 /// The container the exchange runs in, created if the driver did not.
-fn container() -> yggdryl::holder::object::Folder {
-    let root = yggdryl::holder::object::folder_at_with(Provider::Azure, CONTAINER, "", options())
+fn container() -> yggdryl::object::Folder {
+    let root = yggdryl::object::folder_at_with(Provider::Azure, CONTAINER, "", options())
         .expect("a container handle");
     if !root.folder_exists() {
         root.create_folder().expect("a container");
@@ -153,7 +153,7 @@ fn a_large_blob_is_staged_as_blocks_and_committed_as_a_list() {
     let bytes: Vec<u8> = (0..9 * 1024 * 1024)
         .map(|index| (index % 251) as u8)
         .collect();
-    let mut handle = yggdryl::holder::object::file_at_with(
+    let mut handle = yggdryl::object::file_at_with(
         Provider::Azure,
         CONTAINER,
         &format!("{FROM_RUST}/large.bin"),

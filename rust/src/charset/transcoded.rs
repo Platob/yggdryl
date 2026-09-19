@@ -471,7 +471,7 @@ impl<H: IOBase> IOBase for Transcoded<H> {
         self.handle.url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.handle.bound_location()
     }
 

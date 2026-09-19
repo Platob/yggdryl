@@ -7,8 +7,8 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::types::{BytesType, DateTimeType};
 use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
+use yggdryl::{BytesType, DateTimeType};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
     assert!(schema.flags().unwrap().contains(flag));

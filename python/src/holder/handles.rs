@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::holder::object::{ObjectOptions, Provider};
+use yggdryl::object::{ObjectOptions, Provider};
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -111,7 +111,7 @@ fn bound_location(
     filesystem: &Bound<'_, PyAny>,
     path: &Bound<'_, PyAny>,
     uri: Option<&Bound<'_, PyAny>>,
-) -> PyResult<yggdryl::holder::fs::BoundLocation> {
+) -> PyResult<yggdryl::fs::BoundLocation> {
     if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
         return Err(PyValueError::new_err(format!(
             "expected a pyarrow.fs.FileSystem, got {}",
@@ -120,10 +120,9 @@ fn bound_location(
     }
     let path = crate::uri::path_string_from_value(path)?;
     let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
-    let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+    let backend: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
         std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
-    yggdryl::holder::fs::BoundLocation::new(backend, path, uri)
-        .map_err(crate::holder::fs::storage_error)
+    yggdryl::fs::BoundLocation::new(backend, path, uri).map_err(crate::holder::fs::storage_error)
 }
 
 /// Build one foreign-filesystem role from a bound location.
@@ -131,7 +130,7 @@ fn fs_holder(
     filesystem: &Bound<'_, PyAny>,
     path: &Bound<'_, PyAny>,
     uri: Option<&Bound<'_, PyAny>>,
-    build: impl FnOnce(yggdryl::holder::fs::BoundLocation) -> Holder,
+    build: impl FnOnce(yggdryl::fs::BoundLocation) -> Holder,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     Ok(PyClassInitializer::from(PyIOBase::from_core(build(
         bound_location(filesystem, path, uri)?,
@@ -198,28 +197,25 @@ impl PyFolder {
     /// The platform temporary directory, created by nothing.
     #[classmethod]
     fn temporary(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::holder::local::Folder::temporary())
+        Self::root(py, yggdryl::local::Folder::temporary())
     }
 
     /// The user's home directory, from `HOME` then `USERPROFILE`.
     #[classmethod]
     fn home(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::holder::local::Folder::home())
+        Self::root(py, yggdryl::local::Folder::home())
     }
 
     /// The user's configuration directory: `home` joined with `.config`.
     #[classmethod]
     fn config(_cls: &Bound<'_, PyType>, py: Python<'_>) -> PyResult<Py<Self>> {
-        Self::root(py, yggdryl::holder::local::Folder::config())
+        Self::root(py, yggdryl::local::Folder::config())
     }
 }
 
 impl PyFolder {
     /// Answer one well-known root as this class.
-    fn root(
-        py: Python<'_>,
-        folder: yggdryl::Result<yggdryl::holder::local::Folder>,
-    ) -> PyResult<Py<Self>> {
+    fn root(py: Python<'_>, folder: yggdryl::Result<yggdryl::local::Folder>) -> PyResult<Py<Self>> {
         let holder = Holder::Folder(folder.map_err(value_error)?);
         Py::new(
             py,
@@ -242,7 +238,7 @@ impl PyFsPath {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(fs_holder(filesystem, path, uri, yggdryl::holder::fs::located)?.add_subclass(Self))
+        Ok(fs_holder(filesystem, path, uri, yggdryl::fs::located)?.add_subclass(Self))
     }
 
     /// Read this foreign-filesystem location as a stream-backed file.
@@ -279,7 +275,7 @@ impl PyFsFile {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFile(yggdryl::holder::fs::File::new(bound));
+        let build = |bound| Holder::FsFile(yggdryl::fs::File::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -294,7 +290,7 @@ impl PyFsFolder {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        let build = |bound| Holder::FsFolder(yggdryl::holder::fs::Folder::new(bound));
+        let build = |bound| Holder::FsFolder(yggdryl::fs::Folder::new(bound));
         Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
@@ -391,9 +387,9 @@ impl PyObjectPath {
             key,
             provider,
             options,
-            yggdryl::holder::object::located_with,
+            yggdryl::object::located_with,
             |provider, container, key, options| {
-                yggdryl::holder::object::path_at_with(provider, container, key, options)
+                yggdryl::object::path_at_with(provider, container, key, options)
                     .map(Holder::ObjectPath)
             },
         )?
@@ -419,9 +415,9 @@ impl PyObjectFile {
             key,
             provider,
             options,
-            |url, options| yggdryl::holder::object::file_with(url, options).map(Holder::ObjectFile),
+            |url, options| yggdryl::object::file_with(url, options).map(Holder::ObjectFile),
             |provider, container, key, options| {
-                yggdryl::holder::object::file_at_with(provider, container, key, options)
+                yggdryl::object::file_at_with(provider, container, key, options)
                     .map(Holder::ObjectFile)
             },
         )?
@@ -447,11 +443,9 @@ impl PyObjectFolder {
             key,
             provider,
             options,
-            |url, options| {
-                yggdryl::holder::object::folder_with(url, options).map(Holder::ObjectFolder)
-            },
+            |url, options| yggdryl::object::folder_with(url, options).map(Holder::ObjectFolder),
             |provider, container, key, options| {
-                yggdryl::holder::object::folder_at_with(provider, container, key, options)
+                yggdryl::object::folder_at_with(provider, container, key, options)
                     .map(Holder::ObjectFolder)
             },
         )?

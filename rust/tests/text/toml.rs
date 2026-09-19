@@ -1,8 +1,8 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
-use yggdryl::text::toml as ytoml;
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
+use yggdryl::toml as ytoml;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
     from_toml_scalar_with_field, i256, into_toml_scalar,

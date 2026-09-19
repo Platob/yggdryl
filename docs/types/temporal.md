@@ -23,7 +23,7 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
 
     ```rust
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
-    use yggdryl::types::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
+    use yggdryl::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
     use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, TemporalFamily, TimeUnit, Timezone};
 
     // Five families; each constructor picks a leaf and validates its unit once.
@@ -176,7 +176,7 @@ has no spelling and keeps its count. A date read under a
 `DataType("date32")`, `types.date32(name)` / `fields.date32(name)`.
 
 ```rust
-use yggdryl::types::{DateField, DateType};
+use yggdryl::{DateField, DateType};
 use yggdryl::{DataType, Scalar, TemporalFamily, TimeUnit};
 
 assert_eq!(DataType::date32().date_type(), Some(DateType::Date32));
@@ -220,7 +220,7 @@ languages, `types.time32(name, unit="millisecond")`,
 same three under `fields`.
 
 ```rust
-use yggdryl::types::TimeType;
+use yggdryl::TimeType;
 use yggdryl::{DataType, TimeUnit};
 
 assert_eq!(TimeType::for_unit(TimeUnit::Second)?, TimeType::Time32(TimeUnit::Second));
@@ -269,7 +269,7 @@ reading that states no clock is that day's midnight, `20260818Z` in UTC and
 [`timezone`](text.md#time-zones) property reads the zone back.
 
 ```rust
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
 
 let naive = DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?;
@@ -319,7 +319,7 @@ Python, `types.duration32(name, unit="millisecond")` /
 JavaScript spells a duration datatype through `DataType.from`.
 
 ```rust
-use yggdryl::types::DurationType;
+use yggdryl::DurationType;
 use yggdryl::{DataType, Scalar, TimeUnit};
 
 assert_eq!(DataType::duration32(TimeUnit::Day)?.to_string(), "duration32(d)");
@@ -363,7 +363,7 @@ stays structural through the text formats, so a cast into text refuses it.
 `fields.interval(name, unit = 'month_day_nano')`.
 
 ```rust
-use yggdryl::types::{Interval, IntervalType};
+use yggdryl::{Interval, IntervalType};
 use yggdryl::{DataType, Scalar, TimeUnit};
 
 let span = DataType::interval(TimeUnit::DayTime)?;
@@ -447,8 +447,8 @@ the value itself is documented with the [text values](text.md#time-zones).
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal field::temporal temporal
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::temporal types::date types::time types::datetime types::duration types::interval
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal field::temporal temporal:: timezone::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- timezone::tests
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(date|time|datetime|duration|interval|time_unit|temporal_text)/'
     ```
 

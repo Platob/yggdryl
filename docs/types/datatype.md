@@ -291,7 +291,7 @@ to the outer node and Arrow's values are a bare datatype.
 === "Rust"
 
     ```rust
-    use yggdryl::types::TimeType;
+    use yggdryl::TimeType;
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
@@ -416,7 +416,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
     ```rust
     use yggdryl::DataType;
-    use yggdryl::types::Scalar;
+    use yggdryl::Scalar;
 
     let dtype = DataType::decimal(9, 2)?;
 
@@ -610,7 +610,7 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
-use yggdryl::types::TimeType;
+use yggdryl::TimeType;
 use yggdryl::{DataType, Field, TimeUnit};
 
 let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
@@ -658,8 +658,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::tests::logical types::tests::vocabulary types::tests::datatype_ types::arrow::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds:: logical:: vocabulary:: enums::datatype_id enums::datatype_kind
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'

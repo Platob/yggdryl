@@ -10,8 +10,8 @@ use super::path;
 
 use std::sync::Arc;
 
+use yggdryl::SequenceType;
 use yggdryl::fix::{FixCode, FixReplacement};
-use yggdryl::types::SequenceType;
 use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 
 /// `LastQty(32)`, which `LastShares` also reaches, `Symbol(55)`, and

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixCategory, FixCode, FixDirection, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};

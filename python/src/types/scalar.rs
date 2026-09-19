@@ -19,12 +19,12 @@ use pyo3::types::{
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
-use yggdryl::types::bytes::{Bytes, BytesType};
-use yggdryl::types::decimal::{Decimal32, Decimal64};
-use yggdryl::types::geospatial::{Geography, Geometry};
-use yggdryl::types::interval::Interval;
-use yggdryl::types::string::{Str, StringType};
-use yggdryl::types::{
+use yggdryl::bytes::{Bytes, BytesType};
+use yggdryl::decimal::{Decimal32, Decimal64};
+use yggdryl::geospatial::{Geography, Geometry};
+use yggdryl::interval::Interval;
+use yggdryl::string::{Str, StringType};
+use yggdryl::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };
 use yggdryl::{
@@ -633,7 +633,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;
-            yggdryl::types::uuid::Uuid::from_bytes(value.as_bytes())
+            yggdryl::uuid::Uuid::from_bytes(value.as_bytes())
                 .map(Scalar::Uuid)
                 .map_err(value_error)
         }

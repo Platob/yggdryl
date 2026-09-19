@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use yggdryl::text::{self, json, toml};
 use yggdryl::{Format, Scalar};
+use yggdryl::{json, text, toml};
 
 #[test]
 fn format_names_and_extensions_are_inferred() {

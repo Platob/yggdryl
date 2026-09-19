@@ -6,7 +6,7 @@ Read and write Apache Iceberg tables through one [`IOBase`](../../holder/index.m
 
 | Key | Value |
 | --- | --- |
-| Owns | `yggdryl::media::iceberg`: `Table`, `TableMetadata`, `Snapshot`, `PartitionSpec`, `Transform`, `Catalog`, manifest readers and writers |
+| Owns | `yggdryl::iceberg`: `Table`, `TableMetadata`, `Snapshot`, `PartitionSpec`, `Transform`, `Catalog`, manifest readers and writers |
 | Feature flag | `iceberg`, off by default; needs Rust 1.94 (default and schema-only builds keep 1.85); enables Parquet/Arrow 59 and official Iceberg 0.10.1 |
 | Delegated | Metadata and schema mutation, validation, property parsing, manifest and list reads: official Iceberg 0.10.1; no Arrow 58 value crosses any API |
 | Kept local | `IOBase` publication, the [`Field`](../../types/field.md)/Arrow 59 boundary, data-file writes, deterministic manifest and list writers, planning, scans |
@@ -23,8 +23,8 @@ Create in a folder, append, and reopen with no catalog in between.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -180,9 +180,9 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
@@ -302,7 +302,7 @@ A commit first claims its version under a unique `00003-<uuid>` name, then publi
 Rust only. The bindings read the version a table declares as its `format_version`.
 
 ```rust
-use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
 use yggdryl::DataType;
 
 let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
@@ -377,12 +377,12 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{
+    use yggdryl::iceberg::{
         EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids, read_manifest,
         read_manifest_spec,
     };
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType, MimeType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -530,7 +530,7 @@ Rust only. The bindings build identity specs and preserve every transform name w
 A field carries its own Iceberg vocabulary: `field.as_iceberg()` and `as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, typing the `iceberg:` properties `schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`, `partition_source_id`, and `transform`. `is_partition` stays on the [`Field`](../../types/field.md), and the view borrows the whole field and dereferences to it.
 
 ```rust
-use yggdryl::media::iceberg::{PartitionSpec, Transform, assign_field_ids};
+use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
 use yggdryl::{DataType, Scalar};
 
 let mut schema = DataType::from_fields([
@@ -595,8 +595,8 @@ A table marks its stored schema on create and on open, so `Table::schema` report
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -726,11 +726,11 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::tables
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::table_metadata
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::partition_specs
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::snapshot::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::interop_regressions
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::tables
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::table_metadata
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::partition_specs
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::snapshot::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::interop_regressions
     cargo test --features "parquet iceberg" -p yggdryl --test interop iceberg::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
@@ -779,7 +779,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 ### Iceberg over S3
 
-The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `holder::object::tests::accounting::iceberg`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `object::tests::accounting::iceberg`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
 
 | operation | requests before | requests after | median before | median after |
 | --- | ---: | ---: | ---: | ---: |

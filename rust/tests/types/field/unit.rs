@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-use yggdryl::types::Field;
+use yggdryl::Field;
 use yggdryl::{DataType, Error, StringEnum};
 
 #[test]

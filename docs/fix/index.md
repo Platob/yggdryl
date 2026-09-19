@@ -390,7 +390,7 @@ names are folded; `display` keeps the specification's spelling.
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

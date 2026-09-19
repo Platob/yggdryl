@@ -24,7 +24,7 @@ RFC 1950 zlib framing and raw RFC 1951 DEFLATE, as whole buffers, as streams, or
 === "Rust"
 
     ```rust
-    use yggdryl::coding::zlib;
+    use yggdryl::zlib;
 
     let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
     let plain = text.as_bytes();
@@ -109,7 +109,7 @@ Use the raw pair where the framing belongs to something else: ZIP entries and HT
 Every Rust entry point has a `_with_level` twin; the plain form is `Level::DEFAULT`. Rust only; the bindings pass `level` to `dumps`, as [gzip](gzip.md#levels) shows.
 
 ```rust
-use yggdryl::coding::zlib;
+use yggdryl::zlib;
 use yggdryl::Level;
 
 let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
@@ -134,7 +134,7 @@ Rust only. `writer` and `reader` do the same work without holding the whole payl
 
 ```rust
 use std::io::{Read, Write};
-use yggdryl::coding::zlib;
+use yggdryl::zlib;
 use yggdryl::Level;
 
 let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
@@ -169,7 +169,7 @@ assert_eq!(zlib::load_raw(&raw)?, plain);
 === "Rust"
 
     ```rust
-    use yggdryl::coding::zlib::{self, Zlib};
+    use yggdryl::zlib::{self, Zlib};
     use yggdryl::holder::Buffer;
     use yggdryl::{IOBase, Level};
 
@@ -235,7 +235,7 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
 === "Rust"
 
     ```rust
-    use yggdryl::coding::{zlib, Coded};
+    use yggdryl::{coding::Coded, zlib};
     use yggdryl::holder::Buffer;
     use yggdryl::{Codec, IOBase};
 
@@ -298,7 +298,7 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::zlib::
+    cargo test --features "parquet iceberg" -p yggdryl --test coding -- zlib::
     cargo bench -p yggdryl --bench coding -- zlib
     ```
 

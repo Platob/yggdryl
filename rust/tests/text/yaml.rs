@@ -2,8 +2,8 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
-use yggdryl::text::yaml;
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
+use yggdryl::yaml;
 use yggdryl::{
     DataType, DataTypeId, Field, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
     from_yaml_scalar_with_field, i256, into_yaml_scalar,

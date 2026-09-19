@@ -9,6 +9,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use super::MimeType;
 use crate::{Charset, Error, Result, hashing::stable_hash_display};
 
+mod datatype;
+
+pub use datatype::*;
+
 /// A base MIME type, the charset its bytes are in, and the ordered transparent
 /// encodings applied to it.
 ///

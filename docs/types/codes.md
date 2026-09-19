@@ -508,7 +508,7 @@ answers as its ending does.
 Rust only.
 
 ```rust
-use yggdryl::types::State;
+use yggdryl::State;
 
 // Four vocabularies reach one value: the wire code an ExecutionReport
 // carries, the specification's name for it, a scheduler's word, and the
@@ -582,8 +582,8 @@ nobody published would be a guess.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::string types::tests::string_enum types::tests::vocabulary
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii string_enum:: vocabulary::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```
 

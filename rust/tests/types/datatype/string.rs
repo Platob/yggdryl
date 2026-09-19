@@ -3,9 +3,9 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::{INLINE_CAPACITY, STRING_EXTENSION_NAME, Str, StringType};
+use yggdryl::FieldValue as _;
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar};
+use yggdryl::{INLINE_CAPACITY, STRING_EXTENSION_NAME, Str, StringType};
 
 /// Every leaf in `StringType::ALL` order, with its identifier, its canonical
 /// name and its charset; the numbered leaves state sixteen.

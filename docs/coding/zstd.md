@@ -25,7 +25,7 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 === "Rust"
 
     ```rust
-    use yggdryl::coding::zstd;
+    use yggdryl::zstd;
 
     let frame = zstd::dump(b"symbol,price\nAAPL,1\n")?;
     assert_eq!(zstd::load(&frame)?, b"symbol,price\nAAPL,1\n");
@@ -92,7 +92,7 @@ Rust only. The `Encoder` must be finished; `reader` returns `Box<dyn Read>`, nev
 
 ```rust
 use std::io::{Read, Write};
-use yggdryl::coding::zstd;
+use yggdryl::zstd;
 
 let payload = "AAPL,1\n".repeat(64);
 
@@ -112,7 +112,7 @@ Rust only. The shared scale rounds `level * 19 / 9` up onto zstd 1 to 19, and th
 
 ```rust
 use std::io::Write;
-use yggdryl::coding::zstd;
+use yggdryl::zstd;
 use yggdryl::Level;
 
 let payload = "AAPL,1\n".repeat(64);
@@ -156,7 +156,7 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::coding::zstd::{self, Zstd};
+    use yggdryl::zstd::{self, Zstd};
 
     let mut handle = Zstd::new(Buffer::new());
     handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
@@ -203,7 +203,7 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
 The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib. Rust only from here: a handle over nothing decodes to nothing, and a level set on the handle reaches its encoder.
 
 ```rust
-use yggdryl::coding::zstd::{self, Zstd};
+use yggdryl::zstd::{self, Zstd};
 use yggdryl::holder::Buffer;
 use yggdryl::{IOBase, Level};
 
@@ -241,7 +241,7 @@ assert_eq!(zstd::load(&inner.read_all_bytes()?)?, payload.as_bytes());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::zstd::
+    cargo test --features "parquet iceberg" -p yggdryl --test coding -- zstd::
     cargo bench -p yggdryl --bench coding -- zstd
     ```
 

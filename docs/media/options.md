@@ -276,7 +276,7 @@ Rust only.
 
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::media::ipc::IpcOptions;
+use yggdryl::ipc::IpcOptions;
 use yggdryl::{Level, MimeType};
 
 let mut ipc = IpcOptions::new()
@@ -336,7 +336,7 @@ assert!(message.contains("with_field"), "{message}");
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib media::options::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::inference::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test media -- inference::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensions/.*/record_options'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_mode_dispatch

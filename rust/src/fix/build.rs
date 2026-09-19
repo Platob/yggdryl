@@ -35,10 +35,10 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
-use crate::media::text::TextBytes;
-use crate::types::sequence::SequenceType;
-use crate::types::{Side, State};
+use crate::sequence::SequenceType;
+use crate::text::TextBytes;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
+use crate::{Side, State};
 
 /// What a key resolved to, before any field is built.
 enum Located<'key> {
@@ -1588,7 +1588,7 @@ impl<'registry> Builder<'registry> {
     /// and the name only where it agrees, so a hit costs one string compare
     /// and a miss costs none.
     fn slot_for(&mut self, field: Field, tag: i32, known: bool) -> &mut Slot {
-        let hash = crate::hashing::xxhash::xxh64(field.name().as_bytes());
+        let hash = crate::xxhash::xxh64(field.name().as_bytes());
         let held = self
             .hashes
             .iter()
@@ -2291,7 +2291,7 @@ pub(super) fn stated(known: &Field) -> Field {
 /// explains itself.
 fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i32)> {
     scope.iter().find_map(|held| {
-        if held.dtype().is_nested() || !crate::types::folds_equal(held.name(), key) {
+        if held.dtype().is_nested() || !crate::folds_equal(held.name(), key) {
             return None;
         }
         Some((held, held.as_fix().tag().ok()??))
@@ -2342,7 +2342,7 @@ const fn is_binary(dtype: &DataType) -> bool {
 /// empties - separators alone - keeps its own spelling, because a child has
 /// to be called something.
 fn folded_name(key: &str) -> String {
-    let name = crate::types::normalized(key);
+    let name = crate::normalized(key);
     if name.is_empty() {
         key.to_owned()
     } else {

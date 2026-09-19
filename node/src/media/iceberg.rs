@@ -13,8 +13,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::holder::Holder;
-use yggdryl::media::DEFAULT_ROOT_NAME;
-use yggdryl::media::iceberg::{
+use yggdryl::iceberg::{
     Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
     Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
@@ -22,6 +21,7 @@ use yggdryl::media::iceberg::{
     Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, WriteStaging,
     assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
+use yggdryl::media::DEFAULT_ROOT_NAME;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
 use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};

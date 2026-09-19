@@ -14,7 +14,7 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, BenchmarkId};
-use yggdryl::types::FieldValue as _;
+use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field, Scalar};
 
 /// The seven doors a leaf answers with nothing but itself and one value.

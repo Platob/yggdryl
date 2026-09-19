@@ -1,4 +1,4 @@
-use yggdryl::types::DecimalType;
+use yggdryl::DecimalType;
 use yggdryl::{DataType, Error};
 
 #[test]

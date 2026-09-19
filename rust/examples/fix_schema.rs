@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType, Field};
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{FixRegistry, fix_schema};
 
 fn main() -> yggdryl::Result<()> {

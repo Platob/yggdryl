@@ -1,7 +1,7 @@
 //! What a structured text document carries into Arrow rows, and back out.
 
+use yggdryl::DecimalType;
 use yggdryl::holder::Buffer;
-use yggdryl::types::DecimalType;
 use yggdryl::{ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
 
 fn handle(name: &str) -> Buffer {

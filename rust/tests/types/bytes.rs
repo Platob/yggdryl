@@ -1,4 +1,4 @@
-use yggdryl::types::{Bytes, BytesType, DataType};
+use yggdryl::{Bytes, BytesType, DataType};
 use yggdryl::{Field, Scalar, Scheme};
 
 /// Bytes bounded to `max` on the `binary` layout.

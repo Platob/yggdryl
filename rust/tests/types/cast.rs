@@ -7,23 +7,23 @@ use arrow_array::{
     StructArray, UInt32Array, UInt64Array,
 };
 
-use yggdryl::types::cast::ArrowCastOptions;
+use yggdryl::cast::ArrowCastOptions;
 
 /// The reading that carries the bytes rather than the number they spell.
 fn bits() -> ArrowCastOptions {
     ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
 }
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::{
+use yggdryl::FieldValue as _;
+use yggdryl::{DataType, EdgeAlgorithm, Field};
+use yggdryl::{
     DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField,
     StructureField, UInt32Field, UInt64Field, VariantField,
 };
-use yggdryl::{DataType, EdgeAlgorithm, Field};
 use yggdryl::{TimeUnit, Timezone};
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
-    let field = Int64Field::new("id", yggdryl::types::Int64Type, false);
+    let field = Int64Field::new("id", yggdryl::Int64Type, false);
     let source: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
 
     // The binding is an Int64Array; no downcast at the call site.
@@ -50,7 +50,7 @@ fn a_string_field_parses_and_formats_through_the_same_call() {
 
 #[test]
 fn an_unsafe_cast_fails_and_a_safe_one_defaults() {
-    let field = Int64Field::new("id", yggdryl::types::Int64Type, false);
+    let field = Int64Field::new("id", yggdryl::Int64Type, false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
     assert!(
@@ -69,7 +69,7 @@ fn an_unsafe_cast_fails_and_a_safe_one_defaults() {
 
 #[test]
 fn a_nullable_field_keeps_the_null_a_safe_cast_produced() {
-    let field = Int64Field::new("id", yggdryl::types::Int64Type, true);
+    let field = Int64Field::new("id", yggdryl::Int64Type, true);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
     let ids = field
@@ -143,7 +143,7 @@ fn a_parameterized_temporal_field_casts_to_a_shared_array() {
 
 #[test]
 fn a_scalar_cast_requires_exactly_one_value() {
-    let field = Int64Field::new("id", yggdryl::types::Int64Type, false);
+    let field = Int64Field::new("id", yggdryl::Int64Type, false);
     let one: ArrayRef = Arc::new(Int32Array::from(vec![9]));
     let two: ArrayRef = Arc::new(Int32Array::from(vec![9, 10]));
 
@@ -163,7 +163,7 @@ fn a_scalar_cast_requires_exactly_one_value() {
 
 #[test]
 fn a_borrowed_typed_field_casts_the_same_way() {
-    let field = Int64Field::new("id", yggdryl::types::Int64Type, false);
+    let field = Int64Field::new("id", yggdryl::Int64Type, false);
     let borrowed = &field;
     let source: ArrayRef = Arc::new(Int32Array::from(vec![4]));
 
@@ -179,7 +179,7 @@ fn a_borrowed_typed_field_casts_the_same_way() {
 #[test]
 fn bits_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
     let source = UInt32Array::from(vec![0, 0x7fff_ffff, 0x8000_0000, u32::MAX]);
-    let signed = Int32Field::new("digest", yggdryl::types::Int32Type, true)
+    let signed = Int32Field::new("digest", yggdryl::Int32Type, true)
         .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(signed.values(), &[0, i32::MAX, i32::MIN, -1]);
@@ -188,7 +188,7 @@ fn bits_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
         "reading the bits shares the physical value buffer"
     );
 
-    let restored = UInt32Field::new("digest", yggdryl::types::UInt32Type, true)
+    let restored = UInt32Field::new("digest", yggdryl::UInt32Type, true)
         .cast_arrow_array(Arc::new(signed.clone()), bits())
         .unwrap();
     assert_eq!(restored.values(), source.values());
@@ -198,7 +198,7 @@ fn bits_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
     );
 
     assert_eq!(
-        Int32Field::new("digest", yggdryl::types::Int32Type, true)
+        Int32Field::new("digest", yggdryl::Int32Type, true)
             .cast_arrow_array(Arc::new(UInt32Array::from(Vec::<u32>::new())), bits())
             .unwrap()
             .len(),
@@ -214,13 +214,13 @@ fn bits_cover_the_full_64_bit_domain_in_both_directions_without_copying() {
         0x8000_0000_0000_0000,
         u64::MAX,
     ]);
-    let signed = Int64Field::new("digest", yggdryl::types::Int64Type, true)
+    let signed = Int64Field::new("digest", yggdryl::Int64Type, true)
         .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(signed.values(), &[0, i64::MAX, i64::MIN, -1]);
     assert!(signed.values().inner().ptr_eq(source.values().inner()));
 
-    let restored = UInt64Field::new("digest", yggdryl::types::UInt64Type, true)
+    let restored = UInt64Field::new("digest", yggdryl::UInt64Type, true)
         .cast_arrow_array(Arc::new(signed), bits())
         .unwrap();
     assert_eq!(restored.values(), source.values());
@@ -248,7 +248,7 @@ fn eight_bytes_read_as_an_integer_a_float_or_bytes_alike() {
     assert!(floats.value(1).is_nan(), "{:?}", floats.value(1));
 
     // Round-tripping the whole chain restores the exact bit pattern.
-    let restored = UInt64Field::new("digest", yggdryl::types::UInt64Type, true)
+    let restored = UInt64Field::new("digest", yggdryl::UInt64Type, true)
         .cast_arrow_array(bytes, bits())
         .unwrap();
     assert_eq!(restored.values(), &[0, u64::MAX]);
@@ -264,7 +264,7 @@ fn eight_bytes_read_as_an_integer_a_float_or_bytes_alike() {
 #[test]
 fn bits_preserve_slices_and_apply_the_target_null_contract() {
     let source = UInt64Array::from(vec![Some(3), Some(u64::MAX), None, Some(5)]).slice(1, 2);
-    let nullable = Int64Field::new("digest", yggdryl::types::Int64Type, true)
+    let nullable = Int64Field::new("digest", yggdryl::Int64Type, true)
         .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(nullable.len(), 2);
@@ -274,13 +274,13 @@ fn bits_preserve_slices_and_apply_the_target_null_contract() {
 
     // The reading says what the bytes mean; the nullability policy still says
     // what an absent value means.
-    let required = Int64Field::new("digest", yggdryl::types::Int64Type, false)
+    let required = Int64Field::new("digest", yggdryl::Int64Type, false)
         .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(required.values(), &[-1, 0]);
     assert_eq!(required.null_count(), 0);
 
-    let refused = Int64Field::new("digest", yggdryl::types::Int64Type, false)
+    let refused = Int64Field::new("digest", yggdryl::Int64Type, false)
         .cast_arrow_array(
             Arc::new(source),
             bits().with_nullability(yggdryl::Nullability::Strict),
@@ -294,7 +294,7 @@ fn bits_preserve_slices_and_apply_the_target_null_contract() {
 fn a_pair_that_is_not_the_same_bytes_converts_as_it_always_did() {
     // Asking for bits is a preference, not a mode: two widths that are not one
     // buffer take the ordinary numeric conversion, and its range check with it.
-    let widened = Int64Field::new("id", yggdryl::types::Int64Type, true)
+    let widened = Int64Field::new("id", yggdryl::Int64Type, true)
         .cast_arrow_array(Arc::new(Int32Array::from(vec![7])), bits())
         .unwrap();
     assert_eq!(widened.values(), &[7]);
@@ -321,7 +321,7 @@ fn a_pair_that_is_not_the_same_bytes_converts_as_it_always_did() {
 
 #[test]
 fn ordinary_integer_casting_remains_numeric() {
-    let field = Int64Field::new("digest", yggdryl::types::Int64Type, true);
+    let field = Int64Field::new("digest", yggdryl::Int64Type, true);
     let source: ArrayRef = Arc::new(UInt64Array::from(vec![u64::MAX]));
     assert!(
         field
@@ -514,7 +514,7 @@ fn text_into_a_geospatial_target_names_the_absent_wkt_parser() {
 
 #[test]
 fn a_variant_casts_only_to_itself_until_the_codec_lands() {
-    let field = VariantField::new("payload", yggdryl::types::VariantType, true);
+    let field = VariantField::new("payload", yggdryl::VariantType, true);
     let storage = variant_storage_array(2);
 
     // The identity works, and the untyped cast returns the same array.
@@ -578,8 +578,8 @@ mod layouts {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
 
     use yggdryl::DataType;
-    use yggdryl::types::DataTypeValue as _;
-    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::DataTypeValue as _;
+    use yggdryl::cast::ArrowCastOptions;
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -788,9 +788,9 @@ mod strings {
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
-    use yggdryl::types::cast::ArrowCastOptions;
-    use yggdryl::types::{DataTypeValue as _, FieldValue as _};
+    use yggdryl::cast::ArrowCastOptions;
     use yggdryl::{DataType, Field};
+    use yggdryl::{DataTypeValue as _, FieldValue as _};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -1011,9 +1011,9 @@ mod bytes {
 
     use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
-    use yggdryl::types::cast::ArrowCastOptions;
-    use yggdryl::types::{DataTypeValue as _, FieldValue as _};
+    use yggdryl::cast::ArrowCastOptions;
     use yggdryl::{DataType, Field};
+    use yggdryl::{DataTypeValue as _, FieldValue as _};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -1127,9 +1127,9 @@ mod empty_text {
         ListArray, RunArray, StringArray, StringViewArray,
     };
 
+    use yggdryl::FieldValue as _;
     use yggdryl::arrow::scalar_value;
-    use yggdryl::types::FieldValue as _;
-    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::cast::ArrowCastOptions;
     use yggdryl::{DataType, Field, Nullability, Scalar, TimeUnit, Timezone};
 
     /// A failed conversion is an error rather than a null.

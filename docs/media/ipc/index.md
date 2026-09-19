@@ -1,6 +1,6 @@
 # Arrow IPC
 
-`yggdryl::media::ipc` reads and writes Arrow IPC streams over any byte handle.
+`yggdryl::ipc` reads and writes Arrow IPC streams over any byte handle.
 
 ## Contract
 
@@ -104,7 +104,7 @@ use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
 use yggdryl::{IOBase, IOMedia};
 use yggdryl::holder::Buffer;
-use yggdryl::media::ipc::Ipc;
+use yggdryl::ipc::Ipc;
 use yggdryl::{DataType, Url};
 
 let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -151,7 +151,7 @@ The encoding applies the content coding the name declares on write and strips it
     use yggdryl::arrow;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::Ipc;
+    use yggdryl::ipc::Ipc;
     use yggdryl::{DataType, Level, Url};
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -273,7 +273,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
     use yggdryl::arrow;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::{self, Ipc, IpcOptions};
+    use yggdryl::ipc::{self, Ipc, IpcOptions};
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -401,7 +401,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::ipc::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record

@@ -12,8 +12,8 @@
 
 use std::path::Path;
 
-use yggdryl::media::text::TextOptions;
 use yggdryl::text::Formatting;
+use yggdryl::text::TextOptions;
 use yggdryl::{Field, FixRegistry, Result};
 
 use crate::style;

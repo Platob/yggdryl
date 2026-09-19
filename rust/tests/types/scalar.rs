@@ -10,10 +10,10 @@ const POINT_EMPTY_WKB: [u8; 21] = [
 
 use std::sync::Arc;
 
-use yggdryl::types::UuidType;
-use yggdryl::types::floating::FloatingValue;
-use yggdryl::types::{Float16, Float32, Float64, Scalar};
+use yggdryl::UuidType;
+use yggdryl::floating::FloatingValue;
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
+use yggdryl::{Float16, Float32, Float64, Scalar};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -160,7 +160,7 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 fn the_eleven_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
-    use yggdryl::types::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, TimeInForce};
+    use yggdryl::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, TimeInForce};
 
     fn hash_of(value: &Scalar) -> u64 {
         let mut hasher = std::hash::DefaultHasher::new();
@@ -176,8 +176,8 @@ fn the_eleven_codes_sort_by_which_code_then_by_text() {
         Scalar::Currency(Currency::new("EUR").unwrap()),
         Scalar::Mic(Mic::new("XPAR").unwrap()),
         Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
-        Scalar::Side(yggdryl::types::Side::new("BUY").unwrap()),
-        Scalar::State(yggdryl::types::State::read("New").unwrap()),
+        Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
+        Scalar::State(yggdryl::State::read("New").unwrap()),
         Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
         Scalar::Isin(Isin::new("US0378331005").unwrap()),
         Scalar::Cusip(Cusip::new("037833100").unwrap()),
@@ -247,8 +247,8 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
             Scalar::from(1.5_f64),
         ],
         vec![
-            Scalar::Decimal32(yggdryl::types::Decimal32::new(1_250, 2)),
-            Scalar::Decimal64(yggdryl::types::Decimal64::new(12_500, 3)),
+            Scalar::Decimal32(yggdryl::Decimal32::new(1_250, 2)),
+            Scalar::Decimal64(yggdryl::Decimal64::new(12_500, 3)),
             Scalar::d128(125, 1),
             Scalar::d256(i256::from_i128(125), 1),
         ],
@@ -271,10 +271,10 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
     assert!(Scalar::from(half::f16::from_f32(1.0)) < Scalar::from(1.5_f64));
     assert!(Scalar::from(2.5_f32) > Scalar::from(1.5_f64));
     assert!(
-        Scalar::Decimal32(yggdryl::types::Decimal32::new(1_249, 2))
+        Scalar::Decimal32(yggdryl::Decimal32::new(1_249, 2))
             < Scalar::d256(i256::from_i128(125), 1)
     );
-    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(yggdryl::types::Decimal64::new(0, 4)));
+    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(yggdryl::Decimal64::new(0, 4)));
 
     // Different kinds stay apart even when their numbers agree.
     assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64));
@@ -338,7 +338,7 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
         bytes
     };
     let wkb = point_wkb(1.0, 2.0);
-    let point = Scalar::Geometry(yggdryl::types::Geometry::new(wkb.clone()).unwrap());
+    let point = Scalar::Geometry(yggdryl::Geometry::new(wkb.clone()).unwrap());
     assert_eq!(point.kind(), "geometry");
 
     // The same bytes under the bytes kind are a different value: the kind
@@ -348,10 +348,10 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
     assert_ne!(hash_of(&point), hash_of(&bytes));
 
     // Within the kind, the bytes compare, and equal values hash equal.
-    let equal = Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap());
+    let equal = Scalar::Geometry(yggdryl::Geometry::new(wkb).unwrap());
     assert_eq!(point, equal);
     assert_eq!(hash_of(&point), hash_of(&equal));
-    let later = Scalar::Geometry(yggdryl::types::Geometry::new(point_wkb(3.0, 4.0)).unwrap());
+    let later = Scalar::Geometry(yggdryl::Geometry::new(point_wkb(3.0, 4.0)).unwrap());
     assert_eq!(
         point.cmp(&later),
         point.as_bytes().unwrap().cmp(later.as_bytes().unwrap())
@@ -363,7 +363,7 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
     let mut wkb = vec![1_u8, 1, 0, 0, 0];
     wkb.extend_from_slice(&1.0_f64.to_le_bytes());
     wkb.extend_from_slice(&2.0_f64.to_le_bytes());
-    let point = Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap());
+    let point = Scalar::Geometry(yggdryl::Geometry::new(wkb).unwrap());
     let encoded = serde_json::to_string(&point).unwrap();
     assert!(encoded.contains("\"type\":\"geometry\""), "{encoded}");
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
@@ -372,9 +372,8 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
 
 #[test]
 fn the_structural_wire_validates_interval_layouts() {
-    let value = Scalar::Interval(
-        yggdryl::types::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
-    );
+    let value =
+        Scalar::Interval(yggdryl::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap());
     let encoded = serde_json::to_string(&value).unwrap();
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, value);
@@ -481,8 +480,7 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
 fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let text = Scalar::from("AAPL");
     let bytes = Scalar::from(b"AAPL".as_slice());
-    let geometry =
-        Scalar::Geometry(yggdryl::types::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap());
+    let geometry = Scalar::Geometry(yggdryl::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap());
     assert_eq!(text.as_str(), Some("AAPL"));
     assert_eq!(text.as_bytes(), None);
     assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
@@ -497,10 +495,7 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let json_bytes = record.into_json_bytes().unwrap();
     let json_utf8 = record.into_json().unwrap();
     assert_eq!(json_bytes, json_utf8.as_bytes());
-    assert_eq!(
-        yggdryl::text::json::from_bytes(&json_bytes).unwrap(),
-        record
-    );
+    assert_eq!(yggdryl::json::from_bytes(&json_bytes).unwrap(), record);
 }
 
 #[test]
@@ -523,10 +518,10 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, time, uuid};
     use yggdryl::{
         CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
+    use yggdryl::{bytes, decimal, geospatial, integer, sequence, string, time, uuid};
 
     let integer = integer::UInt128::new(u128::MAX);
     assert_eq!(IntegerValue::as_i128(&integer), None);
@@ -558,8 +553,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
     assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
 
-    let currency = yggdryl::types::Currency::new("USD").unwrap();
-    assert_eq!(<yggdryl::types::Currency as CodeValue>::WIDTH, 3);
+    let currency = yggdryl::Currency::new("USD").unwrap();
+    assert_eq!(<yggdryl::Currency as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
     assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
 
@@ -585,7 +580,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use yggdryl::types::{
+    use yggdryl::{
         bytes, date, datetime, decimal, geospatial, integer, mapping, sequence, string, structure,
         uuid,
     };
@@ -621,7 +616,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let ascii = string::Str::new("FIX")
         .try_with_parameters(string::StringType::AsciiString)
         .unwrap();
-    let currency = yggdryl::types::Currency::new("USD").unwrap();
+    let currency = yggdryl::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
     assert_eq!(ascii.charset(), yggdryl::Charset::Ascii);
     assert_eq!(currency.as_str(), "USD");
@@ -635,7 +630,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
             .try_with_parameters(string::StringType::FixedAsciiString(0))
             .is_err()
     );
-    assert!(yggdryl::types::Cfi::new("TOO-LONG").is_err());
+    assert!(yggdryl::Cfi::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary
@@ -672,9 +667,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::types::{
-        bytes, datetime, decimal, geospatial, integer, sequence, string, temporal,
-    };
+    use yggdryl::{bytes, datetime, decimal, geospatial, integer, sequence, string, temporal};
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -709,8 +702,8 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
-    let side = Scalar::Side(yggdryl::types::Side::new("BUY").unwrap());
-    let time_in_force = Scalar::TimeInForce(yggdryl::types::TimeInForce::new("BUY").unwrap());
+    let side = Scalar::Side(yggdryl::Side::new("BUY").unwrap());
+    let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
     assert_ne!(side, Scalar::from("BUY"));
@@ -762,11 +755,11 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
         (Scalar::from(1.25_f32), "f32"),
         (Scalar::from(0.1_f64), "f64"),
         (
-            Scalar::Decimal32(yggdryl::types::decimal::Decimal32::new(1_250, 2)),
+            Scalar::Decimal32(yggdryl::decimal::Decimal32::new(1_250, 2)),
             "d32",
         ),
         (
-            Scalar::Decimal64(yggdryl::types::decimal::Decimal64::new(-7, 1)),
+            Scalar::Decimal64(yggdryl::decimal::Decimal64::new(-7, 1)),
             "d64",
         ),
         (Scalar::d128(125, 1), "d128"),
@@ -794,9 +787,7 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             "duration64",
         ),
         (
-            Scalar::Interval(
-                yggdryl::types::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-            ),
+            Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
         (Scalar::from_sequence([Scalar::from(1_i32)]), "sequence"),

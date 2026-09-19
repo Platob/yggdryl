@@ -43,7 +43,7 @@ pub enum DataTypeId {
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
-    /// this identifier. It names the width [`crate::types::integer::Int128`] stores and
+    /// this identifier. It names the width [`crate::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
     Int128 = 10,

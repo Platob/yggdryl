@@ -120,7 +120,7 @@ def render(constant: str, codec: str, name: str) -> str:
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static {constant}: SingleByte = SingleByte {{
+pub(crate) static {constant}: SingleByte = SingleByte {{
     name: "{name}",
     scalars: [
 {rows(scalar_items, 8, "        ")}

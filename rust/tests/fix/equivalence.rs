@@ -72,7 +72,7 @@ use std::sync::Arc;
 use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{Field, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar};
 
 /// The environment variable that turns the comparison into a write.

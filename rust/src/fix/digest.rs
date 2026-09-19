@@ -177,7 +177,7 @@ fn length_of(bytes: &[u8]) -> [u8; 4] {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// # use std::sync::Arc;
-/// # use yggdryl::holder::local::Folder;
+/// # use yggdryl::local::Folder;
 /// # use yggdryl::{FixDedup, FixCodec, FixRegistry};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;

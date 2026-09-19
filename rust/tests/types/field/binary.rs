@@ -3,11 +3,11 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray};
-use yggdryl::types::{Bytes, BytesField, BytesType, bytes};
 use yggdryl::{ArrowCastOptions, DataType, DataTypeId, FieldScalar, Scalar};
+use yggdryl::{Bytes, BytesField, BytesType, bytes};
 
 use super::typed::assert_typed_marker;
-use yggdryl::types::UuidType;
+use yggdryl::UuidType;
 
 #[test]
 fn the_bytes_marker_covers_every_layout_and_bound() {

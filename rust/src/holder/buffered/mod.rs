@@ -93,7 +93,7 @@
 //!
 //! ```
 //! use yggdryl::holder::buffered::BufferedOptions;
-//! use yggdryl::coding::gzip::Gzip;
+//! use yggdryl::gzip::Gzip;
 //! use yggdryl::{IOBase, holder::Buffer};
 //!
 //! # fn main() -> yggdryl::Result<()> {
@@ -475,7 +475,7 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(&self.handle)
     }
 
@@ -483,7 +483,7 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
     }
 }

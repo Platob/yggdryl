@@ -32,9 +32,9 @@ use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
-use crate::types::cast::text::is_blank_text;
-use crate::types::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
+use crate::cast::text::is_blank_text;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
+use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -388,11 +388,11 @@ fn arithmetic(
         return Ok(Scalar::Null);
     }
     let operation = match operator {
-        Operator::Add => crate::types::Arithmetic::Add,
-        Operator::Sub => crate::types::Arithmetic::Sub,
-        Operator::Mul => crate::types::Arithmetic::Mul,
-        Operator::Div => crate::types::Arithmetic::Div,
-        Operator::Rem => crate::types::Arithmetic::Rem,
+        Operator::Add => crate::Arithmetic::Add,
+        Operator::Sub => crate::Arithmetic::Sub,
+        Operator::Mul => crate::Arithmetic::Mul,
+        Operator::Div => crate::Arithmetic::Div,
+        Operator::Rem => crate::Arithmetic::Rem,
     };
     left.checked_arithmetic_as(right, operation, unwrap_dictionary(dtype))
 }
@@ -752,7 +752,7 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
-    use crate::types::temporal as iso;
+    use crate::temporal as iso;
 
     let text = match value {
         Scalar::Date32(date) => iso::format_date(date.count()),
@@ -972,13 +972,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             }
             // The row tier enforces the one UUID rule the cast plan enforces
             // on columns, so the two tiers refuse the same values.
-            let Some(bytes) = crate::types::uuid_bytes(value) else {
+            let Some(bytes) = crate::uuid_bytes(value) else {
                 return refuse("a UUID");
             };
-            match crate::types::uuid_parse(bytes) {
-                Ok(stored) => Ok(Scalar::Uuid(crate::types::Uuid::new(u128::from_be_bytes(
-                    stored,
-                )))),
+            match crate::uuid_parse(bytes) {
+                Ok(stored) => Ok(Scalar::Uuid(crate::Uuid::new(u128::from_be_bytes(stored)))),
                 Err(_) if safety.is_safe() => Ok(Scalar::Null),
                 Err(error) => Err(error),
             }

@@ -4,8 +4,8 @@
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
+use yggdryl::SequenceType;
 use yggdryl::graph::{Element, Event};
-use yggdryl::types::SequenceType;
 use yggdryl::{
     DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, MimeType,
 };

@@ -6,11 +6,11 @@ use arrow_array::{ArrayRef, Int64Array, RecordBatch};
 use arrow_ipc::writer::StreamWriter;
 
 use super::folder_reader;
-use crate::holder::Holder;
-use crate::holder::fs::{
+use crate::fs::{
     ByteReader, ByteWriter, File, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
     OutputMetadata, RandomAccessReader,
 };
+use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
 use crate::{IOBase, Listing};

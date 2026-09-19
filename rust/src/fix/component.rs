@@ -3,7 +3,7 @@
 //! Catalog definitions carry resolved names. CBlock input without a declared
 //! group name uses the published Parties family, then the counter's noun stem.
 
-use crate::types::sequence::SequenceType;
+use crate::sequence::SequenceType;
 use smol_str::SmolStr;
 
 const LATIN: [(&str, &str); 4] = [

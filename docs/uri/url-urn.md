@@ -102,7 +102,7 @@ Shown in Rust; Python answers `default_port`, `is_local` and `local_mime_type` u
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{MimeType, Uri, Url};
 
     // The port belongs to the scheme, not to the authority text.

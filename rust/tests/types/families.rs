@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-use yggdryl::types::{
+use yggdryl::{
     BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType, Fields,
     FloatingType, GeospatialType, IntegerType, IntervalType, MapType, RunEndEncodedType,
     StringType, TimeType, TimeUnit, UnionFields, UnionMode,

@@ -12,9 +12,9 @@ use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::types::{Str, StringType};
 use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, Term, Url};
 use yggdryl::{IOBase, IOMedia};
+use yggdryl::{Str, StringType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
@@ -293,8 +293,8 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
 #[test]
 fn an_ascii_column_is_an_iceberg_string() {
     let mut schema = root([DataType::fixed_ascii(4).unwrap().required_field("ccy")]);
-    yggdryl::media::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    let json = yggdryl::media::iceberg::schema_into_json(&schema).unwrap();
+    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    let json = yggdryl::iceberg::schema_into_json(&schema).unwrap();
     let fields = json
         .get_key_str("fields")
         .and_then(Scalar::as_sequence)

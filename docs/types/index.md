@@ -42,7 +42,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests decimal::tests diff::tests merge::tests metadata::tests path::tests protocol::tests scalar::tests string::tests timezone::tests version::tests
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types
     cargo bench --manifest-path rust/Cargo.toml --bench types
     ```

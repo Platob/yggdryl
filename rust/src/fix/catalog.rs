@@ -9,8 +9,8 @@ use super::group_plan::GroupPlan;
 use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
 use super::{FixId, FixRegistry, MsgType};
-use crate::types::folds_equal;
-use crate::types::sequence::SequenceType;
+use crate::folds_equal;
+use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, FixCategory, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,7 +118,7 @@ impl Catalog {
     fn position(&self, category: FixCategory, name: &str) -> Option<usize> {
         let position = *self.names.get(&Self::key(category, name))?;
         let entry = self.entries.get(position)?;
-        crate::types::folds_equal(entry.field.name(), name).then_some(position)
+        crate::folds_equal(entry.field.name(), name).then_some(position)
     }
 
     pub fn iter(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
@@ -176,7 +176,7 @@ impl Catalog {
             let names_code = |name: &str| {
                 self.code_names
                     .get(code)
-                    .is_some_and(|named| crate::types::folds_equal(named, name))
+                    .is_some_and(|named| crate::folds_equal(named, name))
             };
             match codes.entry(SmolStr::new(code)) {
                 std::collections::hash_map::Entry::Vacant(slot) => {
@@ -215,7 +215,7 @@ impl Catalog {
         let alias = self
             .message_aliases
             .get(&name_digest(spelling, 0x4d53_475f_414c_4941))?;
-        if !crate::types::folds_equal(&alias.spelling, spelling) {
+        if !crate::folds_equal(&alias.spelling, spelling) {
             return None;
         }
         let code = alias.code.as_ref()?;
@@ -239,7 +239,7 @@ impl Catalog {
                 self.message_aliases
                     .entry(digest)
                     .and_modify(|held| {
-                        if !crate::types::folds_equal(&held.spelling, spelling)
+                        if !crate::folds_equal(&held.spelling, spelling)
                             || held.code.as_deref() != Some(code.value())
                         {
                             held.code = None;
@@ -1186,7 +1186,7 @@ impl FixRegistry {
     /// taken, which needs a million definitions in one registry.
     pub(super) fn derived_definition_tag(&self, name: &str) -> Result<i32> {
         let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
-        let hash = crate::hashing::xxhash::xxh32(name.as_bytes());
+        let hash = crate::xxhash::xxh32(name.as_bytes());
         #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
         let start = (hash % (span as u32)) as i32;
         for step in 0..span {

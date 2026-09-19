@@ -13,7 +13,7 @@ use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use yggdryl::DataType as CoreDataType;
-use yggdryl::types::{BytesType, StringType};
+use yggdryl::{BytesType, StringType};
 
 use crate::value_error;
 

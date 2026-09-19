@@ -49,11 +49,11 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::{DateTimeType, StructureType};
 use crate::{DataType, Field, Result};
+use crate::{DateTimeType, StructureType};
 
 use super::FixRegistry;
-use crate::types::sequence::SequenceType;
+use crate::sequence::SequenceType;
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -359,12 +359,12 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
                 .as_fix()
                 .counter()?
                 .and_then(|counter| registry.get_field_by_counter(counter))
-                .filter(|group| crate::types::folds_equal(group.name(), column.name()));
+                .filter(|group| crate::folds_equal(group.name(), column.name()));
             let scalar = column
                 .as_fix()
                 .tag()?
                 .and_then(|tag| registry.get_scalar_by_tag(tag))
-                .filter(|scalar| crate::types::folds_equal(scalar.name(), column.name()));
+                .filter(|scalar| crate::folds_equal(scalar.name(), column.name()));
             if let Some(group) = group {
                 member.as_fix_mut().set_group(group.name())?;
             } else if let Some(scalar) = scalar {
@@ -408,7 +408,7 @@ pub(super) fn rooted(
             held.set_nullable(!is_required(tag));
             if !fields
                 .iter()
-                .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                .any(|known| crate::folds_equal(known.name(), held.name()))
             {
                 fields.push(held);
             }
@@ -431,7 +431,7 @@ pub(super) fn rooted(
                 held.set_nullable(!is_required(tag));
                 if !fields
                     .iter()
-                    .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                    .any(|known| crate::folds_equal(known.name(), held.name()))
                 {
                     fields.push(held);
                 }
@@ -443,7 +443,7 @@ pub(super) fn rooted(
             group.set_nullable(true);
             if !fields
                 .iter()
-                .any(|known| crate::types::folds_equal(known.name(), group.name()))
+                .any(|known| crate::folds_equal(known.name(), group.name()))
             {
                 fields.push(group);
             }
@@ -488,7 +488,7 @@ pub(super) fn rooted(
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
-/// # use yggdryl::holder::local::Folder;
+/// # use yggdryl::local::Folder;
 /// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -543,7 +543,7 @@ pub(super) fn carried(carrier: &Field, read: &Field) -> Vec<usize> {
             !read
                 .fields()
                 .iter()
-                .any(|column| crate::types::folds_equal(column.name(), held.name()))
+                .any(|column| crate::folds_equal(column.name(), held.name()))
         })
         .map(|(at, _)| at)
         .collect()
@@ -934,7 +934,7 @@ fn push_child(
     let taken = |fields: &[Field], name: &str| {
         fields
             .iter()
-            .any(|held| crate::types::folds_equal(held.name(), name))
+            .any(|held| crate::folds_equal(held.name(), name))
     };
     if let Some(counter) = field.as_fix().counter().ok().flatten() {
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
@@ -961,7 +961,7 @@ fn declares(field: &Field, entry: &super::FixEntry) -> bool {
     if entry.tag() != 0 {
         return field.as_fix().tag().ok().flatten() == Some(entry.tag());
     }
-    crate::types::folds_equal(field.name(), entry.name())
+    crate::folds_equal(field.name(), entry.name())
 }
 
 /// One group entry as the list it states: an occurrence per entry under it,
@@ -996,7 +996,7 @@ fn group_from_entry(
         for (field, value) in fields.into_iter().zip(values) {
             match union
                 .iter_mut()
-                .find(|held| crate::types::folds_equal(held.name(), field.name()))
+                .find(|held| crate::folds_equal(held.name(), field.name()))
             {
                 // Two occurrences state one member differently - a nested
                 // group one of them left out a level of - so the slot is
@@ -1204,7 +1204,7 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::graph::Element;
     /// # use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1296,7 +1296,7 @@ impl super::FixMsg {
             for (field, value) in fields.into_iter().zip(held) {
                 if members
                     .iter()
-                    .any(|known| crate::types::folds_equal(known.name(), field.name()))
+                    .any(|known| crate::folds_equal(known.name(), field.name()))
                 {
                     continue;
                 }
@@ -1335,7 +1335,7 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -1506,7 +1506,7 @@ impl super::FixMsg {
                     .map(|member| {
                         spelled
                             .iter()
-                            .position(|name| crate::types::folds_equal(name, member.name()))
+                            .position(|name| crate::folds_equal(name, member.name()))
                             .and_then(|at| stated.get(at))
                             .cloned()
                             .unwrap_or(crate::Scalar::Null)
@@ -1681,8 +1681,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
     if !float || !decimal {
         return value;
     }
-    crate::types::Decimal::from_scalar(&value)
-        .map_or(value, |held| crate::Scalar::from(held.to_f64()))
+    crate::Decimal::from_scalar(&value).map_or(value, |held| crate::Scalar::from(held.to_f64()))
 }
 
 /// One value rebuilt under one field with every leaf that will not fit nulled.

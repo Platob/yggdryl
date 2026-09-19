@@ -251,7 +251,7 @@ A closed [`Coded`](../../coding/index.md) read decodes through the range and ret
 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::coding::gzip::Gzip;
+use yggdryl::gzip::Gzip;
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
 
@@ -362,7 +362,7 @@ Over a memory-mapped [local file](local.md) a `pread` is already a `memcpy`, so 
 ```rust
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::IOBase;
-use yggdryl::holder::local::{File, Folder};
+use yggdryl::local::{File, Folder};
 
 let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-buffered-{}.bin", std::process::id()));
 std::fs::write(&path, vec![9_u8; 4_096])?;

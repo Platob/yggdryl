@@ -38,7 +38,7 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
     use yggdryl::media::IORecordOptions as _;
     use yggdryl::{IOBase as _, IOMedia as _};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::text::TextOptions;
     use yggdryl::Url;
 
     let text_source = Buffer::from_bytes(
@@ -189,7 +189,7 @@ The `select` and `where` sections of the options shape a text read as they shape
 
     ```rust
     use yggdryl::holder::Buffer;
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::text::TextOptions;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOMedia, Url};
 
@@ -281,7 +281,7 @@ count that will not fit is refused by name rather than truncated.
 === "Rust"
 
     ```rust
-    use yggdryl::media::text::{TextOptions, read_text_lines};
+    use yggdryl::text::{TextOptions, read_text_lines};
     use yggdryl::{FieldPath, holder::Buffer};
 
     let capture = Buffer::from_bytes(b"8=FIX|55=AAPL\n35=D|55=MSFT\n".to_vec());
@@ -389,7 +389,7 @@ find the lines the reader repaired without decoding them again.
 === "Rust"
 
     ```rust
-    use yggdryl::media::text::{TextBytes, TextLine};
+    use yggdryl::text::{TextBytes, TextLine};
 
     let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"58=caf\xe9|10=0|")?)?;
     assert_eq!(line.body(), "58=café|10=0|");
@@ -498,7 +498,7 @@ handle's fact, not a second option on every reader.
 
     ```rust
     use yggdryl::holder::Buffer;
-    use yggdryl::media::text::{TextOptions, read_text_lines};
+    use yggdryl::text::{TextOptions, read_text_lines};
     use yggdryl::{Charset, MediaType};
 
     // One windows-1252 byte per scalar on the wire: `ü` is `0xFC`, `è` is `0xE8`.
@@ -783,7 +783,7 @@ the IPC copy; Python adds an `re` plus PyArrow baseline.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::text::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib text::
     cargo bench -p yggdryl --bench text -- text_records
     cargo bench -p yggdryl --bench text -- text_record_framing
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/text

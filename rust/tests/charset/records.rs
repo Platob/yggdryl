@@ -8,7 +8,7 @@ use arrow_array::{Array as _, RecordBatch, StringArray};
 use std::sync::Arc;
 use yggdryl::charset::Transcoded;
 use yggdryl::holder::Buffer;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{Charset, IOBase, IOMedia as _, MediaType};
 
 /// The string column `name` holds, across every batch.

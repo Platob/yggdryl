@@ -78,7 +78,7 @@ Rust and Python only.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::structured::tests
+    cargo test --features "parquet iceberg" -p yggdryl --test media -- structured::
     ```
 
 === "Python"

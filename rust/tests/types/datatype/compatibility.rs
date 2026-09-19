@@ -1,10 +1,10 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use yggdryl::types::DecimalType;
-use yggdryl::types::SequenceType;
-use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
+use yggdryl::DecimalType;
+use yggdryl::SequenceType;
 use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {

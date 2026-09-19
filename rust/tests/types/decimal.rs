@@ -138,7 +138,7 @@ mod restating {
 }
 
 mod fixed {
-    use yggdryl::types::Decimal;
+    use yggdryl::Decimal;
     use yggdryl::{DataType, Scalar};
 
     #[test]

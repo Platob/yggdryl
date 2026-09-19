@@ -10,8 +10,8 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::types::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
+use yggdryl::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 use crate::napi_error;
 use crate::types::version::JsVersion;

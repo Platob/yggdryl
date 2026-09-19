@@ -61,7 +61,7 @@ The selector validates once and picks the physical width at construction.
 `Decimal` is `decimal128(38, 18)` preapplied: one `i128` of units at eighteen fractional digits, bounded to thirty-eight digits, so a price and a quantity add, multiply and compare as integers do and land in a `decimal128(38, 18)` column exactly. `DataType::DECIMAL` is that datatype. Multiplication and division widen to 256 bits and truncate the rest toward zero; a result past the precision is an overflow the checked operations answer as `None` and the operators refuse as the integers' do. Text reads leniently - whitespace, an empty text as nothing, grouping with `,` `_` `'` or a space, a leading or trailing point, an exponent, extra fractional digits truncated - and refuses only what states no number or a value past the precision. Rust only: a market element's price and quantity are held as it.
 
 ```rust
-use yggdryl::types::Decimal;
+use yggdryl::Decimal;
 use yggdryl::{DataType, Scalar};
 
 let px: Decimal = "82.5".parse()?;
@@ -92,7 +92,7 @@ The clock selector `time(unit)`, the unit and zone vocabulary and the temporal s
 
 Rust only. Each marker `M` has a `FieldOf<M>` alias (`Int8Field`, `DecimalField`, ...) described on [Field](field.md); a family with leaves carries its payload enum instead, `DecimalType` here and the five [temporal](temporal.md) payloads `DateType`, `TimeType`, `DateTimeType`, `DurationType`, `IntervalType`.
 
-| Family (`yggdryl::types::<family>`) | Markers |
+| Family (`yggdryl::<family>`) | Markers |
 | --- | --- |
 | `boolean` | `NullType`, `BooleanType` |
 | `integer` | `Int8Type`, `Int16Type`, `Int32Type`, `Int64Type`, `UInt8Type`, `UInt16Type`, `UInt32Type`, `UInt64Type` |
@@ -114,7 +114,7 @@ Rust only. Each marker `M` has a `FieldOf<M>` alias (`Int8Field`, `DecimalField`
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::floating field::integer field::floating field::decimal field::scalar
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::decimal types::arithmetic
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- decimal::tests arithmetic::tests
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^decimal/'
     ```
 

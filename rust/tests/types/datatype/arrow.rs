@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::types::BytesType;
-use yggdryl::types::SequenceType;
-use yggdryl::types::UuidType;
-use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
+use yggdryl::BytesType;
+use yggdryl::SequenceType;
+use yggdryl::UuidType;
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
     match error {

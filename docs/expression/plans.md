@@ -25,7 +25,7 @@
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, Expression, Url};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-docs-plans");

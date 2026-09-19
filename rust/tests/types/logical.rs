@@ -1,5 +1,5 @@
 use yggdryl::Timezone;
-use yggdryl::types::{DataType, DateTimeType, TimeType};
+use yggdryl::{DataType, DateTimeType, TimeType};
 use yggdryl::{TimeUnit, UnionMode};
 
 #[test]

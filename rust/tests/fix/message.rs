@@ -7,7 +7,7 @@ use std::sync::Arc;
 use yggdryl::fix::FIXENTRIES_COLUMN;
 
 use yggdryl::graph::{Element, Event};
-use yggdryl::media::text::{TextBytes, TextLine};
+use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
     DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone,
     fix_schema, fix_schema_carrying,

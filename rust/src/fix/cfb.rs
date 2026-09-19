@@ -230,7 +230,7 @@ use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url};
 
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
-use crate::types::sequence::SequenceType;
+use crate::sequence::SequenceType;
 
 /// How deep a grammar may nest before the parse stops descending.
 ///
@@ -1076,7 +1076,7 @@ impl<'doc> Parse<'doc> {
         if let Some(at) = self.decoded(|held| spelled(&held.field) == named) {
             return Some((at, true));
         }
-        let at = self.decoded(|held| crate::types::folds_equal(held.field.name(), named))?;
+        let at = self.decoded(|held| crate::folds_equal(held.field.name(), named))?;
         Some((at, false))
     }
 
@@ -1245,11 +1245,7 @@ impl<'doc> Parse<'doc> {
         // to resolve by picking one, so the second names nothing and is
         // dropped - the rule every contended spelling in this file is read
         // under.
-        if let Some(taken) = self
-            .spellings
-            .get(&crate::types::normalized(value))
-            .copied()
-        {
+        if let Some(taken) = self.spellings.get(&crate::normalized(value)).copied() {
             self.dropped(&self.refused(
                 "a free message type value",
                 format_args!(
@@ -1268,7 +1264,7 @@ impl<'doc> Parse<'doc> {
         self.msgtypes.push(code);
         let at = self.msgtypes.len() - 1;
         self.values.insert(SmolStr::new(value), at);
-        self.spellings.insert(crate::types::normalized(value), at);
+        self.spellings.insert(crate::normalized(value), at);
         // The whole spelling, and only as a spelling: a qualifier says which
         // grammar the file bound, never what the type is called.
         self.alias_msgtype(at, spelling);
@@ -1285,7 +1281,7 @@ impl<'doc> Parse<'doc> {
         if spelling.is_empty() {
             return;
         }
-        let key = crate::types::normalized(spelling);
+        let key = crate::normalized(spelling);
         if self.spellings.contains_key(&key) {
             return;
         }

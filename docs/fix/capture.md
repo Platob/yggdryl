@@ -25,7 +25,7 @@ One line in, one row per message out, with the columns named as the dictionary n
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -153,7 +153,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -294,7 +294,7 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -409,7 +409,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixRegistry, fix_column_of, fix_schema, fix_schema_tags};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -561,7 +561,7 @@ Six values close every message and are never null: `currunix`, `creatunix`, `cur
     ```rust
     use std::sync::Arc;
     use yggdryl::graph::{Element, Event};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{CREATUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, CURRUNIX_TAG_NAME, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
@@ -773,7 +773,7 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
     ```rust
     use std::sync::Arc;
     use yggdryl::graph::{Event, MarketElement};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -879,7 +879,7 @@ A known message with no selected value states none; an unknown message selects n
     use std::sync::Arc;
 
     use yggdryl::graph::Element;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, IDENTIFIERS_TAG_NAME, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -932,7 +932,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1065,7 +1065,7 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

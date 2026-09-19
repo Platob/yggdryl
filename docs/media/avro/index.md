@@ -1,6 +1,6 @@
 # Apache Avro
 
-`yggdryl::media::avro` reads and writes Avro object containers, as streamed Arrow batches or as native values.
+`yggdryl::avro` reads and writes Avro object containers, as streamed Arrow batches or as native values.
 
 ## Contract
 
@@ -87,7 +87,7 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
 === "Rust"
 
     ```rust
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro::Schema;
 
     let schema = Schema::from_str(
         r#"{"type": "record", "name": "trade", "doc": "one fill", "fields": [
@@ -98,7 +98,7 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
 
     assert!(!schema.clone().into_canonical_form().contains("doc"));
     assert_eq!(schema.fingerprint().to_le_bytes()[0], 0xF5);
-    let text = String::from_utf8(yggdryl::text::json::into_bytes(&schema.into_json())?)?;
+    let text = String::from_utf8(yggdryl::json::into_bytes(&schema.into_json())?)?;
     assert!(text.contains("field-id"));
     ```
 
@@ -156,8 +156,8 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
     use yggdryl::TimeUnit;
     use yggdryl::holder::Buffer;
     use yggdryl::{Timezone, Scalar};
-    use yggdryl::text::json;
-    use yggdryl::media::avro;
+    use yggdryl::json;
+    use yggdryl::avro;
 
     let schema = json::from_utf8(
         r#"{"type": "record", "name": "row", "fields": [
@@ -245,8 +245,8 @@ Input bytes bound the container and each decompressed block, depth bounds schema
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::{Limits, Scalar};
-    use yggdryl::text::json;
-    use yggdryl::media::avro;
+    use yggdryl::json;
+    use yggdryl::avro;
 
     let schema = json::from_utf8(r#""long""#)?;
     let mut bytes = Buffer::new();
@@ -311,7 +311,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::avro::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib avro::tests
     cargo test --features "parquet iceberg" -p yggdryl --test interop avro::
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/avro

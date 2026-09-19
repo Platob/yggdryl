@@ -7,8 +7,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::Media;
-use yggdryl::media::text::TextOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::text::TextOptions;
 use yggdryl::{DataType, Field, MediaType, MimeType, Url};
 use yggdryl::{IOBase, IOMedia};
 

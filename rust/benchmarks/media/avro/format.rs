@@ -8,9 +8,9 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
+use yggdryl::avro;
 use yggdryl::holder::Buffer;
-use yggdryl::media::avro;
-use yggdryl::text::json;
+use yggdryl::json;
 use yggdryl::{Limits, Scalar};
 
 /// Rows per fixture.

@@ -162,7 +162,7 @@ fn cache_calls(criterion: &mut Criterion) {
 
 /// Listings and partition selection over a lake of a hundred files.
 fn listing_calls(criterion: &mut Criterion) {
-    use yggdryl::holder::fs::{BoundLocation, FileSystem, MemoryFileSystem, located};
+    use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, located};
 
     const PARTITIONS: usize = 20;
     const PER_PARTITION: usize = 5;

@@ -42,7 +42,7 @@ pub trait IOMedia: Send {
         let handle = self.as_io_base();
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.row_size();
             }
             let encoding = options.mime_type();
@@ -82,7 +82,7 @@ pub trait IOMedia: Send {
         let container = handle.is_container();
         #[cfg(feature = "iceberg")]
         if container {
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.column_size();
             }
         }
@@ -115,7 +115,7 @@ pub trait IOMedia: Send {
         let handle = self.as_io_base();
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.record_options();
             }
             // The listing is lazy, so a lake costs the walk to its first
@@ -150,9 +150,9 @@ pub trait IOMedia: Send {
     ///
     /// Returns an encoding, footer, or positional-read failure.
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         let handle = parquet_leaf(self)?;
-        Ok(crate::media::parquet::read_statistics(handle)?)
+        Ok(crate::parquet::read_statistics(handle)?)
     }
 
     /// Recompute one Parquet geospatial column's statistics from stored WKB.
@@ -169,11 +169,9 @@ pub trait IOMedia: Send {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         let handle = parquet_leaf(self)?;
-        Ok(crate::media::parquet::read_geospatial_statistics(
-            handle, column,
-        )?)
+        Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
     }
 
     /// Read the canonical non-null Struct root Field of this resource.
@@ -247,7 +245,7 @@ pub trait IOMedia: Send {
         let handle = self.as_io_base();
         let reader = if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 // The table pushes the clauses into its scan plan and wraps
                 // the selector and the limit itself: the reader is complete.
                 return table.read(options);
@@ -1013,16 +1011,14 @@ macro_rules! __delegate_iomedia_arrow {
 #[macro_export]
 macro_rules! __delegate_iomedia_parquet {
     ($handle:ident) => {
-        fn read_parquet_statistics(
-            &self,
-        ) -> $crate::Result<$crate::media::parquet::FileStatistics> {
+        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
             $crate::IOMedia::read_parquet_statistics(&self.$handle)
         }
 
         fn read_parquet_geospatial_statistics(
             &self,
             column: &str,
-        ) -> $crate::Result<$crate::media::parquet::GeospatialStatistics> {
+        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
             $crate::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
         }
     };

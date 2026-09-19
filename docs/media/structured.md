@@ -1,6 +1,6 @@
 # Structured documents
 
-`yggdryl::text` reads and writes JSON, JSON Lines, YAML, and TOML over the shared native [`Scalar`](../types/scalar.md); the bindings only translate native and Arrow values.
+`yggdryl::json`, `yggdryl::yaml` and `yggdryl::toml` read and write JSON, JSON Lines, YAML, and TOML over the shared native [`Scalar`](../types/scalar.md), through the `Format`, `Limits` and `Formatting` machinery `yggdryl::text` holds for all three; the bindings only translate native and Arrow values.
 
 ## Contract
 
@@ -130,7 +130,8 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 === "Rust"
 
     ```rust
-    use yggdryl::text::{json, toml, yaml, Formatting};
+    use yggdryl::text::Formatting;
+    use yggdryl::{json, toml, yaml};
     use yggdryl::Scalar;
 
     let value = Scalar::from_record([(

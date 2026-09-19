@@ -25,10 +25,10 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema, rebuilt_batch};
+use crate::cast::{ArrowCastOptions, cast_field_array};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::{ArrowCastOptions, cast_field_array};
-use crate::types::string::is_text_storage;
+use crate::string::is_text_storage;
 use crate::{DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
@@ -36,7 +36,7 @@ use crate::{IOBase, IOMedia, Listing};
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
 pub use super::NULL_PARTITION;
-use crate::types::FieldValue as _;
+use crate::FieldValue as _;
 
 /// How every partition value in the project is rendered as directory text.
 ///

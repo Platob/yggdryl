@@ -5,11 +5,11 @@ use super::path;
 use std::path::PathBuf;
 
 use std::sync::Arc;
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 
+use yggdryl::SequenceType;
+use yggdryl::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::holder::Buffer;
-use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::types::SequenceType;
 use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
 
 /// A CBlock in the exact shape a production file has: the same element order,
@@ -2524,7 +2524,7 @@ fn cblock_tree(files: &[(&str, &str)]) -> yggdryl::holder::Holder {
         file.write_all_bytes(body.as_bytes()).expect("the document");
     }
     yggdryl::holder::Holder::from(
-        yggdryl::holder::fs::Folder::from_path(filesystem, "cblocks", None)
+        yggdryl::fs::Folder::from_path(filesystem, "cblocks", None)
             .expect("the folder holding them"),
     )
 }

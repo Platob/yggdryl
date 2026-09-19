@@ -3,7 +3,7 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Either, Error, Result, Uint8Array};
 use napi_derive::napi;
 use yggdryl::media::IORecordOptions;
-use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
+use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Level, MimeType};
 
 use crate::enums::JsMimeType;
@@ -435,7 +435,7 @@ impl JsTextOptions {
         let linesep = value
             .map(|value| match value {
                 Either::A(value) => value.parse(),
-                Either::B(value) => yggdryl::media::text::LineSep::new(value.as_ref()),
+                Either::B(value) => yggdryl::text::LineSep::new(value.as_ref()),
             })
             .transpose()
             .map_err(napi_error)?;

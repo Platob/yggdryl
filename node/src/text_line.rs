@@ -9,7 +9,7 @@
 use napi::bindgen_prelude::{Buffer, Either, Generator, Result};
 use napi_derive::napi;
 
-use yggdryl::media::text::{
+use yggdryl::text::{
     TextBytes, TextEntries as CoreTextEntries, TextEntry as CoreTextEntry,
     TextLine as CoreTextLine, TextLines as CoreTextLines,
 };

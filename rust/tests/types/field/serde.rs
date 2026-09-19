@@ -1,8 +1,8 @@
 //! The `Scalar` conversion is the one structural model of a schema, and every
 //! serialized form is expressed over it.
 
+use yggdryl::DateTimeType;
 use yggdryl::Scalar;
-use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
@@ -136,7 +136,7 @@ fn the_value_shape_matches_the_json_structure_exactly() {
         // pins `into_json` against drift.
         let direct = field.clone().into_json().expect("structural JSON");
         let through_value = String::from_utf8(
-            yggdryl::text::json::into_bytes(&field.clone().into_value()).expect("a JSON dump"),
+            yggdryl::json::into_bytes(&field.clone().into_value()).expect("a JSON dump"),
         )
         .expect("UTF-8");
         assert_eq!(direct, through_value, "{field}");
@@ -144,7 +144,7 @@ fn the_value_shape_matches_the_json_structure_exactly() {
         let dtype = field.dtype();
         let direct = dtype.clone().into_json().expect("structural JSON");
         let through_value = String::from_utf8(
-            yggdryl::text::json::into_bytes(&dtype.clone().into_value()).expect("a JSON dump"),
+            yggdryl::json::into_bytes(&dtype.clone().into_value()).expect("a JSON dump"),
         )
         .expect("UTF-8");
         assert_eq!(direct, through_value, "{dtype}");
@@ -302,9 +302,9 @@ fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
 fn natural_text_objects_feed_record_aware_structural_readers() {
     let field = small();
     let documents = [
-        yggdryl::text::json::from_utf8(&field.clone().into_json().unwrap()).unwrap(),
-        yggdryl::text::yaml::from_utf8(&field.clone().into_yaml().unwrap()).unwrap(),
-        yggdryl::text::toml::from_utf8(&field.clone().into_toml().unwrap()).unwrap(),
+        yggdryl::json::from_utf8(&field.clone().into_json().unwrap()).unwrap(),
+        yggdryl::yaml::from_utf8(&field.clone().into_yaml().unwrap()).unwrap(),
+        yggdryl::toml::from_utf8(&field.clone().into_toml().unwrap()).unwrap(),
     ];
 
     for document in documents {
@@ -421,37 +421,37 @@ fn indentation_reads_literally_in_every_format() {
     .unwrap();
 
     assert_eq!(
-        yggdryl::text::json::into_bytes(&value).unwrap(),
+        yggdryl::json::into_bytes(&value).unwrap(),
         br#"{"id":1,"tags":["a"]}"#
     );
     assert_eq!(
-        yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"{\n  \"id\": 1,\n  \"tags\": [\n    \"a\"\n  ]\n}"
     );
     assert_eq!(
-        yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"{\n    \"id\": 1,\n    \"tags\": [\n        \"a\"\n    ]\n}"
     );
 
     assert_eq!(
-        yggdryl::text::yaml::into_bytes(&value).unwrap(),
+        yggdryl::yaml::into_bytes(&value).unwrap(),
         b"id: 1\ntags:\n  - a\n"
     );
     assert_eq!(
-        yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"id: 1\ntags:\n    - a\n"
     );
     assert_eq!(
-        yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::compact()).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact()).unwrap(),
         b"{id: 1, tags: [a]}\n"
     );
 
     assert_eq!(
-        yggdryl::text::toml::into_bytes(&value).unwrap(),
+        yggdryl::toml::into_bytes(&value).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\"a\"]\n"
     );
     assert_eq!(
-        yggdryl::text::toml::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::toml::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\n  \"a\",\n]\n"
     );
 }

@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
+use yggdryl::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{DataType, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.

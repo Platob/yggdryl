@@ -7,8 +7,8 @@
 //! half can never read as a pass.
 
 use yggdryl::TimeUnit;
-use yggdryl::holder::local::File;
-use yggdryl::media::avro;
+use yggdryl::avro;
+use yggdryl::local::File;
 use yggdryl::{DataType, Scalar, Timezone};
 
 /// Where the exchange files live, shared with the Python driver.
@@ -22,7 +22,7 @@ fn exchange_dir() -> std::path::PathBuf {
 
 /// The writer schema both sides agree on, logical types included.
 fn schema() -> Scalar {
-    yggdryl::text::json::from_utf8(
+    yggdryl::json::from_utf8(
         r#"{"type": "record", "name": "trade", "fields": [
             {"name": "symbol", "type": "string"},
             {"name": "quantity", "type": "long"},

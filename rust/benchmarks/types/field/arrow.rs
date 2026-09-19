@@ -6,7 +6,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
 
 use super::nested_field;
-use yggdryl::types::FieldValue as _;
+use yggdryl::FieldValue as _;
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow");

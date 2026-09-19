@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Date32Array, Date64Array};
-use yggdryl::types::{
+use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Scalar, TimeUnit, Timezone};
+use yggdryl::{
     DateField, DateTimeField, DateTimeType, DateType, DurationField, DurationType, IntervalField,
     IntervalType, TimeField, TimeType,
 };
-use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Scalar, TimeUnit, Timezone};
 
 use super::typed::assert_typed_marker;
 

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, Int32Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use yggdryl::DataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::DataType;
-use yggdryl::types::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme, Version,
     VersionField,
@@ -440,7 +440,7 @@ fn defaults_merges_and_compatibility_do_not_fall_through() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn a_closed_exchange_vocabulary_refuses_version_by_name() {
-    let error = yggdryl::media::iceberg::PrimitiveType::from_dtype(&DataType::Version)
+    let error = yggdryl::iceberg::PrimitiveType::from_dtype(&DataType::Version)
         .unwrap_err()
         .to_string();
     assert!(error.contains("Iceberg"), "{error}");

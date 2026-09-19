@@ -1,8 +1,8 @@
 //! The temporal scalar: exact widths, the zone every value carries, and
 //! the readers that answer for each family.
 
-use yggdryl::types::{Date32, DateTime64, Interval};
 use yggdryl::{DataType, DataTypeId, Scalar, TemporalFamily, TimeUnit, Timezone, Value};
+use yggdryl::{Date32, DateTime64, Interval};
 
 #[test]
 fn constructors_reject_illegal_width_unit_combinations() {

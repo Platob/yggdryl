@@ -4,7 +4,7 @@
 
 use super::path as fpath;
 
-use yggdryl::types::SequenceType;
+use yggdryl::SequenceType;
 use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {

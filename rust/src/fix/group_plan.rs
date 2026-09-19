@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::types::sequence::SequenceType;
+use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 const MAX_DEPTH: usize = 64;

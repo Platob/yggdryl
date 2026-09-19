@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::cast::ArrowCastPlan;
-use crate::types::enums::EnumType;
+use crate::cast::ArrowCastPlan;
+use crate::enums::EnumType;
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -835,7 +835,7 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
 /// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`crate::types::structure::Record`]. The root Field validates and canonicalizes every
+/// a named [`crate::structure::Record`]. The root Field validates and canonicalizes every
 /// row before one columnar build.
 ///
 /// # Errors
@@ -949,7 +949,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`crate::types::sequence::Sequence`] with one value per column, in schema
+/// Each row becomes a [`crate::sequence::Sequence`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///

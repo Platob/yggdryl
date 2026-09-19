@@ -12,9 +12,9 @@
 use std::collections::BTreeMap;
 use std::hash::Hasher;
 
-use crate::hashing::txhash::TxHash;
-use crate::hashing::xxhash::Xxh3;
-use crate::types::{
+use crate::txhash::TxHash;
+use crate::xxhash::Xxh3;
+use crate::{
     Bloomberg, Cfi, CodeValue, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid,
 };
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
@@ -64,7 +64,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// use std::collections::BTreeMap;
 ///
 /// use yggdryl::graph::Element;
-/// use yggdryl::types::Uuid;
+/// use yggdryl::Uuid;
 ///
 /// struct Node {
 ///     curruuid: Uuid,
@@ -600,7 +600,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// use std::collections::BTreeMap;
 ///
 /// use yggdryl::graph::{Element, Event};
-/// use yggdryl::types::{State, Uuid};
+/// use yggdryl::{State, Uuid};
 ///
 /// struct Report {
 ///     curruuid: Uuid,
@@ -1068,7 +1068,7 @@ pub trait Event: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::types::{Cfi, Currency, Decimal, Isin, Side};
+/// use yggdryl::{Cfi, Currency, Decimal, Isin, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
@@ -1526,7 +1526,7 @@ pub trait MarketElement: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-/// use yggdryl::types::{Cfi, Currency, Decimal, Side};
+/// use yggdryl::{Cfi, Currency, Decimal, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketEventData::at(10);

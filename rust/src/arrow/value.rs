@@ -3,12 +3,12 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::types::budget::{
+use crate::budget::{
     MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
     physical_limit_error, physical_union_branch, unsupported,
 };
-use crate::types::string::is_text_storage;
-use crate::types::{
+use crate::string::is_text_storage;
+use crate::{
     BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
     ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
@@ -40,9 +40,9 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
-use crate::types::enums::EnumType;
-use crate::types::sequence::SequenceType;
-use crate::types::{DateTimeType, DateType, DecimalType, DurationType, IntervalType, TimeType};
+use crate::enums::EnumType;
+use crate::sequence::SequenceType;
+use crate::{DateTimeType, DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -396,16 +396,11 @@ pub(crate) fn value_from_array(
         },
         DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
             let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
-            Scalar::Interval(crate::types::Interval::new(
-                months,
-                0,
-                0,
-                TimeUnit::YearMonth,
-            )?)
+            Scalar::Interval(crate::Interval::new(months, 0, 0, TimeUnit::YearMonth)?)
         }
         DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
-            Scalar::Interval(crate::types::Interval::new(
+            Scalar::Interval(crate::Interval::new(
                 0,
                 value.days,
                 i64::from(value.milliseconds) * 1_000_000,
@@ -414,7 +409,7 @@ pub(crate) fn value_from_array(
         }
         DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
-            Scalar::Interval(crate::types::Interval::new(
+            Scalar::Interval(crate::Interval::new(
                 value.months,
                 value.days,
                 value.nanoseconds,
@@ -426,7 +421,7 @@ pub(crate) fn value_from_array(
         // An identifier reads back as its exact packed scalar leaf.
         DataType::Uuid(_) => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Uuid(crate::types::Uuid::new(u128::from_be_bytes(uuid_parse(
+            Scalar::Uuid(crate::Uuid::new(u128::from_be_bytes(uuid_parse(
                 fixed.value(index),
             )?)))
         }
@@ -457,77 +452,77 @@ pub(crate) fn value_from_array(
         // at the width its own standard fixes.
         DataType::Country => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Country(crate::types::Country::new(code_cell_text(
+            Scalar::Country(crate::Country::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Currency => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Currency(crate::types::Currency::new(code_cell_text(
+            Scalar::Currency(crate::Currency::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Mic => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Mic(crate::types::Mic::new(code_cell_text(
+            Scalar::Mic(crate::Mic::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Cfi => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cfi(crate::types::Cfi::new(code_cell_text(
+            Scalar::Cfi(crate::Cfi::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Isin => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Isin(crate::types::Isin::new(code_cell_text(
+            Scalar::Isin(crate::Isin::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Cusip => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cusip(crate::types::Cusip::new(code_cell_text(
+            Scalar::Cusip(crate::Cusip::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Sedol => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Sedol(crate::types::Sedol::new(code_cell_text(
+            Scalar::Sedol(crate::Sedol::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Bloomberg => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Bloomberg(crate::types::Bloomberg::new(code_cell_text(
+            Scalar::Bloomberg(crate::Bloomberg::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::Side => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Side(crate::types::Side::new(code_cell_text(
+            Scalar::Side(crate::Side::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::State => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::State(crate::types::State::new(code_cell_text(
+            Scalar::State(crate::State::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
         DataType::TimeInForce => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::TimeInForce(crate::types::TimeInForce::new(code_cell_text(
+            Scalar::TimeInForce(crate::TimeInForce::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
@@ -609,11 +604,11 @@ pub(crate) fn value_from_array(
         }
         DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))
+            Scalar::Decimal32(crate::Decimal32::new(value, *scale))
         }
         DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Scalar::Decimal64(crate::types::Decimal64::new(value, *scale))
+            Scalar::Decimal64(crate::Decimal64::new(value, *scale))
         }
         DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
@@ -641,12 +636,12 @@ pub(crate) fn value_from_array(
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
         // A geospatial column reads back in its canonical value spelling.
-        DataType::Geometry(_) => Scalar::Geometry(crate::types::Geometry::new(Arc::<[u8]>::from(
+        DataType::Geometry(_) => Scalar::Geometry(crate::Geometry::new(Arc::<[u8]>::from(
             downcast::<BinaryArray>(array)?.value(index),
         ))?),
-        DataType::Geography(_) => Scalar::Geography(crate::types::Geography::new(
-            Arc::<[u8]>::from(downcast::<BinaryArray>(array)?.value(index)),
-        )?),
+        DataType::Geography(_) => Scalar::Geography(crate::Geography::new(Arc::<[u8]>::from(
+            downcast::<BinaryArray>(array)?.value(index),
+        ))?),
         DataType::Variant => {
             return Err(unsupported(
                 dtype,
@@ -1736,7 +1731,7 @@ fn interval_year_month(value: &Scalar) -> Result<i32> {
     Ok(interval_value(value, TimeUnit::YearMonth)?.months())
 }
 
-fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::types::Interval> {
+fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::Interval> {
     match value {
         Scalar::Interval(interval) if interval.unit() == unit => Ok(interval),
         _ => Err(invalid_value_kind(

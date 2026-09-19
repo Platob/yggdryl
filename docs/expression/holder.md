@@ -20,7 +20,7 @@
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::Filter;
 
     let lake = Folder::new(Folder::temporary()?.path()?.join("yggdryl-docs-lake"))?;

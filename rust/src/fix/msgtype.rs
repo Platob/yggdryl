@@ -236,7 +236,7 @@ impl MsgType {
     pub(super) fn get_child_by_name(&self, key: &str) -> Option<(&Field, i32)> {
         let digest = name_digest(key, CHILD_DOMAIN);
         let child = self.field.fields().get(*self.children.get(&digest)?)?;
-        if !crate::types::folds_equal(child.name(), key) {
+        if !crate::folds_equal(child.name(), key) {
             return None;
         }
         Some((child, child.as_fix().tag().ok()??))

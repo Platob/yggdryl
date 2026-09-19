@@ -12,9 +12,9 @@ use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-use crate::hashing::xxhash;
-use crate::types::sequence::SequenceType;
-use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::sequence::SequenceType;
+use crate::xxhash;
+use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 
 /// A FIX message: a market event with a FIX body around it.
@@ -1827,7 +1827,7 @@ impl FixMsg {
 /// Pre-order and framed by what each entry holds, so an entry heading
 /// others is never the same as one stating their text: an entry that
 /// states nothing feeds its name and no value, and its children follow.
-fn feed_entries(state: &mut crate::hashing::xxhash::Xxh3, entries: &[FixEntry]) {
+fn feed_entries(state: &mut crate::xxhash::Xxh3, entries: &[FixEntry]) {
     for entry in entries {
         state.write(entry.name().as_bytes());
         if let Some(value) = entry.value() {
@@ -1954,7 +1954,7 @@ fn named_index(parent: &Field, name: &str) -> Option<usize> {
         if held == name {
             return Some(index);
         }
-        if crate::types::folds_equal(held, name) {
+        if crate::folds_equal(held, name) {
             ambiguous |= folded.is_some();
             folded = Some(index);
         }

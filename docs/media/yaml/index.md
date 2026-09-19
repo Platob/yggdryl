@@ -6,7 +6,7 @@ Owns the YAML codec: natural types, exact Fields, documents and streams, formatt
 
 | Aspect | Contract |
 | --- | --- |
-| Owns | `yggdryl::text::yaml`; `yggdryl.text.yaml`; `yaml` from `yggdryl` |
+| Owns | `yggdryl::yaml`; `yggdryl.text.yaml`; `yaml` from `yggdryl` |
 | Natural types | null, boolean, integer, float, string, sequence, mapping, standard `!!binary` |
 | Records | string keys: sorted `Record`; other keys: insertion-ordered `Mapping` |
 | Exact tree | `cls=Scalar` (Python), `{ scalar: true }` (JavaScript); omitted: natural objects |
@@ -33,7 +33,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 === "Rust"
 
     ```rust
-    use yggdryl::text::yaml;
+    use yggdryl::yaml;
     use yggdryl::{from_yaml_scalar, into_yaml_scalar, Scalar};
 
     let value = yaml::from_utf8("symbol: AAPL\nquantity: 2\n")?;
@@ -107,7 +107,7 @@ Schemaless reads keep only syntax-proven types; unknown custom tags read by thei
 
     ```rust
     use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::yaml;
+    use yggdryl::yaml;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let decoded = yaml::from_utf8_with_field("'12.50'\n", &amount)?;

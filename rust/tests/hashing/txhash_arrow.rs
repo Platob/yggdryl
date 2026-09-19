@@ -9,13 +9,11 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Schema, TimeUnit as ArrowTimeUnit};
 
-use yggdryl::hashing::txhash::arrow::{
-    column_txhashes, compose, decompose, row_txhashes, unix_array,
-};
-use yggdryl::hashing::txhash::{TxHash, TxHasher};
-use yggdryl::hashing::xxhash::Xxh3;
-use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
+use yggdryl::txhash::arrow::{column_txhashes, compose, decompose, row_txhashes, unix_array};
+use yggdryl::txhash::{TxHash, TxHasher};
+use yggdryl::xxhash::Xxh3;
+use yggdryl::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 const INSTANTS: [i64; 3] = [
@@ -150,7 +148,7 @@ fn row_txhashes_couple_row_digests_with_instants() {
         assert_eq!(
             coupled.data_type(),
             &ArrowDataType::FixedSizeBinary(
-                i32::try_from(yggdryl::hashing::txhash::width(algorithm)).unwrap()
+                i32::try_from(yggdryl::txhash::width(algorithm)).unwrap()
             )
         );
         assert_eq!(coupled.null_count(), 0);

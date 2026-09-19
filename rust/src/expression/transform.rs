@@ -34,7 +34,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Function;
 use super::term::Term;
-use crate::types::protocol::{TransformField, TransformFieldMut};
+use crate::protocol::{TransformField, TransformFieldMut};
 use crate::{Error, Field, Result};
 
 /// The property naming the term a column is computed with.
@@ -264,10 +264,10 @@ mod arrow {
     use arrow_array::{Array, RecordBatch, StructArray};
     use arrow_schema::Field as ArrowField;
 
+    use crate::FieldValue as _;
     use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
-    use crate::types::FieldValue as _;
-    use crate::types::cast::ArrowCastOptions;
-    use crate::types::protocol::TransformField;
+    use crate::cast::ArrowCastOptions;
+    use crate::protocol::TransformField;
     use crate::{Error, Field, Result};
 
     impl TransformField<'_> {

@@ -1,8 +1,8 @@
 //! UUID layouts belong to the UUID value, not a protocol.
 
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::Uuid;
-use yggdryl::types::UuidType;
+use yggdryl::FieldValue as _;
+use yggdryl::Uuid;
+use yggdryl::UuidType;
 use yggdryl::{DataType, Error, Scalar};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
@@ -274,7 +274,7 @@ mod value {
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
 
-    use yggdryl::types::{DataType, UuidType};
+    use yggdryl::{DataType, UuidType};
     use yggdryl::{DataTypeId, DataTypeKind};
     use yggdryl::{Field, Scalar};
 
@@ -319,7 +319,7 @@ mod value {
             row.canonicalize_value(Scalar::from_sequence([value]))
                 .unwrap()
         };
-        let exact = Scalar::Uuid(yggdryl::types::Uuid::new(PACKED));
+        let exact = Scalar::Uuid(yggdryl::Uuid::new(PACKED));
         let expected = Scalar::from_sequence([exact]);
         assert_eq!(canonical(Scalar::from(TEXT)), expected);
         assert_eq!(canonical(Scalar::from(TEXT.to_uppercase())), expected);
@@ -329,7 +329,7 @@ mod value {
         );
         assert_eq!(
             uuid.default_value().unwrap(),
-            Scalar::Uuid(yggdryl::types::Uuid::new(0))
+            Scalar::Uuid(yggdryl::Uuid::new(0))
         );
         assert!(
             uuid.is_default_value(&Scalar::from([0_u8; 16].to_vec()))
@@ -356,7 +356,7 @@ mod value {
         assert_eq!(stored.value(0), PACKED.to_be_bytes());
         assert_eq!(
             yggdryl::arrow::scalar_value(&field, array.as_ref()).unwrap(),
-            Scalar::Uuid(yggdryl::types::Uuid::new(PACKED))
+            Scalar::Uuid(yggdryl::Uuid::new(PACKED))
         );
     }
 
@@ -395,8 +395,8 @@ mod value {
 mod versions {
     use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
 
-    use yggdryl::types::{Uuid, UuidType};
     use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, Scalar};
+    use yggdryl::{Uuid, UuidType};
 
     fn v4() -> Uuid {
         Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8)

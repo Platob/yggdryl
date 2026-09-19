@@ -1,4 +1,4 @@
-use yggdryl::types::DateTimeType;
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, TimeUnit, Timezone};
 
 #[test]

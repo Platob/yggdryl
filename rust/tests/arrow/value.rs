@@ -11,7 +11,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use yggdryl::types::BytesType;
+    use yggdryl::BytesType;
     use yggdryl::{DataTypeId, i256};
 
     #[test]
@@ -295,7 +295,7 @@ mod bulk {
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
     use yggdryl::Timezone;
-    use yggdryl::types::{DateTimeType, DurationType};
+    use yggdryl::{DateTimeType, DurationType};
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {

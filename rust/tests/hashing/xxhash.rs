@@ -1,6 +1,6 @@
 use std::hash::{BuildHasher as _, Hasher as _};
 
-use yggdryl::hashing::xxhash::{
+use yggdryl::xxhash::{
     SECRET_MINIMUM_LENGTH, Xxh3, Xxh32, Xxh64, Xxh128, xxh3, xxh3_with_secret, xxh3_with_seed,
     xxh3_with_seed_and_secret, xxh32, xxh32_with_seed, xxh64, xxh64_with_seed, xxh128,
     xxh128_with_secret, xxh128_with_seed, xxh128_with_seed_and_secret,
@@ -412,7 +412,7 @@ fn debug_shows_the_seed_and_secret_length_rather_than_the_accumulator() {
 fn the_module_digest_helper_dispatches_like_the_algorithm() {
     for algorithm in DigestAlgorithm::ALL {
         assert_eq!(
-            yggdryl::hashing::xxhash::digest(b"AAPL", algorithm),
+            yggdryl::xxhash::digest(b"AAPL", algorithm),
             algorithm.digest(b"AAPL")
         );
     }
@@ -422,13 +422,13 @@ mod handles {
     use std::io::{Read as _, Write as _};
 
     use yggdryl::IOBase;
-    use yggdryl::hashing::xxhash::{reader, writer, xxh3};
     use yggdryl::holder::Buffer;
+    use yggdryl::xxhash::{reader, writer, xxh3};
     use yggdryl::{DigestAlgorithm, Error};
 
     /// A temporary root, named so parallel tests never share one.
     fn root(label: &str) -> std::path::PathBuf {
-        let path = yggdryl::holder::local::Folder::temporary()
+        let path = yggdryl::local::Folder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -472,17 +472,14 @@ mod handles {
     fn a_memory_mapped_local_file_streams_the_same_digest_as_its_bytes() {
         let path = root("local").join("trades.csv");
         std::fs::write(&path, payload()).unwrap();
-        agrees(
-            "local file",
-            &yggdryl::holder::local::File::new(&path).unwrap(),
-        );
+        agrees("local file", &yggdryl::local::File::new(&path).unwrap());
     }
 
     #[test]
     fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
         use std::sync::Arc;
 
-        use yggdryl::holder::fs::{FileSystem, Folder, MemoryFileSystem};
+        use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
 
         let filesystem = Arc::new(MemoryFileSystem::new());
         filesystem.create_dir("lake", false).unwrap();
@@ -520,7 +517,7 @@ mod handles {
 
     #[test]
     fn a_coding_wrapper_digests_the_decoded_payload_and_its_handle_the_compressed_form() {
-        use yggdryl::coding::gzip::Gzip;
+        use yggdryl::gzip::Gzip;
 
         let plain = payload();
         let mut handle = Gzip::new(Buffer::new());
@@ -555,7 +552,7 @@ mod handles {
 
             let missing = root("missing").join("never-written.csv");
             assert_eq!(
-                yggdryl::holder::local::File::new(&missing)
+                yggdryl::local::File::new(&missing)
                     .unwrap()
                     .read_digest(algorithm)
                     .unwrap(),
@@ -566,7 +563,7 @@ mod handles {
 
     #[test]
     fn a_container_is_refused_by_kind() {
-        let folder = yggdryl::holder::local::Folder::new(root("container")).unwrap();
+        let folder = yggdryl::local::Folder::new(root("container")).unwrap();
         let error = folder.read_digest(DigestAlgorithm::Xxh3).unwrap_err();
         assert!(
             matches!(
@@ -702,8 +699,8 @@ mod handles {
 
 mod hashed {
     use yggdryl::IOBase;
-    use yggdryl::hashing::xxhash::{Hashed, xxh3, xxh3_with_seed};
     use yggdryl::holder::Buffer;
+    use yggdryl::xxhash::{Hashed, xxh3, xxh3_with_seed};
     use yggdryl::{DigestAlgorithm, Error};
 
     /// A handle that counts the reads reaching the one it wraps, so "answered
@@ -847,7 +844,7 @@ mod hashed {
     fn filesystem_stream_writes_are_visible_without_staging() {
         use std::sync::Arc;
 
-        use yggdryl::holder::fs::{FileSystem, Folder, MemoryFileSystem};
+        use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
 
         // An Arrow filesystem file forwards a completed positional write
         // through one output stream rather than retaining a second payload.
@@ -930,7 +927,7 @@ mod hashed {
 
     #[test]
     fn a_container_is_still_refused_by_kind() {
-        let root = yggdryl::holder::local::Folder::temporary()
+        let root = yggdryl::local::Folder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -942,7 +939,7 @@ mod hashed {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let handle = Hashed::new(
-            yggdryl::holder::local::Folder::new(&root).unwrap(),
+            yggdryl::local::Folder::new(&root).unwrap(),
             DigestAlgorithm::Xxh3,
         );
         // The running state starts live and empty and a folder's size is
@@ -963,8 +960,8 @@ mod values {
     use std::hash::Hasher as _;
     use std::sync::Arc;
 
-    use yggdryl::hashing::xxhash::{Xxh3, xxh3};
-    use yggdryl::types::{
+    use yggdryl::xxhash::{Xxh3, xxh3};
+    use yggdryl::{
         Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
         StringType, TimeInForce,
     };
@@ -978,7 +975,7 @@ mod values {
     ];
 
     fn geometry() -> Scalar {
-        Scalar::Geometry(yggdryl::types::Geometry::new(POINT_WKB).unwrap())
+        Scalar::Geometry(yggdryl::Geometry::new(POINT_WKB).unwrap())
     }
 
     fn geography() -> Scalar {

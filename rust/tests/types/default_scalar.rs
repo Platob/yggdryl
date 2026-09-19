@@ -5,8 +5,8 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::{DateTimeType, DurationType, TimeType, UuidType};
 use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, TimeType, UuidType};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);

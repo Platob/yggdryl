@@ -135,7 +135,7 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
         std::sync::OnceLock::new();
     std::sync::Arc::clone(REGISTRY.get_or_init(|| {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-        let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+        let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
         std::sync::Arc::new(
             yggdryl::FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
         )
@@ -167,7 +167,7 @@ fn dated_line(
     body: &[u8],
     version: &str,
 ) -> yggdryl::Result<yggdryl::FixMsg> {
-    use yggdryl::media::text::{TextBytes, TextLine};
+    use yggdryl::text::{TextBytes, TextLine};
 
     let codec = codec.clone().with_capture_names(["beginstring"]);
     let line = TextLine::from_bytes(0, TextBytes::from_bytes(body)?)?
@@ -271,8 +271,8 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
         yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
-        yggdryl::DataType::Sequence(yggdryl::types::SequenceType::List(item))
-        | yggdryl::DataType::Sequence(yggdryl::types::SequenceType::LargeList(item))
+        yggdryl::DataType::Sequence(yggdryl::SequenceType::List(item))
+        | yggdryl::DataType::Sequence(yggdryl::SequenceType::LargeList(item))
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
             yggdryl::FixCategory::Fields

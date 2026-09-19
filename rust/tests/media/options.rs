@@ -8,7 +8,7 @@ use arrow_schema::{ArrowError, SchemaRef};
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
-use yggdryl::media::ipc::IpcOptions;
+use yggdryl::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{DataType, Field, Url};
 
@@ -151,7 +151,7 @@ fn the_declared_field_is_one_section_of_the_plan() {
 fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 
-    let text = yggdryl::media::text::TextOptions::new()
+    let text = yggdryl::text::TextOptions::new()
         .try_with_rowheader(r"^(?<id>\d+)")
         .unwrap();
     let options = RecordOptions::from(text.clone());
@@ -392,10 +392,10 @@ fn every_concrete_options_type_carries_the_same_commit_cadence() {
     }
 
     assert_cadence(IpcOptions::new());
-    assert_cadence(yggdryl::media::avro::AvroOptions::new());
-    assert_cadence(yggdryl::media::text::TextOptions::new());
+    assert_cadence(yggdryl::avro::AvroOptions::new());
+    assert_cadence(yggdryl::text::TextOptions::new());
     #[cfg(feature = "parquet")]
-    assert_cadence(yggdryl::media::parquet::ParquetOptions::new());
+    assert_cadence(yggdryl::parquet::ParquetOptions::new());
 
     let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(5);
     assert_eq!(options.commit_row_size(), Some(5));

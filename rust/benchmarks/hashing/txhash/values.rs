@@ -5,8 +5,8 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 
-use yggdryl::hashing::txhash::{self, TxHash, TxHasher};
-use yggdryl::{DigestAlgorithm, Scalar, TimeUnit, Timezone, hashing::xxhash};
+use yggdryl::txhash::{self, TxHash, TxHasher};
+use yggdryl::{DigestAlgorithm, Scalar, TimeUnit, Timezone, xxhash};
 
 use super::super::payload;
 

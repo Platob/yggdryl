@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::types::TimeType;
+use yggdryl::TimeType;
 use yggdryl::{
     DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
     PythonMetadata, Scheme, TimeUnit, Url,

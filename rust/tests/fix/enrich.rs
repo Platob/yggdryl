@@ -10,12 +10,12 @@ use std::sync::Arc;
 use yggdryl::expression::Term;
 use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::types::{Isin, State};
+use yggdryl::local::Folder;
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{
     DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url, fix_schema,
 };
+use yggdryl::{Isin, State};
 
 fn reader() -> FixCodec {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

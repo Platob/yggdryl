@@ -1,7 +1,7 @@
 //! Focused edge cases for the one path grammar.
 
+use yggdryl::SequenceType;
 use yggdryl::expression::Term;
-use yggdryl::types::SequenceType;
 use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar};
 
 fn parse(text: &str) -> FieldPath {

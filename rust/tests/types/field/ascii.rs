@@ -10,12 +10,12 @@ use arrow_array::{
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
-use yggdryl::types::string;
-use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField, StringField};
+use yggdryl::string;
 use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum};
+use yggdryl::{CfiField, CountryField, CurrencyField, MicField, StringField};
 
 use super::typed::assert_typed_marker;
-use yggdryl::types::FieldValue as _;
+use yggdryl::FieldValue as _;
 
 #[test]
 fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
@@ -27,10 +27,10 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     assert_typed_marker::<string::StringType>(DataType::large_utf8());
     assert_typed_marker::<string::StringType>(DataType::utf8_view());
     assert_typed_marker::<string::StringType>(DataType::from_str("string(windows-1252)").unwrap());
-    assert_typed_marker::<yggdryl::types::CountryType>(DataType::Country);
-    assert_typed_marker::<yggdryl::types::CurrencyType>(DataType::Currency);
-    assert_typed_marker::<yggdryl::types::MicType>(DataType::Mic);
-    assert_typed_marker::<yggdryl::types::CfiType>(DataType::Cfi);
+    assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
+    assert_typed_marker::<yggdryl::CurrencyType>(DataType::Currency);
+    assert_typed_marker::<yggdryl::MicType>(DataType::Mic);
+    assert_typed_marker::<yggdryl::CfiType>(DataType::Cfi);
 
     // Every string is one parameterized datatype, so the field takes it
     // through `try_new`; a code is not a string and is refused by name.

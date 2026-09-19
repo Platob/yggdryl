@@ -11,7 +11,7 @@
 //! call unchanged, and tallies it, so the stack built on top of it is measured
 //! rather than argued about. The counts here are what a *layer* asks of
 //! storage; how many requests a backend then makes of the network is the object
-//! client's own `Stats`, asserted in `src/holder/object/tests/accounting.rs`.
+//! client's own `Stats`, asserted in `src/object/tests/accounting.rs`.
 
 use std::sync::Arc;
 
@@ -44,7 +44,7 @@ fn costs(what: &str, calls: &Arc<Calls>, expected: &str, operation: impl FnOnce(
 
 #[test]
 fn fix_catalog_storage_resolves_each_root_path_once() {
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixRegistry};
 
     let path = Folder::temporary()
@@ -93,7 +93,7 @@ const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
 #[test]
 fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::text::{TextOptions, read_text_lines};
+    use yggdryl::text::{TextOptions, read_text_lines};
     use yggdryl::{FixCodec, FixRegistry, IOMedia, Timezone};
 
     /// How many lines the capture holds, which is how many rows the text
@@ -385,7 +385,7 @@ fn a_warm_page_cache_asks_the_handle_for_nothing() {
 /// Listings, globs and partitions over a lake of a hundred files.
 #[test]
 fn walking_a_lake_is_one_listing_however_many_files_are_in_it() {
-    use yggdryl::holder::fs::{BoundLocation, FileSystem, MemoryFileSystem, located};
+    use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, located};
 
     const PARTITIONS: usize = 20;
     const PER_PARTITION: usize = 5;
@@ -681,8 +681,8 @@ fn a_write_to_a_cold_cache_does_not_ask_for_a_length_first() {
 /// tally every crossing it makes - which is the same measurement taken one
 /// layer in, and the one its docs publish.
 mod zip {
-    use yggdryl::holder::zip::{Archive, Node};
     use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::zip::{Archive, Node};
     use yggdryl::{Codec, IOBase};
 
     /// A payload long enough to hold several restart strides.

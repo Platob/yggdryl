@@ -2,7 +2,7 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-use yggdryl::types::{BYTES_EXTENSION_NAME, Bytes, BytesType, INLINE_BYTES};
+use yggdryl::{BYTES_EXTENSION_NAME, Bytes, BytesType, INLINE_BYTES};
 use yggdryl::{DataType, DataTypeId, Field, Scalar};
 
 #[test]

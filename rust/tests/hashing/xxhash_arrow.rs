@@ -8,12 +8,12 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
-use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
-use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use yggdryl::types::Uuid;
-use yggdryl::types::UuidType;
-use yggdryl::types::{DateTimeType, DurationType};
+use yggdryl::Uuid;
+use yggdryl::UuidType;
+use yggdryl::xxhash::arrow::{column_digests, row_digests};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, DurationType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -566,9 +566,7 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::Interval(
-                    yggdryl::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
-                ),
+                Scalar::Interval(yggdryl::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap()),
                 Scalar::Null,
             ]),
         ),
@@ -580,7 +578,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    yggdryl::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
+                    yggdryl::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -593,7 +591,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    yggdryl::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
+                    yggdryl::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -815,7 +813,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
                 Scalar::Geometry(
-                    yggdryl::types::Geometry::new([
+                    yggdryl::Geometry::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -827,7 +825,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new("geography", DataType::from_str("geography").unwrap(), true),
             Scalar::from_sequence([
                 Scalar::Geography(
-                    yggdryl::types::Geography::new([
+                    yggdryl::Geography::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),

@@ -21,8 +21,8 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDateTime, PyInt, PyIterator};
 
+use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData as CoreMarketEventData};
-use yggdryl::types::Uuid as CoreUuid;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,

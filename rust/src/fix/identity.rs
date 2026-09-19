@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
+use crate::Decimal;
 use crate::graph::{Element, Event, MarketEventData};
-use crate::types::Decimal;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::CLOCK_DATATYPE;
@@ -862,6 +862,6 @@ pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Re
 
 /// The instant now, as the clock a row types.
 pub(super) fn now() -> Result<Scalar> {
-    let nanos = crate::hashing::txhash::unix_now(TimeUnit::Nanosecond)?;
+    let nanos = crate::txhash::unix_now(TimeUnit::Nanosecond)?;
     Scalar::datetime64(nanos, TimeUnit::Nanosecond, Timezone::UTC)
 }

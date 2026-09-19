@@ -31,7 +31,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -195,7 +195,7 @@ Lines to batches, with one stage between them and nothing collected: the walk na
     use std::sync::Arc;
 
     use arrow_array::Array;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -312,7 +312,7 @@ The plugin is a fill and nothing more: it lands in the crate's own `pluginid` co
 === "Rust"
 
     ```rust
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::text::TextOptions;
     use yggdryl::{DataType, ULBRIDGE_ROWHEADER};
 
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
@@ -331,7 +331,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -418,7 +418,7 @@ A source row is read for every message it carries, so a capture answers one row 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -538,7 +538,7 @@ A carried column returns to its place because the door keeps it, not because the
     use std::sync::Arc;
 
     use arrow_array::Array;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

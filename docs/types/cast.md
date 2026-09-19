@@ -31,8 +31,8 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
-    use yggdryl::types::Int64Field;
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::Int64Field;
+    use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field, Nullability};
 
     let strict_conversion = ArrowCastOptions::new().with_safe(false);
@@ -120,7 +120,7 @@ what an absent value means.
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, UInt64Array};
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::FieldValue as _;
     use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
 
     let bits = ArrowCastOptions::new().with_representation(Representation::Bits);
@@ -298,7 +298,7 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field};
 
     let schema = DataType::from_fields([
@@ -369,7 +369,7 @@ strictness is about declared values that are absent, not about columns nobody de
 
     use arrow_array::{ArrayRef, Int32Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::FieldValue as _;
     use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
@@ -467,7 +467,7 @@ by path there too.
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::FieldValue as _;
     use yggdryl::{ArrowCastOptions, DataType, Nullability, Scalar};
 
     let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
@@ -764,8 +764,7 @@ cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/canonicaliz
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::cast types::value
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- batch_cast:: strict_cast::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- cast:: value:: batch_cast:: strict_cast::
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test arrow -- cast_plan::
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations
     cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan

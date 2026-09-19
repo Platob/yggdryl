@@ -16,9 +16,9 @@ use arrow_array::{
     Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, RecordBatch, StringArray, StructArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
+use yggdryl::FieldValue as _;
+use yggdryl::SequenceType;
 use yggdryl::arrow::scalar_value;
-use yggdryl::types::FieldValue as _;
-use yggdryl::types::SequenceType;
 use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {

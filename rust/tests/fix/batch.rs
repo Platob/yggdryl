@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{Element, Event};
-use yggdryl::media::text::{TextBytes, TextLine};
+use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn registry() -> Arc<FixRegistry> {

@@ -507,7 +507,7 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::protocol
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib protocol::tests
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- http protocol partition python
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(protocol_|http_|partition_|python_|without_partition|typed_location|typed_field_id)'
     cargo bench --manifest-path rust/Cargo.toml --features iceberg --bench types -- '^value/iceberg_'

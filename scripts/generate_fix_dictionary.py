@@ -1111,13 +1111,13 @@ def product_case(codes: list[dict[str, Any]]) -> str:
 
 
 # The crate's own registry of ISO 3166-1 alpha-2 codes, `StringEnum::COUNTRIES`
-# in `rust/src/types/string/registries.rs`: the one list of the assigned codes
+# in `rust/src/string.rs`: the one list of the assigned codes
 # this repository holds, read here rather than copied, so `CountryOfIssue`
 # answers exactly the prefixes that registry lists. The `country` datatype
 # validates width alone - a stream carrying an unassigned code registers it -
 # so the whitelist is the derivation's to state, and it states it as the
 # registry's own membership.
-COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "types" / "string" / "registries.rs"
+COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "string.rs"
 
 
 def crate_countries() -> tuple[str, ...]:
@@ -1785,7 +1785,7 @@ def xxh32(data: bytes) -> int:
 
     Spelled here rather than imported: this script is the dictionary's own
     build step and runs on the standard library alone. The core's
-    `yggdryl::hashing::xxhash::Xxh32` is the same function, which is what lets a tag
+    `yggdryl::xxhash::Xxh32` is the same function, which is what lets a tag
     derived here equal the tag the core would derive for the same name.
     """
     one, two, three, four, five = _PRIME32

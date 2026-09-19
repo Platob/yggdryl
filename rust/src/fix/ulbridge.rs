@@ -40,7 +40,7 @@
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
-/// let options = yggdryl::media::text::TextOptions::new()
+/// let options = yggdryl::text::TextOptions::new()
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();

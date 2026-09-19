@@ -25,10 +25,10 @@ use arrow_ipc::writer::FileWriter;
 use arrow_row::{RowConverter, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
+use crate::FieldValue as _;
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
+use crate::cast::ArrowCastOptions;
 use crate::expression::BoundSelector;
-use crate::types::FieldValue as _;
-use crate::types::cast::ArrowCastOptions;
 use crate::{Error, Field, Result, Selector};
 
 /// One key's positions in the held result, as `(batch, row)` pairs.
@@ -336,7 +336,7 @@ impl TemporaryFile {
     fn new() -> Result<Self> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
 
-        let directory = crate::holder::local::Folder::temporary()?.path()?;
+        let directory = crate::local::Folder::temporary()?.path()?;
         for _ in 0..100 {
             let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
             let path = directory.join(format!(

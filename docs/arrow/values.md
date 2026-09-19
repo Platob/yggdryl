@@ -304,9 +304,8 @@ declared `field` off them.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib arrow::scalars
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::structured
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow arrow_scalar::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow -- scalars:: value:: arrow_scalar::
+    cargo test --features "parquet iceberg" -p yggdryl --test media -- structured::
     cargo bench --bench arrow --features "parquet iceberg"
     ```
 

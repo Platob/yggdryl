@@ -269,7 +269,7 @@ same pairing before that proof: it holds whatever it was given and casts on
 read, and `checked` is where it becomes a `FieldScalar`. Rust only.
 
 ```rust
-use yggdryl::types::UncheckedFieldScalar;
+use yggdryl::UncheckedFieldScalar;
 use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
 let price = Field::new("price", DataType::Int32, false);
@@ -376,8 +376,8 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::scalar types::enumeration types::arithmetic types::decimal::scalars types::temporal::scalars
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- scalar::tests arithmetic::tests decimal::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums:: scalar:: temporal::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(enum_accessors|mime_parse|media_infer)/'
     ```

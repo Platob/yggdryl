@@ -110,7 +110,7 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use yggdryl::holder::Buffer;
-use yggdryl::media::ipc::{self, IpcOptions};
+use yggdryl::ipc::{self, IpcOptions};
 use yggdryl::DataType;
 
 let projected = DataType::from_fields([DataType::Int64.required_field("id")])?

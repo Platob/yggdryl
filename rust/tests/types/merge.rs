@@ -1,8 +1,8 @@
 //! What two datatypes meet as: the widening lattice `DataType::merge_with`
 //! walks, in both directions.
 use yggdryl::DataType;
-use yggdryl::types::DecimalType;
-use yggdryl::types::UuidType;
+use yggdryl::DecimalType;
+use yggdryl::UuidType;
 
 #[test]
 fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {

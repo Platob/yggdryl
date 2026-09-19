@@ -7,16 +7,16 @@ use crate::expression::{
     Function, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_SOURCES_KEY,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
-use crate::hashing::txhash::{
-    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
-};
-use crate::hashing::xxhash::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
-    canonicalize_digest_algorithm,
-};
-use crate::types::protocol::{
+use crate::protocol::{
     PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
     validate_python_module, validate_python_qualname,
+};
+use crate::txhash::{
+    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
+};
+use crate::xxhash::{
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    canonicalize_digest_algorithm,
 };
 
 use super::*;
@@ -44,7 +44,7 @@ pub(crate) fn is_all_sources(sources: &[String]) -> bool {
 ///
 /// Returns an error naming `key` when the text is not that array.
 pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
-    let document = crate::text::json::from_utf8(value).map_err(|error| {
+    let document = crate::json::from_utf8(value).map_err(|error| {
         invalid_source_list(
             key,
             format_smolstr!(
@@ -66,7 +66,7 @@ pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
     let mut seen = HashSet::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let Some(path) = value.as_str() else {
-            let actual = crate::text::json::into_utf8(value)
+            let actual = crate::json::into_utf8(value)
                 .unwrap_or_else(|_| "<unencodable JSON value>".to_owned());
             return Err(invalid_source_list(
                 key,
@@ -125,7 +125,7 @@ where
     }
     reject_mixed_all(key, &sources)?;
     let document = Scalar::from_sequence(sources.into_iter().map(Scalar::from));
-    crate::text::json::into_utf8(&document).map_err(|error| {
+    crate::json::into_utf8(&document).map_err(|error| {
         invalid_source_list(
             key,
             format_smolstr!(

@@ -12,12 +12,12 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
-use yggdryl::types::{DataTypeValue as _, FieldValue as _, SequenceType};
 use yggdryl::{
     DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
+use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
 
 use crate::types::field::PyField;
 use crate::types::parameters::{

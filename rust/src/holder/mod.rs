@@ -1,6 +1,6 @@
 //! Byte storage handles and the concrete [`Holder`] that unifies them.
 //!
-//! [`Buffer`] owns in-memory bytes, [`local`], [`fs`], and [`zip`] supply the
+//! [`Buffer`] owns in-memory bytes, [`crate::local`], [`crate::fs`], and [`crate::zip`] supply the
 //! location/container/leaf backend roles - a local tree, a foreign filesystem,
 //! and the members one archive holds inside a single file - and [`buffered`]
 //! adds a page cache over any [`IOBase`] implementation.
@@ -8,17 +8,12 @@
 mod buffer;
 pub mod buffered;
 pub mod counted;
-pub mod fs;
-pub mod local;
-#[cfg(feature = "object")]
-pub mod object;
-pub mod zip;
 
 pub use buffer::Buffer;
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
-use crate::holder::local::{File, Folder};
+use crate::local::{File, Folder};
 use crate::{MediaType, Result, Url};
 
 use crate::IOBase;
@@ -54,7 +49,7 @@ pub(crate) fn system_time_ns(value: std::time::SystemTime) -> Option<i64> {
 /// ```
 /// use yggdryl::holder::Holder;
 /// use yggdryl::IOBase;
-/// use yggdryl::holder::local::Folder;
+/// use yggdryl::local::Folder;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let root = Holder::folder(Folder::temporary()?.path()?)?;
@@ -75,31 +70,31 @@ pub enum Holder {
     /// A local directory.
     Folder(Folder),
     /// A local location that resolves to whatever it turns out to be.
-    Path(crate::holder::local::Path),
+    Path(crate::local::Path),
     /// A memory-mapped local file.
     File(File),
     /// A directory on a foreign filesystem.
-    FsFolder(crate::holder::fs::Folder),
+    FsFolder(crate::fs::Folder),
     /// A foreign-filesystem location that resolves to whatever it turns out
     /// to be.
-    FsPath(crate::holder::fs::Path),
+    FsPath(crate::fs::Path),
     /// A stream-backed file on an Arrow-compatible filesystem.
-    FsFile(crate::holder::fs::File),
+    FsFile(crate::fs::File),
     /// A key prefix, or a whole container, on an object store.
     #[cfg(feature = "object")]
-    ObjectFolder(crate::holder::object::Folder),
+    ObjectFolder(crate::object::Folder),
     /// An object-store location that resolves to whatever it turns out to be.
     #[cfg(feature = "object")]
-    ObjectPath(crate::holder::object::Path),
+    ObjectPath(crate::object::Path),
     /// One object on an object store.
     #[cfg(feature = "object")]
-    ObjectFile(crate::holder::object::File),
+    ObjectFile(crate::object::File),
     /// A prefix of one ZIP archive's members, or the archive root.
-    ZipNode(crate::holder::zip::Node),
+    ZipNode(crate::zip::Node),
     /// A location inside a ZIP archive that resolves to whatever it holds.
-    ZipPath(crate::holder::zip::Path),
+    ZipPath(crate::zip::Path),
     /// One member of a ZIP archive, addressed positionally.
-    ZipLeaf(crate::holder::zip::Leaf),
+    ZipLeaf(crate::zip::Leaf),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -113,9 +108,9 @@ pub enum Holder {
     /// Any handle retained as plain-text record media.
     ///
     /// Boxed because the text wrapper owns another `Holder` while keeping its
-    /// flat [`TextOptions`](crate::media::text::TextOptions) as the default record
+    /// flat [`TextOptions`](crate::text::TextOptions) as the default record
     /// configuration.
-    Text(Box<crate::media::text::Text<Self>>),
+    Text(Box<crate::text::Text<Self>>),
     /// Any of the others, retained behind its inferred record encoding.
     ///
     /// The box breaks the recursive shape: a [`Media`](crate::media::Media)
@@ -162,7 +157,7 @@ impl Holder {
     /// Returns an error only when the path cannot be expressed as a canonical
     /// `file:` URL.
     pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        Ok(Self::Path(crate::holder::local::Path::new(path)?))
+        Ok(Self::Path(crate::local::Path::new(path)?))
     }
 
     /// Hold the resource a URL names, opened with properties.
@@ -210,17 +205,17 @@ impl Holder {
                 .fragment(false)?
                 .is_some_and(|fragment| !fragment.is_empty())
             {
-                crate::holder::zip::from_url(url)?
+                crate::zip::from_url(url)?
             } else {
-                Self::Path(crate::holder::local::Path::from_url(url.clone())?)
+                Self::Path(crate::local::Path::from_url(url.clone())?)
             }
         } else if url.scheme().is_object_store() {
             #[cfg(feature = "object")]
             {
-                let options = crate::holder::object::ObjectOptions::from_properties(
+                let options = crate::object::ObjectOptions::from_properties(
                     properties.iter().map(|(name, value)| (name, value)),
                 )?;
-                crate::holder::object::located_with(&url.to_string(), options)?
+                crate::object::located_with(&url.to_string(), options)?
             }
             #[cfg(not(feature = "object"))]
             {
@@ -271,7 +266,7 @@ impl Holder {
     /// ```
     #[must_use]
     pub fn zip(handle: Self) -> Self {
-        crate::holder::zip::mount(handle)
+        crate::zip::mount(handle)
     }
 
     /// Hold this resource behind a page cache.
@@ -470,7 +465,7 @@ impl Holder {
                 let held = buffered.into_handle().into_text();
                 Self::Buffered(Box::new(Buffered::new(held, options)))
             }
-            other => Self::Text(Box::new(crate::media::text::Text::new(other))),
+            other => Self::Text(Box::new(crate::text::Text::new(other))),
         }
     }
 
@@ -479,7 +474,7 @@ impl Holder {
     /// Repeating the conversion replaces the retained text configuration
     /// without nesting another media wrapper.
     #[must_use]
-    pub fn into_text_with(self, options: crate::media::text::TextOptions) -> Self {
+    pub fn into_text_with(self, options: crate::text::TextOptions) -> Self {
         match self {
             Self::Text(text) => Self::Text(Box::new(text.with_options(options))),
             Self::Buffered(buffered) => {
@@ -488,7 +483,7 @@ impl Holder {
                 Self::Buffered(Box::new(Buffered::new(held, buffered_options)))
             }
             other => Self::Text(Box::new(
-                crate::media::text::Text::new(other).with_options(options),
+                crate::text::Text::new(other).with_options(options),
             )),
         }
     }
@@ -534,9 +529,7 @@ impl Holder {
             Self::Text(text) => {
                 let options = text.options().clone();
                 let held = text.into_handle().into_coded_with(codec, level);
-                Self::Text(Box::new(
-                    crate::media::text::Text::new(held).with_options(options),
-                ))
+                Self::Text(Box::new(crate::text::Text::new(held).with_options(options)))
             }
             other => Self::Coded(Box::new(Coded::wrap(other, codec).with_level(level))),
         }
@@ -669,7 +662,7 @@ impl crate::IOMedia for Holder {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         crate::IOMedia::read_parquet_statistics(self.as_media())
     }
 
@@ -677,7 +670,7 @@ impl crate::IOMedia for Holder {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
     }
 
@@ -790,7 +783,7 @@ impl IOBase for Holder {
         self.as_io().url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_io().bound_location()
     }
 
@@ -892,20 +885,20 @@ impl From<File> for Holder {
     }
 }
 
-impl From<crate::holder::fs::Folder> for Holder {
-    fn from(value: crate::holder::fs::Folder) -> Self {
+impl From<crate::fs::Folder> for Holder {
+    fn from(value: crate::fs::Folder) -> Self {
         Self::FsFolder(value)
     }
 }
 
-impl From<crate::holder::fs::Path> for Holder {
-    fn from(value: crate::holder::fs::Path) -> Self {
+impl From<crate::fs::Path> for Holder {
+    fn from(value: crate::fs::Path) -> Self {
         Self::FsPath(value)
     }
 }
 
-impl From<crate::holder::fs::File> for Holder {
-    fn from(value: crate::holder::fs::File) -> Self {
+impl From<crate::fs::File> for Holder {
+    fn from(value: crate::fs::File) -> Self {
         Self::FsFile(value)
     }
 }
@@ -922,8 +915,8 @@ impl From<Coded> for Holder {
     }
 }
 
-impl From<crate::media::text::Text<Holder>> for Holder {
-    fn from(value: crate::media::text::Text<Self>) -> Self {
+impl From<crate::text::Text<Holder>> for Holder {
+    fn from(value: crate::text::Text<Self>) -> Self {
         Self::Text(Box::new(value))
     }
 }

@@ -1,8 +1,8 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::types::{Int64Field, Int64Type, StructureField, StructureType};
 use yggdryl::{DataType, Field, FieldRecord, Scalar};
+use yggdryl::{Int64Field, Int64Type, StructureField, StructureType};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("typed/integer");
@@ -12,7 +12,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("checked_borrow", |bencher| {
         let field = Field::new("id", DataType::Int64, false);
         bencher.iter(|| {
-            <Int64Field as yggdryl::types::FieldValue<Int64Type>>::from_field(black_box(&field))
+            <Int64Field as yggdryl::FieldValue<Int64Type>>::from_field(black_box(&field))
                 .expect("the benchmark field is the Int64 leaf")
         });
     });
@@ -27,7 +27,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("typed/struct");
     let structure = StructureType::from(
-        yggdryl::types::Fields::from_fields([DataType::Int64.required_field("id")])
+        yggdryl::Fields::from_fields([DataType::Int64.required_field("id")])
             .expect("the benchmark Struct children are valid"),
     );
     let root = StructureField::new("row", structure, false);

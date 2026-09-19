@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use super::{Element, Event, MarketElement, MarketEvent};
-use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
 
 /// The concrete market element: every fact [`Element`] and
 /// [`MarketElement`] name, held as one field each, with no instant of its
@@ -26,7 +26,7 @@ use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, S
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
-/// use yggdryl::types::{Decimal, Side};
+/// use yggdryl::{Decimal, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut element = MarketElementData::default();
@@ -483,7 +483,7 @@ impl MarketElement for MarketElementData {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-/// use yggdryl::types::{Decimal, Side};
+/// use yggdryl::{Decimal, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);

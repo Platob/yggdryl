@@ -8,7 +8,7 @@ use arrow_schema::ArrowError;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::buffered::{Buffered, BufferedOptions};
-use yggdryl::media::ipc::Ipc;
+use yggdryl::ipc::Ipc;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{Codec, DataType, Field, Url};
 use yggdryl::{IOBase, IOMedia};
@@ -171,7 +171,7 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
     for operation in ["overwrite", "append", "merge"] {
         let pulls = Arc::new(AtomicUsize::new(0));
         let mut media = Ipc::new(Buffer::new()).with_field(schema());
-        let mut options = RecordOptions::Avro(yggdryl::media::avro::AvroOptions::new());
+        let mut options = RecordOptions::Avro(yggdryl::avro::AvroOptions::new());
         if operation == "merge" {
             options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
         }

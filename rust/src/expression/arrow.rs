@@ -49,7 +49,7 @@ use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
-use crate::types::cast::{ArrowCastOptions, cast_field_array};
+use crate::cast::{ArrowCastOptions, cast_field_array};
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.

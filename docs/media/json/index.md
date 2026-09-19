@@ -32,7 +32,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 === "Rust"
 
     ```rust
-    use yggdryl::text::json;
+    use yggdryl::json;
     use yggdryl::{from_json_scalar, into_json_scalar, Scalar};
 
     let value = json::from_utf8(r#"{"symbol":"AAPL","quantity":100}"#)?;
@@ -107,7 +107,7 @@ A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) 
 
     ```rust
     use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::json;
+    use yggdryl::json;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     assert_eq!(json::from_utf8_with_field(r#""12.50""#, &amount)?, Scalar::d128(1_250, 2));

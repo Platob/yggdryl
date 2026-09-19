@@ -1,6 +1,6 @@
 # Architecture
 
-Shared vocabulary lives in root files; implementations live in eleven layer folders. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
+Shared vocabulary and every type live in root files; every implementation is a root file or folder of its own name, and a parent folder holds only what its implementations share. The docs tabs group those files by the vocabulary they answer to. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
 
 ```text
 root traits, enums, and values
@@ -21,26 +21,26 @@ root traits, enums, and values
 fix ── protocol vocabulary over types + holder
 ```
 
-## Root files and layer folders
+## Root files, root folders and tabs
 
-Each `rust/src/<name>.rs` owns one shared trait, enum, or value (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`). Each folder owns one implementation family, and the site's top bar is that folder list - with one join: `text/` documents under [Media](media/index.md), because a reader picks a scheme by the name a handle carries, not by which crate module answers it.
+Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`, `currency.rs` owns the `currency` datatype, its field marker and its value). Each implementation - a medium, a codec, a storage backend, a digest, a charset with string leaves - is a root folder or file of its own name (`parquet/`, `gzip.rs`, `zip/`, `xxhash/`, `utf8.rs`), and a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`) holds only what its implementations share. The site's top bar groups those files by the vocabulary they answer to, with one join: `json/`, `toml/` and `yaml/` document under [Media](media/index.md) as three more schemes, because a reader picks a scheme by the name a handle carries, not by which crate module answers it.
 
-| Layer | Owns |
+| Tab | Root files and folders |
 | --- | --- |
-| [`types`](types/index.md) | `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
-| [`holder`](holder/index.md) | `Buffer`, local and generic filesystem handles, buffering, and every `IOBase` implementation |
-| [`coding`](coding/index.md) | gzip, zlib/deflate, zstd, and transparent coded handles |
-| [`charset`](charset/index.md) | UTF-8, UTF-16, US-ASCII, the ISO 8859 and Windows code pages, and transparent transcoded handles |
-| [`media`](media/index.md) | record options, IPC, Parquet, Avro, plain-text records, and Iceberg |
-| [`text`](media/structured.md) | structured `Scalar` codecs for JSON, YAML, and TOML, under the [Media](media/index.md) tab as three more schemes |
-| [`uri`](uri/index.md) | URI, URL, URN, path, glob, and partition syntax |
-| [`arrow`](arrow/index.md) | Arrow schema, scalar, array, batch, and reader boundaries |
-| [`expression`](expression/index.md) | parsing, binding, row evaluation, Arrow evaluation, and pushdown |
-| [`graph`](graph.md) | `graph/element.rs`: the `Element`, `Event`, `MarketElement` and `MarketEvent` traits - an element's `Uuid`, the identity it has elsewhere, its parents' UUIDs, an event's instant and code, a market element's price, quantity and side - as signatures a value implements; `graph/event.rs` the two holders and `graph/iterator.rs` the one walk |
-| [`hashing`](hashing.md) | `hashing/xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `hashing/txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `digest:time` holder |
-| [`fix`](fix/index.md) | FIX vocabulary over core `Field` values and `IOBase` registry storage |
+| [Types](types/index.md) | `datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one file per type - `string.rs`, `bytes.rs`, `integer.rs`, `floating.rs`, `decimal.rs` with `int256.rs`, `boolean.rs`, `date.rs`, `time.rs`, `datetime.rs`, `duration.rs`, `interval.rs` with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs` with `wkb.rs`, `enums.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `url.rs`, `version.rs`, `code.rs` with the eleven registered codes, `mime_type/datatype.rs`, `media_type/datatype.rs`: `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
+| [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting), and one folder per backend - `local/`, `fs/`, `zip/`, `object/`: every `IOBase` implementation |
+| [Coding](coding/index.md) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
+| [Charset](charset/index.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
+| [Media](media/index.md) | `media_type.rs`, `mime_type.rs`, `media/` (record options, inference, magic, merge, partition) and one folder per medium - `ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` (plain-text records) |
+| [Structured documents](media/structured.md) | `json/`, `toml/`, `yaml/`: structured `Scalar` codecs over the machinery in `text/`, under the [Media](media/index.md) tab as three more schemes |
+| [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, path, glob, and partition syntax |
+| [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
+| [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown |
+| [Graph](graph.md) | `graph/element.rs`: the `Element`, `Event`, `MarketElement` and `MarketEvent` traits - an element's `Uuid`, the identity it has elsewhere, its parents' UUIDs, an event's instant and code, a market element's price, quantity and side - as signatures a value implements; `graph/event.rs` the two holders and `graph/iterator.rs` the one walk |
+| [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `digest:time` holder |
+| [FIX](fix/index.md) | `fix/`: FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
-Tests, benchmarks, Python modules, JavaScript source groups, and documentation mirror these names, so one path finds a concept's implementation, validation, boundary, and contract.
+Tests, benchmarks, Python modules, JavaScript source groups, and documentation are grouped by these tab names - `rust/tests/<tab>.rs`, `python/tests/<tab>/`, and `docs/<tab>/` for a tab of several pages or `docs/<tab>.md` for a single-page tab such as Graph and Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it.
 
 ## Rules the layers share
 

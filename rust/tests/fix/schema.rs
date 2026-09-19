@@ -5,8 +5,8 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
+use yggdryl::UuidType;
 use yggdryl::graph::MarketElement;
-use yggdryl::types::UuidType;
 use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -256,8 +256,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
 #[test]
 fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
+    use yggdryl::ipc::{Ipc, IpcOptions};
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::ipc::{Ipc, IpcOptions};
     use yggdryl::{
         CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, FixMsg, IOMedia, PREVUUID_TAG_NAME,
     };
@@ -608,10 +608,8 @@ fn a_datatype_is_named_the_same_by_both_documents() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_for() {
-    use yggdryl::holder::local::Folder;
-    use yggdryl::media::iceberg::{
-        FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
-    };
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME, Scheme};
 
     let (registry, codec) = reader();

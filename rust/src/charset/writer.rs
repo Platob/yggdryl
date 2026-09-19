@@ -2,7 +2,7 @@
 
 use std::io::{self, Write};
 
-use super::{Charset, unicode};
+use super::Charset;
 use crate::{DEFAULT_STREAM_BATCH_SIZE, Result};
 
 /// The longest UTF-8 scalar, which bounds what one write can cut short.
@@ -91,7 +91,7 @@ impl Write for Writer<'_> {
             self.carry[self.carried] = rest[0];
             self.carried += 1;
             rest = &rest[1..];
-            if unicode::utf8_pending(&self.carry[..self.carried]) == 0 {
+            if crate::utf8::pending(&self.carry[..self.carried]) == 0 {
                 let held = self.carry;
                 let carried = self.carried;
                 self.carried = 0;
@@ -108,7 +108,7 @@ impl Write for Writer<'_> {
         if rest.is_empty() {
             return Ok(bytes.len());
         }
-        let held = unicode::utf8_pending(rest);
+        let held = crate::utf8::pending(rest);
         let complete = rest.len() - held;
         self.encode_run(&rest[..complete])?;
         self.carry[..held].copy_from_slice(&rest[complete..]);

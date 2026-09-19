@@ -5,8 +5,8 @@
 
 use std::collections::BTreeMap;
 
+use yggdryl::Uuid;
 use yggdryl::graph::{Element, Event, EventIterator, MarketEventData};
-use yggdryl::types::Uuid;
 
 use super::element::filled;
 

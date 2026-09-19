@@ -10,7 +10,7 @@ use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::BatchReader;
-use crate::media::ipc::IpcOptions;
+use crate::ipc::IpcOptions;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{DataType, Field};
 

@@ -2,9 +2,9 @@
 
 use super::root;
 use arrow_array::RecordBatch;
+use yggdryl::DecimalType;
 use yggdryl::arrow::{batch_reader, batch_to_value};
 use yggdryl::holder::Buffer;
-use yggdryl::types::DecimalType;
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar,
     Url,

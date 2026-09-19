@@ -100,7 +100,7 @@ Declare a string and a byte column, and read the declaration back.
 === "Rust"
 
     ```rust
-    use yggdryl::types::{BytesType, StringType};
+    use yggdryl::{BytesType, StringType};
     use yggdryl::{Charset, DataType};
 
     // Every spelling of a leaf is one datatype, rendered under the leaf's
@@ -347,7 +347,7 @@ cell read out of `sized_utf8(32)` is a `utf8`.
 Rust only; the bindings read a value as a `Scalar` and its `dtype`.
 
 ```rust
-use yggdryl::types::{Bytes, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringType};
+use yggdryl::{Bytes, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringType};
 use yggdryl::{DataType, Scalar};
 
 // Short text lives inside the value; longer text is one shared handle.
@@ -606,7 +606,7 @@ read back under `utf8` trims.
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
-    use yggdryl::types::FieldValue as _;
+    use yggdryl::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field};
 
     let strict = ArrowCastOptions::new().with_safe(false);
@@ -1182,8 +1182,8 @@ intake is total by construction and unrecognized text answers the default base.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::string datatype::bytes datatype::ascii field::ascii field::binary
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::string types::bytes types::tests::strings types::tests::bytes types::regex types::tests::version
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::string datatype::bytes datatype::ascii field::ascii field::binary strings:: bytes:: regex:: version::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests version::tests
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(string|bytes)/'
     ```
 

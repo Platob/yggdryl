@@ -115,7 +115,7 @@ A non-null struct root naming a subset of the stored columns reads only those ch
     use yggdryl::media::IORecordOptions;
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, MimeType};
 
     let stored = DataType::from_fields([
@@ -262,7 +262,7 @@ A non-null struct root naming a subset of the stored columns reads only those ch
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_pushdown/parquet
     ```
 

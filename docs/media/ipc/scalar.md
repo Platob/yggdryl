@@ -130,7 +130,7 @@ Row conversion is bounded by the smaller of `batch_row_size` and `commit_row_siz
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::ipc::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     ```
 

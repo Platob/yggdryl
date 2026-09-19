@@ -24,8 +24,8 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
@@ -151,8 +151,8 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::media::IORecordOptions;
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType, IOMedia};
 
     let mut schema = DataType::from_fields([
@@ -317,8 +317,8 @@ Nothing a commit writes is mutated in place, so a retained snapshot is read by a
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-time-travel");
@@ -451,8 +451,8 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::{DataFile, FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::{DataFile, FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::Folder;
     use yggdryl::{arrow, DataType};
 
     let mut schema = DataType::from_fields([
@@ -701,10 +701,10 @@ Rust only; the fan-out is inside the core scan, so every binding gets it through
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::media::iceberg::{
+    use yggdryl::iceberg::{
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::DataType;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-parallel-read");
@@ -769,9 +769,9 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::planning
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::manifest_planning
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::planning
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::manifest_planning
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
     cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^plan/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^read/'

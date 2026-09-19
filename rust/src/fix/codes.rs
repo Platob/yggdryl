@@ -36,7 +36,7 @@ use std::iter::FusedIterator;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
-use crate::types::folds_equal;
+use crate::folds_equal;
 use crate::{Error, Result};
 
 /// What the document is called for every refusal it raises.

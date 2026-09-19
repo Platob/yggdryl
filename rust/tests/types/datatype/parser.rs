@@ -1,5 +1,5 @@
-use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType, UuidType};
 use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType, UuidType};
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -10,6 +11,10 @@ use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::text::Format;
 use crate::{Error, Result, hashing::stable_hash_display};
+
+mod datatype;
+
+pub use datatype::*;
 
 #[derive(Clone, Debug)]
 enum MimeTypeWire {

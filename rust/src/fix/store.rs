@@ -10,8 +10,8 @@ use smol_str::format_smolstr;
 
 use super::FixRegistry;
 use crate::holder::Holder;
+use crate::sequence::SequenceType;
 use crate::text::Formatting;
-use crate::types::sequence::SequenceType;
 use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
 
 const SHARD_WIDTH: i32 = 100;
@@ -197,7 +197,7 @@ impl Resolver<'_> {
                 .or_else(|| {
                     self.raw
                         .keys()
-                        .find(|key| key.0 == category && crate::types::folds_equal(&key.1, name))
+                        .find(|key| key.0 == category && crate::folds_equal(&key.1, name))
                 })
                 .cloned();
             match key {
@@ -759,7 +759,7 @@ impl FixRegistry {
             // and the generator write does, so a rewrite changes no line it
             // did not mean to.
             let mut bytes =
-                crate::text::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
+                crate::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
             bytes.push(b'\n');
             root.child_by_path(path)?.write_all_bytes(&bytes)?;
         }

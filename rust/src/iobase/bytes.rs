@@ -230,7 +230,7 @@ macro_rules! delegate_iobase {
     };
 
     (@method $handle:ident, bound_location) => {
-        fn bound_location(&self) -> Option<&$crate::holder::fs::BoundLocation> {
+        fn bound_location(&self) -> Option<&$crate::fs::BoundLocation> {
             $crate::IOBase::bound_location(&self.$handle)
         }
     };
@@ -418,7 +418,7 @@ impl IOMedia for Box<dyn IOBase> {
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         IOMedia::read_parquet_statistics(self.as_ref())
     }
 
@@ -426,7 +426,7 @@ impl IOMedia for Box<dyn IOBase> {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
     }
 
@@ -557,7 +557,7 @@ impl IOBase for Box<dyn IOBase> {
         self.as_ref().url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_ref().bound_location()
     }
 
