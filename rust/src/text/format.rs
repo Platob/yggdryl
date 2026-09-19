@@ -182,7 +182,7 @@ impl<'de> Deserialize<'de> for Format {
 
 /// A format known only at run time is still a codec.
 ///
-/// This is the role [`Structured`] used to hold: the same four formats under a
+/// This is the role `Structured` used to hold: the same four formats under a
 /// second set of spellings, with the bijection written in both directions. One
 /// enum answers both now.
 impl crate::text::TextCodec for Format {

@@ -105,7 +105,7 @@ pub enum DataType {
     /// Every byte column the crate has, `binary`, `varbinary(16)` and
     /// `fixed_binary(16)` alike; [`Self::bytes`] builds one and the
     /// sugar beside it - [`Self::binary`], [`Self::large_binary`],
-    /// [`Self::binary_view`], [`Self::fixed_size_binary`] - names the common
+    /// [`Self::binary_view`], [`Self::fixed_binary`] - names the common
     /// ones.
     Bytes(super::bytes::BytesType),
     /// A string: one of eighteen leaves, each a shape in a charset with the

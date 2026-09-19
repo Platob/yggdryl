@@ -1,6 +1,6 @@
 //! Validated locations as one generic scalar value.
 //!
-//! A URL is the crate's [`Url`](crate::Url) - the same parsed value a handle
+//! A URL is the crate's [`Url`] - the same parsed value a handle
 //! addresses itself by - carried as a column. Parsing canonicalizes: a scheme
 //! and percent-encoding fold to their canonical case, a bare platform path
 //! becomes a `file:` URL, and re-parsing the canonical text answers the same

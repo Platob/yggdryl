@@ -7,7 +7,7 @@
 //! | side | root variant | family | leaf |
 //! | --- | --- | --- | --- |
 //! | datatype | `DataType::Mapping` | [`MappingType`] | [`MapType`] |
-//! | field | `Field::Mapping` | [`MappingField`] | [`MapField`] |
+//! | field | `Field::Mapping` | [`MappingField`](crate::types::MappingField) | - |
 //! | value | `Scalar::Mapping` | [`Mapping`] | [`Map`] |
 //!
 //! Arrow's map is the family's one leaf today: a list of non-null key-value
